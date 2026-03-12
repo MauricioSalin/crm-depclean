@@ -17,14 +17,6 @@ export default function NewContractPage() {
         <Header
           title="Novo Contrato"
           description="Crie um novo contrato para um cliente"
-          actions={
-            <Link href="/contratos">
-              <Button variant="outline" className="w-full sm:w-auto h-9 text-sm bg-transparent">
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Voltar
-              </Button>
-            </Link>
-          }
         />
         <div className="mt-4 md:mt-5">
           <ContractForm />

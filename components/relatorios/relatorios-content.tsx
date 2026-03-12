@@ -180,33 +180,48 @@ export function RelatoriosContent() {
               <CardTitle>Serviços por Equipe</CardTitle>
               <CardDescription>Distribuição de serviços entre as equipes</CardDescription>
             </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
+            <CardContent className="flex flex-col items-center gap-4">
+              <ResponsiveContainer width="100%" height={220}>
                 <PieChart>
                   <Pie
                     data={servicesByTeamData}
                     cx="50%"
                     cy="50%"
-                    innerRadius={60}
-                    outerRadius={100}
+                    innerRadius={55}
+                    outerRadius={90}
                     dataKey="services"
                     nameKey="team"
-                    label={({ team, percent }) => `${team}: ${(percent * 100).toFixed(0)}%`}
-                    labelLine={false}
                   >
                     {servicesByTeamData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip 
-                    contentStyle={{ 
-                      backgroundColor: "var(--card)", 
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "var(--card)",
                       border: "1px solid var(--border)",
                       borderRadius: "8px"
                     }}
+                    formatter={(value: number) => [`${value} serviços`, ""]}
                   />
                 </PieChart>
               </ResponsiveContainer>
+              <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 w-full">
+                {servicesByTeamData.map((entry, index) => {
+                  const total = servicesByTeamData.reduce((acc, curr) => acc + curr.services, 0)
+                  return (
+                    <div key={entry.team} className="flex items-center gap-1.5 text-xs">
+                      <div
+                        className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: COLORS[index % COLORS.length] }}
+                      />
+                      <span className="text-muted-foreground whitespace-nowrap">
+                        {entry.team}: {Math.round((entry.services / total) * 100)}%
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
             </CardContent>
           </Card>
 
@@ -336,7 +351,7 @@ export function RelatoriosContent() {
             <CardDescription>Total de {clients.length} clientes cadastrados</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
+            <div className="space-y-2">
               {clients.map((client) => (
                 <div key={client.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors">
                   <div>

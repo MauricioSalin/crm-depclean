@@ -56,10 +56,10 @@ export function Header({ title, description, titleAddon, headerActions, actions 
                 placeholder="Buscar cliente, contrato, serviço..."
                 className="pl-9 pr-3 md:pr-16 h-9 text-sm bg-card border-border transition-all duration-300 focus:shadow-lg focus:shadow-primary/10"
               />
-              <span className="hidden md:inline-flex items-center gap-0.5 absolute right-2.5 top-1/2 -translate-y-1/2">
+              {/* <span className="hidden md:inline-flex items-center gap-0.5 absolute right-2.5 top-1/2 -translate-y-1/2">
                 <kbd className="px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground bg-gray-100 rounded border border-border">Ctrl</kbd>
                 <kbd className="px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground bg-gray-100 rounded border border-border">K</kbd>
-              </span>
+              </span> */}
             </div>
           </div>
 

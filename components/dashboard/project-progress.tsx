@@ -7,6 +7,8 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts"
 const COLORS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)"]
 
 export function ServiceDistribution({ showDescription = true }: { showDescription?: boolean }) {
+  const total = servicesByTeamData.reduce((acc, curr) => acc + curr.services, 0)
+
   return (
     <Card className="overflow-hidden hover:shadow-xl transition-all duration-500">
       <CardHeader className="pb-3">
@@ -15,19 +17,17 @@ export function ServiceDistribution({ showDescription = true }: { showDescriptio
           <CardDescription>Distribuição de serviços entre as equipes</CardDescription>
         )}
       </CardHeader>
-      <CardContent>
-        <ResponsiveContainer width="100%" height={280}>
+      <CardContent className="flex flex-col items-center gap-4">
+        <ResponsiveContainer width="100%" height={200}>
           <PieChart>
             <Pie
               data={servicesByTeamData}
               cx="50%"
               cy="50%"
-              innerRadius={60}
-              outerRadius={100}
+              innerRadius={55}
+              outerRadius={90}
               dataKey="services"
               nameKey="team"
-              label={({ team, percent }) => `${team}: ${(percent * 100).toFixed(0)}%`}
-              labelLine={false}
             >
               {servicesByTeamData.map((_, index) => (
                 <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
@@ -43,6 +43,19 @@ export function ServiceDistribution({ showDescription = true }: { showDescriptio
             />
           </PieChart>
         </ResponsiveContainer>
+        <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 w-full">
+          {servicesByTeamData.map((entry, index) => (
+            <div key={entry.team} className="flex items-center gap-1.5 text-xs">
+              <div
+                className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                style={{ backgroundColor: COLORS[index % COLORS.length] }}
+              />
+              <span className="text-muted-foreground whitespace-nowrap">
+                {entry.team}: {Math.round((entry.services / total) * 100)}%
+              </span>
+            </div>
+          ))}
+        </div>
       </CardContent>
     </Card>
   )
