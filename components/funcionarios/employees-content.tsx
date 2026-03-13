@@ -57,6 +57,7 @@ export function EmployeesContent({ openDialog, onDialogChange }: EmployeesConten
     email: "",
     phone: "",
     cpf: "",
+    rg: "",
     permissionProfileId: "",
     status: "active" as "active" | "inactive" | "vacation",
   })
@@ -71,6 +72,7 @@ export function EmployeesContent({ openDialog, onDialogChange }: EmployeesConten
           email: "",
           phone: "",
           cpf: "",
+          rg: "",
           permissionProfileId: "",
           status: "active",
         })
@@ -118,6 +120,7 @@ export function EmployeesContent({ openDialog, onDialogChange }: EmployeesConten
         email: formData.email,
         phone: formData.phone,
         cpf: formData.cpf,
+        rg: formData.rg,
         role: getProfileName(formData.permissionProfileId),
         permissionProfileId: formData.permissionProfileId,
         status: formData.status,
@@ -135,6 +138,7 @@ export function EmployeesContent({ openDialog, onDialogChange }: EmployeesConten
       email: "",
       phone: "",
       cpf: "",
+      rg: "",
       permissionProfileId: "",
       status: "active",
     })
@@ -149,6 +153,7 @@ export function EmployeesContent({ openDialog, onDialogChange }: EmployeesConten
       email: emp.email,
       phone: emp.phone,
       cpf: emp.cpf,
+      rg: emp.rg || "",
       permissionProfileId: emp.permissionProfileId,
       status: emp.status,
     })
@@ -199,6 +204,15 @@ export function EmployeesContent({ openDialog, onDialogChange }: EmployeesConten
                   onChange={(e) => setFormData({ ...formData, cpf: e.target.value })}
                   placeholder="000.000.000-00"
                   required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="rg">RG</Label>
+                <Input
+                  id="rg"
+                  value={formData.rg}
+                  onChange={(e) => setFormData({ ...formData, rg: e.target.value })}
+                  placeholder="00.000.000-0"
                 />
               </div>
               <div className="space-y-2">

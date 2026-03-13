@@ -315,6 +315,8 @@ export type PermissionKey =
   | "financial_view" | "financial_manage"
   | "reports_view" | "reports_export"
   | "settings_view" | "settings_manage"
+  | "templates_view" | "templates_manage"
+  | "logs_view" | "logs_manage"
 
 export interface PermissionProfile {
   id: string

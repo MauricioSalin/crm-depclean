@@ -12,7 +12,6 @@ import {
   BarChart3,
   Settings, 
   HelpCircle, 
-  LogOut,
   Bell
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -37,7 +36,6 @@ const menuItems = [
 const generalItems = [
   { icon: Settings, label: "Configurações", href: "/configuracoes" },
   { icon: HelpCircle, label: "Ajuda", href: "/ajuda" },
-  { icon: LogOut, label: "Sair", href: "/logout" },
 ]
 
 interface SidebarProps {

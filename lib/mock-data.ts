@@ -1104,6 +1104,18 @@ const employeeCpfs: Record<string, string> = {
   emp9: "119.234.567-89",
   emp10: "120.345.678-90",
 }
+const employeeRgs: Record<string, string> = {
+  emp1: "12.345.678-9",
+  emp2: "23.456.789-0",
+  emp3: "",
+  emp4: "34.567.890-1",
+  emp5: "",
+  emp6: "45.678.901-2",
+  emp7: "56.789.012-3",
+  emp8: "",
+  emp9: "67.890.123-4",
+  emp10: "45.678.901-2",
+}
 const employeePermissions: Record<string, string> = {
   emp1: "profile-operacional",
   emp2: "profile-operacional",
@@ -1138,6 +1150,7 @@ export const mockEmployees = employees.map(e => ({
   email: e.email,
   phone: e.phone,
   cpf: employeeCpfs[e.id] || "000.000.000-00",
+  rg: employeeRgs[e.id] || "",
   role: e.function,
   permissionProfileId: employeePermissions[e.id] || "profile-operacional",
   status: e.isActive ? "active" as const : "inactive" as const,
@@ -1212,6 +1225,8 @@ export const mockPermissionProfiles = [
       "financial_view", "financial_manage",
       "reports_view", "reports_export",
       "settings_view", "settings_manage",
+      "templates_view", "templates_manage",
+      "logs_view", "logs_manage",
     ] as const,
     createdAt: "2024-01-01",
   },

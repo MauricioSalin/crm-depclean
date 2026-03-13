@@ -114,7 +114,7 @@ export function ProductivityCards() {
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold text-foreground">Produtividade das Equipes</h2>
         <Link href="/equipes">
-          <Button variant="ghost" size="sm" className="text-xs text-primary hover:text-primary/80">
+          <Button variant="ghost" size="sm" className="text-xs text-foreground hover:text-foreground/80">
             Ver todas
             <ArrowRight className="w-3 h-3 ml-1" />
           </Button>

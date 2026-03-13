@@ -95,6 +95,10 @@ const ALL_PERMISSIONS: { key: PermissionKey; label: string; description: string 
   { key: "reports_export", label: "Exportar Relatórios", description: "Exportar dados" },
   { key: "settings_view", label: "Visualizar Configurações", description: "Ver configurações" },
   { key: "settings_manage", label: "Gerenciar Configurações", description: "Modificar configurações do sistema" },
+  { key: "templates_view", label: "Visualizar Templates", description: "Ver templates de contratos" },
+  { key: "templates_manage", label: "Gerenciar Templates", description: "Criar, editar e excluir templates" },
+  { key: "logs_view", label: "Visualizar Logs", description: "Ver logs do sistema" },
+  { key: "logs_manage", label: "Gerenciar Logs", description: "Gerenciar e exportar logs" },
 ]
 
 type SettingsSection = "tipos-cliente" | "permissoes" | "usuarios" | "notificacoes"

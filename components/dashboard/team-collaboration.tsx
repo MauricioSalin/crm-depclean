@@ -2,11 +2,10 @@
 
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { ArrowRight, Users } from "lucide-react"
 import { teams, employees, scheduledServices, getServiceTypeById } from "@/lib/mock-data"
-import { getColorFromClass, getInitials } from "@/lib/utils"
+import { getColorFromClass } from "@/lib/utils"
 import Link from "next/link"
 
 export function TeamCollaboration() {
@@ -39,7 +38,7 @@ export function TeamCollaboration() {
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold text-foreground">Equipes</h2>
         <Link href="/equipes">
-          <Button variant="ghost" size="sm" className="text-xs text-primary hover:text-primary/80">
+          <Button variant="ghost" size="sm" className="text-xs text-foreground hover:text-foreground/80">
             Ver todas
             <ArrowRight className="w-3 h-3 ml-1" />
           </Button>
@@ -69,20 +68,7 @@ export function TeamCollaboration() {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <div className="flex -space-x-2">
-                {team.activeEmployees.map((emp) => (
-                  <Avatar key={emp.id} className="w-7 h-7 border-2 border-card">
-                    <AvatarImage src={emp.avatar || "/avatars/avatar-1.jpg"} alt={emp.name} />
-                    <AvatarFallback 
-                      className="text-[10px] text-white font-medium"
-                      style={{ backgroundColor: getColorFromClass(team.color) }}
-                    >
-                      {getInitials(emp.name)}
-                    </AvatarFallback>
-                  </Avatar>
-                ))}
-              </div>
-              <Badge 
+              <Badge
                 variant={team.servicesCount > 0 ? "default" : "secondary"}
                 className="text-[10px]"
               >

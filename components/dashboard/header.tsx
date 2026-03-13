@@ -1,6 +1,6 @@
 "use client"
 
-import { Search, Bell } from "lucide-react"
+import { Search, Bell, User, FileText, ScrollText, LogOut } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -15,6 +15,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { notifications } from "@/lib/mock-data"
+import Link from "next/link"
 import type { ReactNode } from "react"
 
 interface HeaderProps {
@@ -45,7 +46,7 @@ export function Header({ title, description, titleAddon, headerActions, actions 
 
   return (
     <>
-      <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-sm -mx-3 md:-mx-4 lg:-mx-5 px-3 md:px-4 lg:px-5 py-2.5">
+      <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-sm -mx-3 md:-mx-4 lg:-mx-5 px-3 md:px-4 lg:px-5 py-4">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 flex-1">
             <MobileNav />
@@ -109,16 +110,54 @@ export function Header({ title, description, titleAddon, headerActions, actions 
               </DropdownMenuContent>
             </DropdownMenu>
 
-            <div className="flex items-center gap-2 pl-2 md:pl-3 border-l border-border">
-              <Avatar className="w-7 h-7 md:w-8 md:h-8 ring-2 ring-primary/20 transition-all duration-300 hover:ring-primary/40">
-                <AvatarImage src="/professional-avatar.jpg" alt="Administrador" />
-                <AvatarFallback className="text-xs">AD</AvatarFallback>
-              </Avatar>
-              <div className="text-xs hidden sm:block">
-                <p className="font-semibold text-foreground">Melina Costa</p>
-                <p className="text-muted-foreground text-[10px]">Administradora</p>
-              </div>
-            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="flex items-center gap-2 pl-2 md:pl-3 border-l border-border cursor-pointer hover:opacity-80 transition-opacity">
+                  <Avatar className="w-7 h-7 md:w-8 md:h-8 ring-2 ring-primary/20 transition-all duration-300 hover:ring-primary/40">
+                    <AvatarImage src="/professional-avatar.jpg" alt="Administrador" />
+                    <AvatarFallback className="text-xs">AD</AvatarFallback>
+                  </Avatar>
+                  <div className="text-xs hidden sm:block text-left">
+                    <p className="font-semibold text-foreground">Melina Costa</p>
+                    <p className="text-muted-foreground text-[10px]">Administradora</p>
+                  </div>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel className="font-normal">
+                  <div className="flex flex-col space-y-1">
+                    <p className="text-sm font-medium">Melina Costa</p>
+                    <p className="text-xs text-muted-foreground">melina@depclean.com</p>
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <Link href="/perfil">
+                  <DropdownMenuItem className="cursor-pointer">
+                    <User className="w-4 h-4 mr-2" />
+                    Perfil
+                  </DropdownMenuItem>
+                </Link>
+                <Link href="/templates">
+                  <DropdownMenuItem className="cursor-pointer">
+                    <FileText className="w-4 h-4 mr-2" />
+                    Templates
+                  </DropdownMenuItem>
+                </Link>
+                <Link href="/logs">
+                  <DropdownMenuItem className="cursor-pointer">
+                    <ScrollText className="w-4 h-4 mr-2" />
+                    Logs
+                  </DropdownMenuItem>
+                </Link>
+                <DropdownMenuSeparator />
+                <Link href="/logout">
+                  <DropdownMenuItem className="cursor-pointer">
+                    <LogOut className="w-4 h-4 mr-2" />
+                    Sair
+                  </DropdownMenuItem>
+                </Link>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </div>

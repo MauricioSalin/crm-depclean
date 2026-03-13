@@ -110,8 +110,8 @@ export function AjudaContent() {
       </div>
 
 
-      {/* Quick Guides */}
-      <div className="grid gap-4 md:grid-cols-3">
+      {/* Quick Guides - TODO: habilitar no futuro */}
+      {/* <div className="grid gap-4 md:grid-cols-3">
         {QUICK_GUIDES.map((guide) => (
           <Card key={guide.title} className="cursor-pointer hover:shadow-md transition-shadow">
             <CardContent className="p-6 flex items-center gap-4">
@@ -126,7 +126,7 @@ export function AjudaContent() {
             </CardContent>
           </Card>
         ))}
-      </div>
+      </div> */}
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* FAQ */}
@@ -163,7 +163,7 @@ export function AjudaContent() {
         {/* Contact */}
         <div className="space-y-6">
           <Card>
-            <CardHeader>
+            <CardHeader className="mb-3">
               <CardTitle>Contato Direto</CardTitle>
               <CardDescription>Fale com nossa equipe</CardDescription>
             </CardHeader>
@@ -193,13 +193,13 @@ export function AjudaContent() {
           </Card>
 
           <Card>
-            <CardHeader>
+            <CardHeader className="mb-3">
               <CardTitle>Enviar Mensagem</CardTitle>
-              <CardDescription>Nos envie sua dúvida ou sugestão</CardDescription>
+              <CardDescription>Nos envie sua dúvida ou sugestão.</CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleContactSubmit} className="space-y-6">
-                <div className="space-y-6">
+                <div className="space-y-2">
                   <Label htmlFor="name">Nome</Label>
                   <Input
                     id="name"
@@ -208,7 +208,7 @@ export function AjudaContent() {
                     required
                   />
                 </div>
-                <div className="space-y-6">
+                <div className="space-y-2">
                   <Label htmlFor="email">E-mail</Label>
                   <Input
                     id="email"
@@ -218,7 +218,7 @@ export function AjudaContent() {
                     required
                   />
                 </div>
-                <div className="space-y-6">
+                <div className="space-y-2">
                   <Label htmlFor="subject">Assunto</Label>
                   <Input
                     id="subject"
@@ -227,7 +227,7 @@ export function AjudaContent() {
                     required
                   />
                 </div>
-                <div className="space-y-6">
+                <div className="space-y-2">
                   <Label htmlFor="message">Mensagem</Label>
                   <Textarea
                     id="message"
