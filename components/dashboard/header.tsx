@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import { Search, Bell, User, FileText, ScrollText, LogOut } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -14,7 +15,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { notifications } from "@/lib/mock-data"
+import { notifications as initialNotifications } from "@/lib/mock-data"
+import { SwipeableNotification } from "./swipeable-notification"
 import Link from "next/link"
 import type { ReactNode } from "react"
 
@@ -24,6 +26,7 @@ interface HeaderProps {
   titleAddon?: ReactNode
   headerActions?: ReactNode
   actions?: ReactNode
+  viewToggle?: ReactNode
 }
 
 const getNotificationDotColor = (type: string, isRead: boolean) => {
@@ -40,9 +43,14 @@ const getNotificationDotColor = (type: string, isRead: boolean) => {
   return colorMap[type] || "bg-primary"
 }
 
-export function Header({ title, description, titleAddon, headerActions, actions }: HeaderProps) {
-  const unreadNotifications = notifications.filter(n => !n.isRead)
+export function Header({ title, description, titleAddon, headerActions, actions, viewToggle }: HeaderProps) {
+  const [notifs, setNotifs] = useState(initialNotifications)
+  const unreadNotifications = notifs.filter(n => !n.isRead)
   const effectiveHeaderActions = headerActions ?? actions
+
+  const markAsRead = (id: string) => {
+    setNotifs(prev => prev.map(n => n.id === id ? { ...n, isRead: true, readAt: new Date() } : n))
+  }
 
   return (
     <>
@@ -88,20 +96,31 @@ export function Header({ title, description, titleAddon, headerActions, actions 
                   </Badge>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                {notifications.slice(0, 5).map((notification) => (
-                  <DropdownMenuItem key={notification.id} className="flex flex-col items-start gap-1 cursor-pointer">
-                    <div className="flex items-center gap-2 w-full">
-                      <span
-                        className={`w-2 h-2 rounded-full ${getNotificationDotColor(notification.type, notification.isRead)} ${
-                          notification.isRead ? "opacity-40" : "opacity-100"
-                        }`}
-                      />
-                      <span className={`font-medium text-sm ${notification.isRead ? "text-muted-foreground" : "text-foreground"}`}>
-                        {notification.title}
-                      </span>
-                    </div>
-                    <p className="text-xs text-muted-foreground pl-4 line-clamp-2">{notification.message}</p>
-                  </DropdownMenuItem>
+                {unreadNotifications.length === 0 && (
+                  <div className="py-6 text-center text-sm text-muted-foreground">
+                    Nenhuma notificação pendente
+                  </div>
+                )}
+                {unreadNotifications.slice(0, 5).map((notification) => (
+                  <SwipeableNotification
+                    key={notification.id}
+                    isRead={notification.isRead}
+                    onMarkRead={() => markAsRead(notification.id)}
+                  >
+                    <DropdownMenuItem key={notification.id} className="flex flex-col items-start gap-1 cursor-pointer" onSelect={(e) => e.preventDefault()}>
+                      <div className="flex items-center gap-2 w-full">
+                        <span
+                          className={`w-2 h-2 rounded-full shrink-0 ${getNotificationDotColor(notification.type, notification.isRead)} ${
+                            notification.isRead ? "opacity-40" : "opacity-100"
+                          }`}
+                        />
+                        <span className={`font-medium text-sm ${notification.isRead ? "text-muted-foreground" : "text-foreground"}`}>
+                          {notification.title}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground pl-4 line-clamp-2">{notification.message}</p>
+                    </DropdownMenuItem>
+                  </SwipeableNotification>
                 ))}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem className="text-center justify-center text-foreground font-medium cursor-pointer">
@@ -162,16 +181,27 @@ export function Header({ title, description, titleAddon, headerActions, actions 
         </div>
       </div>
 
-      <div className="mb-7 mt-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <h1 className="text-xl md:text-2xl lg:text-3xl font-bold text-foreground">{title}</h1>
-            {titleAddon}
+      <div className="mb-4 mt-4 flex flex-col gap-4">
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <h1 className="text-xl md:text-2xl lg:text-3xl font-bold text-foreground">{title}</h1>
+              {titleAddon}
+            </div>
+            <p className="text-xs md:text-sm text-muted-foreground">{description}</p>
           </div>
-          <p className="text-xs md:text-sm text-muted-foreground">{description}</p>
+          {/* Mobile: viewToggle ao lado do título */}
+          {viewToggle && <div className="shrink-0 sm:hidden">{viewToggle}</div>}
+          {/* Desktop: botão de ação ao lado do título */}
+          {effectiveHeaderActions && (
+            <div className="hidden sm:flex items-center gap-2 shrink-0">
+              {effectiveHeaderActions}
+            </div>
+          )}
         </div>
+        {/* Mobile: botão de ação full-width abaixo */}
         {effectiveHeaderActions && (
-          <div className="w-full sm:w-auto flex items-center justify-end gap-2">
+          <div className="flex gap-2 overflow-x-auto [&>*]:flex-1 sm:hidden">
             {effectiveHeaderActions}
           </div>
         )}

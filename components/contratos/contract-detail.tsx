@@ -201,7 +201,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
               </div>
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 [&>*]:flex-1 [&>*]:sm:flex-initial">
             {contract.documentUrl && (
               <Button variant="outline" size="sm">
                 <Download className="w-4 h-4 mr-2" />
@@ -370,7 +370,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
         </TabsList>
 
         <TabsContent value="services" className="mt-4">
-          <div className="rounded-md overflow-hidden">
+          <div className="rounded-md overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -407,7 +407,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
         </TabsContent>
 
         <TabsContent value="installments" className="mt-4">
-          <div className="rounded-md overflow-hidden">
+          <div className="rounded-md overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -457,7 +457,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
         </TabsContent>
 
         <TabsContent value="units" className="mt-4">
-          <div className="rounded-md overflow-hidden">
+          <div className="rounded-md overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>

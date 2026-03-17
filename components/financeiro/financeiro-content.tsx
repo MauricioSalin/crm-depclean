@@ -5,7 +5,6 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { 
   Table, 
   TableBody, 
@@ -27,18 +26,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { 
-  Search, 
-  MoreHorizontal, 
-  DollarSign, 
-  Clock, 
+import {
+  Search,
+  MoreHorizontal,
+  DollarSign,
+  Clock,
   AlertTriangle,
   CheckCircle,
   TrendingUp,
   Calendar,
   Receipt,
-  LayoutGrid,
-  List
 } from "lucide-react"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { 
@@ -62,10 +59,14 @@ import {
   Cell,
 } from "recharts"
 
-export function FinanceiroContent() {
+interface FinanceiroContentProps {
+  viewMode: "table" | "cards"
+  viewToggle?: React.ReactNode
+}
+
+export function FinanceiroContent({ viewMode, viewToggle }: FinanceiroContentProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const [tabFilter, setTabFilter] = useState("all")
-  const [viewMode, setViewMode] = useState<"table" | "cards">("table")
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
 
@@ -274,51 +275,38 @@ export function FinanceiroContent() {
 
       {/* Installments Table */}
       <div>
-          <div className="flex flex-col gap-4 mb-6">
-            <div className="flex flex-col sm:flex-row gap-3">
-              <div className="relative w-full sm:w-1/3">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar por contrato ou cliente..."
-                  value={searchTerm}
-                  onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1) }}
-                  className="pl-10"
-                />
-              </div>
-              <div className="flex gap-2">
-                <Select value={tabFilter} onValueChange={(value) => { setTabFilter(value); setCurrentPage(1) }}>
-                  <SelectTrigger className="w-full sm:w-[140px]">
-                    <SelectValue placeholder="Status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todas</SelectItem>
-                    <SelectItem value="pending">Pendentes</SelectItem>
-                    <SelectItem value="overdue">Vencidas</SelectItem>
-                    <SelectItem value="paid">Pagas</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "table" | "cards")}>
-                  <TabsList>
-                    <TabsTrigger value="table">
-                      <List className="h-4 w-4" />
-                    </TabsTrigger>
-                    <TabsTrigger value="cards">
-                      <LayoutGrid className="h-4 w-4" />
-                    </TabsTrigger>
-                  </TabsList>
-                </Tabs>
-              </div>
+          <div className="flex items-center gap-2 mb-6">
+            <div className="relative flex-1 sm:flex-initial sm:w-full sm:max-w-sm">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Buscar por contrato ou cliente..."
+                value={searchTerm}
+                onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1) }}
+                className="pl-10"
+              />
             </div>
+            <Select value={tabFilter} onValueChange={(value) => { setTabFilter(value); setCurrentPage(1) }}>
+              <SelectTrigger className="flex-1 sm:flex-initial sm:w-[140px]">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas</SelectItem>
+                <SelectItem value="pending">Pendentes</SelectItem>
+                <SelectItem value="overdue">Vencidas</SelectItem>
+                <SelectItem value="paid">Pagas</SelectItem>
+              </SelectContent>
+            </Select>
+            {viewToggle && <div className="hidden sm:block shrink-0">{viewToggle}</div>}
           </div>
 
           {viewMode === "table" ? (
-            <div className="rounded-md overflow-hidden">
+            <div className="rounded-md overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Cliente</TableHead>
                     <TableHead className="hidden md:table-cell">Contrato</TableHead>
-                    <TableHead>Parcela</TableHead>
+                    <TableHead className="hidden sm:table-cell">Parcela</TableHead>
                     <TableHead>Valor</TableHead>
                     <TableHead className="hidden sm:table-cell">Vencimento</TableHead>
                     <TableHead>Status</TableHead>
@@ -337,7 +325,7 @@ export function FinanceiroContent() {
                       <TableRow key={installment.id}>
                         <TableCell>
                           <Link href={`/clientes/${installment.clientId}`} className="hover:text-primary">
-                            <p className="font-medium truncate max-w-[280px]">{installment.client?.companyName}</p>
+                            <p className="font-medium truncate max-w-[140px] sm:max-w-[280px]">{installment.client?.companyName}</p>
                           </Link>
                         </TableCell>
                         <TableCell className="hidden md:table-cell text-muted-foreground">
@@ -345,7 +333,7 @@ export function FinanceiroContent() {
                             {installment.contractNumber}
                           </Link>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="hidden sm:table-cell">
                           <span className="text-sm">{installment.number}</span>
                         </TableCell>
                         <TableCell className="font-medium">
@@ -392,7 +380,7 @@ export function FinanceiroContent() {
               {paginatedInstallments.map((installment) => (
                 <Card key={installment.id} className="overflow-hidden">
                   <CardContent className="p-4">
-                    <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center justify-between mb-3">
                       <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
                         <DollarSign className="w-5 h-5 text-primary" />
                       </div>

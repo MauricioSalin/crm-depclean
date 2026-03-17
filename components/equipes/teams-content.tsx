@@ -26,8 +26,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { Label } from "@/components/ui/label"
-import { Plus, Search, Users, Edit, Trash2, UserPlus, Check, ChevronsUpDown, X, LayoutGrid, List } from "lucide-react"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Plus, Search, Users, Edit, Trash2, UserPlus, Check, ChevronsUpDown, X } from "lucide-react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { mockTeams, mockEmployees } from "@/lib/mock-data"
@@ -36,14 +35,15 @@ import { cn } from "@/lib/utils"
 type TeamRow = (typeof mockTeams)[number]
 
 interface TeamsContentProps {
+  viewMode: "grid" | "table"
   openDialog?: boolean
   onDialogChange?: (open: boolean) => void
+  viewToggle?: React.ReactNode
 }
 
-export function TeamsContent({ openDialog, onDialogChange }: TeamsContentProps) {
+export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle }: TeamsContentProps) {
   const [teams, setTeams] = useState<TeamRow[]>(mockTeams)
   const [searchTerm, setSearchTerm] = useState("")
-  const [viewMode, setViewMode] = useState<"grid" | "table">("grid")
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   
   // Sync dialog state with parent
@@ -283,8 +283,8 @@ export function TeamsContent({ openDialog, onDialogChange }: TeamsContentProps) 
         </Dialog>
 
       <div>
-          <div className="flex items-center gap-4 mb-6">
-            <div className="relative w-full sm:w-1/3">
+          <div className="flex items-center gap-2 mb-6">
+            <div className="relative w-full sm:max-w-sm">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Buscar equipes..."
@@ -293,16 +293,7 @@ export function TeamsContent({ openDialog, onDialogChange }: TeamsContentProps) 
                 className="pl-10"
               />
             </div>
-            <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "grid" | "table")}>
-              <TabsList>
-                <TabsTrigger value="table">
-                  <List className="h-4 w-4" />
-                </TabsTrigger>
-                <TabsTrigger value="grid">
-                  <LayoutGrid className="h-4 w-4" />
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
+            {viewToggle && <div className="hidden sm:block shrink-0">{viewToggle}</div>}
           </div>
 
           {viewMode === "grid" ? (
@@ -353,7 +344,7 @@ export function TeamsContent({ openDialog, onDialogChange }: TeamsContentProps) 
             ))}
           </div>
           ) : (
-            <div className="rounded-md overflow-hidden">
+            <div className="rounded-md overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>

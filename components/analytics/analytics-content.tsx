@@ -36,7 +36,7 @@ export function AnalyticsContent() {
               hoveredCard === index ? "scale-105 shadow-2xl" : "shadow-lg"
             }`}
           >
-            <div className="flex items-start justify-between mb-3">
+            <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <div className="p-2 bg-primary/10 rounded-full">
                   <stat.icon className="w-4 h-4 text-primary" />

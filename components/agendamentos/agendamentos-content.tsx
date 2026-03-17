@@ -26,7 +26,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Plus,
   Search,
@@ -37,8 +36,6 @@ import {
   Calendar,
   Check,
   X,
-  LayoutGrid,
-  List
 } from "lucide-react"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { mockScheduledServices, mockClients, mockServiceTypes, mockTeams, mockEmployees, formatCurrency } from "@/lib/mock-data"
@@ -52,15 +49,16 @@ type ScheduledServiceRow = (typeof mockScheduledServices)[number] & {
 }
 
 interface AgendamentosContentProps {
+  viewMode: "table" | "cards"
   openDialog?: boolean
   onDialogChange?: (open: boolean) => void
+  viewToggle?: React.ReactNode
 }
 
-export function AgendamentosContent({ openDialog, onDialogChange }: AgendamentosContentProps) {
+export function AgendamentosContent({ viewMode, openDialog, onDialogChange, viewToggle }: AgendamentosContentProps) {
   const [scheduledServices, setScheduledServices] = useState<ScheduledServiceRow[]>(mockScheduledServices as ScheduledServiceRow[])
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
-  const [viewMode, setViewMode] = useState<"table" | "cards">("table")
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(10)
   
@@ -200,55 +198,42 @@ export function AgendamentosContent({ openDialog, onDialogChange }: Agendamentos
       />
 
       <div>
-          <div className="flex flex-col gap-4 mb-6">
-            <div className="flex flex-col sm:flex-row gap-3">
-              <div className="relative w-full sm:w-1/3">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar por cliente ou serviço..."
-                  value={searchTerm}
-                  onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1) }}
-                  className="pl-10"
-                />
-              </div>
-              <div className="flex gap-2">
-                <Select value={statusFilter} onValueChange={(value) => { setStatusFilter(value); setCurrentPage(1) }}>
-                  <SelectTrigger className="w-full sm:w-[140px]">
-                    <SelectValue placeholder="Status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos</SelectItem>
-                    <SelectItem value="scheduled">Agendado</SelectItem>
-                    <SelectItem value="in_progress">Em Andamento</SelectItem>
-                    <SelectItem value="completed">Concluído</SelectItem>
-                    <SelectItem value="cancelled">Cancelado</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "table" | "cards")}>
-                  <TabsList>
-                    <TabsTrigger value="table">
-                      <List className="h-4 w-4" />
-                    </TabsTrigger>
-                    <TabsTrigger value="cards">
-                      <LayoutGrid className="h-4 w-4" />
-                    </TabsTrigger>
-                  </TabsList>
-                </Tabs>
-              </div>
+          <div className="flex items-center gap-2 mb-6">
+            <div className="relative flex-1 sm:flex-initial sm:w-full sm:max-w-sm">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Buscar por cliente ou serviço..."
+                value={searchTerm}
+                onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1) }}
+                className="pl-10"
+              />
             </div>
+            <Select value={statusFilter} onValueChange={(value) => { setStatusFilter(value); setCurrentPage(1) }}>
+              <SelectTrigger className="flex-1 sm:flex-initial sm:w-[140px]">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="scheduled">Agendado</SelectItem>
+                <SelectItem value="in_progress">Em Andamento</SelectItem>
+                <SelectItem value="completed">Concluído</SelectItem>
+                <SelectItem value="cancelled">Cancelado</SelectItem>
+              </SelectContent>
+            </Select>
+            {viewToggle && <div className="hidden sm:block shrink-0">{viewToggle}</div>}
           </div>
 
           {viewMode === "table" ? (
-            <div className="rounded-md overflow-hidden">
+            <div className="rounded-md overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead width="25%">Cliente</TableHead>
-                    <TableHead width="20%">Serviço</TableHead>
-                    <TableHead width="18%" className="hidden md:table-cell">Equipe</TableHead>
-                    <TableHead width="12%">Data/Hora</TableHead>
-                    <TableHead width="12%">Status</TableHead>
-                    <TableHead width="13%" className="text-right">Ações</TableHead>
+                    <TableHead>Cliente</TableHead>
+                    <TableHead className="hidden sm:table-cell">Serviço</TableHead>
+                    <TableHead className="hidden md:table-cell">Equipe</TableHead>
+                    <TableHead>Data/Hora</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -263,16 +248,16 @@ export function AgendamentosContent({ openDialog, onDialogChange }: Agendamentos
                       <TableRow key={schedule.id}>
                         <TableCell>
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                            <div className="hidden sm:flex w-10 h-10 rounded-lg bg-primary/10 items-center justify-center shrink-0">
                               <Calendar className="w-5 h-5 text-primary" />
                             </div>
                             <div>
                               <p className="font-medium">{schedule.clientName}</p>
-                              <p className="text-xs text-muted-foreground sm:hidden">{schedule.serviceTypeName}</p>
+                              <p className="text-xs text-muted-foreground sm:hidden">{schedule.serviceTypeName} · {schedule.duration} min</p>
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="hidden sm:table-cell">
                           <p>{schedule.serviceTypeName}</p>
                           <p className="text-xs text-muted-foreground">{schedule.duration} min</p>
                         </TableCell>
@@ -355,7 +340,7 @@ export function AgendamentosContent({ openDialog, onDialogChange }: Agendamentos
               {paginatedSchedules.map((schedule) => (
                 <Card key={schedule.id} className="overflow-hidden">
                   <CardContent className="p-4">
-                    <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center justify-between mb-3">
                       <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
                         <Calendar className="w-5 h-5 text-primary" />
                       </div>

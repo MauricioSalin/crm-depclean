@@ -470,7 +470,7 @@ export function TemplatesContent({ openImport, onImportChange, onEditorStateChan
           </div>
         </div>
 
-        <div className="rounded-md overflow-hidden">
+        <div className="rounded-md overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>

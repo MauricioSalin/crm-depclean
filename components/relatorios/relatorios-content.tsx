@@ -74,8 +74,24 @@ export function RelatoriosContent() {
 
   return (
     <div className="space-y-6">
-      {/* Report Type Selection */}
-      <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
+      {/* Report Type Selection — tabs on mobile, cards on sm+ */}
+      <div className="flex gap-2 overflow-x-auto pb-2 sm:hidden">
+        {REPORT_TYPES.map((type) => (
+          <button
+            key={type.id}
+            className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors shrink-0 ${
+              selectedReport === type.id
+                ? "bg-primary text-primary-foreground"
+                : "bg-muted text-muted-foreground hover:bg-muted/80"
+            }`}
+            onClick={() => setSelectedReport(type.id)}
+          >
+            <type.icon className="h-4 w-4" />
+            {type.label}
+          </button>
+        ))}
+      </div>
+      <div className="hidden sm:grid gap-3 grid-cols-3 lg:grid-cols-5">
         {REPORT_TYPES.map((type) => (
           <Card
             key={type.id}
@@ -125,7 +141,7 @@ export function RelatoriosContent() {
             <div className="flex flex-col gap-2 w-full sm:w-[200px] shrink-0">
               <Label>Equipe</Label>
               <Select value={teamFilter} onValueChange={setTeamFilter}>
-                <SelectTrigger className="w-[200px]">
+                <SelectTrigger className="w-full sm:w-[200px]">
                   <SelectValue placeholder="Todas" />
                 </SelectTrigger>
                 <SelectContent>

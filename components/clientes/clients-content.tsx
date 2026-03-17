@@ -28,7 +28,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Search,
   MoreHorizontal,
@@ -39,18 +38,20 @@ import {
   Phone,
   Mail,
   FileText,
-  LayoutGrid,
-  List
 } from "lucide-react"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { clients, contracts, clientTypes, getClientTypeById, formatCNPJ } from "@/lib/mock-data"
 import { getColorFromClass } from "@/lib/utils"
 import Link from "next/link"
 
-export function ClientsContent() {
+interface ClientsContentProps {
+  viewMode: "table" | "cards"
+  viewToggle?: React.ReactNode
+}
+
+export function ClientsContent({ viewMode, viewToggle }: ClientsContentProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const [typeFilter, setTypeFilter] = useState<string>("all")
-  const [viewMode, setViewMode] = useState<"table" | "cards">("table")
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
 
@@ -73,45 +74,32 @@ export function ClientsContent() {
   return (
     <>
       {/* <CardContent className="p-3 sm:p-4 md:p-6"> */}
-      <div className="flex flex-col gap-4 mb-6">
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="relative w-full sm:w-1/3">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Buscar por nome, responsável ou CNPJ..."
-              value={searchTerm}
-              onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1) }}
-              className="pl-10"
-            />
-          </div>
-          <div className="flex gap-2">
-            <Select value={typeFilter} onValueChange={(value) => { setTypeFilter(value); setCurrentPage(1) }}>
-              <SelectTrigger className="w-full sm:w-[160px]">
-                <SelectValue placeholder="Tipo" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos os tipos</SelectItem>
-                {clientTypes.map(type => (
-                  <SelectItem key={type.id} value={type.id}>{type.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "table" | "cards")}>
-              <TabsList>
-                <TabsTrigger value="table">
-                  <List className="h-4 w-4" />
-                </TabsTrigger>
-                <TabsTrigger value="cards">
-                  <LayoutGrid className="h-4 w-4" />
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
-          </div>
+      <div className="flex gap-2 mb-6 items-center">
+        <div className="relative flex-1 sm:flex-initial sm:w-full sm:max-w-sm">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Buscar por nome, responsável ou CNPJ..."
+            value={searchTerm}
+            onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1) }}
+            className="pl-10"
+          />
         </div>
+        <Select value={typeFilter} onValueChange={(value) => { setTypeFilter(value); setCurrentPage(1) }}>
+          <SelectTrigger className="flex-1 sm:flex-initial sm:w-[160px]">
+            <SelectValue placeholder="Tipo" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos os tipos</SelectItem>
+            {clientTypes.map(type => (
+              <SelectItem key={type.id} value={type.id}>{type.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {viewToggle && <div className="hidden sm:block shrink-0">{viewToggle}</div>}
       </div>
 
       {viewMode === "table" ? (
-        <div className="rounded-md overflow-hidden">
+        <div className="rounded-md overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>

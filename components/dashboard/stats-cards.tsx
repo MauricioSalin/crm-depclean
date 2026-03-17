@@ -76,7 +76,7 @@ export function StatsCards() {
             className={`${stat.bgColor} ${stat.textColor} p-4 transition-all duration-500 ease-out cursor-pointer ${hoveredCard === index ? "scale-105 shadow-2xl" : "shadow-lg"
               }`}
           >
-            <div className="flex items-start justify-between mb-3">
+            <div className="flex items-center justify-between mb-3">
               <h3 className="text-xs font-medium opacity-90">{stat.title}</h3>
               <div
                 className={`w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center transition-transform duration-300 ${hoveredCard === index ? "scale-110" : ""

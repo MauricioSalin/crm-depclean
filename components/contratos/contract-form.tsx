@@ -899,7 +899,7 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
   if (!isEditing && step === "done") {
     const contractNumber = draftMeta?.contractNumber ?? createDraftContractNumber()
     return (
-      <Card className="p-8">
+      <Card className="p-4 sm:p-8">
         <div className="flex flex-col items-center text-center max-w-lg mx-auto">
           <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center">
             <CheckCircle2 className="w-6 h-6 text-green-600" />
@@ -924,7 +924,7 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {/* Client Selection */}
-      <Card className="p-6">
+      <Card className="p-4 sm:p-6">
         <h3 className="font-semibold mb-4 flex items-center gap-2">
           <Building2 className="w-5 h-5 text-primary" />
           Cliente
@@ -1018,13 +1018,13 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
       </Card>
 
       {/* Contract Details */}
-      <Card className="p-6">
+      <Card className="p-4 sm:p-6">
         <h3 className="font-semibold mb-4 flex items-center gap-2">
           <FileText className="w-5 h-5 text-primary" />
           Dados do Contrato
         </h3>
-        <div className="flex flex-wrap gap-4">
-          <div className="space-y-2 w-44">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div className="space-y-2">
             <Label>Data Início *</Label>
             <Input
               type="date"
@@ -1033,7 +1033,7 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
               required
             />
           </div>
-          <div className="space-y-2 w-44">
+          <div className="space-y-2">
             <Label>Data Fim *</Label>
             <Input
               type="date"
@@ -1042,7 +1042,7 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
               required
             />
           </div>
-          <div className="space-y-2 w-44">
+          <div className="space-y-2">
             <Label>Número de Parcelas *</Label>
             <Input
               type="number"
@@ -1052,7 +1052,7 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
               required
             />
           </div>
-          <div className="space-y-2 w-44">
+          <div className="space-y-2">
             <Label>Dia de Vencimento *</Label>
             <Input
               type="number"
@@ -1067,7 +1067,7 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
       </Card>
 
       {/* Contract-level Recurrence */}
-      <Card className="p-6">
+      <Card className="p-4 sm:p-6">
         <h3 className="font-semibold mb-4 flex items-center gap-2">
           <RefreshCw className="w-5 h-5 text-primary" />
           Recorrência das Visitas
@@ -1077,7 +1077,7 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
         {/* Recorrência Padrão */}
         <div className="space-y-2 mb-6">
           <Label>Recorrência Padrão</Label>
-          <p className="text-xs text-muted-foreground mb-3">
+          <p className="text-xs text-muted-foreground mb-3 break-words">
             Será aplicada automaticamente se nenhuma regra por unidades corresponder.
           </p>
           <Select value={contractRecurrence} onValueChange={setContractRecurrence}>
@@ -1098,8 +1098,8 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
 
         {/* Regras por unidades */}
         <div className="border-t pt-4">
-          <div className="flex items-center justify-between mb-4">
-            <div>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+            <div className="min-w-0">
               <p className="text-sm font-medium">Regras por número de unidades</p>
               <p className="text-xs text-muted-foreground mt-1">Definem a recorrência com base na quantidade de unidades das filiais selecionadas</p>
             </div>
@@ -1144,7 +1144,7 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
           )}
 
           {contractRecurrenceRules.length > 0 ? (
-            <div className="rounded-md border overflow-hidden">
+            <div className="rounded-md border overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b bg-muted/50">
@@ -1249,7 +1249,7 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
       </Card>
 
       {/* Services */}
-      <Card className="p-6">
+      <Card className="p-4 sm:p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-semibold flex items-center gap-2">
             <Briefcase className="w-5 h-5 text-primary" />
@@ -1262,7 +1262,7 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
         </div>
 
         {services.length > 0 ? (
-          <div className="pb-2 rounded-lg overflow-hidden">
+          <div className="pb-2 rounded-lg overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">

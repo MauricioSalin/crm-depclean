@@ -5,12 +5,23 @@ import { Sidebar } from "@/components/dashboard/sidebar"
 import { Header } from "@/components/dashboard/header"
 import { AgendaContent } from "@/components/agenda/agenda-content"
 import { Button } from "@/components/ui/button"
-import { Plus } from "lucide-react"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Plus, LayoutGrid, List } from "lucide-react"
 import { SchedulingFormDialog, type SchedulingFormData } from "@/components/agendamentos/scheduling-form-dialog"
-import { mockClients, mockServiceTypes, mockTeams, mockEmployees, formatCurrency } from "@/lib/mock-data"
+import { mockClients, mockServiceTypes, formatCurrency } from "@/lib/mock-data"
 
 export default function AgendaPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [viewMode, setViewMode] = useState<"month" | "list">("month")
+
+  const toggle = (
+    <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "month" | "list")}>
+      <TabsList>
+        <TabsTrigger value="month"><LayoutGrid className="h-4 w-4" /></TabsTrigger>
+        <TabsTrigger value="list"><List className="h-4 w-4" /></TabsTrigger>
+      </TabsList>
+    </Tabs>
+  )
 
   const handleFormSubmit = (formData: SchedulingFormData) => {
     const client = mockClients.find(c => c.id === formData.clientId)
@@ -34,6 +45,7 @@ export default function AgendaPage() {
         <Header
           title="Agenda"
           description="Gerencie os agendamentos e compromissos da equipe"
+          viewToggle={toggle}
           actions={
             <Button
               onClick={() => setDialogOpen(true)}
@@ -51,9 +63,7 @@ export default function AgendaPage() {
           onSubmit={handleFormSubmit}
         />
 
-        <div className="mt-4 md:mt-5">
-          <AgendaContent />
-        </div>
+        <AgendaContent viewMode={viewMode} viewToggle={toggle} />
       </main>
     </div>
   )

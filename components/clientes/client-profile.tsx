@@ -237,7 +237,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
         {/* Dados Tab */}
         <TabsContent value="dados">
           <div className="space-y-4">
-            <div className="rounded-md overflow-hidden">
+            <div className="rounded-md overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -277,7 +277,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
               </Table>
             </div>
 
-            <div className="rounded-md overflow-hidden">
+            <div className="rounded-md overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -325,7 +325,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
 
         {/* Contratos Tab */}
         <TabsContent value="contratos">
-          <div className="rounded-md overflow-hidden">
+          <div className="rounded-md overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -391,7 +391,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
 
         {/* Parcelas Tab */}
         <TabsContent value="parcelas">
-          <div className="rounded-md overflow-hidden">
+          <div className="rounded-md overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -458,7 +458,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
 
         {/* Serviços Tab (Histórico) */}
         <TabsContent value="servicos">
-          <div className="rounded-md overflow-hidden">
+          <div className="rounded-md overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -507,7 +507,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
 
         {/* Agenda Tab */}
         <TabsContent value="agenda">
-          <div className="rounded-md overflow-hidden">
+          <div className="rounded-md overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>

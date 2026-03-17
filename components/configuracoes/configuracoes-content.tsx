@@ -111,7 +111,7 @@ const SETTINGS_CARDS = [
 ]
 
 export function ConfiguracoesContent() {
-  const [activeSection, setActiveSection] = useState<SettingsSection | null>(null)
+  const [activeSection, setActiveSection] = useState<SettingsSection>("tipos-cliente")
   const [clientTypes, setClientTypes] = useState<ClientTypeRow[]>(mockClientTypes)
   const [permissionProfiles, setPermissionProfiles] = useState<PermissionProfileRow[]>(
     mockPermissionProfiles.map((p) => ({ ...p, permissions: [...p.permissions] })) as PermissionProfileRow[]
@@ -446,13 +446,31 @@ export function ConfiguracoesContent() {
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/* Mobile: pills horizontais */}
+      <div className="flex gap-2 overflow-x-auto pb-2 sm:hidden">
+        {SETTINGS_CARDS.map((card) => (
+          <button
+            key={card.id}
+            className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors shrink-0 ${
+              activeSection === card.id
+                ? "bg-primary text-primary-foreground"
+                : "bg-muted text-muted-foreground hover:bg-muted/80"
+            }`}
+            onClick={() => setActiveSection(card.id)}
+          >
+            <card.icon className="h-4 w-4" />
+            {card.label}
+          </button>
+        ))}
+      </div>
+      {/* Desktop: cards */}
+      <div className="hidden sm:grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {SETTINGS_CARDS.map((card) => (
           <Card
             key={card.id}
             className={`cursor-pointer transition-all hover:shadow-md ${activeSection === card.id ? "ring-2 ring-primary bg-primary/5" : ""
               }`}
-            onClick={() => setActiveSection(activeSection === card.id ? null : card.id)}
+            onClick={() => setActiveSection(card.id)}
           >
             <CardHeader className="pb-2">
               <div className="flex items-center gap-3">

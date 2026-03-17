@@ -13,17 +13,20 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Search, Edit, Trash2, Clock, ClipboardList, LayoutGrid, List } from "lucide-react"
+import { Search, Edit, Trash2, Clock, ClipboardList } from "lucide-react"
 import { mockServiceTypes } from "@/lib/mock-data"
 import Link from "next/link"
 
 type ServiceTypeRow = (typeof mockServiceTypes)[number]
 
-export function ServicesContent() {
+interface ServicesContentProps {
+  viewMode: "table" | "cards"
+  viewToggle?: React.ReactNode
+}
+
+export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) {
   const [serviceTypes, setServiceTypes] = useState<ServiceTypeRow[]>(mockServiceTypes)
   const [searchTerm, setSearchTerm] = useState("")
-  const [viewMode, setViewMode] = useState<"table" | "cards">("cards")
 
   const handleDeleteType = (id: string) => {
     if (confirm("Tem certeza que deseja excluir este tipo de serviço?")) {
@@ -37,34 +40,21 @@ export function ServicesContent() {
 
   return (
     <div>
-        <div className="flex flex-col gap-4 mb-6">
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="relative w-full sm:w-1/3">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Buscar tipos de serviço..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <div className="flex gap-2">
-              <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "table" | "cards")}>
-                <TabsList>
-                  <TabsTrigger value="table">
-                    <List className="h-4 w-4" />
-                  </TabsTrigger>
-                  <TabsTrigger value="cards">
-                    <LayoutGrid className="h-4 w-4" />
-                  </TabsTrigger>
-                </TabsList>
-              </Tabs>
-            </div>
+        <div className="flex items-center gap-2 mb-6">
+          <div className="relative w-full sm:max-w-sm">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Buscar tipos de serviço..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10"
+            />
           </div>
+          {viewToggle && <div className="hidden sm:block shrink-0">{viewToggle}</div>}
         </div>
 
         {viewMode === "table" ? (
-          <div className="rounded-md overflow-hidden">
+          <div className="rounded-md overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -105,7 +95,7 @@ export function ServicesContent() {
                         </div>
                       </TableCell>
                       <TableCell className="hidden md:table-cell">
-                        {type.pricePerHour ? `R$ ${type.pricePerHour.toFixed(2)}/h` : "-"}
+                        {type.pricePerHour ? `R$ ${type.pricePerHour.toFixed(2)}` : "-"}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
@@ -130,7 +120,7 @@ export function ServicesContent() {
             {filteredTypes.map((type) => (
               <Card key={type.id} className="overflow-hidden hover:shadow-lg transition-shadow">
                 <CardContent className="p-4">
-                  <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center justify-between mb-3">
                     <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
                       <ClipboardList className="h-6 w-6 text-primary" />
                     </div>

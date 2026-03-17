@@ -27,8 +27,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Search, Edit, Trash2, Phone, Mail, User, LayoutGrid, List, Shield } from "lucide-react"
+import { Search, Edit, Trash2, Phone, Mail, User, Shield } from "lucide-react"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { mockEmployees, mockPermissionProfiles } from "@/lib/mock-data"
 
@@ -37,17 +36,18 @@ type EmployeeRow = Omit<(typeof mockEmployees)[number], "status"> & {
 }
 
 interface EmployeesContentProps {
+  viewMode: "table" | "cards"
   openDialog?: boolean
   onDialogChange?: (open: boolean) => void
+  viewToggle?: React.ReactNode
 }
 
-export function EmployeesContent({ openDialog, onDialogChange }: EmployeesContentProps) {
+export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewToggle }: EmployeesContentProps) {
   const [employees, setEmployees] = useState<EmployeeRow[]>(mockEmployees as EmployeeRow[])
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingEmployee, setEditingEmployee] = useState<EmployeeRow | null>(null)
-  const [viewMode, setViewMode] = useState<"table" | "cards">("table")
 
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
@@ -284,45 +284,32 @@ export function EmployeesContent({ openDialog, onDialogChange }: EmployeesConten
       </Dialog>
 
       <div>
-          <div className="flex flex-col gap-4 mb-6">
-            <div className="flex flex-col sm:flex-row gap-3">
-              <div className="relative w-full sm:w-1/3">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar por nome, email ou CPF..."
-                  value={searchTerm}
-                  onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1) }}
-                  className="pl-10"
-                />
-              </div>
-              <div className="flex gap-2">
-                <Select value={statusFilter} onValueChange={(value) => { setStatusFilter(value); setCurrentPage(1) }}>
-                  <SelectTrigger className="w-full sm:w-[140px]">
-                    <SelectValue placeholder="Status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos</SelectItem>
-                    <SelectItem value="active">Ativos</SelectItem>
-                    <SelectItem value="inactive">Inativos</SelectItem>
-                    <SelectItem value="vacation">Férias</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "table" | "cards")}>
-                  <TabsList>
-                    <TabsTrigger value="table">
-                      <List className="h-4 w-4" />
-                    </TabsTrigger>
-                    <TabsTrigger value="cards">
-                      <LayoutGrid className="h-4 w-4" />
-                    </TabsTrigger>
-                  </TabsList>
-                </Tabs>
-              </div>
+          <div className="flex items-center gap-2 mb-6">
+            <div className="relative flex-1 sm:flex-initial sm:w-full sm:max-w-sm">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Buscar por nome, email ou CPF..."
+                value={searchTerm}
+                onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1) }}
+                className="pl-10"
+              />
             </div>
+            <Select value={statusFilter} onValueChange={(value) => { setStatusFilter(value); setCurrentPage(1) }}>
+              <SelectTrigger className="flex-1 sm:flex-initial sm:w-[140px]">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="active">Ativos</SelectItem>
+                <SelectItem value="inactive">Inativos</SelectItem>
+                <SelectItem value="vacation">Férias</SelectItem>
+              </SelectContent>
+            </Select>
+            {viewToggle && <div className="hidden sm:block shrink-0">{viewToggle}</div>}
           </div>
 
           {viewMode === "table" ? (
-            <div className="rounded-md overflow-hidden">
+            <div className="rounded-md overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>

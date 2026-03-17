@@ -1,11 +1,26 @@
+"use client"
+
+import { useState } from "react"
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { Header } from "@/components/dashboard/header"
 import { ClientsContent } from "@/components/clientes/clients-content"
 import { Button } from "@/components/ui/button"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import Link from "next/link"
-import { Plus } from "lucide-react"
+import { Plus, List, LayoutGrid } from "lucide-react"
 
 export default function ClientesPage() {
+  const [viewMode, setViewMode] = useState<"table" | "cards">("table")
+
+  const toggle = (
+    <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "table" | "cards")}>
+      <TabsList>
+        <TabsTrigger value="table"><List className="h-4 w-4" /></TabsTrigger>
+        <TabsTrigger value="cards"><LayoutGrid className="h-4 w-4" /></TabsTrigger>
+      </TabsList>
+    </Tabs>
+  )
+
   return (
     <div className="flex min-h-screen bg-background">
       <div className="hidden lg:block">
@@ -16,6 +31,7 @@ export default function ClientesPage() {
         <Header
           title="Clientes"
           description="Gerencie todos os clientes da Depclean"
+          viewToggle={toggle}
           actions={
             <Link href="/clientes/novo">
               <Button className="w-full sm:w-auto h-9 text-sm bg-primary text-primary-foreground hover:bg-primary/90">
@@ -25,10 +41,7 @@ export default function ClientesPage() {
             </Link>
           }
         />
-
-        <div className="mt-4 md:mt-5">
-          <ClientsContent />
-        </div>
+        <ClientsContent viewMode={viewMode} viewToggle={toggle} />
       </main>
     </div>
   )

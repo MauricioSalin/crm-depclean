@@ -26,18 +26,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { 
-  Search, 
-  MoreHorizontal, 
-  Eye, 
-  Edit, 
+import {
+  Search,
+  MoreHorizontal,
+  Eye,
+  Edit,
   FileText,
   Download,
   ExternalLink,
   Building2,
-  LayoutGrid,
-  List,
   Calendar,
   DollarSign
 } from "lucide-react"
@@ -50,10 +47,14 @@ import {
 } from "@/lib/mock-data"
 import Link from "next/link"
 
-export function ContractsContent() {
+interface ContractsContentProps {
+  viewMode: "table" | "cards"
+  viewToggle?: React.ReactNode
+}
+
+export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
-  const [viewMode, setViewMode] = useState<"table" | "cards">("table")
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
 
@@ -91,46 +92,33 @@ export function ContractsContent() {
 
   return (
     <div>
-        <div className="flex flex-col gap-4 mb-6">
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="relative w-full sm:w-1/3">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Buscar por número ou cliente..."
-                value={searchTerm}
-                onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1) }}
-                className="pl-10"
-              />
-            </div>
-            <div className="flex gap-2">
-              <Select value={statusFilter} onValueChange={(value) => { setStatusFilter(value); setCurrentPage(1) }}>
-                <SelectTrigger className="w-full sm:w-[180px]">
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos os status</SelectItem>
-                  <SelectItem value="active">Ativos</SelectItem>
-                  <SelectItem value="pending_signature">Aguardando Assinatura</SelectItem>
-                  <SelectItem value="expired">Expirados</SelectItem>
-                  <SelectItem value="cancelled">Cancelados</SelectItem>
-                </SelectContent>
-              </Select>
-              <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "table" | "cards")}>
-                <TabsList>
-                  <TabsTrigger value="table">
-                    <List className="h-4 w-4" />
-                  </TabsTrigger>
-                  <TabsTrigger value="cards">
-                    <LayoutGrid className="h-4 w-4" />
-                  </TabsTrigger>
-                </TabsList>
-              </Tabs>
-            </div>
+        <div className="flex items-center gap-2 mb-6">
+          <div className="relative flex-1 sm:flex-initial sm:w-full sm:max-w-sm">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Buscar por número ou cliente..."
+              value={searchTerm}
+              onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1) }}
+              className="pl-10"
+            />
           </div>
+          <Select value={statusFilter} onValueChange={(value) => { setStatusFilter(value); setCurrentPage(1) }}>
+            <SelectTrigger className="flex-1 sm:flex-initial sm:w-[160px]">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os status</SelectItem>
+              <SelectItem value="active">Ativos</SelectItem>
+              <SelectItem value="pending_signature">Aguardando Assinatura</SelectItem>
+              <SelectItem value="expired">Expirados</SelectItem>
+              <SelectItem value="cancelled">Cancelados</SelectItem>
+            </SelectContent>
+          </Select>
+          {viewToggle && <div className="hidden sm:block shrink-0">{viewToggle}</div>}
         </div>
 
         {viewMode === "table" ? (
-          <div className="rounded-md overflow-hidden">
+          <div className="rounded-md overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>

@@ -4,11 +4,22 @@ import { useState } from "react"
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { Header } from "@/components/dashboard/header"
 import { Button } from "@/components/ui/button"
-import { Plus } from "lucide-react"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Plus, List, LayoutGrid } from "lucide-react"
 import { AgendamentosContent } from "@/components/agendamentos/agendamentos-content"
 
 export default function AgendamentosPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [viewMode, setViewMode] = useState<"table" | "cards">("table")
+
+  const toggle = (
+    <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "table" | "cards")}>
+      <TabsList>
+        <TabsTrigger value="table"><List className="h-4 w-4" /></TabsTrigger>
+        <TabsTrigger value="cards"><LayoutGrid className="h-4 w-4" /></TabsTrigger>
+      </TabsList>
+    </Tabs>
+  )
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -20,6 +31,7 @@ export default function AgendamentosPage() {
         <Header
           title="Agendamentos"
           description="Gerencie todos os agendamentos de serviços"
+          viewToggle={toggle}
           actions={
             <Button
               onClick={() => setDialogOpen(true)}
@@ -30,13 +42,7 @@ export default function AgendamentosPage() {
             </Button>
           }
         />
-
-        <div className="mt-4 md:mt-5">
-          <AgendamentosContent
-            openDialog={dialogOpen}
-            onDialogChange={setDialogOpen}
-          />
-        </div>
+        <AgendamentosContent viewMode={viewMode} viewToggle={toggle} openDialog={dialogOpen} onDialogChange={setDialogOpen} />
       </main>
     </div>
   )

@@ -479,7 +479,7 @@ export function LogsContent() {
       </Card>
 
       {/* Logs Table */}
-      <div className="rounded-md overflow-hidden">
+      <div className="rounded-md overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>

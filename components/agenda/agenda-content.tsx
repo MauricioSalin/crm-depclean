@@ -23,7 +23,7 @@ import {
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+// Tabs moved to page level
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   ChevronLeft,
@@ -32,8 +32,6 @@ import {
   Clock,
   MapPin,
   Calendar as CalendarIcon,
-  List,
-  LayoutGrid,
   Check,
   X,
   Edit,
@@ -73,11 +71,13 @@ const MONTHS = [
 ]
 
 interface AgendaContentProps {
+  viewMode: "month" | "list"
   openDialog?: boolean
   onDialogChange?: (open: boolean) => void
+  viewToggle?: React.ReactNode
 }
 
-export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps) {
+export function AgendaContent({ viewMode, openDialog, onDialogChange, viewToggle }: AgendaContentProps) {
   const [scheduledServices, setScheduledServices] = useState<AgendaScheduledServiceRow[]>(
     (mockScheduledServices as (typeof mockScheduledServices)[number][]).map((s) => ({
       ...s,
@@ -87,7 +87,6 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   )
   const [currentDate, setCurrentDate] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState<Date | null>(() => new Date())
-  const [viewMode, setViewMode] = useState<"month" | "list">("month")
   const [teamFilter, setTeamFilter] = useState<string>("all")
   const [statusFilter, setStatusFilter] = useState<string>("all")
 
@@ -305,7 +304,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   const selectedDateServices = selectedDate ? getServicesForDate(selectedDate) : []
 
   return (
-    <div className="flex flex-col gap-4 h-[calc(100vh-180px)] overflow-hidden">
+    <div className="flex flex-col gap-4 lg:h-[calc(100vh-180px)] lg:overflow-hidden">
       <Dialog open={isDialogOpen} onOpenChange={handleDialogChange}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
@@ -508,56 +507,43 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
         </DialogContent>
       </Dialog>
 
-      {/* Filters and View Toggle */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap gap-2">
-          <Select value={teamFilter} onValueChange={setTeamFilter}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Filtrar por equipe" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todas as equipes</SelectItem>
-              {mockTeams.map(team => (
-                <SelectItem key={team.id} value={team.id}>
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: team.color }} />
-                    {team.name}
-                  </div>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Filtrar por status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos os status</SelectItem>
-              <SelectItem value="scheduled">Agendado</SelectItem>
-              <SelectItem value="in_progress">Em Andamento</SelectItem>
-              <SelectItem value="completed">Concluído</SelectItem>
-              <SelectItem value="cancelled">Cancelado</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as typeof viewMode)}>
-          <TabsList>
-            <TabsTrigger value="month" className="gap-2">
-              <LayoutGrid className="h-4 w-4" />
-              <span className="hidden sm:inline">Calendário</span>
-            </TabsTrigger>
-            <TabsTrigger value="list" className="gap-2">
-              <List className="h-4 w-4" />
-              <span className="hidden sm:inline">Lista</span>
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+      {/* Filters */}
+      <div className="flex items-center gap-2 mb-4">
+        <Select value={teamFilter} onValueChange={setTeamFilter}>
+          <SelectTrigger className="flex-1 sm:flex-initial sm:w-[180px]">
+            <SelectValue placeholder="Filtrar por equipe" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todas as equipes</SelectItem>
+            {mockTeams.map(team => (
+              <SelectItem key={team.id} value={team.id}>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: team.color }} />
+                  {team.name}
+                </div>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="flex-1 sm:flex-initial sm:w-[180px]">
+            <SelectValue placeholder="Filtrar por status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos os status</SelectItem>
+            <SelectItem value="scheduled">Agendado</SelectItem>
+            <SelectItem value="in_progress">Em Andamento</SelectItem>
+            <SelectItem value="completed">Concluído</SelectItem>
+            <SelectItem value="cancelled">Cancelado</SelectItem>
+          </SelectContent>
+        </Select>
+        {viewToggle && <div className="hidden sm:block shrink-0">{viewToggle}</div>}
       </div>
 
       {viewMode === "month" ? (
-        <div className="grid gap-4 xl:grid-cols-3 flex-1 overflow-hidden">
+        <div className="grid gap-4 lg:grid-cols-5 lg:flex-1 lg:overflow-hidden">
           {/* Calendar Grid */}
-          <Card className="xl:col-span-2 flex flex-col overflow-hidden">
+          <Card className="lg:col-span-3 xl:col-span-3 flex flex-col lg:overflow-hidden">
             <CardHeader className="py-2 px-4 shrink-0">
               <div className="flex items-center justify-between">
                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigateMonth(-1)}>
@@ -593,7 +579,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                       onClick={() => handleDateClick(date)}
                       className={`
                         rounded-lg flex flex-col items-center justify-center p-1 text-sm
-                        transition-all duration-200 hover:bg-muted border
+                        transition-all duration-200 hover:bg-muted border aspect-square
                         ${isToday(date) ? "bg-primary/10 border-primary" : "border-transparent"}
                         ${isSelected ? "ring-2 ring-primary ring-offset-2" : ""}
                       `}
@@ -626,7 +612,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
           </Card>
 
           {/* Selected Date Details */}
-          <Card className="flex flex-col overflow-hidden">
+          <Card className="lg:col-span-2 xl:col-span-2 flex flex-col lg:overflow-hidden">
             <CardHeader className="py-3 px-4">
               <CardTitle className="flex items-center gap-2 text-sm">
                 <CalendarIcon className="h-4 w-4" />
@@ -636,11 +622,11 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                 }
               </CardTitle>
             </CardHeader>
-            <CardContent className="flex-1 overflow-hidden px-0">
+            <CardContent className="flex-1 lg:overflow-hidden px-0">
               {selectedDate ? (
                 selectedDateServices.length > 0 ? (
-                  <ScrollArea className="h-full">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-1 gap-3 px-6">
+                  <ScrollArea className="lg:h-full">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-3 px-6">
                       {selectedDateServices.map((service) => (
                         <Card key={service.id}>
                           <CardContent>
@@ -742,16 +728,16 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
           </Card>
         </div>
       ) : (
-        <Card className="flex-1 flex flex-col overflow-hidden">
-          <CardContent className="p-4 flex-1 flex flex-col overflow-hidden">
-            <div className="rounded-md overflow-auto flex-1">
+        <Card className="flex-1 flex flex-col">
+          <CardContent className="p-4 flex-1 flex flex-col">
+            <div className="rounded-md overflow-x-auto flex-1">
               <table className="w-full">
                 <thead>
                   <tr className="border-b bg-muted/50">
                     <th className="h-10 px-4 text-left font-medium">Data/Hora</th>
                     <th className="h-10 px-4 text-left font-medium">Cliente</th>
-                    <th className="h-10 px-4 text-left font-medium">Serviço</th>
-                    <th className="h-10 px-4 text-left font-medium">Equipe</th>
+                    <th className="h-10 px-4 text-left font-medium hidden sm:table-cell">Serviço</th>
+                    <th className="h-10 px-4 text-left font-medium hidden md:table-cell">Equipe</th>
                     <th className="h-10 px-4 text-left font-medium">Status</th>
                     <th className="h-10 px-4 text-right font-medium">Ações</th>
                   </tr>
@@ -786,8 +772,8 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                             {service.clientName}
                           </div>
                         </td>
-                        <td className="p-4">{service.serviceTypeName}</td>
-                        <td className="p-4">
+                        <td className="p-4 hidden sm:table-cell">{service.serviceTypeName}</td>
+                        <td className="p-4 hidden md:table-cell">
                           <div className="flex flex-wrap gap-1.5">
                             {service.teams?.map((team: any) => (
                               <Badge

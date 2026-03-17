@@ -133,6 +133,19 @@
   }
 }
 
+/* Prevent horizontal overflow on all pages */
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
+/* Flex children must not grow beyond parent */
+main {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
 /* Scrollbar global (modais e app inteiro) */
 * {
   scrollbar-width: thin;

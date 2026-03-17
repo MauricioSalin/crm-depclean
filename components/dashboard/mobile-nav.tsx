@@ -8,16 +8,17 @@ import { Sidebar } from "./sidebar"
 
 export function MobileNav() {
   const [open, setOpen] = useState(false)
-  
+
   return (
-    <div className="lg:hidden fixed bottom-4 right-4 z-50">
+    <div className="lg:hidden">
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetTrigger asChild>
-          <Button 
-            size="icon" 
-            className="h-14 w-14 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg"
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9 shrink-0"
           >
-            <Menu className="w-6 h-6" />
+            <Menu className="w-5 h-5" />
             <span className="sr-only">Abrir menu</span>
           </Button>
         </SheetTrigger>
