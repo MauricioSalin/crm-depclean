@@ -75,7 +75,7 @@ export function ClientsContent({ viewMode, viewToggle }: ClientsContentProps) {
     <>
       {/* <CardContent className="p-3 sm:p-4 md:p-6"> */}
       <div className="flex gap-2 mb-6 items-center">
-        <div className="relative flex-1 sm:flex-initial sm:w-full sm:max-w-sm">
+        <div className="relative flex-1 sm:flex-none sm:w-80">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Buscar por nome, responsável ou CNPJ..."
@@ -85,7 +85,7 @@ export function ClientsContent({ viewMode, viewToggle }: ClientsContentProps) {
           />
         </div>
         <Select value={typeFilter} onValueChange={(value) => { setTypeFilter(value); setCurrentPage(1) }}>
-          <SelectTrigger className="flex-1 sm:flex-initial sm:w-[160px]">
+          <SelectTrigger className="flex-1 sm:flex-none sm:w-[160px]">
             <SelectValue placeholder="Tipo" />
           </SelectTrigger>
           <SelectContent>

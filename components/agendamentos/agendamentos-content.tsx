@@ -199,7 +199,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
 
       <div>
           <div className="flex items-center gap-2 mb-6">
-            <div className="relative flex-1 sm:flex-initial sm:w-full sm:max-w-sm">
+            <div className="relative flex-1 sm:flex-none sm:w-80">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Buscar por cliente ou serviço..."
@@ -209,7 +209,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
               />
             </div>
             <Select value={statusFilter} onValueChange={(value) => { setStatusFilter(value); setCurrentPage(1) }}>
-              <SelectTrigger className="flex-1 sm:flex-initial sm:w-[140px]">
+              <SelectTrigger className="flex-1 sm:flex-none sm:w-[140px]">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>

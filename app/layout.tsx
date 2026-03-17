@@ -37,7 +37,7 @@ export default function RootLayout({
       <head>
         <meta charSet="utf-8" />
       </head>
-      <body className={`font-sans antialiased`}>
+      <body className={`font-sans antialiased overflow-x-hidden`}>
         <ThemeProvider defaultTheme="light" storageKey="tasko-theme">
           {children}
         </ThemeProvider>
