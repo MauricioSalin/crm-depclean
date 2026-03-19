@@ -39,6 +39,7 @@ import {
   Download,
   Shield,
 } from "lucide-react"
+import { SearchableSelect } from "@/components/ui/searchable-select"
 import { DataPagination } from "@/components/ui/data-pagination"
 
 type LogAction =
@@ -425,39 +426,33 @@ export function LogsContent() {
                 className="pl-10"
               />
             </div>
-            <Select value={actionFilter} onValueChange={(v) => { setActionFilter(v); setCurrentPage(1) }}>
-              <SelectTrigger>
-                <SelectValue placeholder="Ação" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todas as ações</SelectItem>
-                {Object.entries(actionConfig).map(([key, cfg]) => (
-                  <SelectItem key={key} value={key}>{cfg.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={moduleFilter} onValueChange={(v) => { setModuleFilter(v); setCurrentPage(1) }}>
-              <SelectTrigger>
-                <SelectValue placeholder="Módulo" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos os módulos</SelectItem>
-                {Object.entries(moduleConfig).map(([key, cfg]) => (
-                  <SelectItem key={key} value={key}>{cfg.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={userFilter} onValueChange={(v) => { setUserFilter(v); setCurrentPage(1) }}>
-              <SelectTrigger>
-                <SelectValue placeholder="Usuário" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos os usuários</SelectItem>
-                {uniqueUsers.map(u => (
-                  <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              value={actionFilter}
+              onValueChange={(v) => { setActionFilter(v); setCurrentPage(1) }}
+              options={Object.entries(actionConfig).map(([key, cfg]) => ({ value: key, label: cfg.label }))}
+              placeholder="Ação"
+              searchPlaceholder="Buscar ação..."
+              allLabel="Todas as ações"
+              className="w-[160px]"
+            />
+            <SearchableSelect
+              value={moduleFilter}
+              onValueChange={(v) => { setModuleFilter(v); setCurrentPage(1) }}
+              options={Object.entries(moduleConfig).map(([key, cfg]) => ({ value: key, label: cfg.label }))}
+              placeholder="Módulo"
+              searchPlaceholder="Buscar módulo..."
+              allLabel="Todos os módulos"
+              className="w-[160px]"
+            />
+            <SearchableSelect
+              value={userFilter}
+              onValueChange={(v) => { setUserFilter(v); setCurrentPage(1) }}
+              options={uniqueUsers.map(u => ({ value: u.id, label: u.name }))}
+              placeholder="Usuário"
+              searchPlaceholder="Buscar usuário..."
+              allLabel="Todos os usuários"
+              className="w-[160px]"
+            />
             <div className="flex gap-2">
               <Input
                 type="date"

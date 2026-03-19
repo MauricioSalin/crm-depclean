@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -32,7 +32,7 @@ import { Search, Plus, Upload, Edit, Trash2, FileText, Eye, PenTool } from "luci
 import { ContractRichEditor } from "@/components/contratos/contract-rich-editor"
 import { mockEmployees } from "@/lib/mock-data"
 
-interface ContractTemplate {
+export interface ContractTemplate {
   id: string
   name: string
   description: string
@@ -78,7 +78,7 @@ const defaultTemplateHtml = `
 <p style="text-align: center;"><strong>CONTRATADA</strong></p>
 `
 
-const mockTemplates: ContractTemplate[] = [
+export const mockTemplates: ContractTemplate[] = [
   {
     id: "tpl-1",
     name: "Contrato Padrão de Desentupimento",
@@ -261,109 +261,183 @@ export function TemplatesContent({ openImport, onImportChange, onEditorStateChan
     ))
   }
 
+  const previewIframeRef = useRef<HTMLIFrameElement | null>(null)
+  const [previewDocHeight, setPreviewDocHeight] = useState(0)
+
+  // Write preview HTML to iframe when preview tab is active
+  useEffect(() => {
+    if (!isEditorOpen || editorTab !== "preview") return
+    const iframe = previewIframeRef.current
+    if (!iframe) return
+
+    const html = (formData.html || "").trim()
+    if (!html) return
+
+    const payloadHtml = JSON.stringify(html)
+    const pageCss = `
+      @page { size: A4; margin: 18mm 16mm; }
+      html, body { background: transparent; }
+      body { font-family: "Times New Roman", Times, serif; font-size: 12pt; line-height: 1.6; color: #000; }
+      p { margin: 0 0 10px 0; text-align: justify; min-height: 1em; }
+      p:empty { min-height: 1.6em; }
+      h1 { margin: 0 0 14px 0; text-align: center; text-transform: uppercase; font-weight: 700; font-style: italic; text-decoration: underline; font-size: 12pt; }
+      .clause-title { text-align: left; font-weight: 700; font-style: italic; margin: 18px 0 10px 0; }
+      hr { border: 0; border-top: 1px solid rgba(0,0,0,.25); margin: 14px 0; }
+      strong { font-weight: 700; }
+      .pagedjs_pages { width: 100%; }
+      .pagedjs_page { background: white; margin: 0 auto 14px; box-shadow: 0 8px 28px rgba(0,0,0,.10); border-radius: 10px; overflow: hidden; }
+    `
+
+    const doc = iframe.contentDocument
+    if (!doc) return
+
+    doc.open()
+    doc.write(`<!doctype html>
+<html><head><meta charset="utf-8"/><style>${pageCss}</style></head><body>
+<script src="https://cdn.jsdelivr.net/npm/pagedjs@0.4.3/dist/paged.js"><\/script>
+<script>
+(async function(){
+  try {
+    const html = ${payloadHtml};
+    const source = document.createElement("div");
+    source.innerHTML = html;
+    source.style.position = "absolute";
+    source.style.left = "-99999px";
+    source.style.width = "210mm";
+    source.style.visibility = "hidden";
+    document.body.appendChild(source);
+    const Previewer = (window.Paged && window.Paged.Previewer) ? window.Paged.Previewer : null;
+    if (!Previewer) throw new Error("Paged.js não carregou");
+    const previewer = new Previewer();
+    await previewer.preview(source, [], document.body);
+    try { source.remove(); } catch(e){}
+    window.parent.postMessage({type:"tpl-preview-ready"},"*");
+  } catch(e) {
+    document.body.innerHTML = ${payloadHtml};
+    window.parent.postMessage({type:"tpl-preview-ready"},"*");
+  }
+})();
+<\/script></body></html>`)
+    doc.close()
+
+    const onMessage = (event: MessageEvent) => {
+      if (event.data?.type !== "tpl-preview-ready") return
+      if (event.source !== iframe.contentWindow) return
+      try {
+        const h = iframe.contentDocument?.documentElement?.scrollHeight ?? 0
+        if (h > 0) setPreviewDocHeight(h)
+      } catch {}
+    }
+    window.addEventListener("message", onMessage)
+
+    setTimeout(() => {
+      try {
+        const h = iframe.contentDocument?.documentElement?.scrollHeight ?? 0
+        if (h > 0) setPreviewDocHeight(h)
+      } catch {}
+    }, 500)
+
+    return () => window.removeEventListener("message", onMessage)
+  }, [isEditorOpen, editorTab, formData.html])
+
   // Full-screen editor view
   if (isEditorOpen) {
     return (
       <div className="space-y-4">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-          <div className="space-y-4">
-            <Card>
-              <CardContent className="pt-4 space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="tpl-name">Nome do Template</Label>
-                  <Input
-                    id="tpl-name"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="Nome do template"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="tpl-desc">Descrição</Label>
-                  <Input
-                    id="tpl-desc"
-                    value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    placeholder="Breve descrição"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="tpl-signer" className="flex items-center gap-1.5">
-                    <PenTool className="w-3.5 h-3.5 text-muted-foreground" />
-                    Assinante (Contratada)
-                  </Label>
-                  <Select
-                    value={formData.signerId}
-                    onValueChange={(value) => setFormData({ ...formData, signerId: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione o funcionário" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {mockEmployees
-                        .filter(e => e.status === "active")
-                        .map(emp => (
-                          <SelectItem key={emp.id} value={emp.id}>
-                            {emp.name}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-[10px] text-muted-foreground">
-                    Funcionário que terá os dados puxados para assinar o contrato
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="tpl-status">Status</Label>
-                  <Select
-                    value={formData.isActive ? "active" : "inactive"}
-                    onValueChange={(value) => setFormData({ ...formData, isActive: value === "active" })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="active">Ativo</SelectItem>
-                      <SelectItem value="inactive">Inativo</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          <div className="lg:col-span-3">
-            <Tabs value={editorTab} onValueChange={(v) => setEditorTab(v as "editor" | "preview")}>
-              <TabsList className="mb-3">
-                <TabsTrigger value="editor" className="gap-1.5">
-                  <Edit className="w-3.5 h-3.5" />
-                  Editar
-                </TabsTrigger>
-                <TabsTrigger value="preview" className="gap-1.5">
-                  <Eye className="w-3.5 h-3.5" />
-                  Prévia
-                </TabsTrigger>
-              </TabsList>
-              <TabsContent value="editor">
-                <ContractRichEditor
-                  valueHtml={formData.html}
-                  onChangeHtml={(html) => setFormData({ ...formData, html })}
+        {/* Template metadata - horizontal above editor */}
+        <Card>
+          <CardContent className="pt-4">
+            <div className="flex flex-wrap gap-4 items-end">
+              <div className="space-y-2 flex-1 min-w-[200px]">
+                <Label htmlFor="tpl-name">Nome do Template</Label>
+                <Input
+                  id="tpl-name"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  placeholder="Nome do template"
+                  required
                 />
-              </TabsContent>
-              <TabsContent value="preview">
-                <Card>
-                  <CardContent className="pt-6">
-                    <div
-                      className="contract-doc prose max-w-none min-h-[60vh]"
-                      dangerouslySetInnerHTML={{ __html: formData.html }}
-                    />
-                  </CardContent>
-                </Card>
-              </TabsContent>
-            </Tabs>
-          </div>
-        </div>
+              </div>
+              <div className="space-y-2 flex-1 min-w-[200px]">
+                <Label htmlFor="tpl-desc">Descrição</Label>
+                <Input
+                  id="tpl-desc"
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  placeholder="Breve descrição"
+                />
+              </div>
+              <div className="space-y-2 w-[200px]">
+                <Label htmlFor="tpl-signer" className="flex items-center gap-1.5">
+                  <PenTool className="w-3.5 h-3.5 text-muted-foreground" />
+                  Assinante (Contratada)
+                </Label>
+                <Select
+                  value={formData.signerId}
+                  onValueChange={(value) => setFormData({ ...formData, signerId: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {mockEmployees
+                      .filter(e => e.status === "active")
+                      .map(emp => (
+                        <SelectItem key={emp.id} value={emp.id}>
+                          {emp.name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2 w-[130px]">
+                <Label htmlFor="tpl-status">Status</Label>
+                <Select
+                  value={formData.isActive ? "active" : "inactive"}
+                  onValueChange={(value) => setFormData({ ...formData, isActive: value === "active" })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Ativo</SelectItem>
+                    <SelectItem value="inactive">Inativo</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Editor / Preview */}
+        <Tabs value={editorTab} onValueChange={(v) => setEditorTab(v as "editor" | "preview")}>
+          <TabsList className="mb-3">
+            <TabsTrigger value="editor" className="gap-1.5">
+              <Edit className="w-3.5 h-3.5" />
+              Editar
+            </TabsTrigger>
+            <TabsTrigger value="preview" className="gap-1.5">
+              <Eye className="w-3.5 h-3.5" />
+              Prévia
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value="editor">
+            <ContractRichEditor
+              valueHtml={formData.html}
+              onChangeHtml={(html) => setFormData({ ...formData, html })}
+            />
+          </TabsContent>
+          <TabsContent value="preview" forceMount style={{ display: editorTab === "preview" ? undefined : "none" }}>
+            <div className="rounded-lg border bg-muted/20 h-[76vh] overflow-auto p-4">
+              <iframe
+                ref={previewIframeRef}
+                title="Prévia paginada do template"
+                className="w-full bg-white rounded-md"
+                style={{ height: previewDocHeight > 0 ? `${previewDocHeight}px` : "100%" }}
+              />
+            </div>
+          </TabsContent>
+        </Tabs>
       </div>
     )
   }

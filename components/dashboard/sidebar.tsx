@@ -46,8 +46,8 @@ export function Sidebar({ onNavigate }: SidebarProps) {
   const pathname = usePathname()
 
   return (
-    <aside className="fixed top-0 left-0 w-60 bg-card border-r border-border p-4 h-screen flex flex-col">
-      <div className="flex items-center gap-2 mb-6 group cursor-pointer">
+    <aside className="fixed top-0 left-0 w-60 bg-card border-r border-border h-screen flex flex-col">
+      <div className="flex items-center gap-2 p-4 pb-2 shrink-0 group cursor-pointer">
         <Link href="/" className="flex items-center gap-2">
           <Image
             src="/logo-depclean.png"
@@ -59,7 +59,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
         </Link>
       </div>
 
-      <div className="flex flex-col flex-1 justify-between overflow-y-auto">
+      <div className="flex flex-col flex-1 overflow-y-auto px-4 pb-4">
         <div>
           <p className="text-[10px] font-medium text-muted-foreground mb-2 uppercase tracking-wider">Menu</p>
           <nav className="space-y-0.5">
@@ -99,7 +99,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
           </nav>
         </div>
 
-        <div>
+        <div className="mt-6">
           <p className="text-[10px] font-medium text-muted-foreground mb-2 uppercase tracking-wider">Geral</p>
           <nav className="space-y-0.5">
             {generalItems.map((item) => {

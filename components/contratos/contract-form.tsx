@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { CurrencyInput } from "@/components/ui/currency-input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -81,6 +82,7 @@ import {
   getClientTypeById,
   formatDate,
 } from "@/lib/mock-data"
+import { mockTemplates } from "@/components/templates/templates-content"
 import type { RecurrenceRule, RecurrenceRuleType, RecurrenceType } from "@/lib/types"
 import { useRouter } from "next/navigation"
 
@@ -94,7 +96,6 @@ interface ContractService {
   serviceTypeId: string
   teamIds: string[]
   employeeIds: string[]
-  value: number
 }
 
 export function ContractForm({ contractId, isEditing = false }: ContractFormProps) {
@@ -129,9 +130,15 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
   }, [contract])
 
   const [selectedClientId, setSelectedClientId] = useState(contract?.clientId || "")
+  const [selectedTemplateId, setSelectedTemplateId] = useState("")
   const [startDate, setStartDate] = useState(contract?.startDate?.toISOString().split("T")[0] || "")
-  const [endDate, setEndDate] = useState(contract?.endDate?.toISOString().split("T")[0] || "")
   const [installmentsCount, setInstallmentsCount] = useState(contract?.installmentsCount || 1)
+  const endDate = useMemo(() => {
+    if (!startDate) return ""
+    const start = new Date(`${startDate}T00:00:00`)
+    start.setMonth(start.getMonth() + installmentsCount)
+    return start.toISOString().split("T")[0]
+  }, [startDate, installmentsCount])
   const [dueDay, setDueDay] = useState(((contract as any)?.dueDay ?? (contract as any)?.paymentDay ?? 10) as number)
   const [selectedUnitIds, setSelectedUnitIds] = useState<string[]>(initialUnitIds)
   const [services, setServices] = useState<ContractService[]>(
@@ -140,9 +147,9 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
       serviceTypeId: s.serviceTypeId,
       teamIds: (s as any).teamIds ?? (s as any).teamId ? [(s as any).teamId] : [],
       employeeIds: [],
-      value: s.value,
     })) || []
   )
+  const [contractValue, setContractValue] = useState(contract?.totalValue ? Math.round(contract.totalValue * 100) : 0)
 
   // Contract-level recurrence rules
   const [contractRecurrenceRules, setContractRecurrenceRules] = useState<RecurrenceRule[]>(
@@ -166,7 +173,7 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
   const [employeeSearchTerm, setEmployeeSearchTerm] = useState("")
 
   const selectedClient = clients.find(c => c.id === selectedClientId)
-  const totalValue = services.reduce((acc, s) => acc + s.value, 0)
+  const totalValue = contractValue / 100
   const editingService = services.find(s => s.id === editingServiceId)
 
   // Total de unidades das filiais selecionadas (para regras de recorrência)
@@ -493,8 +500,9 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
       @page { size: A4; margin: 18mm 16mm; }
       html, body { background: #fff; }
       body { font-family: "Times New Roman", Times, serif; font-size: 12pt; line-height: 1.6; color: #000; }
-      p { margin: 0 0 10px 0; text-align: justify; }
-      h1 { margin: 0 0 12px 0; text-align: center; text-transform: uppercase; font-weight: 700; font-style: italic; text-decoration: underline; font-size: 12pt; }
+      p { margin: 0 0 10px 0; text-align: justify; min-height: 1em; }
+      p:empty { min-height: 1.6em; }
+      h1 { margin: 0 0 14px 0; text-align: center; text-transform: uppercase; font-weight: 700; font-style: italic; text-decoration: underline; font-size: 12pt; }
       .clause-title { text-align: left; font-weight: 700; font-style: italic; margin: 18px 0 10px 0; }
       hr { border: 0; border-top: 1px solid rgba(0,0,0,.25); margin: 14px 0; }
       hr.page-break { border-top: 0; margin: 16px 0; break-after: page; }
@@ -621,8 +629,9 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
       @page { size: A4; margin: 18mm 16mm; }
       html, body { background: transparent; }
       body { font-family: "Times New Roman", Times, serif; font-size: 12pt; line-height: 1.6; color: #000; }
-      p { margin: 0 0 10px 0; text-align: justify; }
-      h1 { margin: 0 0 12px 0; text-align: center; text-transform: uppercase; font-weight: 700; font-style: italic; text-decoration: underline; font-size: 12pt; }
+      p { margin: 0 0 10px 0; text-align: justify; min-height: 1em; }
+      p:empty { min-height: 1.6em; }
+      h1 { margin: 0 0 14px 0; text-align: center; text-transform: uppercase; font-weight: 700; font-style: italic; text-decoration: underline; font-size: 12pt; }
       .clause-title { text-align: left; font-weight: 700; font-style: italic; margin: 18px 0 10px 0; }
       hr { border: 0; border-top: 1px solid rgba(0,0,0,.25); margin: 14px 0; }
       hr.page-break { border-top: 0; margin: 16px 0; break-after: page; }
@@ -700,7 +709,6 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
         serviceTypeId: "",
         teamIds: [],
         employeeIds: [],
-        value: 0,
       }
     ])
   }
@@ -717,7 +725,6 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
         return {
           ...s,
           [field]: value as string,
-          value: serviceType?.baseValue || 0,
           teamIds: serviceType?.defaultTeamIds || [],
         }
       }
@@ -832,7 +839,7 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
             <ContractRichEditor valueHtml={draftHtml || draftInitialHtml} onChangeHtml={setDraftHtml} />
           </TabsContent>
 
-          <TabsContent value="preview" className="mt-4">
+          <TabsContent value="preview" className="mt-4" forceMount style={{ display: editorView === "preview" ? undefined : "none" }}>
             {previewError ? (
               <div className="mb-2 rounded-md border bg-destructive/5 text-destructive px-3 py-2 text-xs">
                 Não foi possível paginar automaticamente. Mostrando o conteúdo sem paginação. ({previewError})
@@ -929,29 +936,51 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
           <Building2 className="w-5 h-5 text-primary" />
           Cliente
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          <div className="space-y-2">
+        <div className="flex flex-col md:flex-row gap-5">
+          <div className="space-y-2 md:w-[340px] shrink-0">
             <Label>Selecionar Cliente *</Label>
-            <Select value={selectedClientId} onValueChange={setSelectedClientId} disabled={isEditing}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Selecione um cliente" />
-              </SelectTrigger>
-              <SelectContent>
-                {clients.map((c) => {
-                  const totalUnits = c.units?.reduce((sum, u) => sum + (u.unitCount ?? 0), 0) ?? 0
-                  return (
-                    <SelectItem key={c.id} value={c.id}>
-                      <div className="flex items-center gap-2">
-                        <span>{c.companyName}</span>
-                        {totalUnits > 0 && (
-                          <span className="text-xs text-muted-foreground">({totalUnits} unidades)</span>
-                        )}
-                      </div>
-                    </SelectItem>
-                  )
-                })}
-              </SelectContent>
-            </Select>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  className="w-full justify-between font-normal"
+                  disabled={isEditing}
+                >
+                  {selectedClientId
+                    ? clients.find(c => c.id === selectedClientId)?.companyName
+                    : "Selecione um cliente"}
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[400px] p-0" align="start">
+                <Command>
+                  <CommandInput placeholder="Buscar cliente..." />
+                  <CommandList>
+                    <CommandEmpty>Nenhum cliente encontrado.</CommandEmpty>
+                    <CommandGroup>
+                      {clients.map((c) => {
+                        const totalUnits = c.units?.reduce((sum, u) => sum + (u.unitCount ?? 0), 0) ?? 0
+                        return (
+                          <CommandItem
+                            key={c.id}
+                            value={c.companyName}
+                            onSelect={() => setSelectedClientId(c.id)}
+                            className="cursor-pointer"
+                          >
+                            <Check className={cn("mr-2 h-4 w-4", selectedClientId === c.id ? "opacity-100" : "opacity-0")} />
+                            <span>{c.companyName}</span>
+                            {totalUnits > 0 && (
+                              <span className="text-xs text-muted-foreground ml-1">({totalUnits} unidades)</span>
+                            )}
+                          </CommandItem>
+                        )
+                      })}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
           </div>
           {selectedClient && (() => {
             const clientType = getClientTypeById(selectedClient.clientTypeId)
@@ -1017,13 +1046,80 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
         )}
       </Card>
 
+      {/* Template Selection */}
+      <Card className="p-4 sm:p-6">
+        <h3 className="font-semibold mb-4 flex items-center gap-2">
+          <FileText className="w-5 h-5 text-primary" />
+          Template do Contrato
+        </h3>
+        <div className="flex flex-col md:flex-row gap-5">
+          <div className="space-y-2 md:w-[340px] shrink-0">
+            <Label>Selecionar Template *</Label>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  className="w-full justify-between font-normal"
+                >
+                  {selectedTemplateId
+                    ? mockTemplates.find(t => t.id === selectedTemplateId)?.name
+                    : "Selecione um template"}
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[400px] p-0" align="start">
+                <Command>
+                  <CommandInput placeholder="Buscar template..." />
+                  <CommandList>
+                    <CommandEmpty>Nenhum template encontrado.</CommandEmpty>
+                    <CommandGroup>
+                      {mockTemplates.filter(t => t.isActive).map((t) => (
+                        <CommandItem
+                          key={t.id}
+                          value={t.name}
+                          onSelect={() => setSelectedTemplateId(t.id)}
+                          className="cursor-pointer"
+                        >
+                          <Check className={cn("mr-2 h-4 w-4", selectedTemplateId === t.id ? "opacity-100" : "opacity-0")} />
+                          <span>{t.name}</span>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+          </div>
+          {selectedTemplateId && (() => {
+            const template = mockTemplates.find(t => t.id === selectedTemplateId)
+            if (!template) return null
+            return (
+              <div className="p-3 rounded-lg bg-muted/50 flex items-start gap-3 shrink-0">
+                <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                  <FileText className="w-5 h-5 text-primary" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="font-medium">{template.name}</p>
+                    <Badge className="bg-green-100 text-green-700 border-0 hover:bg-green-100">Ativo</Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground">{template.description}</p>
+                  <p className="text-xs text-muted-foreground mt-1">Atualizado em {template.updatedAt}</p>
+                </div>
+              </div>
+            )
+          })()}
+        </div>
+      </Card>
+
       {/* Contract Details */}
       <Card className="p-4 sm:p-6">
         <h3 className="font-semibold mb-4 flex items-center gap-2">
           <FileText className="w-5 h-5 text-primary" />
           Dados do Contrato
         </h3>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="flex flex-wrap gap-4">
           <div className="space-y-2">
             <Label>Data Início *</Label>
             <Input
@@ -1033,17 +1129,8 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
               required
             />
           </div>
-          <div className="space-y-2">
-            <Label>Data Fim *</Label>
-            <Input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              required
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Número de Parcelas *</Label>
+          <div className="space-y-2 w-[130px]">
+            <Label>Nº de Parcelas *</Label>
             <Input
               type="number"
               value={installmentsCount}
@@ -1052,8 +1139,8 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
               required
             />
           </div>
-          <div className="space-y-2">
-            <Label>Dia de Vencimento *</Label>
+          <div className="space-y-2 w-[130px]">
+            <Label>Dia Vencimento *</Label>
             <Input
               type="number"
               value={dueDay}
@@ -1063,7 +1150,22 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
               required
             />
           </div>
+          <div className="space-y-2 w-[180px]">
+            <Label>Valor do Contrato *</Label>
+            <CurrencyInput
+              value={contractValue}
+              onChange={setContractValue}
+            />
+          </div>
         </div>
+        {startDate && installmentsCount > 0 && (
+          <div className="mt-4 flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted-foreground">
+            <span>Vigência: <strong className="text-foreground">{new Date(`${startDate}T00:00:00`).toLocaleDateString("pt-BR")}</strong> até <strong className="text-foreground">{new Date(`${endDate}T00:00:00`).toLocaleDateString("pt-BR")}</strong></span>
+            {totalValue > 0 && installmentsCount > 1 && (
+              <span>Parcelas: <strong className="text-foreground">{installmentsCount}x de {formatCurrency(totalValue / installmentsCount)}</strong></span>
+            )}
+          </div>
+        )}
       </Card>
 
       {/* Contract-level Recurrence */}
@@ -1074,30 +1176,8 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
         </h3>
 
 
-        {/* Recorrência Padrão */}
-        <div className="space-y-2 mb-6">
-          <Label>Recorrência Padrão</Label>
-          <p className="text-xs text-muted-foreground mb-3 break-words">
-            Será aplicada automaticamente se nenhuma regra por unidades corresponder.
-          </p>
-          <Select value={contractRecurrence} onValueChange={setContractRecurrence}>
-            <SelectTrigger className="w-full max-w-[240px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="weekly">Semanal</SelectItem>
-              <SelectItem value="biweekly">Quinzenal</SelectItem>
-              <SelectItem value="monthly">Mensal</SelectItem>
-              <SelectItem value="bimonthly">Bimestral</SelectItem>
-              <SelectItem value="quarterly">Trimestral</SelectItem>
-              <SelectItem value="semiannual">Semestral</SelectItem>
-              <SelectItem value="annual">Anual</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
         {/* Regras por unidades */}
-        <div className="border-t pt-4">
+        <div>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
             <div className="min-w-0">
               <p className="text-sm font-medium">Regras por número de unidades</p>
@@ -1268,7 +1348,6 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
                 <TableRow className="hover:bg-transparent">
                   <TableHead>Serviço</TableHead>
                   <TableHead>Equipes / Funcionários</TableHead>
-                  <TableHead>Valor</TableHead>
                   <TableHead className="w-24"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -1317,14 +1396,6 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Input
-                          type="number"
-                          className="w-[120px]"
-                          value={service.value}
-                          onChange={(e) => updateService(service.id, "value", parseFloat(e.target.value) || 0)}
-                        />
-                      </TableCell>
-                      <TableCell>
                         <div className="flex gap-1">
                           <Button
                             type="button"
@@ -1358,19 +1429,6 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
           </div>
         )}
 
-        {services.length > 0 && (
-          <div className="flex justify-end mt-4 pt-4 border-t">
-            <div className="text-right">
-              <p className="text-sm text-muted-foreground">Valor Total do Contrato</p>
-              <p className="text-2xl font-bold text-primary">{formatCurrency(totalValue)}</p>
-              {installmentsCount > 1 && (
-                <p className="text-sm text-muted-foreground">
-                  {installmentsCount}x de {formatCurrency(totalValue / installmentsCount)}
-                </p>
-              )}
-            </div>
-          </div>
-        )}
       </Card>
 
       {/* Actions */}

@@ -22,7 +22,14 @@ import {
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { cn, getColorFromClass } from "@/lib/utils"
-import { Plus, X, Check, ChevronsUpDown, ClipboardList, Save, ArrowLeft, Clock, DollarSign, Users, FileText } from "lucide-react"
+import { Plus, X, Check, ChevronsUpDown, ClipboardList, Save, ArrowLeft, Clock, Users, FileText } from "lucide-react"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { mockServiceTypes, mockTeams, mockEmployees } from "@/lib/mock-data"
 import Link from "next/link"
 
@@ -42,7 +49,7 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
     name: existingService?.name || "",
     description: existingService?.description || "",
     defaultDuration: existingService?.defaultDuration || 60,
-    pricePerHour: existingService?.pricePerHour || 0,
+    durationType: "hours" as "hours" | "shift" | "days",
     teamIds: (existingService as any)?.teamIds || [] as string[],
     employeeIds: (existingService as any)?.employeeIds || [] as string[],
     clauses: (existingService as any)?.clauses || [] as string[],
@@ -116,37 +123,43 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
             />
           </div>
 
+        </div>
+      </Card>
+
+      {/* Duration */}
+      <Card className="p-6">
+        <div className="flex items-center gap-2 mb-6">
+          <Clock className="w-5 h-5 text-primary" />
+          <h3 className="font-semibold text-lg">Duração</h3>
+        </div>
+
+        <div className="flex gap-3 items-start">
           <div className="space-y-2">
-            <Label htmlFor="duration">
-              <div className="flex items-center gap-1">
-                <Clock className="w-4 h-4 text-muted-foreground" />
-                Duração Padrão (min)
-              </div>
-            </Label>
+            <Label htmlFor="durationType">Tipo de Duração</Label>
+            <Select
+              value={formData.durationType}
+              onValueChange={(value) => setFormData({ ...formData, durationType: value as "hours" | "shift" | "days" })}
+            >
+              <SelectTrigger id="durationType" className="w-[180px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="hours">Horas</SelectItem>
+                <SelectItem value="shift">Turno</SelectItem>
+                <SelectItem value="days">Dias</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="duration">Duração Padrão</Label>
             <Input
               id="duration"
               type="number"
               value={formData.defaultDuration}
               onChange={(e) => setFormData({ ...formData, defaultDuration: Number(e.target.value) })}
-              min={15}
-              step={15}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="price">
-              <div className="flex items-center gap-1">
-                <DollarSign className="w-4 h-4 text-muted-foreground" />
-                Preço Padrão (R$)
-              </div>
-            </Label>
-            <Input
-              id="price"
-              type="number"
-              value={formData.pricePerHour}
-              onChange={(e) => setFormData({ ...formData, pricePerHour: Number(e.target.value) })}
-              min={0}
-              step={0.01}
+              min={1}
+              step={1}
+              className="w-[120px]"
             />
           </div>
         </div>

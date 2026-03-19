@@ -36,7 +36,8 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
 import { Check, ChevronsUpDown, X } from "lucide-react"
-import { mockClients, mockServiceTypes, mockTeams, mockEmployees, formatCurrency } from "@/lib/mock-data"
+import { mockClients, mockServiceTypes, mockTeams, mockEmployees } from "@/lib/mock-data"
+import { CurrencyInput } from "@/components/ui/currency-input"
 
 export interface SchedulingFormData {
   clientId: string
@@ -232,7 +233,6 @@ export function SchedulingFormDialog({
                   ...formData,
                   serviceTypeId: value,
                   teamIds: serviceType?.teamIds || [],
-                  value: serviceType?.pricePerHour || 0
                 })
               }}
             >
@@ -431,13 +431,9 @@ export function SchedulingFormDialog({
           {!(editingSchedule && editingSchedule.contractId && !editingSchedule.isManual) && (
           <div className="space-y-2">
             <Label>Valor (R$)</Label>
-            <Input
-              type="number"
-              value={formData.value}
-              onChange={(e) => setFormData({ ...formData, value: Number(e.target.value) })}
-              min={0}
-              step={0.01}
-              placeholder="0,00"
+            <CurrencyInput
+              value={Math.round(formData.value * 100)}
+              onChange={(cents) => setFormData({ ...formData, value: cents / 100 })}
             />
           </div>
           )}

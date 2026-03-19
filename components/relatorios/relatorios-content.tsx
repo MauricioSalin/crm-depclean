@@ -23,6 +23,7 @@ import {
   TrendingUp,
   FileDown,
 } from "lucide-react"
+import { SearchableSelect } from "@/components/ui/searchable-select"
 import {
   dashboardStats,
   monthlyRevenueData,
@@ -140,19 +141,15 @@ export function RelatoriosContent() {
 
             <div className="flex flex-col gap-2 w-full sm:w-[200px] shrink-0">
               <Label>Equipe</Label>
-              <Select value={teamFilter} onValueChange={setTeamFilter}>
-                <SelectTrigger className="w-full sm:w-[200px]">
-                  <SelectValue placeholder="Todas" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas as equipes</SelectItem>
-                  {teams.map(team => (
-                    <SelectItem key={team.id} value={team.id}>
-                      {team.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                value={teamFilter}
+                onValueChange={setTeamFilter}
+                options={teams.map(t => ({ value: t.id, label: t.name }))}
+                placeholder="Equipe"
+                searchPlaceholder="Buscar equipe..."
+                allLabel="Todas as equipes"
+                className="w-full sm:w-[200px]"
+              />
             </div>
 
             <Button className="w-full sm:w-auto h-10 px-4 shrink-0 bg-primary hover:bg-primary/90 text-primary-foreground">
@@ -437,12 +434,21 @@ export function RelatoriosContent() {
                       <div className="font-medium">{formatCurrency(contract.totalValue)}</div>
                       <Badge className={
                         contract.status === "active" ? "bg-green-100 text-green-700 hover:bg-green-100" :
-                        contract.status === "expired" ? "bg-red-100 text-red-700 hover:bg-red-100" :
-                        "bg-yellow-100 text-yellow-700 hover:bg-yellow-100"
+                        contract.status === "pending_signature" ? "bg-amber-100 text-amber-700 hover:bg-amber-100" :
+                        contract.status === "overdue" ? "bg-red-100 text-red-700 hover:bg-red-100" :
+                        contract.status === "refused" ? "bg-orange-100 text-orange-700 hover:bg-orange-100" :
+                        contract.status === "deadline_expired" ? "bg-purple-100 text-purple-700 hover:bg-purple-100" :
+                        contract.status === "expired" ? "bg-gray-100 text-gray-700 hover:bg-gray-100" :
+                        contract.status === "cancelled" ? "bg-red-100 text-red-700 hover:bg-red-100" :
+                        "bg-gray-100 text-gray-600 hover:bg-gray-100"
                       }>
                         {contract.status === "active" ? "Ativo" :
+                         contract.status === "pending_signature" ? "Pendente" :
+                         contract.status === "overdue" ? "Em Atraso" :
+                         contract.status === "refused" ? "Recusado" :
+                         contract.status === "deadline_expired" ? "Prazo Expirado" :
                          contract.status === "expired" ? "Vencido" :
-                         contract.status === "pending_signature" ? "Pendente" : contract.status}
+                         contract.status === "cancelled" ? "Cancelado" : "Rascunho"}
                       </Badge>
                     </div>
                   </div>

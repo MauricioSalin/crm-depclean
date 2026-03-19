@@ -348,7 +348,7 @@ export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle 
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Equipe</TableHead>
+                    <TableHead>Equipe / Funcionários</TableHead>
                     <TableHead className="hidden sm:table-cell">Membros</TableHead>
                     <TableHead className="hidden md:table-cell">Integrantes</TableHead>
                     <TableHead className="text-right">Ações</TableHead>

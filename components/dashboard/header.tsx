@@ -27,6 +27,7 @@ interface HeaderProps {
   headerActions?: ReactNode
   actions?: ReactNode
   viewToggle?: ReactNode
+  filters?: ReactNode
 }
 
 const getNotificationDotColor = (type: string, isRead: boolean) => {
@@ -43,7 +44,7 @@ const getNotificationDotColor = (type: string, isRead: boolean) => {
   return colorMap[type] || "bg-primary"
 }
 
-export function Header({ title, description, titleAddon, headerActions, actions, viewToggle }: HeaderProps) {
+export function Header({ title, description, titleAddon, headerActions, actions, viewToggle, filters }: HeaderProps) {
   const [notifs, setNotifs] = useState(initialNotifications)
   const unreadNotifications = notifs.filter(n => !n.isRead)
   const effectiveHeaderActions = headerActions ?? actions
@@ -54,7 +55,7 @@ export function Header({ title, description, titleAddon, headerActions, actions,
 
   return (
     <>
-      <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-sm -mx-3 md:-mx-4 lg:-mx-5 px-3 md:px-4 lg:px-5 py-4">
+      <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-sm -mx-3 md:-mx-4 lg:-mx-5 px-3 md:px-4 lg:px-5 pt-4 pb-4 border-b border-transparent [&:not(:first-child)]:border-border/50">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 flex-1">
             <MobileNav />
@@ -123,9 +124,11 @@ export function Header({ title, description, titleAddon, headerActions, actions,
                   </SwipeableNotification>
                 ))}
                 <DropdownMenuSeparator />
-                <DropdownMenuItem className="text-center justify-center text-foreground font-medium cursor-pointer">
-                  Ver todas
-                </DropdownMenuItem>
+                <Link href="/notificacoes">
+                  <DropdownMenuItem className="text-center justify-center text-foreground font-medium cursor-pointer">
+                    Ver todas
+                  </DropdownMenuItem>
+                </Link>
               </DropdownMenuContent>
             </DropdownMenu>
 
@@ -179,6 +182,7 @@ export function Header({ title, description, titleAddon, headerActions, actions,
             </DropdownMenu>
           </div>
         </div>
+
       </div>
 
       <div className="mb-4 mt-4 flex flex-col gap-4">
@@ -190,14 +194,14 @@ export function Header({ title, description, titleAddon, headerActions, actions,
             </div>
             <p className="text-xs md:text-sm text-muted-foreground">{description}</p>
           </div>
-          {/* Mobile: viewToggle ao lado do título */}
-          {viewToggle && <div className="shrink-0 sm:hidden">{viewToggle}</div>}
           {/* Desktop: botão de ação ao lado do título */}
           {effectiveHeaderActions && (
             <div className="hidden sm:flex items-center gap-2 shrink-0">
               {effectiveHeaderActions}
             </div>
           )}
+          {/* Mobile: viewToggle ao lado do título */}
+          {viewToggle && <div className="shrink-0 sm:hidden">{viewToggle}</div>}
         </div>
         {/* Mobile: botão de ação full-width abaixo */}
         {effectiveHeaderActions && (
@@ -205,6 +209,11 @@ export function Header({ title, description, titleAddon, headerActions, actions,
             {effectiveHeaderActions}
           </div>
         )}
+      </div>
+
+      <div className="mb-4">
+        {filters}
+        <div id="header-filters-slot" className="empty:hidden" />
       </div>
     </>
   )

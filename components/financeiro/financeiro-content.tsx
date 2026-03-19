@@ -37,6 +37,8 @@ import {
   Calendar,
   Receipt,
 } from "lucide-react"
+import { HeaderFiltersPortal } from "@/components/ui/header-filters-portal"
+import { SearchableSelect } from "@/components/ui/searchable-select"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { 
   contracts, 
@@ -275,29 +277,33 @@ export function FinanceiroContent({ viewMode, viewToggle }: FinanceiroContentPro
 
       {/* Installments Table */}
       <div>
-          <div className="flex items-center gap-2 mb-6">
-            <div className="relative flex-1 sm:flex-none sm:w-80">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Buscar por contrato ou cliente..."
-                value={searchTerm}
-                onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1) }}
-                className="pl-10"
+          <HeaderFiltersPortal>
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1 sm:flex-none sm:w-80">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar por contrato ou cliente..."
+                  value={searchTerm}
+                  onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1) }}
+                  className="pl-10"
+                />
+              </div>
+              <SearchableSelect
+                value={tabFilter}
+                onValueChange={(value) => { setTabFilter(value); setCurrentPage(1) }}
+                options={[
+                  { value: "pending", label: "Pendentes" },
+                  { value: "overdue", label: "Vencidas" },
+                  { value: "paid", label: "Pagas" },
+                ]}
+                placeholder="Status"
+                searchPlaceholder="Buscar status..."
+                allLabel="Todas"
+                className="flex-1 sm:flex-none sm:w-[140px]"
               />
+              {viewToggle && <div className="hidden sm:block shrink-0">{viewToggle}</div>}
             </div>
-            <Select value={tabFilter} onValueChange={(value) => { setTabFilter(value); setCurrentPage(1) }}>
-              <SelectTrigger className="flex-1 sm:flex-none sm:w-[140px]">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todas</SelectItem>
-                <SelectItem value="pending">Pendentes</SelectItem>
-                <SelectItem value="overdue">Vencidas</SelectItem>
-                <SelectItem value="paid">Pagas</SelectItem>
-              </SelectContent>
-            </Select>
-            {viewToggle && <div className="hidden sm:block shrink-0">{viewToggle}</div>}
-          </div>
+          </HeaderFiltersPortal>
 
           {viewMode === "table" ? (
             <div className="rounded-md overflow-x-auto">

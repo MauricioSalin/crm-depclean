@@ -100,11 +100,17 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "active":
-        return <Badge className="bg-green-500 text-white">Ativo</Badge>
+        return <Badge className="bg-green-500 text-white">Assinado</Badge>
       case "pending_signature":
         return <Badge className="bg-amber-500 text-white">Aguardando Assinatura</Badge>
+      case "overdue":
+        return <Badge className="bg-red-500 text-white">Em Atraso</Badge>
+      case "refused":
+        return <Badge className="bg-orange-500 text-white">Recusado</Badge>
       case "expired":
         return <Badge variant="secondary">Expirado</Badge>
+      case "deadline_expired":
+        return <Badge className="bg-purple-500 text-white">Prazo Expirado</Badge>
       case "cancelled":
         return <Badge variant="destructive">Cancelado</Badge>
       default:
@@ -189,37 +195,51 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                 <Building2 className="w-4 h-4" />
                 <span>{client?.companyName}</span>
               </Link>
-              <div className="flex flex-wrap gap-4 mt-2 text-sm">
-                <div className="flex items-center gap-1 text-muted-foreground">
-                  <Calendar className="w-4 h-4" />
-                  <span>{formatDate(contract.startDate)} - {formatDate(contract.endDate)}</span>
-                </div>
-                <div className="flex items-center gap-1 text-muted-foreground">
-                  <DollarSign className="w-4 h-4" />
-                  <span className="font-medium text-foreground">{formatCurrency(contract.totalValue)}</span>
-                </div>
+              <div className="flex items-center gap-1 mt-2 text-sm text-muted-foreground">
+                <Calendar className="w-4 h-4" />
+                <span>{formatDate(contract.startDate)} - {formatDate(contract.endDate)}</span>
               </div>
             </div>
           </div>
-          <div className="flex gap-2 [&>*]:flex-1 [&>*]:sm:flex-initial">
-            {contract.documentUrl && (
-              <Button variant="outline" size="sm">
-                <Download className="w-4 h-4 mr-2" />
-                Baixar PDF
-              </Button>
-            )}
-            {contract.signatureUrl && (
-              <Button variant="outline" size="sm">
-                <ExternalLink className="w-4 h-4 mr-2" />
-                ClickSign
-              </Button>
-            )}
+          <div className="flex flex-col items-end gap-6">
+            <div className="flex gap-2 [&>*]:flex-1 [&>*]:sm:flex-initial">
+              {contract.documentUrl && (
+                <Button variant="outline" size="sm">
+                  <Download className="w-4 h-4 mr-2" />
+                  Baixar PDF
+                </Button>
+              )}
+              {contract.signatureUrl && (
+                <Button variant="outline" size="sm">
+                  <ExternalLink className="w-4 h-4 mr-2" />
+                  ClickSign
+                </Button>
+              )}
+            </div>
+            <div className="w-full sm:w-[220px]">
+              <div className="flex justify-between text-xs mb-1">
+                <span className="text-muted-foreground">{paidInstallments.length}/{contract.installmentsCount} parcelas</span>
+                <span className="font-medium">{Math.round(progress)}%</span>
+              </div>
+              <Progress value={progress} className="h-2" />
+            </div>
           </div>
         </div>
       </Card>
 
-      {/* Progress and Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      {/* Summary Widgets */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+        <Card className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+              <DollarSign className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Valor Total</p>
+              <p className="text-lg font-bold text-foreground">{formatCurrency(contract.totalValue)}</p>
+            </div>
+          </div>
+        </Card>
         <Card className="p-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-green-500/10 flex items-center justify-center">
@@ -238,7 +258,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Pendente</p>
-              <p className="text-lg font-bold">{formatCurrency(contract.totalValue - totalPaid)}</p>
+              <p className="text-lg font-bold text-amber-600">{formatCurrency(contract.totalValue - totalPaid)}</p>
             </div>
           </div>
         </Card>
@@ -251,15 +271,6 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
               <p className="text-sm text-muted-foreground">Em Atraso</p>
               <p className="text-lg font-bold text-red-600">{formatCurrency(totalOverdue)}</p>
             </div>
-          </div>
-        </Card>
-        <Card className="p-4">
-          <div>
-            <div className="flex justify-between text-sm mb-2">
-              <span className="text-muted-foreground">Progresso</span>
-              <span className="font-medium">{paidInstallments.length}/{contract.installmentsCount} parcelas</span>
-            </div>
-            <Progress value={progress} className="h-2" />
           </div>
         </Card>
       </div>

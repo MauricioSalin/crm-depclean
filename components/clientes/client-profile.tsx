@@ -354,10 +354,23 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                       {formatDate(contract.startDate)} - {formatDate(contract.endDate)}
                     </TableCell>
                     <TableCell>
-                      <Badge variant={contract.status === "active" ? "default" : "secondary"}>
-                        {contract.status === "active" ? "Ativo" : 
+                      <Badge className={
+                        contract.status === "active" ? "bg-green-100 text-green-700" :
+                        contract.status === "pending_signature" ? "bg-amber-100 text-amber-700" :
+                        contract.status === "overdue" ? "bg-red-100 text-red-700" :
+                        contract.status === "refused" ? "bg-orange-100 text-orange-700" :
+                        contract.status === "deadline_expired" ? "bg-purple-100 text-purple-700" :
+                        contract.status === "cancelled" ? "bg-red-100 text-red-700" :
+                        contract.status === "expired" ? "bg-gray-100 text-gray-700" :
+                        "bg-gray-100 text-gray-600"
+                      }>
+                        {contract.status === "active" ? "Assinado" :
                          contract.status === "pending_signature" ? "Aguardando Assinatura" :
-                         contract.status === "expired" ? "Expirado" : "Cancelado"}
+                         contract.status === "overdue" ? "Em Atraso" :
+                         contract.status === "refused" ? "Recusado" :
+                         contract.status === "deadline_expired" ? "Prazo Expirado" :
+                         contract.status === "expired" ? "Expirado" :
+                         contract.status === "cancelled" ? "Cancelado" : "Rascunho"}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">

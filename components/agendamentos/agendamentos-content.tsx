@@ -14,13 +14,6 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -37,6 +30,11 @@ import {
   Check,
   X,
 } from "lucide-react"
+import { SearchableSelect } from "@/components/ui/searchable-select"
+import { DateRangePicker } from "@/components/ui/date-range-picker"
+import { HeaderFiltersPortal } from "@/components/ui/header-filters-portal"
+import type { DateRange } from "react-day-picker"
+import { format } from "date-fns"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { mockScheduledServices, mockClients, mockServiceTypes, mockTeams, mockEmployees, formatCurrency } from "@/lib/mock-data"
 import { SchedulingFormDialog, type SchedulingFormData } from "./scheduling-form-dialog"
@@ -59,6 +57,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
   const [scheduledServices, setScheduledServices] = useState<ScheduledServiceRow[]>(mockScheduledServices as ScheduledServiceRow[])
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
+  const [dateRange, setDateRange] = useState<DateRange | undefined>()
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(10)
   
@@ -171,11 +170,18 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
   }
 
   const filteredSchedules = scheduledServices.filter(ss => {
-    const matchesSearch = 
-      ss.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      ss.serviceTypeName.toLowerCase().includes(searchTerm.toLowerCase())
+    const term = searchTerm.toLowerCase()
+    const matchesSearch = !term ||
+      ss.clientName.toLowerCase().includes(term) ||
+      ss.serviceTypeName.toLowerCase().includes(term) ||
+      ss.teams?.some((t: any) => t.name.toLowerCase().includes(term)) ||
+      ss.additionalEmployees?.some((e: any) => e.name.toLowerCase().includes(term))
     const matchesStatus = statusFilter === "all" || ss.status === statusFilter
-    return matchesSearch && matchesStatus
+    const fromStr = dateRange?.from ? format(dateRange.from, "yyyy-MM-dd") : ""
+    const toStr = dateRange?.to ? format(dateRange.to, "yyyy-MM-dd") : ""
+    const matchesDateFrom = !fromStr || ss.date >= fromStr
+    const matchesDateTo = !toStr || ss.date <= toStr
+    return matchesSearch && matchesStatus && matchesDateFrom && matchesDateTo
   })
 
   const totalItems = filteredSchedules.length
@@ -197,31 +203,42 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
         onSubmit={handleFormSubmit}
       />
 
-      <div>
-          <div className="flex items-center gap-2 mb-6">
-            <div className="relative flex-1 sm:flex-none sm:w-80">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Buscar por cliente ou serviço..."
-                value={searchTerm}
-                onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1) }}
-                className="pl-10"
-              />
-            </div>
-            <Select value={statusFilter} onValueChange={(value) => { setStatusFilter(value); setCurrentPage(1) }}>
-              <SelectTrigger className="flex-1 sm:flex-none sm:w-[140px]">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos</SelectItem>
-                <SelectItem value="scheduled">Agendado</SelectItem>
-                <SelectItem value="in_progress">Em Andamento</SelectItem>
-                <SelectItem value="completed">Concluído</SelectItem>
-                <SelectItem value="cancelled">Cancelado</SelectItem>
-              </SelectContent>
-            </Select>
-            {viewToggle && <div className="hidden sm:block shrink-0">{viewToggle}</div>}
+      <HeaderFiltersPortal>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative flex-1 sm:flex-none sm:w-80">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Buscar cliente, serviço, equipe..."
+              value={searchTerm}
+              onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1) }}
+              className="pl-10"
+            />
           </div>
+          <SearchableSelect
+            value={statusFilter}
+            onValueChange={(v) => { setStatusFilter(v); setCurrentPage(1) }}
+            options={[
+              { value: "scheduled", label: "Agendado" },
+              { value: "in_progress", label: "Em Andamento" },
+              { value: "completed", label: "Concluído" },
+              { value: "cancelled", label: "Cancelado" },
+            ]}
+            placeholder="Status"
+            searchPlaceholder="Buscar status..."
+            allLabel="Todos os status"
+            className="flex-1 sm:flex-none sm:w-[160px]"
+          />
+          <DateRangePicker
+            value={dateRange}
+            onChange={(range) => { setDateRange(range); setCurrentPage(1) }}
+            placeholder="Filtrar data"
+            className="flex-1 sm:flex-none sm:w-[260px]"
+          />
+          {viewToggle && <div className="hidden sm:block shrink-0">{viewToggle}</div>}
+        </div>
+      </HeaderFiltersPortal>
+
+      <div>
 
           {viewMode === "table" ? (
             <div className="rounded-md overflow-x-auto">
@@ -230,7 +247,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                   <TableRow>
                     <TableHead>Cliente</TableHead>
                     <TableHead className="hidden sm:table-cell">Serviço</TableHead>
-                    <TableHead className="hidden md:table-cell">Equipe</TableHead>
+                    <TableHead className="hidden md:table-cell">Equipe / Funcionários</TableHead>
                     <TableHead>Data/Hora</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Ações</TableHead>
@@ -284,6 +301,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1 text-muted-foreground">
+                            <Calendar className="h-3 w-3" />
                             <span>{new Date(schedule.date).toLocaleDateString("pt-BR")}</span>
                           </div>
                           <div className="flex items-center gap-1 text-sm text-muted-foreground">
@@ -338,66 +356,70 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
           ) : (
             <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
               {paginatedSchedules.map((schedule) => (
-                <Card key={schedule.id} className="overflow-hidden">
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                        <Calendar className="w-5 h-5 text-primary" />
+                <Card key={schedule.id}>
+                  <CardContent>
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <div className="hidden sm:flex w-10 h-10 rounded-lg bg-primary/10 items-center justify-center shrink-0">
+                          <Calendar className="w-5 h-5 text-primary" />
+                        </div>
+                        <div>
+                          <h4 className="font-medium text-sm">{schedule.clientName}</h4>
+                          <p className="text-xs text-muted-foreground">{schedule.serviceTypeName}</p>
+                        </div>
                       </div>
                       {getStatusBadge(schedule.status)}
                     </div>
-                    <h3 className="font-semibold mb-1 truncate">{schedule.clientName}</h3>
-                    <p className="text-sm text-muted-foreground mb-3">{schedule.serviceTypeName}</p>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <Calendar className="w-4 h-4 shrink-0" />
-                        <span>{new Date(schedule.date).toLocaleDateString("pt-BR")} - {schedule.time}</span>
+                    <div className="space-y-1 text-xs text-muted-foreground">
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-3 w-3" />
+                        {schedule.time} ({schedule.duration}min)
                       </div>
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <Clock className="w-4 h-4 shrink-0" />
-                        <span>{schedule.duration} minutos</span>
+                      <div className="flex items-center gap-2">
+                        <Calendar className="h-3 w-3" />
+                        {new Date(schedule.date).toLocaleDateString("pt-BR")}
                       </div>
-                      {(schedule.teams?.length > 0 || schedule.additionalEmployees?.length > 0) && (
-                        <div className="flex flex-wrap gap-1.5 mt-1">
-                          {schedule.teams?.map((team: any) => (
-                            <Badge
-                              key={team.id}
-                              variant="secondary"
-                              className="px-3 py-1 flex items-center gap-2 text-xs text-foreground/80"
-                              style={{ backgroundColor: `${team.color}1A` }}
-                            >
-                              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: team.color }} />
-                              {team.name}
-                            </Badge>
-                          ))}
-                          {schedule.additionalEmployees?.map((emp: any) => (
-                            <Badge key={emp.id} variant="outline" className="px-3 py-1 text-xs">
-                              {emp.name}
-                            </Badge>
-                          ))}
-                        </div>
-                      )}
                     </div>
-                    <div className="flex gap-2 mt-4">
-                      <Button variant="outline" size="sm" className="flex-1" onClick={() => handleEdit(schedule)}>
-                        <Edit className="w-4 h-4 mr-1" />
+                    {(schedule.teams?.length > 0 || schedule.additionalEmployees?.length > 0) && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {schedule.teams?.map((team: any) => (
+                          <Badge
+                            key={team.id}
+                            variant="secondary"
+                            className="px-3 py-1 flex items-center gap-2 text-xs text-foreground/80"
+                            style={{ backgroundColor: `${team.color}1A` }}
+                          >
+                            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: team.color }} />
+                            {team.name}
+                          </Badge>
+                        ))}
+                        {schedule.additionalEmployees?.map((emp: any) => (
+                          <Badge key={emp.id} variant="outline" className="px-3 py-1 text-xs">
+                            {emp.name}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+                    <div className="flex gap-1 mt-2">
+                      <Button variant="outline" size="sm" className="flex-1 h-7 text-xs" onClick={() => handleEdit(schedule)}>
+                        <Edit className="h-3 w-3 mr-1" />
                         Editar
                       </Button>
                       <Button
                         variant={schedule.status === "completed" ? "default" : "outline"}
                         size="sm"
-                        className={schedule.status === "completed" ? "bg-green-600 hover:bg-green-700 text-white" : ""}
+                        className={`h-7 text-xs ${schedule.status === "completed" ? "bg-green-600 hover:bg-green-700 text-white" : ""}`}
                         onClick={() => handleStatusChange(schedule.id, schedule.status === "completed" ? "scheduled" : "completed")}
                       >
-                        <Check className="h-4 w-4" />
+                        <Check className="h-3 w-3" />
                       </Button>
                       <Button
                         variant={schedule.status === "cancelled" ? "default" : "outline"}
                         size="sm"
-                        className={schedule.status === "cancelled" ? "bg-red-600 hover:bg-red-700 text-white" : ""}
+                        className={`h-7 text-xs ${schedule.status === "cancelled" ? "bg-red-600 hover:bg-red-700 text-white" : ""}`}
                         onClick={() => handleStatusChange(schedule.id, schedule.status === "cancelled" ? "scheduled" : "cancelled")}
                       >
-                        <X className="h-4 w-4" />
+                        <X className="h-3 w-3" />
                       </Button>
                     </div>
                   </CardContent>

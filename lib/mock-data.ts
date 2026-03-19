@@ -430,8 +430,8 @@ export const contracts: Contract[] = [
       status: i < 3 ? "paid" as const : "pending" as const,
       createdAt: new Date("2026-01-10"),
     })),
-    status: "active",
-    signedAt: new Date("2026-01-15"),
+    status: "pending_signature",
+    signatureUrl: "https://clicksign.com/doc/8a7b2c4d-1234-5678-abcd-ef0123456789",
     createdAt: new Date("2026-01-10"),
     updatedAt: new Date("2026-01-15"),
   },
@@ -467,9 +467,11 @@ export const contracts: Contract[] = [
       status: i < 2 ? "paid" as const : i === 2 ? "overdue" as const : "pending" as const,
       createdAt: new Date("2026-02-01"),
     })),
-    status: "active",
+    status: "overdue",
+    signedAt: new Date("2026-02-05"),
+    signatureUrl: "https://clicksign.com/doc/c3d4e5f6-abcd-7890-1234-567890abcdef",
     createdAt: new Date("2026-02-01"),
-    updatedAt: new Date("2026-02-01"),
+    updatedAt: new Date("2026-03-10"),
   },
   {
     // Client4: Matriz 60 + Filial 1 90 = 150 unidades → regra 101-200 = trimestral
@@ -543,10 +545,10 @@ export const contracts: Contract[] = [
       status: i < 2 ? "paid" as const : "pending" as const,
       createdAt: new Date("2026-02-10"),
     })),
-    status: "active",
-    signedAt: new Date("2026-02-10"),
+    status: "refused",
+    signatureUrl: "https://clicksign.com/doc/f1a2b3c4-5678-9abc-def0-123456789abc",
     createdAt: new Date("2026-02-10"),
-    updatedAt: new Date("2026-02-10"),
+    updatedAt: new Date("2026-03-15"),
   },
 ]
 
@@ -1157,11 +1159,18 @@ export const mockEmployees = employees.map(e => ({
   avatar: e.avatar || "/avatars/avatar-1.jpg",
   createdAt: e.createdAt?.toISOString() || "2024-01-01",
 }))
+const serviceDurations: Record<string, { defaultDuration: number; durationType: "hours" | "shift" | "days" }> = {
+  srv1: { defaultDuration: 4, durationType: "hours" },
+  srv2: { defaultDuration: 1, durationType: "shift" },
+  srv3: { defaultDuration: 1, durationType: "days" },
+  srv4: { defaultDuration: 2, durationType: "hours" },
+}
 export const mockServiceTypes = serviceTypes.map(s => ({
   id: s.id,
   name: s.name,
   description: s.description || "",
-  defaultDuration: 60,
+  defaultDuration: serviceDurations[s.id]?.defaultDuration ?? 60,
+  durationType: serviceDurations[s.id]?.durationType ?? "hours",
   pricePerHour: s.baseValue ? s.baseValue / 12 : 0,
   baseValue: s.baseValue,
   teamIds: s.defaultTeamIds || [],

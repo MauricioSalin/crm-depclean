@@ -39,6 +39,8 @@ import {
   Mail,
   FileText,
 } from "lucide-react"
+import { HeaderFiltersPortal } from "@/components/ui/header-filters-portal"
+import { SearchableSelect } from "@/components/ui/searchable-select"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { clients, contracts, clientTypes, getClientTypeById, formatCNPJ } from "@/lib/mock-data"
 import { getColorFromClass } from "@/lib/utils"
@@ -74,29 +76,29 @@ export function ClientsContent({ viewMode, viewToggle }: ClientsContentProps) {
   return (
     <>
       {/* <CardContent className="p-3 sm:p-4 md:p-6"> */}
-      <div className="flex gap-2 mb-6 items-center">
-        <div className="relative flex-1 sm:flex-none sm:w-80">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Buscar por nome, responsável ou CNPJ..."
-            value={searchTerm}
-            onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1) }}
-            className="pl-10"
+      <HeaderFiltersPortal>
+        <div className="flex gap-2 items-center">
+          <div className="relative flex-1 sm:flex-none sm:w-80">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Buscar por nome, responsável ou CNPJ..."
+              value={searchTerm}
+              onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1) }}
+              className="pl-10"
+            />
+          </div>
+          <SearchableSelect
+            value={typeFilter}
+            onValueChange={(value) => { setTypeFilter(value); setCurrentPage(1) }}
+            options={clientTypes.map(t => ({ value: t.id, label: t.name }))}
+            placeholder="Tipo"
+            searchPlaceholder="Buscar tipo..."
+            allLabel="Todos os tipos"
+            className="flex-1 sm:flex-none sm:w-[160px]"
           />
+          {viewToggle && <div className="hidden sm:block shrink-0">{viewToggle}</div>}
         </div>
-        <Select value={typeFilter} onValueChange={(value) => { setTypeFilter(value); setCurrentPage(1) }}>
-          <SelectTrigger className="flex-1 sm:flex-none sm:w-[160px]">
-            <SelectValue placeholder="Tipo" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos os tipos</SelectItem>
-            {clientTypes.map(type => (
-              <SelectItem key={type.id} value={type.id}>{type.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {viewToggle && <div className="hidden sm:block shrink-0">{viewToggle}</div>}
-      </div>
+      </HeaderFiltersPortal>
 
       {viewMode === "table" ? (
         <div className="rounded-md overflow-x-auto">
@@ -209,26 +211,30 @@ export function ClientsContent({ viewMode, viewToggle }: ClientsContentProps) {
               <Card key={client.id} className="overflow-hidden">
                 <CardContent className="p-4">
                   <Link href={`/clientes/${client.id}`}>
-                    <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center gap-3 mb-3">
                       <div
-                        className="w-12 h-12 rounded-xl flex items-center justify-center"
+                        className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
                         style={{ backgroundColor: `${getColorFromClass(clientType?.color || '')}1A` }}
                       >
-                        <Building2 className="w-6 h-6" style={{ color: getColorFromClass(clientType?.color || '') }} />
+                        <Building2 className="w-5 h-5" style={{ color: getColorFromClass(clientType?.color || '') }} />
                       </div>
-                      <Badge
-                        style={{ backgroundColor: getColorFromClass(clientType?.color || '') }}
-                        className="text-white border-0 hover:opacity-90"
-                      >
-                        {clientType?.name}
-                      </Badge>
+                      <div className="min-w-0">
+                        <h3 className="font-semibold truncate text-sm">{client.companyName}</h3>
+                        <p className="text-xs text-muted-foreground font-mono">{formatCNPJ(client.cnpj)}</p>
+                      </div>
                     </div>
-                    <h3 className="font-semibold mb-1 truncate">{client.companyName}</h3>
-                    <p className="text-sm text-muted-foreground mb-3 font-mono">{formatCNPJ(client.cnpj)}</p>
                     <div className="space-y-2 text-sm">
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <Phone className="w-4 h-4 shrink-0" />
-                        <span>{client.phone}</span>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <Phone className="w-4 h-4 shrink-0" />
+                          <span>{client.phone}</span>
+                        </div>
+                        <Badge
+                          style={{ backgroundColor: getColorFromClass(clientType?.color || '') }}
+                          className="text-white border-0 hover:opacity-90 shrink-0 text-xs"
+                        >
+                          {clientType?.name}
+                        </Badge>
                       </div>
                       <div className="flex items-center gap-2 text-muted-foreground">
                         <Mail className="w-4 h-4 shrink-0" />

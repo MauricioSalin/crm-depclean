@@ -28,6 +28,8 @@ import {
 } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { Search, Edit, Trash2, Phone, Mail, User, Shield } from "lucide-react"
+import { HeaderFiltersPortal } from "@/components/ui/header-filters-portal"
+import { SearchableSelect } from "@/components/ui/searchable-select"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { mockEmployees, mockPermissionProfiles } from "@/lib/mock-data"
 
@@ -284,29 +286,33 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
       </Dialog>
 
       <div>
-          <div className="flex items-center gap-2 mb-6">
-            <div className="relative flex-1 sm:flex-none sm:w-80">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Buscar por nome, email ou CPF..."
-                value={searchTerm}
-                onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1) }}
-                className="pl-10"
+          <HeaderFiltersPortal>
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1 sm:flex-none sm:w-80">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar por nome, e-mail ou CPF..."
+                  value={searchTerm}
+                  onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1) }}
+                  className="pl-10"
+                />
+              </div>
+              <SearchableSelect
+                value={statusFilter}
+                onValueChange={(value) => { setStatusFilter(value); setCurrentPage(1) }}
+                options={[
+                  { value: "active", label: "Ativos" },
+                  { value: "inactive", label: "Inativos" },
+                  { value: "vacation", label: "Férias" },
+                ]}
+                placeholder="Status"
+                searchPlaceholder="Buscar status..."
+                allLabel="Todos"
+                className="flex-1 sm:flex-none sm:w-[140px]"
               />
+              {viewToggle && <div className="hidden sm:block shrink-0">{viewToggle}</div>}
             </div>
-            <Select value={statusFilter} onValueChange={(value) => { setStatusFilter(value); setCurrentPage(1) }}>
-              <SelectTrigger className="flex-1 sm:flex-none sm:w-[140px]">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos</SelectItem>
-                <SelectItem value="active">Ativos</SelectItem>
-                <SelectItem value="inactive">Inativos</SelectItem>
-                <SelectItem value="vacation">Férias</SelectItem>
-              </SelectContent>
-            </Select>
-            {viewToggle && <div className="hidden sm:block shrink-0">{viewToggle}</div>}
-          </div>
+          </HeaderFiltersPortal>
 
           {viewMode === "table" ? (
             <div className="rounded-md overflow-x-auto">

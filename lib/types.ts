@@ -172,7 +172,7 @@ export interface Installment {
 }
 
 // Contract (Contrato)
-export type ContractStatus = "draft" | "pending_signature" | "active" | "expired" | "cancelled"
+export type ContractStatus = "draft" | "pending_signature" | "active" | "overdue" | "expired" | "cancelled" | "refused" | "deadline_expired"
 
 export interface Contract {
   id: string

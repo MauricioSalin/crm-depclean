@@ -5,7 +5,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   Dialog,
   DialogContent,
@@ -23,24 +22,27 @@ import {
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
-// Tabs moved to page level
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   ChevronLeft,
   ChevronRight,
-  Plus,
   Clock,
   MapPin,
   Calendar as CalendarIcon,
   Check,
   X,
   Edit,
-  Building,
+  Calendar,
+  Search,
 } from "lucide-react"
-import { DataPagination } from "@/components/ui/data-pagination"
 import { mockScheduledServices, mockClients, mockTeams, mockServiceTypes } from "@/lib/mock-data"
-import { getColorFromClass } from "@/lib/utils"
+import { HeaderFiltersPortal } from "@/components/ui/header-filters-portal"
+import { SearchableSelect } from "@/components/ui/searchable-select"
+
 import type { RecurrenceType } from "@/lib/types"
+import { WeekTimeline } from "./week-timeline"
+import { CurrencyInput } from "@/components/ui/currency-input"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 type AgendaRecurrenceType = "none" | "daily" | RecurrenceType
 type AgendaScheduledServiceRow = Omit<(typeof mockScheduledServices)[number], "recurrence" | "time"> & {
@@ -71,13 +73,11 @@ const MONTHS = [
 ]
 
 interface AgendaContentProps {
-  viewMode: "month" | "list"
   openDialog?: boolean
   onDialogChange?: (open: boolean) => void
-  viewToggle?: React.ReactNode
 }
 
-export function AgendaContent({ viewMode, openDialog, onDialogChange, viewToggle }: AgendaContentProps) {
+export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps) {
   const [scheduledServices, setScheduledServices] = useState<AgendaScheduledServiceRow[]>(
     (mockScheduledServices as (typeof mockScheduledServices)[number][]).map((s) => ({
       ...s,
@@ -87,12 +87,9 @@ export function AgendaContent({ viewMode, openDialog, onDialogChange, viewToggle
   )
   const [currentDate, setCurrentDate] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState<Date | null>(() => new Date())
-  const [teamFilter, setTeamFilter] = useState<string>("all")
+  const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
-
-  // Pagination for list view
-  const [currentPage, setCurrentPage] = useState(1)
-  const [pageSize, setPageSize] = useState(10)
+  const [viewMode, setViewMode] = useState<"month" | "week">("month")
 
   // Dialog state
   const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -146,26 +143,17 @@ export function AgendaContent({ viewMode, openDialog, onDialogChange, viewToggle
   }, [currentMonth, currentYear])
 
   const filteredServices = useMemo(() => {
+    const term = searchTerm.toLowerCase()
     return scheduledServices.filter(service => {
-      const matchesTeam = teamFilter === "all" || service.teamId === teamFilter
+      const matchesSearch = !term ||
+        service.clientName.toLowerCase().includes(term) ||
+        service.serviceTypeName.toLowerCase().includes(term) ||
+        service.teams?.some((t: any) => t.name.toLowerCase().includes(term)) ||
+        service.additionalEmployees?.some((e: any) => e.name.toLowerCase().includes(term))
       const matchesStatus = statusFilter === "all" || service.status === statusFilter
-      return matchesTeam && matchesStatus
+      return matchesSearch && matchesStatus
     })
-  }, [scheduledServices, teamFilter, statusFilter])
-
-  const sortedServices = useMemo(() => {
-    return [...filteredServices].sort((a, b) => {
-      const dateA = new Date(`${a.date}T${a.time}`)
-      const dateB = new Date(`${b.date}T${b.time}`)
-      return dateA.getTime() - dateB.getTime()
-    })
-  }, [filteredServices])
-
-  const totalPages = Math.ceil(sortedServices.length / pageSize)
-  const paginatedServices = useMemo(() => {
-    const start = (currentPage - 1) * pageSize
-    return sortedServices.slice(start, start + pageSize)
-  }, [sortedServices, currentPage, pageSize])
+  }, [scheduledServices, searchTerm, statusFilter])
 
   const getServicesForDate = (date: Date) => {
     const dateStr = date.toISOString().split("T")[0]
@@ -247,7 +235,7 @@ export function AgendaContent({ viewMode, openDialog, onDialogChange, viewToggle
       time: "",
       duration: 60,
       value: 0,
-        createContract: false,
+      createContract: false,
       recurrence: { ...DEFAULT_RECURRENCE },
       notes: "",
     })
@@ -270,7 +258,7 @@ export function AgendaContent({ viewMode, openDialog, onDialogChange, viewToggle
       time: service.time ?? "",
       duration: service.duration,
       value: 0,
-        createContract: false,
+      createContract: false,
       recurrence: service.recurrence || { ...DEFAULT_RECURRENCE },
       notes: service.notes || "",
     })
@@ -297,14 +285,15 @@ export function AgendaContent({ viewMode, openDialog, onDialogChange, viewToggle
   }
 
   const getTeamColor = (teamId?: string) => {
+    if (!teamId) return "#9CA3AF" // gray for no team
     const team = mockTeams.find(t => t.id === teamId)
-    return getColorFromClass(team?.color || '')
+    return team?.color || "#9CA3AF"
   }
 
   const selectedDateServices = selectedDate ? getServicesForDate(selectedDate) : []
 
   return (
-    <div className="flex flex-col gap-4 lg:h-[calc(100vh-180px)] lg:overflow-hidden">
+    <div className="flex flex-col gap-4 lg:h-[calc(100vh-180px)]">
       <Dialog open={isDialogOpen} onOpenChange={handleDialogChange}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
@@ -399,13 +388,9 @@ export function AgendaContent({ viewMode, openDialog, onDialogChange, viewToggle
               </div>
               <div className="space-y-2">
                 <Label>Valor (R$)</Label>
-                <Input
-                  type="number"
-                  value={formData.value}
-                  onChange={(e) => setFormData({ ...formData, value: Number(e.target.value) })}
-                  min={0}
-                  step={0.01}
-                  placeholder="0,00"
+                <CurrencyInput
+                  value={Math.round(formData.value * 100)}
+                  onChange={(cents: number) => setFormData({ ...formData, value: cents / 100 })}
                 />
               </div>
               <div className="space-y-2">
@@ -508,336 +493,375 @@ export function AgendaContent({ viewMode, openDialog, onDialogChange, viewToggle
       </Dialog>
 
       {/* Filters */}
-      <div className="flex items-center gap-2 mb-4">
-        <Select value={teamFilter} onValueChange={setTeamFilter}>
-          <SelectTrigger className="flex-1 sm:flex-initial sm:w-[180px]">
-            <SelectValue placeholder="Filtrar por equipe" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todas as equipes</SelectItem>
-            {mockTeams.map(team => (
-              <SelectItem key={team.id} value={team.id}>
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: team.color }} />
-                  {team.name}
-                </div>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="flex-1 sm:flex-initial sm:w-[180px]">
-            <SelectValue placeholder="Filtrar por status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos os status</SelectItem>
-            <SelectItem value="scheduled">Agendado</SelectItem>
-            <SelectItem value="in_progress">Em Andamento</SelectItem>
-            <SelectItem value="completed">Concluído</SelectItem>
-            <SelectItem value="cancelled">Cancelado</SelectItem>
-          </SelectContent>
-        </Select>
-        {viewToggle && <div className="hidden sm:block shrink-0">{viewToggle}</div>}
-      </div>
+      <HeaderFiltersPortal>
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1 sm:flex-none sm:w-80">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Buscar cliente, serviço, equipe..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+          <SearchableSelect
+            value={statusFilter}
+            onValueChange={setStatusFilter}
+            options={[
+              { value: "scheduled", label: "Agendado" },
+              { value: "in_progress", label: "Em Andamento" },
+              { value: "completed", label: "Concluído" },
+              { value: "cancelled", label: "Cancelado" },
+            ]}
+            placeholder="Status"
+            searchPlaceholder="Buscar status..."
+            allLabel="Todos os status"
+            className="flex-1 sm:flex-none sm:w-[160px]"
+          />
+          <Tabs value={viewMode} onValueChange={(v) => {
+            const mode = v as "month" | "week"
+            if (mode === "week") {
+              setCurrentDate(selectedDate || new Date())
+            }
+            setViewMode(mode)
+          }} className="hidden sm:block shrink-0">
+            <TabsList className="h-9">
+              <TabsTrigger value="month" className="text-xs px-3">Mês</TabsTrigger>
+              <TabsTrigger value="week" className="text-xs px-3">Semana</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
+      </HeaderFiltersPortal>
 
       {viewMode === "month" ? (
-        <div className="grid gap-4 lg:grid-cols-5 lg:flex-1 lg:overflow-hidden">
-          {/* Calendar Grid */}
-          <Card className="lg:col-span-3 xl:col-span-3 flex flex-col lg:overflow-hidden">
-            <CardHeader className="py-2 px-4 shrink-0">
-              <div className="flex items-center justify-between">
-                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigateMonth(-1)}>
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                <CardTitle className="text-base">
-                  {MONTHS[currentMonth]} {currentYear}
-                </CardTitle>
-                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigateMonth(1)}>
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="px-4 pb-3 pt-0 flex-1 flex flex-col min-h-0">
-              <div className="grid grid-cols-7 gap-1 shrink-0">
-                {DAYS_OF_WEEK.map((day) => (
-                  <div key={day.value} className="text-center text-xs font-medium text-muted-foreground py-1">
-                    {day.label}
-                  </div>
-                ))}
-              </div>
-              <div className="grid grid-cols-7 gap-1 flex-1">
-                {daysInMonth.map((date, index) => {
-                  if (!date) {
-                    return <div key={`empty-${index}`} />
-                  }
-                  const services = getServicesForDate(date)
-                  const isSelected = selectedDate?.toDateString() === date.toDateString()
+      <div className="grid gap-4 lg:grid-cols-5 lg:flex-1 lg:overflow-hidden">
+        {/* Calendar Grid */}
+        <Card className="lg:col-span-3 xl:col-span-3 flex flex-col lg:overflow-hidden">
+          <CardHeader className="py-2 px-4 shrink-0">
+            <div className="flex items-center justify-between">
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigateMonth(-1)}>
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <CardTitle className="text-base">
+                {MONTHS[currentMonth]} {currentYear}
+              </CardTitle>
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigateMonth(1)}>
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="px-4 pb-3 pt-0 flex-1 flex flex-col min-h-0">
+            <div className="grid grid-cols-7 gap-1 shrink-0">
+              {DAYS_OF_WEEK.map((day) => (
+                <div key={day.value} className="text-center text-xs font-medium text-muted-foreground py-1">
+                  {day.label}
+                </div>
+              ))}
+            </div>
+            <div className="grid grid-cols-7 gap-1 flex-1 auto-rows-fr">
+              {daysInMonth.map((date, index) => {
+                if (!date) {
+                  return <div key={`empty-${index}`} />
+                }
+                const services = getServicesForDate(date)
+                const isSelected = selectedDate?.toDateString() === date.toDateString()
 
-                  return (
-                    <button
-                      key={date.toISOString()}
-                      onClick={() => handleDateClick(date)}
-                      className={`
+                return (
+                  <button
+                    key={date.toISOString()}
+                    onClick={() => handleDateClick(date)}
+                    className={`
                         rounded-lg flex flex-col items-center justify-center p-1 text-sm
-                        transition-all duration-200 hover:bg-muted border aspect-square
+                        transition-all duration-200 hover:bg-muted border
                         ${isToday(date) ? "bg-primary/10 border-primary" : "border-transparent"}
                         ${isSelected ? "ring-2 ring-primary ring-offset-2" : ""}
                       `}
-                    >
-                      <span className={`font-medium ${isToday(date) ? "text-primary" : ""}`}>
-                        {date.getDate()}
-                      </span>
-                      {services.length > 0 && (
-                        <div className="flex items-center justify-center gap-1 mt-1 flex-wrap">
-                          {[...new Set(services.map(s => s.teamId))].slice(0, 4).map((teamId) => (
-                            <div
-                              key={teamId || 'no-team'}
-                              className="w-2 h-2 rounded-full"
-                              style={{ backgroundColor: getTeamColor(teamId) }}
-                              title={`${services.filter(s => s.teamId === teamId).length} serviço(s)`}
-                            />
-                          ))}
-                          {[...new Set(services.map(s => s.teamId))].length > 4 && (
-                            <span className="text-[9px] text-muted-foreground">
-                              +{[...new Set(services.map(s => s.teamId))].length - 4}
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </button>
-                  )
-                })}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Selected Date Details */}
-          <Card className="lg:col-span-2 xl:col-span-2 flex flex-col lg:overflow-hidden">
-            <CardHeader className="py-3 px-4">
-              <CardTitle className="flex items-center gap-2 text-sm">
-                <CalendarIcon className="h-4 w-4" />
-                {selectedDate
-                  ? selectedDate.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" })
-                  : "Selecione uma data"
-                }
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="flex-1 lg:overflow-hidden px-0">
-              {selectedDate ? (
-                selectedDateServices.length > 0 ? (
-                  <ScrollArea className="lg:h-full">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-3 px-6">
-                      {selectedDateServices.map((service) => (
-                        <Card key={service.id}>
-                          <CardContent>
-                            <div className="flex items-start justify-between mb-2">
-                              <div className="flex items-center gap-2">
-                                <div>
-                                  <h4 className="font-medium text-sm">{service.clientName}</h4>
-                                  <p className="text-xs text-muted-foreground">{service.serviceTypeName}</p>
-                                </div>
-                              </div>
-                              <div className="flex flex-col items-end gap-1.5">
-                                {getStatusBadge(service.status)}
-                                {(service.teams?.length > 0 || service.additionalEmployees?.length > 0) && (
-                                  <div className="flex flex-wrap justify-end gap-1">
-                                    {service.teams?.map((team: any) => (
-                                      <Badge
-                                        key={team.id}
-                                        variant="secondary"
-                                        className="px-3 py-1 flex items-center gap-2 text-xs text-foreground/80"
-                                        style={{ backgroundColor: `${team.color}1A` }}
-                                      >
-                                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: team.color }} />
-                                        {team.name}
-                                      </Badge>
-                                    ))}
-                                    {service.additionalEmployees?.map((emp: any) => (
-                                      <Badge key={emp.id} variant="outline" className="px-3 py-1 text-xs">
-                                        {emp.name}
-                                      </Badge>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                            <div className="space-y-1 text-xs text-muted-foreground">
-                              <div className="flex items-center gap-2">
-                                <Clock className="h-3 w-3" />
-                                {service.time} ({service.duration}min)
-                              </div>
-                              {service.address && (
-                                <div className="flex items-center gap-2">
-                                  <MapPin className="h-3 w-3" />
-                                  <span className="truncate">{service.address}</span>
-                                </div>
-                              )}
-                            </div>
-                            <div className="flex gap-1 mt-2">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="flex-1 h-7 text-xs"
-                                onClick={() => handleEditService(service)}
-                              >
-                                <Edit className="h-3 w-3 mr-1" />
-                                Editar
-                              </Button>
-                              <Button
-                                variant={service.status === "completed" ? "default" : "outline"}
-                                size="sm"
-                                className={`h-7 text-xs ${service.status === "completed" ? "bg-green-600 hover:bg-green-700 text-white" : ""}`}
-                                onClick={() => handleStatusChange(service.id, service.status === "completed" ? "scheduled" : "completed")}
-                              >
-                                <Check className="h-3 w-3" />
-                              </Button>
-                              <Button
-                                variant={service.status === "cancelled" ? "default" : "outline"}
-                                size="sm"
-                                className={`h-7 text-xs ${service.status === "cancelled" ? "bg-red-600 hover:bg-red-700 text-white" : ""}`}
-                                onClick={() => handleStatusChange(service.id, service.status === "cancelled" ? "scheduled" : "cancelled")}
-                              >
-                                <X className="h-3 w-3" />
-                              </Button>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </div>
-                  </ScrollArea>
-                ) : (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <CalendarIcon className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                    <p className="text-sm">Nenhum serviço agendado</p>
-                    <Button
-                      variant="link"
-                      className="text-primary mt-2"
-                      onClick={() => handleDialogChange(true)}
-                    >
-                      Agendar serviço
-                    </Button>
-                  </div>
+                  >
+                    <span className={`font-medium ${isToday(date) ? "text-primary" : ""}`}>
+                      {date.getDate()}
+                    </span>
+                    {services.length > 0 && (
+                      <div className="flex items-center justify-center gap-1 mt-1 flex-wrap">
+                        {[...new Set(services.map(s => s.teamId))].slice(0, 4).map((teamId) => (
+                          <div
+                            key={teamId || 'no-team'}
+                            className="w-2 h-2 rounded-full"
+                            style={{ backgroundColor: getTeamColor(teamId) }}
+                            title={`${services.filter(s => s.teamId === teamId).length} serviço(s)`}
+                          />
+                        ))}
+                        {[...new Set(services.map(s => s.teamId))].length > 4 && (
+                          <span className="text-[9px] text-muted-foreground">
+                            +{[...new Set(services.map(s => s.teamId))].length - 4}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </button>
                 )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Selected Date Details */}
+        <Card className="lg:col-span-2 xl:col-span-2 flex flex-col lg:overflow-hidden">
+          <CardHeader className="py-3 px-4">
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <CalendarIcon className="h-4 w-4" />
+              {selectedDate
+                ? selectedDate.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" }).replace(/^\w/, c => c.toUpperCase()).replace(/de (\w)/, (_, c) => `de ${c.toUpperCase()}`)
+                : "Selecione uma data"
+              }
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="flex-1 lg:overflow-hidden px-0">
+            {selectedDate ? (
+              selectedDateServices.length > 0 ? (
+                <ScrollArea className="lg:h-full">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-3 px-6">
+                    {selectedDateServices.map((service) => (
+                      <Card key={service.id}>
+                        <CardContent>
+                          <div className="flex items-start justify-between mb-4">
+                            <div className="flex items-center gap-2">
+                              <div className="hidden sm:flex w-10 h-10 rounded-lg bg-primary/10 items-center justify-center shrink-0">
+                                <Calendar className="w-5 h-5 text-primary" />
+                              </div>
+                              <div>
+                                <h4 className="font-medium text-sm">{service.clientName}</h4>
+                                <p className="text-xs text-muted-foreground">{service.serviceTypeName}</p>
+                              </div>
+                            </div>
+                            {getStatusBadge(service.status)}
+                          </div>
+                          <div className="space-y-1 text-xs text-muted-foreground">
+                            <div className="flex items-center gap-2">
+                              <Clock className="h-3 w-3" />
+                              {service.time} ({service.duration}min)
+                            </div>
+                            {service.address && (
+                              <div className="flex items-center gap-2">
+                                <MapPin className="h-3 w-3" />
+                                <span className="truncate">{service.address}</span>
+                              </div>
+                            )}
+                          </div>
+                          {(service.teams?.length > 0 || service.additionalEmployees?.length > 0) && (
+                            <div className="flex flex-wrap gap-1 my-4">
+                              {service.teams?.map((team: any) => (
+                                <Badge
+                                  key={team.id}
+                                  variant="secondary"
+                                  className="px-3 py-1 flex items-center gap-2 text-xs text-foreground/80"
+                                  style={{ backgroundColor: `${team.color}1A` }}
+                                >
+                                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: team.color }} />
+                                  {team.name}
+                                </Badge>
+                              ))}
+                              {service.additionalEmployees?.map((emp: any) => (
+                                <Badge key={emp.id} variant="outline" className="px-3 py-1 text-xs">
+                                  {emp.name}
+                                </Badge>
+                              ))}
+                            </div>
+                          )}
+                          <div className="flex gap-1 mt-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="flex-1 h-7 text-xs"
+                              onClick={() => handleEditService(service)}
+                            >
+                              <Edit className="h-3 w-3 mr-1" />
+                              Editar
+                            </Button>
+                            <Button
+                              variant={service.status === "completed" ? "default" : "outline"}
+                              size="sm"
+                              className={`h-7 text-xs ${service.status === "completed" ? "bg-green-600 hover:bg-green-700 text-white" : ""}`}
+                              onClick={() => handleStatusChange(service.id, service.status === "completed" ? "scheduled" : "completed")}
+                            >
+                              <Check className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              variant={service.status === "cancelled" ? "default" : "outline"}
+                              size="sm"
+                              className={`h-7 text-xs ${service.status === "cancelled" ? "bg-red-600 hover:bg-red-700 text-white" : ""}`}
+                              onClick={() => handleStatusChange(service.id, service.status === "cancelled" ? "scheduled" : "cancelled")}
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </ScrollArea>
               ) : (
                 <div className="text-center py-8 text-muted-foreground">
                   <CalendarIcon className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                  <p className="text-sm">Clique em uma data para ver os detalhes</p>
+                  <p className="text-sm">Nenhum serviço agendado</p>
+                  <Button
+                    variant="link"
+                    className="text-primary mt-2"
+                    onClick={() => handleDialogChange(true)}
+                  >
+                    Agendar serviço
+                  </Button>
                 </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+              )
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                <CalendarIcon className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                <p className="text-sm">Clique em uma data para ver os detalhes</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
       ) : (
-        <Card className="flex-1 flex flex-col">
-          <CardContent className="p-4 flex-1 flex flex-col">
-            <div className="rounded-md overflow-x-auto flex-1">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b bg-muted/50">
-                    <th className="h-10 px-4 text-left font-medium">Data/Hora</th>
-                    <th className="h-10 px-4 text-left font-medium">Cliente</th>
-                    <th className="h-10 px-4 text-left font-medium hidden sm:table-cell">Serviço</th>
-                    <th className="h-10 px-4 text-left font-medium hidden md:table-cell">Equipe</th>
-                    <th className="h-10 px-4 text-left font-medium">Status</th>
-                    <th className="h-10 px-4 text-right font-medium">Ações</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {paginatedServices.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="h-24 text-center text-muted-foreground">
-                        Nenhum agendamento encontrado.
-                      </td>
-                    </tr>
-                  ) : (
-                    paginatedServices.map((service) => (
-                      <tr key={service.id} className="border-b">
-                        <td className="p-4">
-                          <div className="flex items-center gap-2">
-                            <div
-                              className="w-1 h-8 rounded-full"
-                              style={{ backgroundColor: getTeamColor(service.teamId) }}
-                            />
-                            <div>
-                              <div className="font-medium">
-                                {new Date(service.date).toLocaleDateString("pt-BR")}
-                              </div>
-                              <div className="text-sm text-muted-foreground">{service.time}</div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="p-4">
-                          <div className="flex items-center gap-2">
-                            <Building className="h-4 w-4 text-muted-foreground" />
-                            {service.clientName}
-                          </div>
-                        </td>
-                        <td className="p-4 hidden sm:table-cell">{service.serviceTypeName}</td>
-                        <td className="p-4 hidden md:table-cell">
-                          <div className="flex flex-wrap gap-1.5">
-                            {service.teams?.map((team: any) => (
-                              <Badge
-                                key={team.id}
-                                variant="secondary"
-                                className="px-3 py-1 flex items-center gap-2 text-xs text-foreground/80"
-                                style={{ backgroundColor: `${team.color}1A` }}
-                              >
-                                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: team.color }} />
-                                {team.name}
-                              </Badge>
-                            ))}
-                            {service.additionalEmployees?.map((emp: any) => (
-                              <Badge key={emp.id} variant="outline" className="px-3 py-1 text-xs">
-                                {emp.name}
-                              </Badge>
-                            ))}
-                          </div>
-                        </td>
-                        <td className="p-4">{getStatusBadge(service.status)}</td>
-                        <td className="p-4 text-right">
-                          <div className="flex justify-end gap-1">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleEditService(service)}
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className={service.status === "completed" ? "bg-green-100 hover:bg-green-200" : ""}
-                              onClick={() => handleStatusChange(service.id, service.status === "completed" ? "scheduled" : "completed")}
-                            >
-                              <Check className="h-4 w-4 text-green-600" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className={service.status === "cancelled" ? "bg-red-100 hover:bg-red-200" : ""}
-                              onClick={() => handleStatusChange(service.id, service.status === "cancelled" ? "scheduled" : "cancelled")}
-                            >
-                              <X className="h-4 w-4 text-destructive" />
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            <DataPagination
-              currentPage={currentPage}
-              totalPages={totalPages}
-              pageSize={pageSize}
-              totalItems={sortedServices.length}
-              onPageChange={setCurrentPage}
-              onPageSizeChange={(size) => { setPageSize(size); setCurrentPage(1) }}
+      /* Week Timeline View */
+      <div className="grid gap-4 lg:grid-cols-5 lg:flex-1 lg:overflow-hidden">
+        <Card className="lg:col-span-3 xl:col-span-3 flex flex-col lg:overflow-hidden">
+          <CardContent className="p-0 flex-1 flex flex-col min-h-0 lg:h-[calc(100vh-280px)]">
+            <WeekTimeline
+              events={filteredServices.map(s => ({
+                id: s.id,
+                title: s.clientName,
+                subtitle: s.serviceTypeName,
+                date: s.date,
+                time: s.time || "08:00",
+                duration: s.duration,
+                teamColor: s.teams?.length > 0 ? (s.teams[0] as any).color || getTeamColor(s.teamId) : null,
+                status: s.status,
+              }))}
+              currentDate={currentDate}
+              selectedDate={selectedDate}
+              onDateChange={setCurrentDate}
+              onDaySelect={(date) => handleDateClick(date)}
             />
           </CardContent>
         </Card>
+
+        {/* Selected Date Details (same as month view) */}
+        <Card className="lg:col-span-2 xl:col-span-2 flex flex-col lg:overflow-hidden">
+          <CardHeader className="py-3 px-4">
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <CalendarIcon className="h-4 w-4" />
+              {selectedDate
+                ? selectedDate.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" }).replace(/^\w/, c => c.toUpperCase()).replace(/de (\w)/, (_, c) => `de ${c.toUpperCase()}`)
+                : "Selecione uma data"
+              }
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="flex-1 lg:overflow-hidden px-0">
+            {selectedDate ? (
+              selectedDateServices.length > 0 ? (
+                <ScrollArea className="lg:h-full">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-3 px-6">
+                    {selectedDateServices.map((service) => (
+                      <Card key={service.id}>
+                        <CardContent>
+                          <div className="flex items-start justify-between mb-4">
+                            <div className="flex items-center gap-2">
+                              <div className="hidden sm:flex w-10 h-10 rounded-lg bg-primary/10 items-center justify-center shrink-0">
+                                <Calendar className="w-5 h-5 text-primary" />
+                              </div>
+                              <div>
+                                <h4 className="font-medium text-sm">{service.clientName}</h4>
+                                <p className="text-xs text-muted-foreground">{service.serviceTypeName}</p>
+                              </div>
+                            </div>
+                            {getStatusBadge(service.status)}
+                          </div>
+                          <div className="space-y-1 text-xs text-muted-foreground">
+                            <div className="flex items-center gap-2">
+                              <Clock className="h-3 w-3" />
+                              {service.time} ({service.duration}min)
+                            </div>
+                            {service.address && (
+                              <div className="flex items-center gap-2">
+                                <MapPin className="h-3 w-3" />
+                                <span className="truncate">{service.address}</span>
+                              </div>
+                            )}
+                          </div>
+                          {(service.teams?.length > 0 || service.additionalEmployees?.length > 0) && (
+                            <div className="flex flex-wrap gap-1 my-4">
+                              {service.teams?.map((team: any) => (
+                                <Badge
+                                  key={team.id}
+                                  variant="secondary"
+                                  className="px-3 py-1 flex items-center gap-2 text-xs text-foreground/80"
+                                  style={{ backgroundColor: `${team.color}1A` }}
+                                >
+                                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: team.color }} />
+                                  {team.name}
+                                </Badge>
+                              ))}
+                              {service.additionalEmployees?.map((emp: any) => (
+                                <Badge key={emp.id} variant="outline" className="px-3 py-1 text-xs">
+                                  {emp.name}
+                                </Badge>
+                              ))}
+                            </div>
+                          )}
+                          <div className="flex gap-1 mt-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="flex-1 h-7 text-xs"
+                              onClick={() => handleEditService(service)}
+                            >
+                              <Edit className="h-3 w-3 mr-1" />
+                              Editar
+                            </Button>
+                            <Button
+                              variant={service.status === "completed" ? "default" : "outline"}
+                              size="sm"
+                              className={`h-7 text-xs ${service.status === "completed" ? "bg-green-600 hover:bg-green-700 text-white" : ""}`}
+                              onClick={() => handleStatusChange(service.id, service.status === "completed" ? "scheduled" : "completed")}
+                            >
+                              <Check className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              variant={service.status === "cancelled" ? "default" : "outline"}
+                              size="sm"
+                              className={`h-7 text-xs ${service.status === "cancelled" ? "bg-red-600 hover:bg-red-700 text-white" : ""}`}
+                              onClick={() => handleStatusChange(service.id, service.status === "cancelled" ? "scheduled" : "cancelled")}
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </ScrollArea>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <CalendarIcon className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">Nenhum serviço agendado</p>
+                  <Button
+                    variant="link"
+                    className="text-primary mt-2"
+                    onClick={() => handleDialogChange(true)}
+                  >
+                    Agendar serviço
+                  </Button>
+                </div>
+              )
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                <CalendarIcon className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                <p className="text-sm">Clique em uma data para ver os detalhes</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
       )}
     </div>
   )

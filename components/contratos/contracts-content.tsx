@@ -36,8 +36,11 @@ import {
   ExternalLink,
   Building2,
   Calendar,
+  CalendarCheck,
   DollarSign
 } from "lucide-react"
+import { HeaderFiltersPortal } from "@/components/ui/header-filters-portal"
+import { SearchableSelect } from "@/components/ui/searchable-select"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { 
   contracts, 
@@ -78,11 +81,17 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "active":
-        return <Badge className="bg-green-100 text-green-700 hover:bg-green-100">Ativo</Badge>
+        return <Badge className="bg-green-100 text-green-700 hover:bg-green-100">Assinado</Badge>
       case "pending_signature":
         return <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">Aguardando Assinatura</Badge>
+      case "overdue":
+        return <Badge className="bg-red-100 text-red-700 hover:bg-red-100">Em Atraso</Badge>
+      case "refused":
+        return <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100">Recusado</Badge>
       case "expired":
         return <Badge className="bg-gray-100 text-gray-700 hover:bg-gray-100">Expirado</Badge>
+      case "deadline_expired":
+        return <Badge className="bg-purple-100 text-purple-700 hover:bg-purple-100">Prazo Expirado</Badge>
       case "cancelled":
         return <Badge className="bg-red-100 text-red-700 hover:bg-red-100">Cancelado</Badge>
       default:
@@ -92,30 +101,38 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
 
   return (
     <div>
-        <div className="flex items-center gap-2 mb-6">
-          <div className="relative flex-1 sm:flex-none sm:w-80">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Buscar por número ou cliente..."
-              value={searchTerm}
-              onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1) }}
-              className="pl-10"
+        <HeaderFiltersPortal>
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1 sm:flex-none sm:w-80">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Buscar por número ou cliente..."
+                value={searchTerm}
+                onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1) }}
+                className="pl-10"
+              />
+            </div>
+            <SearchableSelect
+              value={statusFilter}
+              onValueChange={(value) => { setStatusFilter(value); setCurrentPage(1) }}
+              options={[
+                { value: "draft", label: "Rascunho" },
+                { value: "pending_signature", label: "Aguardando Assinatura" },
+                { value: "active", label: "Assinado" },
+                { value: "overdue", label: "Em Atraso" },
+                { value: "refused", label: "Recusado" },
+                { value: "expired", label: "Expirados" },
+                { value: "deadline_expired", label: "Prazo Expirado" },
+                { value: "cancelled", label: "Cancelados" },
+              ]}
+              placeholder="Status"
+              searchPlaceholder="Buscar status..."
+              allLabel="Todos os status"
+              className="flex-1 sm:flex-none sm:w-[160px]"
             />
+            {viewToggle && <div className="hidden sm:block shrink-0">{viewToggle}</div>}
           </div>
-          <Select value={statusFilter} onValueChange={(value) => { setStatusFilter(value); setCurrentPage(1) }}>
-            <SelectTrigger className="flex-1 sm:flex-none sm:w-[160px]">
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos os status</SelectItem>
-              <SelectItem value="active">Ativos</SelectItem>
-              <SelectItem value="pending_signature">Aguardando Assinatura</SelectItem>
-              <SelectItem value="expired">Expirados</SelectItem>
-              <SelectItem value="cancelled">Cancelados</SelectItem>
-            </SelectContent>
-          </Select>
-          {viewToggle && <div className="hidden sm:block shrink-0">{viewToggle}</div>}
-        </div>
+        </HeaderFiltersPortal>
 
         {viewMode === "table" ? (
           <div className="rounded-md overflow-x-auto">
@@ -170,9 +187,15 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
                           </div>
                         </TableCell>
                         <TableCell className="hidden lg:table-cell text-sm">
-                          <div>
-                            <p>{formatDate(contract.startDate)}</p>
-                            <p className="text-muted-foreground">até {formatDate(contract.endDate)}</p>
+                          <div className="space-y-0.5">
+                            <div className="flex items-center gap-1 text-muted-foreground">
+                              <Calendar className="h-3 w-3" />
+                              <span>{formatDate(contract.startDate)}</span>
+                            </div>
+                            <div className="flex items-center gap-1 text-muted-foreground">
+                              <CalendarCheck className="h-3 w-3" />
+                              <span>{formatDate(contract.endDate)}</span>
+                            </div>
                           </div>
                         </TableCell>
                         <TableCell>
@@ -231,38 +254,37 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
                 <Card key={contract.id} className="overflow-hidden">
                   <CardContent className="p-4">
                     <Link href={`/contratos/${contract.id}`}>
-                      <div className="flex items-start justify-between mb-4">
-                        <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
-                          <FileText className="w-6 h-6 text-primary" />
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                          <FileText className="w-5 h-5 text-primary" />
                         </div>
-                        {getStatusBadge(contract.status)}
+                        <div className="min-w-0">
+                          <h3 className="font-semibold truncate text-sm">{contract.contractNumber}</h3>
+                          <p className="text-xs text-muted-foreground truncate">{client?.companyName}</p>
+                        </div>
                       </div>
-                      <h3 className="font-semibold mb-1">{contract.contractNumber}</h3>
-                      <p className="text-sm text-muted-foreground mb-3">{client?.companyName}</p>
-                      <div className="space-y-2 text-sm">
-                        <div className="flex items-center gap-2 text-muted-foreground">
-                          <DollarSign className="w-4 h-4 shrink-0" />
-                          <span className="font-medium text-foreground">{formatCurrency(contract.totalValue)}</span>
+                      <div className="space-y-3 text-sm">
+                        <div className="flex items-center justify-between">
+                          <p className="font-medium text-foreground">{formatCurrency(contract.totalValue)}</p>
+                          {getStatusBadge(contract.status)}
                         </div>
-                        <div className="flex items-center gap-2 text-muted-foreground">
-                          <Calendar className="w-4 h-4 shrink-0" />
+                        <div className="flex items-center gap-1 text-muted-foreground">
+                          <Calendar className="h-3 w-3" />
                           <span>{formatDate(contract.startDate)} - {formatDate(contract.endDate)}</span>
                         </div>
-                        <div className="mt-2">
-                          <div className="flex justify-between text-xs mb-1">
-                            <span>{paidInstallments}/{contract.installmentsCount} parcelas pagas</span>
-                            <span>{Math.round(progress)}%</span>
-                          </div>
-                          <div className="h-2 bg-muted rounded-full overflow-hidden">
-                            <div 
-                              className="h-full bg-primary rounded-full transition-all"
-                              style={{ width: `${progress}%` }}
-                            />
-                          </div>
+                        <div className="flex justify-between text-xs mt-2 mb-2">
+                          <span>{paidInstallments}/{contract.installmentsCount} parcelas pagas</span>
+                          <span>{Math.round(progress)}%</span>
+                        </div>
+                        <div className="h-2 bg-muted rounded-full overflow-hidden mb-2">
+                          <div
+                            className="h-full bg-primary rounded-full transition-all"
+                            style={{ width: `${progress}%` }}
+                          />
                         </div>
                       </div>
                     </Link>
-                    <div className="flex gap-2 mt-4 pt-4 border-t">
+                    <div className="flex gap-2 mt-4">
                       <Button variant="outline" size="sm" className="flex-1" asChild>
                         <Link href={`/contratos/${contract.id}/editar`}>
                           <Edit className="w-4 h-4 mr-1" />
