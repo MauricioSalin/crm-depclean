@@ -4,7 +4,6 @@ import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
 import {
   Select,
   SelectContent,
@@ -13,6 +12,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
+import { DateRangePicker } from "@/components/ui/date-range-picker"
+import type { DateRange } from "react-day-picker"
 import {
   BarChart3,
   FileText,
@@ -61,8 +62,7 @@ const COLORS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--cha
 
 export function RelatoriosContent() {
   const [selectedReport, setSelectedReport] = useState("services")
-  const [dateFrom, setDateFrom] = useState("")
-  const [dateTo, setDateTo] = useState("")
+  const [dateRange, setDateRange] = useState<DateRange | undefined>({ from: undefined, to: undefined })
   const [teamFilter, setTeamFilter] = useState("all")
 
   const formatCurrency = (value: number) => {
@@ -121,21 +121,13 @@ export function RelatoriosContent() {
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap sm:flex-nowrap items-end gap-3">
-            <div className="flex flex-col gap-2 w-full sm:w-[160px] shrink-0">
-              <Label>Data Início</Label>
-              <Input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-              />
-            </div>
-
-            <div className="flex flex-col gap-2 w-full sm:w-[160px] shrink-0">
-              <Label>Data Fim</Label>
-              <Input
-                type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
+            <div className="flex flex-col gap-2 w-full sm:w-[260px] shrink-0">
+              <Label>Período</Label>
+              <DateRangePicker
+                value={dateRange}
+                onChange={setDateRange}
+                placeholder="Selecionar período"
+                className="w-full"
               />
             </div>
 

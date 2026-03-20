@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Search, Bell, User, FileText, ScrollText, LogOut } from "lucide-react"
+import { Search, Bell, User, FileText, ScrollText, LogOut, ChevronDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -28,6 +28,7 @@ interface HeaderProps {
   actions?: ReactNode
   viewToggle?: ReactNode
   filters?: ReactNode
+  hasFilters?: boolean
 }
 
 const getNotificationDotColor = (type: string, isRead: boolean) => {
@@ -44,8 +45,9 @@ const getNotificationDotColor = (type: string, isRead: boolean) => {
   return colorMap[type] || "bg-primary"
 }
 
-export function Header({ title, description, titleAddon, headerActions, actions, viewToggle, filters }: HeaderProps) {
+export function Header({ title, description, titleAddon, headerActions, actions, viewToggle, filters, hasFilters = false }: HeaderProps) {
   const [notifs, setNotifs] = useState(initialNotifications)
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
   const unreadNotifications = notifs.filter(n => !n.isRead)
   const effectiveHeaderActions = headerActions ?? actions
 
@@ -203,15 +205,33 @@ export function Header({ title, description, titleAddon, headerActions, actions,
           {/* Mobile: viewToggle ao lado do título */}
           {viewToggle && <div className="shrink-0 sm:hidden">{viewToggle}</div>}
         </div>
-        {/* Mobile: botão de ação full-width abaixo */}
-        {effectiveHeaderActions && (
-          <div className="flex gap-2 overflow-x-auto [&>*]:flex-1 sm:hidden">
-            {effectiveHeaderActions}
+        {/* Mobile: botão de ação + filtros toggle */}
+        {(effectiveHeaderActions || hasFilters) && (
+          <div className="flex gap-2 sm:hidden">
+            {effectiveHeaderActions && (
+              <div className="flex gap-2 overflow-x-auto [&>*]:flex-1 flex-1">
+                {effectiveHeaderActions}
+              </div>
+            )}
+            {hasFilters && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="shrink-0 text-muted-foreground h-9"
+                onClick={() => setMobileFiltersOpen(!mobileFiltersOpen)}
+              >
+                Filtros
+                <ChevronDown className={`w-4 h-4 ml-1 transition-transform duration-200 ${mobileFiltersOpen ? "rotate-180" : ""}`} />
+              </Button>
+            )}
           </div>
         )}
       </div>
 
-      <div className="mb-4">
+      {/* Filtros: desktop sempre visível, mobile colapsável */}
+      <div className={`mb-4 overflow-hidden transition-all duration-300 ease-in-out ${
+        mobileFiltersOpen ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0 sm:max-h-none sm:opacity-100"
+      }`}>
         {filters}
         <div id="header-filters-slot" className="empty:hidden" />
       </div>

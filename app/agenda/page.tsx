@@ -25,15 +25,16 @@ export default function AgendaPage() {
   }
 
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="flex h-screen bg-background overflow-hidden">
       <div className="hidden lg:block">
         <Sidebar />
       </div>
 
-      <main className="flex-1 px-3 pb-4 md:px-4 lg:px-5 lg:ml-60">
+      <main className="flex-1 px-3 pb-4 md:px-4 lg:px-5 lg:ml-60 flex flex-col overflow-hidden">
         <Header
           title="Agenda"
           description="Gerencie os agendamentos e compromissos da equipe"
+          hasFilters
           actions={
             <Button
               onClick={() => setDialogOpen(true)}

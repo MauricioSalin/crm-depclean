@@ -77,8 +77,8 @@ export function ClientsContent({ viewMode, viewToggle }: ClientsContentProps) {
     <>
       {/* <CardContent className="p-3 sm:p-4 md:p-6"> */}
       <HeaderFiltersPortal>
-        <div className="flex gap-2 items-center">
-          <div className="relative flex-1 sm:flex-none sm:w-80">
+        <div className="grid grid-cols-2 sm:flex sm:items-center gap-2">
+          <div className="relative sm:flex-none sm:w-80">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Buscar por nome, responsável ou CNPJ..."
@@ -94,7 +94,7 @@ export function ClientsContent({ viewMode, viewToggle }: ClientsContentProps) {
             placeholder="Tipo"
             searchPlaceholder="Buscar tipo..."
             allLabel="Todos os tipos"
-            className="flex-1 sm:flex-none sm:w-[160px]"
+            className="sm:flex-none sm:w-[160px]"
           />
           {viewToggle && <div className="hidden sm:block shrink-0">{viewToggle}</div>}
         </div>

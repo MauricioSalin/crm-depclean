@@ -30,6 +30,7 @@ export default function FinanceiroPage() {
         <Header
           title="Financeiro"
           description="Controle financeiro e parcelas de contratos"
+          hasFilters
           viewToggle={toggle}
           actions={
             <Button className="w-full sm:w-auto h-9 text-sm bg-primary text-primary-foreground hover:bg-primary/90">

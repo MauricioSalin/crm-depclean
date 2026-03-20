@@ -102,8 +102,8 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
   return (
     <div>
         <HeaderFiltersPortal>
-          <div className="flex items-center gap-2">
-            <div className="relative flex-1 sm:flex-none sm:w-80">
+          <div className="grid grid-cols-2 sm:flex sm:items-center gap-2">
+            <div className="relative sm:flex-none sm:w-80">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Buscar por número ou cliente..."
@@ -128,7 +128,7 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
               placeholder="Status"
               searchPlaceholder="Buscar status..."
               allLabel="Todos os status"
-              className="flex-1 sm:flex-none sm:w-[160px]"
+              className="sm:flex-none sm:w-[160px]"
             />
             {viewToggle && <div className="hidden sm:block shrink-0">{viewToggle}</div>}
           </div>
@@ -139,7 +139,7 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[180px]">Contrato</TableHead>
+                  <TableHead className="min-w-[200px]">Contrato</TableHead>
                   <TableHead className="hidden sm:table-cell w-[300px]">Cliente</TableHead>
                   <TableHead className="hidden md:table-cell">Valor</TableHead>
                   <TableHead className="hidden lg:table-cell">Vigência</TableHead>
@@ -163,7 +163,7 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
                       <TableRow key={contract.id}>
                         <TableCell>
                           <Link href={`/contratos/${contract.id}`} className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                            <div className="hidden sm:flex w-10 h-10 rounded-lg bg-primary/10 items-center justify-center shrink-0">
                               <FileText className="w-5 h-5 text-primary" />
                             </div>
                             <div>

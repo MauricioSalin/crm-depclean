@@ -31,6 +31,7 @@ export default function AgendamentosPage() {
         <Header
           title="Agendamentos"
           description="Gerencie todos os agendamentos de serviços"
+          hasFilters
           viewToggle={toggle}
           actions={
             <Button

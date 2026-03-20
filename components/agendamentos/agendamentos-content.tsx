@@ -204,8 +204,8 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
       />
 
       <HeaderFiltersPortal>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative flex-1 sm:flex-none sm:w-80">
+        <div className="grid grid-cols-2 sm:flex sm:items-center gap-2">
+          <div className="relative col-span-2 sm:flex-none sm:w-80">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Buscar cliente, serviço, equipe..."
@@ -226,13 +226,13 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
             placeholder="Status"
             searchPlaceholder="Buscar status..."
             allLabel="Todos os status"
-            className="flex-1 sm:flex-none sm:w-[160px]"
+            className="sm:flex-none sm:w-[160px]"
           />
           <DateRangePicker
             value={dateRange}
             onChange={(range) => { setDateRange(range); setCurrentPage(1) }}
             placeholder="Filtrar data"
-            className="flex-1 sm:flex-none sm:w-[260px]"
+            className="sm:flex-none sm:w-[260px]"
           />
           {viewToggle && <div className="hidden sm:block shrink-0">{viewToggle}</div>}
         </div>
@@ -245,7 +245,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Cliente</TableHead>
+                    <TableHead className="min-w-[180px]">Cliente</TableHead>
                     <TableHead className="hidden sm:table-cell">Serviço</TableHead>
                     <TableHead className="hidden md:table-cell">Equipe / Funcionários</TableHead>
                     <TableHead>Data/Hora</TableHead>

@@ -31,6 +31,7 @@ export default function ContratosPage() {
         <Header
           title="Contratos"
           description="Gerencie todos os contratos da Depclean"
+          hasFilters
           viewToggle={toggle}
           actions={
             <Link href="/contratos/novo">

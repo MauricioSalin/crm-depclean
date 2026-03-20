@@ -31,6 +31,7 @@ export default function ClientesPage() {
         <Header
           title="Clientes"
           description="Gerencie todos os clientes da Depclean"
+          hasFilters
           viewToggle={toggle}
           actions={
             <Link href="/clientes/novo">

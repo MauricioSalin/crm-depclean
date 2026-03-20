@@ -31,6 +31,7 @@ export default function ServicosPage() {
         <Header
           title="Serviços"
           description="Gerencie os serviços oferecidos pela Depclean"
+          hasFilters
           viewToggle={toggle}
           actions={
             <Link href="/servicos/novo">

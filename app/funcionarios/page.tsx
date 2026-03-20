@@ -31,6 +31,7 @@ export default function FuncionariosPage() {
         <Header
           title="Funcionários"
           description="Gerencie os funcionários da Depclean"
+          hasFilters
           viewToggle={toggle}
           actions={
             <Button

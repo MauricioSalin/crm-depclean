@@ -287,8 +287,8 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
 
       <div>
           <HeaderFiltersPortal>
-            <div className="flex items-center gap-2">
-              <div className="relative flex-1 sm:flex-none sm:w-80">
+            <div className="grid grid-cols-2 sm:flex sm:items-center gap-2">
+              <div className="relative sm:flex-none sm:w-80">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   placeholder="Buscar por nome, e-mail ou CPF..."
@@ -308,7 +308,7 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
                 placeholder="Status"
                 searchPlaceholder="Buscar status..."
                 allLabel="Todos"
-                className="flex-1 sm:flex-none sm:w-[140px]"
+                className="sm:flex-none sm:w-[140px]"
               />
               {viewToggle && <div className="hidden sm:block shrink-0">{viewToggle}</div>}
             </div>

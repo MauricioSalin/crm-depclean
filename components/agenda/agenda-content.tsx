@@ -293,7 +293,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   const selectedDateServices = selectedDate ? getServicesForDate(selectedDate) : []
 
   return (
-    <div className="flex flex-col gap-4 lg:h-[calc(100vh-180px)]">
+    <div className="flex flex-col gap-4 flex-1 min-h-0">
       <Dialog open={isDialogOpen} onOpenChange={handleDialogChange}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
@@ -494,8 +494,8 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
 
       {/* Filters */}
       <HeaderFiltersPortal>
-        <div className="flex items-center gap-2">
-          <div className="relative flex-1 sm:flex-none sm:w-80">
+        <div className="grid grid-cols-2 sm:flex sm:items-center gap-2">
+          <div className="relative sm:flex-none sm:w-80">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Buscar cliente, serviço, equipe..."
@@ -516,7 +516,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
             placeholder="Status"
             searchPlaceholder="Buscar status..."
             allLabel="Todos os status"
-            className="flex-1 sm:flex-none sm:w-[160px]"
+            className="sm:flex-none sm:w-[160px]"
           />
           <Tabs value={viewMode} onValueChange={(v) => {
             const mode = v as "month" | "week"
