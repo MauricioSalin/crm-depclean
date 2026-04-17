@@ -1,10 +1,20 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   Table,
   TableBody,
@@ -29,6 +39,8 @@ import {
   Calendar,
   Check,
   X,
+  FileUp,
+  Camera,
 } from "lucide-react"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { DateRangePicker } from "@/components/ui/date-range-picker"
@@ -38,12 +50,17 @@ import { format } from "date-fns"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { mockScheduledServices, mockClients, mockServiceTypes, mockTeams, mockEmployees, formatCurrency } from "@/lib/mock-data"
 import { SchedulingFormDialog, type SchedulingFormData } from "./scheduling-form-dialog"
+import { addClientAttachment } from "@/lib/client-attachments-store"
 
 type ScheduledServiceRow = (typeof mockScheduledServices)[number] & {
   notes?: string
   isEmergency?: boolean
   contractId?: string | null
   isManual?: boolean
+  cancellationReason?: string
+  completionStartTime?: string
+  completionEndTime?: string
+  naFileName?: string
 }
 
 interface AgendamentosContentProps {
@@ -64,6 +81,15 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
   // Dialog state
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingSchedule, setEditingSchedule] = useState<ScheduledServiceRow | null>(null)
+  const [cancelTarget, setCancelTarget] = useState<ScheduledServiceRow | null>(null)
+  const [cancelReason, setCancelReason] = useState("")
+  const [cancelStep, setCancelStep] = useState<"reason" | "confirm">("reason")
+  const [completionTarget, setCompletionTarget] = useState<ScheduledServiceRow | null>(null)
+  const [completionStartTime, setCompletionStartTime] = useState("")
+  const [completionEndTime, setCompletionEndTime] = useState("")
+  const [completionFile, setCompletionFile] = useState<File | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const cameraInputRef = useRef<HTMLInputElement>(null)
   
   // Sync dialog state with parent
   useEffect(() => {
@@ -145,9 +171,108 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
   }
 
   const handleStatusChange = (id: string, newStatus: ScheduledServiceRow["status"]) => {
-    setScheduledServices(scheduledServices.map(ss =>
+    setScheduledServices((current) => current.map(ss =>
       ss.id === id ? { ...ss, status: newStatus } : ss
     ))
+  }
+
+  const handleCancelClick = (schedule: ScheduledServiceRow) => {
+    if (schedule.status === "cancelled") {
+      handleStatusChange(schedule.id, "scheduled")
+      return
+    }
+
+    setCancelTarget(schedule)
+    setCancelReason(schedule.cancellationReason || "")
+    setCancelStep("reason")
+  }
+
+  const handleCancelReasonSubmit = () => {
+    if (!cancelReason.trim()) return
+    setCancelStep("confirm")
+  }
+
+  const handleConfirmCancellation = () => {
+    if (!cancelTarget) return
+
+    setScheduledServices((current) => current.map((schedule) =>
+      schedule.id === cancelTarget.id
+        ? {
+            ...schedule,
+            status: "cancelled",
+            cancellationReason: cancelReason.trim(),
+            notes: schedule.notes
+              ? `${schedule.notes}\nCancelamento: ${cancelReason.trim()}`
+              : `Cancelamento: ${cancelReason.trim()}`,
+          }
+        : schedule
+    ))
+    setCancelTarget(null)
+    setCancelReason("")
+    setCancelStep("reason")
+  }
+
+  const handleCompletionClick = (schedule: ScheduledServiceRow) => {
+    if (schedule.status === "completed") {
+      handleStatusChange(schedule.id, "scheduled")
+      return
+    }
+
+    setCompletionTarget(schedule)
+    setCompletionStartTime(schedule.completionStartTime || schedule.time || "")
+    setCompletionEndTime(schedule.completionEndTime || "")
+    setCompletionFile(null)
+  }
+
+  const handleCompletionFileChange = (file?: File) => {
+    setCompletionFile(file ?? null)
+  }
+
+  const handleConfirmCompletion = () => {
+    if (!completionTarget || !completionStartTime || !completionEndTime) return
+
+    setScheduledServices((current) => current.map((schedule) =>
+      schedule.id === completionTarget.id
+        ? {
+            ...schedule,
+            status: "completed",
+            completionStartTime,
+            completionEndTime,
+            naFileName: completionFile?.name,
+          }
+        : schedule
+    ))
+
+    if (completionFile) {
+      addClientAttachment({
+        clientId: completionTarget.clientId,
+        scheduledServiceId: completionTarget.id,
+        type: "service_na",
+        title: `NA - ${completionTarget.serviceTypeName}`,
+        fileName: completionFile.name,
+        mimeType: completionFile.type || "application/octet-stream",
+        fileSize: completionFile.size,
+        source: "agenda",
+        description: "Nota de atendimento vinculada à visita concluída.",
+        metadata: {
+          serviceTypeName: completionTarget.serviceTypeName,
+          scheduledDate: completionTarget.date,
+          startTime: completionStartTime,
+          endTime: completionEndTime,
+        },
+      })
+    }
+
+    setCompletionTarget(null)
+    setCompletionStartTime("")
+    setCompletionEndTime("")
+    setCompletionFile(null)
+  }
+
+  const formatFileSize = (size?: number) => {
+    if (!size) return ""
+    if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`
+    return `${(size / (1024 * 1024)).toFixed(1)} MB`
   }
 
   const handleDelete = (id: string) => {
@@ -202,6 +327,154 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
         editingSchedule={editingSchedule}
         onSubmit={handleFormSubmit}
       />
+
+      <Dialog open={!!cancelTarget} onOpenChange={(open) => {
+        if (!open) {
+          setCancelTarget(null)
+          setCancelReason("")
+          setCancelStep("reason")
+        }
+      }}>
+        <DialogContent className="sm:max-w-md">
+          {cancelStep === "reason" ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>Cancelar agendamento</DialogTitle>
+                <DialogDescription>
+                  Informe o motivo do cancelamento para manter o histórico claro para a equipe.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-2">
+                <Label htmlFor="cancel-reason">Motivo do cancelamento *</Label>
+                <Textarea
+                  id="cancel-reason"
+                  value={cancelReason}
+                  onChange={(event) => setCancelReason(event.target.value)}
+                  placeholder="Ex.: cliente pediu reagendamento, acesso indisponível, equipe sem janela..."
+                  className="min-h-28"
+                />
+              </div>
+              <DialogFooter className="gap-2 sm:gap-2">
+                <Button type="button" variant="outline" onClick={() => setCancelTarget(null)}>
+                  Voltar
+                </Button>
+                <Button
+                  type="button"
+                  disabled={!cancelReason.trim()}
+                  className="bg-red-500 text-white hover:bg-red-600"
+                  onClick={handleCancelReasonSubmit}
+                >
+                  Cancelar agendamento
+                </Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              <DialogHeader>
+                <DialogTitle>Confirmar cancelamento?</DialogTitle>
+                <DialogDescription>
+                  Esta ação vai marcar o agendamento de {cancelTarget?.clientName} como cancelado.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="rounded-2xl border border-red-100 bg-red-50 p-4 text-sm text-red-900">
+                <p className="font-medium">Motivo registrado</p>
+                <p className="mt-1 text-red-800">{cancelReason}</p>
+              </div>
+              <DialogFooter className="gap-2 sm:gap-2">
+                <Button type="button" variant="outline" onClick={() => setCancelStep("reason")}>
+                  Voltar
+                </Button>
+                <Button type="button" className="bg-red-500 text-white hover:bg-red-600" onClick={handleConfirmCancellation}>
+                  Confirmar cancelamento
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!completionTarget} onOpenChange={(open) => {
+        if (!open) {
+          setCompletionTarget(null)
+          setCompletionStartTime("")
+          setCompletionEndTime("")
+          setCompletionFile(null)
+        }
+      }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Concluir agendamento</DialogTitle>
+            <DialogDescription>
+              Registre o horário executado e anexe a NA da visita para vincular ao cliente.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="completion-start">Horário de início *</Label>
+              <Input
+                id="completion-start"
+                type="time"
+                value={completionStartTime}
+                onChange={(event) => setCompletionStartTime(event.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="completion-end">Horário de fim *</Label>
+              <Input
+                id="completion-end"
+                type="time"
+                value={completionEndTime}
+                onChange={(event) => setCompletionEndTime(event.target.value)}
+              />
+            </div>
+          </div>
+          <div className="space-y-3 rounded-2xl border border-dashed border-primary/40 bg-primary/5 p-4">
+            <div>
+              <p className="text-sm font-semibold">Anexo da NA</p>
+              <p className="text-xs text-muted-foreground">PDF, DOCX, imagem ou foto tirada pela câmera.</p>
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="hidden"
+              accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
+              onChange={(event) => handleCompletionFileChange(event.target.files?.[0])}
+            />
+            <input
+              ref={cameraInputRef}
+              type="file"
+              className="hidden"
+              accept="image/*"
+              capture="environment"
+              onChange={(event) => handleCompletionFileChange(event.target.files?.[0])}
+            />
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Button type="button" variant="outline" className="flex-1" onClick={() => fileInputRef.current?.click()}>
+                <FileUp className="mr-2 h-4 w-4" />
+                Anexar arquivo
+              </Button>
+              <Button type="button" variant="outline" className="flex-1" onClick={() => cameraInputRef.current?.click()}>
+                <Camera className="mr-2 h-4 w-4" />
+                Usar câmera
+              </Button>
+            </div>
+            {completionFile && (
+              <div className="flex items-center justify-between rounded-xl bg-card px-3 py-2 text-sm">
+                <span className="truncate">{completionFile.name}</span>
+                <span className="ml-3 shrink-0 text-xs text-muted-foreground">{formatFileSize(completionFile.size)}</span>
+              </div>
+            )}
+          </div>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button type="button" variant="outline" onClick={() => setCompletionTarget(null)}>
+              Voltar
+            </Button>
+            <Button type="button" disabled={!completionStartTime || !completionEndTime} onClick={handleConfirmCompletion}>
+              Concluir visita
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <HeaderFiltersPortal>
         <div className="grid grid-cols-2 sm:flex sm:items-center gap-2">
@@ -316,7 +589,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                               variant="ghost"
                               size="icon"
                               className={schedule.status === "completed" ? "bg-green-100 hover:bg-green-200" : ""}
-                              onClick={() => handleStatusChange(schedule.id, schedule.status === "completed" ? "scheduled" : "completed")}
+                              onClick={() => handleCompletionClick(schedule)}
                             >
                               <Check className="h-4 w-4 text-green-600" />
                             </Button>
@@ -324,7 +597,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                               variant="ghost"
                               size="icon"
                               className={schedule.status === "cancelled" ? "bg-red-100 hover:bg-red-200" : ""}
-                              onClick={() => handleStatusChange(schedule.id, schedule.status === "cancelled" ? "scheduled" : "cancelled")}
+                              onClick={() => handleCancelClick(schedule)}
                             >
                               <X className="h-4 w-4 text-destructive" />
                             </Button>
@@ -409,7 +682,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                         variant={schedule.status === "completed" ? "default" : "outline"}
                         size="sm"
                         className={`h-7 text-xs ${schedule.status === "completed" ? "bg-green-600 hover:bg-green-700 text-white" : ""}`}
-                        onClick={() => handleStatusChange(schedule.id, schedule.status === "completed" ? "scheduled" : "completed")}
+                        onClick={() => handleCompletionClick(schedule)}
                       >
                         <Check className="h-3 w-3" />
                       </Button>
@@ -417,7 +690,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                         variant={schedule.status === "cancelled" ? "default" : "outline"}
                         size="sm"
                         className={`h-7 text-xs ${schedule.status === "cancelled" ? "bg-red-600 hover:bg-red-700 text-white" : ""}`}
-                        onClick={() => handleStatusChange(schedule.id, schedule.status === "cancelled" ? "scheduled" : "cancelled")}
+                        onClick={() => handleCancelClick(schedule)}
                       >
                         <X className="h-3 w-3" />
                       </Button>

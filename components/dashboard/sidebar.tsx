@@ -12,7 +12,8 @@ import {
   BarChart3,
   Settings, 
   HelpCircle, 
-  Bell
+  Bell,
+  Bot
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import Link from "next/link"
@@ -34,6 +35,7 @@ const menuItems = [
 ]
 
 const generalItems = [
+  { icon: Bot, label: "DepAI", href: "/depai" },
   { icon: Settings, label: "Configurações", href: "/configuracoes" },
   { icon: HelpCircle, label: "Ajuda", href: "/ajuda" },
 ]
@@ -131,3 +133,5 @@ export function Sidebar({ onNavigate }: SidebarProps) {
     </aside>
   )
 }
+
+

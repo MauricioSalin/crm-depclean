@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -60,6 +60,9 @@ interface EditingSchedule {
   clientId: string
   serviceTypeId: string
   teamId?: string
+  teamIds?: string[]
+  teams?: { id: string }[]
+  additionalEmployees?: { id: string }[]
   date: string
   time?: string
   duration: number
@@ -120,6 +123,31 @@ export function SchedulingFormDialog({
 
   const selectedClient = mockClients.find(c => c.id === formData.clientId)
 
+  const getInitialFormData = (schedule: EditingSchedule): SchedulingFormData => ({
+    clientId: schedule.clientId,
+    serviceTypeId: schedule.serviceTypeId,
+    teamIds: schedule.teamIds ?? schedule.teams?.map((team) => team.id) ?? (schedule.teamId ? [schedule.teamId] : []),
+    employeeIds: schedule.additionalEmployees?.map((employee) => employee.id) ?? [],
+    date: schedule.date,
+    time: schedule.time ?? "",
+    duration: schedule.duration,
+    value: 0,
+    createContract: false,
+    isEmergency: schedule.isEmergency ?? false,
+    notes: schedule.notes || "",
+  })
+
+  useEffect(() => {
+    if (!open) return
+
+    if (editingSchedule) {
+      setFormData(getInitialFormData(editingSchedule))
+      return
+    }
+
+    setFormData(DEFAULT_FORM_DATA)
+  }, [open, editingSchedule])
+
   const toggleTeam = (teamId: string) => {
     if (formData.teamIds.includes(teamId)) {
       setFormData({ ...formData, teamIds: formData.teamIds.filter(id => id !== teamId) })
@@ -142,23 +170,6 @@ export function SchedulingFormDialog({
   }
 
   const handleOpenChange = (newOpen: boolean) => {
-    if (newOpen && editingSchedule) {
-      setFormData({
-        clientId: editingSchedule.clientId,
-        serviceTypeId: editingSchedule.serviceTypeId,
-        teamIds: editingSchedule.teamId ? [editingSchedule.teamId] : [],
-        employeeIds: [],
-        date: editingSchedule.date,
-        time: editingSchedule.time ?? "",
-        duration: editingSchedule.duration,
-        value: 0,
-        createContract: false,
-        isEmergency: editingSchedule.isEmergency ?? false,
-        notes: editingSchedule.notes || "",
-      })
-    } else if (newOpen) {
-      setFormData(DEFAULT_FORM_DATA)
-    }
     onOpenChange(newOpen)
   }
 
@@ -171,7 +182,7 @@ export function SchedulingFormDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger className="hidden" />
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{editingSchedule ? "Editar Agendamento" : "Novo Agendamento Manual"}</DialogTitle>
         </DialogHeader>

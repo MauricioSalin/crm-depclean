@@ -295,7 +295,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   return (
     <div className="flex flex-col gap-4 flex-1 min-h-0">
       <Dialog open={isDialogOpen} onOpenChange={handleDialogChange}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-h-[90dvh] max-w-lg overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingService ? "Editar Agendamento" : "Novo Agendamento"}</DialogTitle>
           </DialogHeader>
@@ -623,17 +623,17 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                     {selectedDateServices.map((service) => (
                       <Card key={service.id}>
                         <CardContent>
-                          <div className="flex items-start justify-between mb-4">
-                            <div className="flex items-center gap-2">
+                          <div className="flex items-start justify-between gap-3 mb-4">
+                            <div className="flex min-w-0 flex-1 items-center gap-2">
                               <div className="hidden sm:flex w-10 h-10 rounded-lg bg-primary/10 items-center justify-center shrink-0">
                                 <Calendar className="w-5 h-5 text-primary" />
                               </div>
-                              <div>
-                                <h4 className="font-medium text-sm">{service.clientName}</h4>
-                                <p className="text-xs text-muted-foreground">{service.serviceTypeName}</p>
+                              <div className="min-w-0 flex-1 pr-1">
+                                <h4 className="max-w-[190px] whitespace-normal break-words text-sm font-medium leading-snug sm:max-w-none">{service.clientName}</h4>
+                                <p className="mt-0.5 truncate text-xs text-muted-foreground">{service.serviceTypeName}</p>
                               </div>
                             </div>
-                            {getStatusBadge(service.status)}
+                            <div className="shrink-0">{getStatusBadge(service.status)}</div>
                           </div>
                           <div className="space-y-1 text-xs text-muted-foreground">
                             <div className="flex items-center gap-2">
@@ -764,17 +764,17 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                     {selectedDateServices.map((service) => (
                       <Card key={service.id}>
                         <CardContent>
-                          <div className="flex items-start justify-between mb-4">
-                            <div className="flex items-center gap-2">
+                          <div className="flex items-start justify-between gap-3 mb-4">
+                            <div className="flex min-w-0 flex-1 items-center gap-2">
                               <div className="hidden sm:flex w-10 h-10 rounded-lg bg-primary/10 items-center justify-center shrink-0">
                                 <Calendar className="w-5 h-5 text-primary" />
                               </div>
-                              <div>
-                                <h4 className="font-medium text-sm">{service.clientName}</h4>
-                                <p className="text-xs text-muted-foreground">{service.serviceTypeName}</p>
+                              <div className="min-w-0 flex-1 pr-1">
+                                <h4 className="max-w-[190px] whitespace-normal break-words text-sm font-medium leading-snug sm:max-w-none">{service.clientName}</h4>
+                                <p className="mt-0.5 truncate text-xs text-muted-foreground">{service.serviceTypeName}</p>
                               </div>
                             </div>
-                            {getStatusBadge(service.status)}
+                            <div className="shrink-0">{getStatusBadge(service.status)}</div>
                           </div>
                           <div className="space-y-1 text-xs text-muted-foreground">
                             <div className="flex items-center gap-2">

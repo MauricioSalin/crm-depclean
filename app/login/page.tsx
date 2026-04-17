@@ -148,7 +148,6 @@ export default function LoginPage() {
                       mask={`url(#${maskId})`}
                     >
                       <div
-                        xmlns="http://www.w3.org/1999/xhtml"
                         className="h-full w-full whitespace-nowrap text-white"
                         style={{
                           fontFamily: "inherit",

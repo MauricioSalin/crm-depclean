@@ -313,8 +313,8 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
             )}
 
             {recurrenceRules.length > 0 ? (
-              <div className="rounded-md border overflow-hidden">
-                <table className="w-full text-sm">
+              <div className="overflow-x-auto rounded-md border">
+                <table className="min-w-[520px] w-full text-sm">
                   <thead>
                     <tr className="border-b bg-muted/50">
                       <th className="text-left font-medium text-xs px-3 py-2">Tipo</th>
@@ -374,10 +374,28 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
 
       {/* Tabs for Services, Installments, Units */}
       <Tabs defaultValue="services" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="services">Serviços ({contract.services.length})</TabsTrigger>
-          <TabsTrigger value="installments">Parcelas ({contract.installmentsCount})</TabsTrigger>
-          <TabsTrigger value="units">Filiais ({unitIds.length})</TabsTrigger>
+        <TabsList className="flex h-auto w-full justify-start gap-2 overflow-x-auto bg-transparent p-0 sm:grid sm:grid-cols-3">
+          <TabsTrigger onFocus={(event) => event.currentTarget.focus({ preventScroll: true })} value="services" className="shrink-0 rounded-full bg-muted px-4 py-2 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground sm:min-h-[130px] sm:flex-col sm:items-start sm:justify-start sm:gap-3 sm:rounded-2xl sm:border sm:border-border sm:bg-card sm:p-6 sm:text-left sm:shadow-none sm:data-[state=active]:border-primary sm:data-[state=active]:bg-primary/5 sm:data-[state=active]:text-foreground sm:data-[state=active]:ring-1 sm:data-[state=active]:ring-primary">
+            <span className="hidden rounded-lg bg-primary/10 p-2 sm:inline-flex">
+              <Users className="h-5 w-5 text-primary" />
+            </span>
+            <span className="text-sm font-semibold sm:text-base">Serviços ({contract.services.length})</span>
+            <span className="hidden text-sm font-normal leading-relaxed text-muted-foreground sm:block">Serviços contratados</span>
+          </TabsTrigger>
+          <TabsTrigger onFocus={(event) => event.currentTarget.focus({ preventScroll: true })} value="installments" className="shrink-0 rounded-full bg-muted px-4 py-2 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground sm:min-h-[130px] sm:flex-col sm:items-start sm:justify-start sm:gap-3 sm:rounded-2xl sm:border sm:border-border sm:bg-card sm:p-6 sm:text-left sm:shadow-none sm:data-[state=active]:border-primary sm:data-[state=active]:bg-primary/5 sm:data-[state=active]:text-foreground sm:data-[state=active]:ring-1 sm:data-[state=active]:ring-primary">
+            <span className="hidden rounded-lg bg-primary/10 p-2 sm:inline-flex">
+              <DollarSign className="h-5 w-5 text-primary" />
+            </span>
+            <span className="text-sm font-semibold sm:text-base">Parcelas ({contract.installmentsCount})</span>
+            <span className="hidden text-sm font-normal leading-relaxed text-muted-foreground sm:block">Controle financeiro</span>
+          </TabsTrigger>
+          <TabsTrigger onFocus={(event) => event.currentTarget.focus({ preventScroll: true })} value="units" className="shrink-0 rounded-full bg-muted px-4 py-2 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground sm:min-h-[130px] sm:flex-col sm:items-start sm:justify-start sm:gap-3 sm:rounded-2xl sm:border sm:border-border sm:bg-card sm:p-6 sm:text-left sm:shadow-none sm:data-[state=active]:border-primary sm:data-[state=active]:bg-primary/5 sm:data-[state=active]:text-foreground sm:data-[state=active]:ring-1 sm:data-[state=active]:ring-primary">
+            <span className="hidden rounded-lg bg-primary/10 p-2 sm:inline-flex">
+              <Building2 className="h-5 w-5 text-primary" />
+            </span>
+            <span className="text-sm font-semibold sm:text-base">Filiais ({unitIds.length})</span>
+            <span className="hidden text-sm font-normal leading-relaxed text-muted-foreground sm:block">Unidades vinculadas</span>
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="services" className="mt-4">

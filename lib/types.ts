@@ -222,6 +222,29 @@ export interface ScheduledService {
   updatedAt: Date
 }
 
+export type ClientAttachmentType = "service_na" | "certificate" | "informative" | "contract" | "other"
+
+export interface ClientAttachment {
+  id: string
+  clientId: string
+  scheduledServiceId?: string
+  type: ClientAttachmentType
+  title: string
+  fileName: string
+  mimeType?: string
+  fileSize?: number
+  source: "agenda" | "contracts" | "manual" | "ai"
+  uploadedAt: string
+  description?: string
+  metadata?: {
+    serviceTypeName?: string
+    scheduledDate?: string
+    startTime?: string
+    endTime?: string
+    cancellationReason?: string
+  }
+}
+
 // Service History (Histórico de Atendimentos)
 export interface ServiceHistory {
   id: string

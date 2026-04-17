@@ -25,12 +25,12 @@ export default function AgendaPage() {
   }
 
   return (
-    <div className="flex h-screen bg-background overflow-hidden">
+    <div className="flex h-dvh bg-background overflow-hidden lg:h-screen">
       <div className="hidden lg:block">
         <Sidebar />
       </div>
 
-      <main className="flex-1 px-3 pb-4 md:px-4 lg:px-5 lg:ml-60 flex flex-col overflow-hidden">
+      <main className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 pb-4 md:px-4 lg:ml-60 lg:overflow-hidden lg:px-5">
         <Header
           title="Agenda"
           description="Gerencie os agendamentos e compromissos da equipe"

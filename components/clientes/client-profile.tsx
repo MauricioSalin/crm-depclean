@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { Card } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -28,14 +28,14 @@ import {
   FileText,
   Calendar,
   DollarSign,
-  Edit,
   Download,
   ExternalLink,
   Clock,
   CheckCircle,
   AlertTriangle,
-  Plus,
-  MoreHorizontal
+  MoreHorizontal,
+  Paperclip,
+  FileCheck2
 } from "lucide-react"
 import { 
   clients, 
@@ -50,7 +50,8 @@ import {
 } from "@/lib/mock-data"
 import { getColorFromClass } from "@/lib/utils"
 import Link from "next/link"
-import type { InstallmentStatus } from "@/lib/types"
+import type { ClientAttachmentType, InstallmentStatus } from "@/lib/types"
+import { getClientAttachments } from "@/lib/client-attachments-store"
 
 interface ClientProfileProps {
   clientId: string
@@ -76,7 +77,9 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
 
   const clientType = getClientTypeById(client.clientTypeId)
   const clientContracts = contracts.filter(c => c.clientId === client.id)
+  const activeContracts = clientContracts.filter(c => c.status === "active").length
   const clientServices = scheduledServices.filter(s => s.clientId === client.id)
+  const clientAttachments = getClientAttachments(client.id)
 
   const [installmentOverrides, setInstallmentOverrides] = useState<Record<
     string,
@@ -99,6 +102,28 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
   const totalPaid = paidInstallments.reduce((acc, i) => acc + (i.paidValue || 0), 0)
   const totalOverdue = overdueInstallments.reduce((acc, i) => acc + i.value, 0)
   const totalPending = pendingInstallments.reduce((acc, i) => acc + i.value, 0)
+
+
+  const getAttachmentTypeLabel = (type: ClientAttachmentType) => {
+    switch (type) {
+      case "service_na":
+        return "NA"
+      case "certificate":
+        return "Certificado"
+      case "informative":
+        return "Informativo"
+      case "contract":
+        return "Contrato"
+      default:
+        return "Outro"
+    }
+  }
+
+  const formatAttachmentSize = (size?: number) => {
+    if (!size) return "-"
+    if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`
+    return `${(size / (1024 * 1024)).toFixed(1)} MB`
+  }
 
   const setInstallmentStatus = (installmentId: string, status: InstallmentStatus) => {
     setInstallmentOverrides((prev) => {
@@ -130,50 +155,43 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
   return (
     <div className="space-y-6">
       {/* Client Header */}
-      <Card className="p-6">
-        <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
-          <div className="flex items-start gap-4">
+      <Card className="overflow-hidden">
+        <CardContent className="p-4">
+          <div className="flex items-center gap-3 mb-3">
             <div
-              className="w-16 h-16 rounded-xl flex items-center justify-center"
-              style={{ backgroundColor: `${getColorFromClass(clientType?.color || '')}1A` }}
+              className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+              style={{ backgroundColor: `${getColorFromClass(clientType?.color || "")}1A` }}
             >
-              <Building2 className="w-8 h-8" style={{ color: getColorFromClass(clientType?.color || '') }} />
+              <Building2 className="w-5 h-5" style={{ color: getColorFromClass(clientType?.color || "") }} />
             </div>
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <h2 className="text-xl font-bold">{client.companyName}</h2>
-                <Badge className={`${clientType?.color} text-white`}>
-                  {clientType?.name}
-                </Badge>
-              </div>
-              <p className="text-muted-foreground mb-2">{formatCNPJ(client.cnpj)}</p>
-              <div className="flex flex-wrap gap-4 text-sm">
-                <div className="flex items-center gap-1 text-muted-foreground">
-                  <Phone className="w-4 h-4" />
-                  <span>{client.phone}</span>
-                </div>
-                <div className="flex items-center gap-1 text-muted-foreground">
-                  <Mail className="w-4 h-4" />
-                  <span>{client.email}</span>
-                </div>
-              </div>
+            <div className="min-w-0">
+              <h3 className="font-semibold truncate text-sm">{client.companyName}</h3>
+              <p className="text-xs text-muted-foreground font-mono">{formatCNPJ(client.cnpj)}</p>
             </div>
           </div>
-          <div className="flex gap-2">
-            <Link href={`/clientes/${client.id}/editar`}>
-              <Button variant="outline" className="bg-transparent">
-                <Edit className="w-4 h-4 mr-2" />
-                Editar
-              </Button>
-            </Link>
-            <Link href={`/contratos/novo?cliente=${client.id}`}>
-              <Button>
-                <Plus className="w-4 h-4 mr-2" />
-                Novo Contrato
-              </Button>
-            </Link>
+          <div className="space-y-2 text-sm">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Phone className="w-4 h-4 shrink-0" />
+                <span>{client.phone}</span>
+              </div>
+              <Badge
+                style={{ backgroundColor: getColorFromClass(clientType?.color || "") }}
+                className="text-white border-0 hover:opacity-90 shrink-0 text-xs"
+              >
+                {clientType?.name}
+              </Badge>
+            </div>
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <Mail className="w-4 h-4 shrink-0" />
+              <span className="truncate">{client.email}</span>
+            </div>
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <FileText className="w-4 h-4 shrink-0" />
+              <span>{activeContracts} contrato(s) ativo(s)</span>
+            </div>
           </div>
-        </div>
+        </CardContent>
       </Card>
 
       {/* Stats Cards */}
@@ -185,7 +203,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Contratos Ativos</p>
-              <p className="text-2xl font-bold">{clientContracts.filter(c => c.status === "active").length}</p>
+              <p className="text-2xl font-bold">{activeContracts}</p>
             </div>
           </div>
         </Card>
@@ -226,12 +244,49 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
 
       {/* Tabs */}
       <Tabs defaultValue="dados" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-2 md:grid-cols-5 lg:w-auto lg:inline-grid">
-          <TabsTrigger value="dados">Dados</TabsTrigger>
-          <TabsTrigger value="contratos">Contratos</TabsTrigger>
-          <TabsTrigger value="parcelas">Parcelas</TabsTrigger>
-          <TabsTrigger value="servicos">Serviços</TabsTrigger>
-          <TabsTrigger value="agenda">Agenda</TabsTrigger>
+        <TabsList className="flex h-auto w-full justify-start gap-2 overflow-x-auto bg-transparent p-0 sm:grid sm:grid-cols-2 lg:grid-cols-6">
+          <TabsTrigger onFocus={(event) => event.currentTarget.focus({ preventScroll: true })} value="dados" className="shrink-0 rounded-full bg-muted px-4 py-2 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground sm:min-h-[130px] sm:flex-col sm:items-start sm:justify-start sm:gap-3 sm:rounded-2xl sm:border sm:border-border sm:bg-card sm:p-6 sm:text-left sm:shadow-none sm:data-[state=active]:border-primary sm:data-[state=active]:bg-primary/5 sm:data-[state=active]:text-foreground sm:data-[state=active]:ring-1 sm:data-[state=active]:ring-primary">
+            <span className="hidden rounded-lg bg-primary/10 p-2 sm:inline-flex">
+              <Building2 className="h-5 w-5 text-primary" />
+            </span>
+            <span className="text-sm font-semibold sm:text-base">Dados</span>
+            <span className="hidden text-sm font-normal leading-relaxed text-muted-foreground sm:block">Informações gerais</span>
+          </TabsTrigger>
+          <TabsTrigger onFocus={(event) => event.currentTarget.focus({ preventScroll: true })} value="contratos" className="shrink-0 rounded-full bg-muted px-4 py-2 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground sm:min-h-[130px] sm:flex-col sm:items-start sm:justify-start sm:gap-3 sm:rounded-2xl sm:border sm:border-border sm:bg-card sm:p-6 sm:text-left sm:shadow-none sm:data-[state=active]:border-primary sm:data-[state=active]:bg-primary/5 sm:data-[state=active]:text-foreground sm:data-[state=active]:ring-1 sm:data-[state=active]:ring-primary">
+            <span className="hidden rounded-lg bg-primary/10 p-2 sm:inline-flex">
+              <FileText className="h-5 w-5 text-primary" />
+            </span>
+            <span className="text-sm font-semibold sm:text-base">Contratos</span>
+            <span className="hidden text-sm font-normal leading-relaxed text-muted-foreground sm:block">Histórico contratual</span>
+          </TabsTrigger>
+          <TabsTrigger onFocus={(event) => event.currentTarget.focus({ preventScroll: true })} value="parcelas" className="shrink-0 rounded-full bg-muted px-4 py-2 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground sm:min-h-[130px] sm:flex-col sm:items-start sm:justify-start sm:gap-3 sm:rounded-2xl sm:border sm:border-border sm:bg-card sm:p-6 sm:text-left sm:shadow-none sm:data-[state=active]:border-primary sm:data-[state=active]:bg-primary/5 sm:data-[state=active]:text-foreground sm:data-[state=active]:ring-1 sm:data-[state=active]:ring-primary">
+            <span className="hidden rounded-lg bg-primary/10 p-2 sm:inline-flex">
+              <DollarSign className="h-5 w-5 text-primary" />
+            </span>
+            <span className="text-sm font-semibold sm:text-base">Parcelas</span>
+            <span className="hidden text-sm font-normal leading-relaxed text-muted-foreground sm:block">Financeiro do cliente</span>
+          </TabsTrigger>
+          <TabsTrigger onFocus={(event) => event.currentTarget.focus({ preventScroll: true })} value="servicos" className="shrink-0 rounded-full bg-muted px-4 py-2 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground sm:min-h-[130px] sm:flex-col sm:items-start sm:justify-start sm:gap-3 sm:rounded-2xl sm:border sm:border-border sm:bg-card sm:p-6 sm:text-left sm:shadow-none sm:data-[state=active]:border-primary sm:data-[state=active]:bg-primary/5 sm:data-[state=active]:text-foreground sm:data-[state=active]:ring-1 sm:data-[state=active]:ring-primary">
+            <span className="hidden rounded-lg bg-primary/10 p-2 sm:inline-flex">
+              <CheckCircle className="h-5 w-5 text-primary" />
+            </span>
+            <span className="text-sm font-semibold sm:text-base">Serviços</span>
+            <span className="hidden text-sm font-normal leading-relaxed text-muted-foreground sm:block">Serviços realizados</span>
+          </TabsTrigger>
+          <TabsTrigger onFocus={(event) => event.currentTarget.focus({ preventScroll: true })} value="agenda" className="shrink-0 rounded-full bg-muted px-4 py-2 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground sm:min-h-[130px] sm:flex-col sm:items-start sm:justify-start sm:gap-3 sm:rounded-2xl sm:border sm:border-border sm:bg-card sm:p-6 sm:text-left sm:shadow-none sm:data-[state=active]:border-primary sm:data-[state=active]:bg-primary/5 sm:data-[state=active]:text-foreground sm:data-[state=active]:ring-1 sm:data-[state=active]:ring-primary">
+            <span className="hidden rounded-lg bg-primary/10 p-2 sm:inline-flex">
+              <Calendar className="h-5 w-5 text-primary" />
+            </span>
+            <span className="text-sm font-semibold sm:text-base">Agenda</span>
+            <span className="hidden text-sm font-normal leading-relaxed text-muted-foreground sm:block">Próximos serviços</span>
+          </TabsTrigger>
+          <TabsTrigger onFocus={(event) => event.currentTarget.focus({ preventScroll: true })} value="anexos" className="shrink-0 rounded-full bg-muted px-4 py-2 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground sm:min-h-[130px] sm:flex-col sm:items-start sm:justify-start sm:gap-3 sm:rounded-2xl sm:border sm:border-border sm:bg-card sm:p-6 sm:text-left sm:shadow-none sm:data-[state=active]:border-primary sm:data-[state=active]:bg-primary/5 sm:data-[state=active]:text-foreground sm:data-[state=active]:ring-1 sm:data-[state=active]:ring-primary">
+            <span className="hidden rounded-lg bg-primary/10 p-2 sm:inline-flex">
+              <Paperclip className="h-5 w-5 text-primary" />
+            </span>
+            <span className="text-sm font-semibold sm:text-base">Anexos</span>
+            <span className="hidden text-sm font-normal leading-relaxed text-muted-foreground sm:block">NAs e documentos</span>
+          </TabsTrigger>
         </TabsList>
 
         {/* Dados Tab */}
@@ -567,6 +622,64 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                     <TableCell colSpan={5} className="text-center py-8">
                       <Calendar className="w-8 h-8 mx-auto text-muted-foreground mb-2" />
                       <p className="text-muted-foreground">Nenhum serviço agendado</p>
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </TabsContent>
+
+        {/* Anexos Tab */}
+        <TabsContent value="anexos">
+          <div className="rounded-md overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Tipo</TableHead>
+                  <TableHead>Arquivo</TableHead>
+                  <TableHead className="hidden md:table-cell">Origem</TableHead>
+                  <TableHead className="hidden md:table-cell">Data</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {clientAttachments.map((attachment) => (
+                  <TableRow key={attachment.id}>
+                    <TableCell>
+                      <Badge variant="secondary">{getAttachmentTypeLabel(attachment.type)}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10">
+                          <FileCheck2 className="h-4 w-4 text-primary" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-medium truncate">{attachment.title}</p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {attachment.fileName} - {formatAttachmentSize(attachment.fileSize)}
+                          </p>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
+                      {attachment.source === "agenda" ? "Agenda" : attachment.source === "ai" ? "IA" : "Manual"}
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell text-sm">
+                      {new Date(attachment.uploadedAt).toLocaleDateString("pt-BR")}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button variant="ghost" size="icon">
+                        <Download className="w-4 h-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {clientAttachments.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center py-8">
+                      <Paperclip className="w-8 h-8 mx-auto text-muted-foreground mb-2" />
+                      <p className="text-muted-foreground">Nenhum anexo vinculado a este cliente</p>
                     </TableCell>
                   </TableRow>
                 )}

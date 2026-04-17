@@ -3,7 +3,7 @@ import { Header } from "@/components/dashboard/header"
 import { ClientProfile } from "@/components/clientes/client-profile"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
-import { ArrowLeft } from "lucide-react"
+import { ArrowLeft, Edit } from "lucide-react"
 
 interface ClientPageProps {
   params: Promise<{ id: string }>
@@ -23,12 +23,20 @@ export default async function ClientPage({ params }: ClientPageProps) {
           title="Perfil do Cliente"
           description="Visualize e gerencie todas as informações do cliente"
           actions={
-            <Link href="/clientes">
-              <Button variant="outline" className="w-full sm:w-auto h-9 text-sm bg-transparent">
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Voltar
-              </Button>
-            </Link>
+            <>
+              <Link href="/clientes">
+                <Button variant="outline" className="w-full sm:w-auto h-9 text-sm bg-transparent">
+                  <ArrowLeft className="w-4 h-4 mr-2" />
+                  Voltar
+                </Button>
+              </Link>
+              <Link href={`/clientes/${id}/editar`}>
+                <Button className="w-full sm:w-auto h-9 text-sm bg-primary text-primary-foreground hover:bg-primary/90">
+                  <Edit className="w-4 h-4 mr-2" />
+                  Editar
+                </Button>
+              </Link>
+            </>
           }
         />
 
