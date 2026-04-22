@@ -1,105 +1,46 @@
 "use client"
 
-import { useState, useMemo } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { useEffect, useMemo, useState, type FormEvent } from "react"
+import { Bell, Building, Copy, Edit, Eye, EyeOff, Mail, MessageCircle, Plus, RefreshCcw, Search, Shield, Trash2, Users } from "lucide-react"
+import { toast } from "sonner"
+
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
-import { Switch } from "@/components/ui/switch"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { cn, getColorFromClass } from "@/lib/utils"
-import { Plus, Edit, Trash2, Shield, Users, Building, Bell, Search, Clock, X, MessageCircle, Mail, Check, ChevronsUpDown } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Textarea } from "@/components/ui/textarea"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { DataPagination } from "@/components/ui/data-pagination"
-import { mockClientTypes, mockPermissionProfiles, mockUsers, mockTeams, notificationRules } from "@/lib/mock-data"
-import type { PermissionKey, NotificationRule, NotificationType, NotificationChannel } from "@/lib/types"
-
-type ClientTypeRow = (typeof mockClientTypes)[number]
-type PermissionProfileRow = Omit<(typeof mockPermissionProfiles)[number], "permissions"> & { permissions: PermissionKey[] }
-type UserRow = (typeof mockUsers)[number]
-
-const NOTIFICATION_TYPES: { value: NotificationType; label: string }[] = [
-  { value: "new_schedule", label: "Novo Agendamento" },
-  { value: "schedule_change", label: "Alteração de Agendamento" },
-  { value: "schedule_cancel", label: "Cancelamento" },
-  { value: "emergency", label: "Emergência" },
-  { value: "daily_services", label: "Serviços do Dia" },
-  { value: "payment_due", label: "Parcela Vencendo" },
-  { value: "payment_overdue", label: "Parcela Vencida" },
-  { value: "contract_expiring", label: "Contrato Vencendo" },
-]
-
-const CHANNELS: { value: NotificationChannel; label: string; icon: typeof Bell }[] = [
-  { value: "system", label: "Sistema", icon: Bell },
-  { value: "whatsapp", label: "WhatsApp", icon: MessageCircle },
-  { value: "email", label: "E-mail", icon: Mail },
-]
-
-const ALL_PERMISSIONS: { key: PermissionKey; label: string; description: string }[] = [
-  { key: "clients_view", label: "Visualizar Clientes", description: "Ver lista de clientes" },
-  { key: "clients_create", label: "Criar Clientes", description: "Cadastrar novos clientes" },
-  { key: "clients_edit", label: "Editar Clientes", description: "Modificar dados de clientes" },
-  { key: "clients_delete", label: "Excluir Clientes", description: "Remover clientes do sistema" },
-  { key: "contracts_view", label: "Visualizar Contratos", description: "Ver contratos" },
-  { key: "contracts_create", label: "Criar Contratos", description: "Criar novos contratos" },
-  { key: "contracts_edit", label: "Editar Contratos", description: "Modificar contratos" },
-  { key: "contracts_delete", label: "Excluir Contratos", description: "Remover contratos" },
-  { key: "employees_view", label: "Visualizar Funcionários", description: "Ver funcionários" },
-  { key: "employees_create", label: "Criar Funcionários", description: "Cadastrar funcionários" },
-  { key: "employees_edit", label: "Editar Funcionários", description: "Modificar funcionários" },
-  { key: "employees_delete", label: "Excluir Funcionários", description: "Remover funcionários" },
-  { key: "teams_view", label: "Visualizar Equipes", description: "Ver equipes" },
-  { key: "teams_manage", label: "Gerenciar Equipes", description: "Criar, editar e excluir equipes" },
-  { key: "services_view", label: "Visualizar Serviços", description: "Ver serviços" },
-  { key: "services_manage", label: "Gerenciar Serviços", description: "Criar, editar e excluir serviços" },
-  { key: "agenda_view", label: "Visualizar Agenda", description: "Ver agendamentos" },
-  { key: "agenda_manage", label: "Gerenciar Agenda", description: "Criar e modificar agendamentos" },
-  { key: "financial_view", label: "Visualizar Financeiro", description: "Ver dados financeiros" },
-  { key: "financial_manage", label: "Gerenciar Financeiro", description: "Editar dados financeiros" },
-  { key: "reports_view", label: "Visualizar Relatórios", description: "Acessar relatórios" },
-  { key: "reports_export", label: "Exportar Relatórios", description: "Exportar dados" },
-  { key: "settings_view", label: "Visualizar Configurações", description: "Ver configurações" },
-  { key: "settings_manage", label: "Gerenciar Configurações", description: "Modificar configurações do sistema" },
-  { key: "templates_view", label: "Visualizar Templates", description: "Ver templates de contratos" },
-  { key: "templates_manage", label: "Gerenciar Templates", description: "Criar, editar e excluir templates" },
-  { key: "logs_view", label: "Visualizar Logs", description: "Ver logs do sistema" },
-  { key: "logs_manage", label: "Gerenciar Logs", description: "Gerenciar e exportar logs" },
-]
+import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
+import { Switch } from "@/components/ui/switch"
+import { cn } from "@/lib/utils"
+import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
+import { formatCPF, formatPhone } from "@/lib/masks"
+import {
+  createClientType,
+  createNotificationRule,
+  createPermissionProfile,
+  createUser,
+  deleteClientType,
+  deleteNotificationRule,
+  deletePermissionProfile,
+  deleteUser,
+  getSettings,
+  resetUserPassword,
+  updateClientType,
+  updateNotificationRule,
+  updatePermissionProfile,
+  updateUser,
+  type ClientTypeRecord,
+  type NotificationRuleRecord,
+  type PermissionProfileRecord,
+  type UserRecord,
+} from "@/lib/api/settings"
 
 type SettingsSection = "tipos-cliente" | "permissoes" | "usuarios" | "notificacoes"
 
@@ -110,352 +51,569 @@ const SETTINGS_CARDS = [
   { id: "notificacoes" as SettingsSection, label: "Configuração de Notificações", icon: Bell, description: "Defina quem recebe cada tipo de notificação" },
 ]
 
+const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
+  new_schedule: "Novo Agendamento",
+  schedule_change: "Alteração de Agendamento",
+  schedule_cancel: "Cancelamento",
+  emergency: "Emergência",
+  daily_services: "Serviços do Dia",
+  payment_due: "Parcela Vencendo",
+  payment_overdue: "Parcela Vencida",
+  contract_expiring: "Contrato Vencendo",
+}
+
+const CHANNELS = [
+  { value: "system", label: "Sistema", icon: Bell },
+  { value: "whatsapp", label: "WhatsApp", icon: MessageCircle },
+  { value: "email", label: "E-mail", icon: Mail },
+] as const
+
+const DEFAULT_COLOR = "#84CC16"
+
+function generatePassword(length = 12) {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789@#$%"
+  const bytes = new Uint8Array(length)
+  window.crypto.getRandomValues(bytes)
+  return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join("")
+}
+
+function parseCsv(value: string) {
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+type PermissionModule = {
+  key: string
+  title: string
+  description: string
+}
+
+const PERMISSION_MODULES: PermissionModule[] = [
+  { key: "clients", title: "Clientes", description: "Acesso ao cadastro e à gestão de clientes" },
+  { key: "contracts", title: "Contratos", description: "Acesso ao fluxo de contratos e aditivos" },
+  { key: "employees", title: "Funcionários", description: "Acesso ao cadastro de funcionários" },
+  { key: "teams", title: "Equipes", description: "Acesso ao gerenciamento de equipes" },
+  { key: "services", title: "Serviços", description: "Acesso ao cadastro e edição de serviços" },
+  { key: "agenda", title: "Agenda", description: "Acesso aos agendamentos e à operação diária" },
+  { key: "financial", title: "Financeiro", description: "Acesso ao financeiro e às parcelas" },
+  { key: "reports", title: "Relatórios", description: "Acesso à consulta e exportação de relatórios" },
+  { key: "settings", title: "Configurações", description: "Acesso à administração do sistema" },
+  { key: "templates", title: "Templates", description: "Acesso aos modelos de contratos" },
+  { key: "logs", title: "Logs", description: "Acesso ao histórico de ações" },
+]
+
+function getPermissionModuleLabel(moduleKey: string) {
+  return PERMISSION_MODULES.find((module) => module.key === moduleKey)?.title ?? moduleKey
+}
+
+function getPermissionModuleDescription(moduleKey: string) {
+  return PERMISSION_MODULES.find((module) => module.key === moduleKey)?.description ?? ""
+}
+
 export function ConfiguracoesContent() {
-  const [activeSection, setActiveSection] = useState<SettingsSection>("tipos-cliente")
-  const [clientTypes, setClientTypes] = useState<ClientTypeRow[]>(mockClientTypes)
-  const [permissionProfiles, setPermissionProfiles] = useState<PermissionProfileRow[]>(
-    mockPermissionProfiles.map((p) => ({ ...p, permissions: [...p.permissions] })) as PermissionProfileRow[]
-  )
-  const [users, setUsers] = useState<UserRow[]>(mockUsers)
+  const [activeSection, setActiveSection] = useUrlQueryState("section", "tipos-cliente")
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
 
-  // Pagination for client types
-  const [typeCurrentPage, setTypeCurrentPage] = useState(1)
+  const [clientTypes, setClientTypes] = useState<ClientTypeRecord[]>([])
+  const [permissionProfiles, setPermissionProfiles] = useState<PermissionProfileRecord[]>([])
+  const [users, setUsers] = useState<UserRecord[]>([])
+  const [notificationRules, setNotificationRules] = useState<NotificationRuleRecord[]>([])
+  const [permissionCatalog, setPermissionCatalog] = useState<Array<{ key: string; label: string; description: string }>>([])
+
+  const [typeSearch, setTypeSearch] = useUrlQueryState("q-types")
+  const [profileSearch, setProfileSearch] = useUrlQueryState("q-profiles")
+  const [userSearch, setUserSearch] = useUrlQueryState("q-users")
+  const [ruleSearch, setRuleSearch] = useUrlQueryState("q-rules")
+
+  const [typePage, setTypePage] = useState(1)
+  const [profilePage, setProfilePage] = useState(1)
+  const [userPage, setUserPage] = useState(1)
+  const [rulePage, setRulePage] = useState(1)
+
   const [typePageSize, setTypePageSize] = useState(10)
-  const [typeSearchTerm, setTypeSearchTerm] = useState("")
-
-  // Pagination for users
-  const [userCurrentPage, setUserCurrentPage] = useState(1)
+  const [profilePageSize, setProfilePageSize] = useState(10)
   const [userPageSize, setUserPageSize] = useState(10)
-  const [userSearchTerm, setUserSearchTerm] = useState("")
+  const [rulePageSize, setRulePageSize] = useState(6)
 
-  // Notification Rules State
-  const [rules, setRules] = useState<NotificationRule[]>(notificationRules)
-  const [isRuleDialogOpen, setIsRuleDialogOpen] = useState(false)
-  const [editingRule, setEditingRule] = useState<NotificationRule | null>(null)
-  const [ruleFormData, setRuleFormData] = useState({
-    name: "",
-    type: "new_schedule" as NotificationType,
-    daysBefore: 1,
-    time: "08:00",
-    channels: [] as NotificationChannel[],
-    targetTeamIds: [] as string[],
-    isActive: true,
-  })
-  const [teamsPopoverOpen, setTeamsPopoverOpen] = useState(false)
-  const [teamSearchTerm, setTeamSearchTerm] = useState("")
-
-  const filteredTeamsForRule = mockTeams.filter(t =>
-    t.name.toLowerCase().includes(teamSearchTerm.toLowerCase())
-  )
-
-  // Client Type Dialog
   const [isTypeDialogOpen, setIsTypeDialogOpen] = useState(false)
-  const [editingType, setEditingType] = useState<ClientTypeRow | null>(null)
-  const [typeFormData, setTypeFormData] = useState({
-    name: "",
-    description: "",
-    color: "#F59E0B",
-  })
+  const [editingType, setEditingType] = useState<ClientTypeRecord | null>(null)
+  const [typeForm, setTypeForm] = useState({ name: "", description: "", color: DEFAULT_COLOR })
 
-  // Permission Profile Dialog
   const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false)
-  const [editingProfile, setEditingProfile] = useState<PermissionProfileRow | null>(null)
-  const [profileFormData, setProfileFormData] = useState({
-    name: "",
-    description: "",
-    permissions: [] as PermissionKey[],
-  })
+  const [editingProfile, setEditingProfile] = useState<PermissionProfileRecord | null>(null)
+  const [profileForm, setProfileForm] = useState({ name: "", description: "", permissions: [] as string[] })
 
-  // User Dialog
   const [isUserDialogOpen, setIsUserDialogOpen] = useState(false)
-  const [editingUser, setEditingUser] = useState<UserRow | null>(null)
-  const [userFormData, setUserFormData] = useState({
+  const [editingUser, setEditingUser] = useState<UserRecord | null>(null)
+  const [showTemporaryPassword, setShowTemporaryPassword] = useState(false)
+  const [userForm, setUserForm] = useState({
     name: "",
     email: "",
+    phone: "",
+    cpf: "",
+    role: "",
     password: "",
     permissionProfileId: "",
     isActive: true,
+    mustChangePassword: true,
   })
 
-  // Filtered and paginated client types
-  const filteredTypes = useMemo(() => {
-    return clientTypes.filter(t =>
-      t.name.toLowerCase().includes(typeSearchTerm.toLowerCase())
-    )
-  }, [clientTypes, typeSearchTerm])
+  const [isRuleDialogOpen, setIsRuleDialogOpen] = useState(false)
+  const [editingRule, setEditingRule] = useState<NotificationRuleRecord | null>(null)
+  const [ruleForm, setRuleForm] = useState({
+    name: "",
+    type: "new_schedule",
+    daysBefore: 1,
+    time: "08:00",
+    channels: [] as string[],
+    targetTeamIds: [] as string[],
+    isActive: true,
+  })
+  const [pendingDelete, setPendingDelete] = useState<
+    | { kind: "client-type"; id: string; label: string }
+    | { kind: "profile"; id: string; label: string }
+    | { kind: "user"; id: string; label: string }
+    | { kind: "rule"; id: string; label: string }
+    | null
+  >(null)
 
-  const typeTotalPages = Math.ceil(filteredTypes.length / typePageSize)
-  const paginatedTypes = useMemo(() => {
-    const start = (typeCurrentPage - 1) * typePageSize
-    return filteredTypes.slice(start, start + typePageSize)
-  }, [filteredTypes, typeCurrentPage, typePageSize])
-
-  // Filtered and paginated users
-  const filteredUsers = useMemo(() => {
-    return users.filter(u =>
-      u.name.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
-      u.email.toLowerCase().includes(userSearchTerm.toLowerCase())
-    )
-  }, [users, userSearchTerm])
-
-  const userTotalPages = Math.ceil(filteredUsers.length / userPageSize)
-  const paginatedUsers = useMemo(() => {
-    const start = (userCurrentPage - 1) * userPageSize
-    return filteredUsers.slice(start, start + userPageSize)
-  }, [filteredUsers, userCurrentPage, userPageSize])
-
-  // Client Types CRUD
-  const handleTypeSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (editingType) {
-      setClientTypes(clientTypes.map(ct =>
-        ct.id === editingType.id ? { ...ct, ...typeFormData } : ct
-      ))
-    } else {
-      const newType: ClientTypeRow = {
-        id: `ctype-${Date.now()}`,
-        ...typeFormData,
-      }
-      setClientTypes([...clientTypes, newType])
+  const refreshSettings = async () => {
+    setLoading(true)
+    try {
+      const response = await getSettings()
+      setClientTypes(response.data.clientTypes)
+      setPermissionProfiles(response.data.permissionProfiles)
+      setUsers(response.data.users)
+      setNotificationRules(response.data.notificationRules)
+      setPermissionCatalog(response.data.permissions)
+    } catch {
+      toast.error("Não foi possível carregar as configurações.")
+    } finally {
+      setLoading(false)
     }
-    resetTypeForm()
   }
 
+  useEffect(() => {
+    void refreshSettings()
+  }, [])
+
+  const filteredTypes = useMemo(() => clientTypes.filter((item) =>
+    [item.name, item.description, item.color].join(" ").toLowerCase().includes(typeSearch.toLowerCase()),
+  ), [clientTypes, typeSearch])
+
+  const filteredProfiles = useMemo(() => permissionProfiles.filter((item) =>
+    [item.name, item.description, item.permissions.join(" ")].join(" ").toLowerCase().includes(profileSearch.toLowerCase()),
+  ), [permissionProfiles, profileSearch])
+
+  const filteredUsers = useMemo(() => users.filter((item) =>
+    [item.name, item.email, item.phone, item.cpf, item.role, item.permissionProfileName].join(" ").toLowerCase().includes(userSearch.toLowerCase()),
+  ), [users, userSearch])
+
+  const filteredRules = useMemo(() => notificationRules.filter((item) =>
+    [item.name, item.type, item.channels.join(" "), item.targetTeamIds.join(" ")].join(" ").toLowerCase().includes(ruleSearch.toLowerCase()),
+  ), [notificationRules, ruleSearch])
+
+  const paginatedTypes = useMemo(() => filteredTypes.slice((typePage - 1) * typePageSize, typePage * typePageSize), [filteredTypes, typePage, typePageSize])
+  const paginatedProfiles = useMemo(() => filteredProfiles.slice((profilePage - 1) * profilePageSize, profilePage * profilePageSize), [filteredProfiles, profilePage, profilePageSize])
+  const paginatedUsers = useMemo(() => filteredUsers.slice((userPage - 1) * userPageSize, userPage * userPageSize), [filteredUsers, userPage, userPageSize])
+  const paginatedRules = useMemo(() => filteredRules.slice((rulePage - 1) * rulePageSize, rulePage * rulePageSize), [filteredRules, rulePage, rulePageSize])
+
   const resetTypeForm = () => {
-    setTypeFormData({ name: "", description: "", color: "#F59E0B" })
     setEditingType(null)
+    setTypeForm({ name: "", description: "", color: DEFAULT_COLOR })
     setIsTypeDialogOpen(false)
   }
 
-  const handleEditType = (type: ClientTypeRow) => {
-    setEditingType(type)
-    setTypeFormData({
-      name: type.name,
-      description: type.description || "",
-      color: type.color || "#F59E0B",
-    })
-    setIsTypeDialogOpen(true)
-  }
-
-  const handleDeleteType = (id: string) => {
-    if (confirm("Tem certeza que deseja excluir este tipo de cliente?")) {
-      setClientTypes(clientTypes.filter(ct => ct.id !== id))
-    }
-  }
-
-  // Permission Profiles CRUD
-  const handleProfileSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (editingProfile) {
-      setPermissionProfiles(permissionProfiles.map(pp =>
-        pp.id === editingProfile.id ? { ...pp, ...profileFormData } : pp
-      ))
-    } else {
-      const newProfile: PermissionProfileRow = {
-        id: `profile-${Date.now()}`,
-        ...profileFormData,
-        createdAt: new Date().toISOString(),
-      }
-      setPermissionProfiles([...permissionProfiles, newProfile])
-    }
-    resetProfileForm()
-  }
-
   const resetProfileForm = () => {
-    setProfileFormData({ name: "", description: "", permissions: [] })
     setEditingProfile(null)
+    setProfileForm({ name: "", description: "", permissions: [] })
     setIsProfileDialogOpen(false)
   }
 
-  const handleEditProfile = (profile: PermissionProfileRow) => {
-    setEditingProfile(profile)
-    setProfileFormData({
-      name: profile.name,
-      description: profile.description || "",
-      permissions: [...profile.permissions],
-    })
-    setIsProfileDialogOpen(true)
-  }
-
-  const handleDeleteProfile = (id: string) => {
-    if (confirm("Tem certeza que deseja excluir este perfil de permissões?")) {
-      setPermissionProfiles(permissionProfiles.filter(pp => pp.id !== id))
-    }
-  }
-
-  const togglePermission = (permission: PermissionKey) => {
-    if (profileFormData.permissions.includes(permission)) {
-      setProfileFormData({
-        ...profileFormData,
-        permissions: profileFormData.permissions.filter(p => p !== permission),
-      })
-    } else {
-      setProfileFormData({
-        ...profileFormData,
-        permissions: [...profileFormData.permissions, permission],
-      })
-    }
-  }
-
-  // Users CRUD
-  const handleUserSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!userFormData.permissionProfileId) return
-    if (editingUser) {
-      setUsers(users.map(u =>
-        u.id === editingUser.id
-          ? {
-            ...u,
-            name: userFormData.name,
-            email: userFormData.email,
-            permissionProfileId: userFormData.permissionProfileId,
-            isActive: userFormData.isActive,
-          }
-          : u
-      ))
-    } else {
-      const newUser: UserRow = {
-        id: `user-${Date.now()}`,
-        name: userFormData.name,
-        email: userFormData.email,
-        permissionProfileId: userFormData.permissionProfileId,
-        isActive: userFormData.isActive,
-        createdAt: new Date().toISOString(),
-      }
-      setUsers([...users, newUser])
-    }
-    resetUserForm()
-  }
-
   const resetUserForm = () => {
-    setUserFormData({ name: "", email: "", password: "", permissionProfileId: "", isActive: true })
     setEditingUser(null)
+    setUserForm({ name: "", email: "", phone: "", cpf: "", role: "", password: "", permissionProfileId: "", isActive: true, mustChangePassword: true })
+    setShowTemporaryPassword(false)
     setIsUserDialogOpen(false)
   }
 
-  const handleEditUser = (user: UserRow) => {
-    setEditingUser(user)
-    setUserFormData({
-      name: user.name,
-      email: user.email,
-      password: "",
-      permissionProfileId: user.permissionProfileId,
-      isActive: user.isActive,
-    })
-    setIsUserDialogOpen(true)
-  }
-
-  const handleDeleteUser = (id: string) => {
-    if (confirm("Tem certeza que deseja excluir este usuário?")) {
-      setUsers(users.filter(u => u.id !== id))
-    }
-  }
-
-  // Notification Rules CRUD
-  const handleRuleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (editingRule) {
-      setRules(rules.map(r =>
-        r.id === editingRule.id ? { ...r, ...ruleFormData } : r
-      ))
-    } else {
-      const newRule: NotificationRule = {
-        id: `rule-${Date.now()}`,
-        ...ruleFormData,
-        createdAt: new Date(),
-      }
-      setRules([...rules, newRule])
-    }
-    resetRuleForm()
-  }
-
   const resetRuleForm = () => {
-    setRuleFormData({
-      name: "",
-      type: "new_schedule",
-      daysBefore: 1,
-      time: "08:00",
-      channels: [],
-      targetTeamIds: [],
-      isActive: true,
-    })
     setEditingRule(null)
+    setRuleForm({ name: "", type: "new_schedule", daysBefore: 1, time: "08:00", channels: [], targetTeamIds: [], isActive: true })
     setIsRuleDialogOpen(false)
   }
 
-  const handleEditRule = (rule: NotificationRule) => {
-    setEditingRule(rule)
-    setRuleFormData({
-      name: rule.name,
-      type: rule.type,
-      daysBefore: rule.daysBefore || 1,
-      time: rule.time || "08:00",
-      channels: rule.channels,
-      targetTeamIds: rule.targetTeamIds,
-      isActive: rule.isActive,
-    })
+  const openTypeDialog = (record?: ClientTypeRecord) => {
+    if (record) {
+      setEditingType(record)
+      setTypeForm({ name: record.name, description: record.description, color: record.color })
+    }
+    setIsTypeDialogOpen(true)
+  }
+
+  const openProfileDialog = (record?: PermissionProfileRecord) => {
+    if (record) {
+      setEditingProfile(record)
+      setProfileForm({ name: record.name, description: record.description, permissions: [...record.permissions] })
+    }
+    setIsProfileDialogOpen(true)
+  }
+
+  const openUserDialog = (record?: UserRecord) => {
+    if (record) {
+      setEditingUser(record)
+      setUserForm({
+        name: record.name,
+        email: record.email,
+        phone: record.phone,
+        cpf: record.cpf,
+        role: record.role,
+        password: record.mustChangePassword ? (record.temporaryPassword ?? "") : "",
+        permissionProfileId: record.permissionProfileId,
+        isActive: record.isActive,
+        mustChangePassword: record.mustChangePassword,
+      })
+      setShowTemporaryPassword(!record.mustChangePassword)
+    } else {
+      setEditingUser(null)
+      setUserForm({ name: "", email: "", phone: "", cpf: "", role: "", password: "", permissionProfileId: "", isActive: true, mustChangePassword: true })
+      setShowTemporaryPassword(false)
+    }
+    setIsUserDialogOpen(true)
+  }
+
+  const openRuleDialog = (record?: NotificationRuleRecord) => {
+    if (record) {
+      setEditingRule(record)
+      setRuleForm({
+        name: record.name,
+        type: record.type,
+        daysBefore: record.daysBefore,
+        time: record.time,
+        channels: [...record.channels],
+        targetTeamIds: [...record.targetTeamIds],
+        isActive: record.isActive,
+      })
+    }
     setIsRuleDialogOpen(true)
   }
 
-  const handleDeleteRule = (id: string) => {
-    if (confirm("Tem certeza que deseja excluir esta regra?")) {
-      setRules(rules.filter(r => r.id !== id))
+  const handleTypeSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setSaving(true)
+    try {
+      if (editingType) {
+        const response = await updateClientType(editingType.id, typeForm)
+        upsertClientType(response.data)
+        toast.success("Tipo de cliente atualizado.")
+      } else {
+        const response = await createClientType(typeForm)
+        upsertClientType(response.data)
+        toast.success("Tipo de cliente criado.")
+      }
+      resetTypeForm()
+    } catch {
+      toast.error("Não foi possível salvar o tipo de cliente.")
+    } finally {
+      setSaving(false)
     }
   }
 
-  const toggleRuleActive = (id: string) => {
-    setRules(rules.map(r =>
-      r.id === id ? { ...r, isActive: !r.isActive } : r
-    ))
-  }
-
-  const toggleChannel = (channel: NotificationChannel) => {
-    if (ruleFormData.channels.includes(channel)) {
-      setRuleFormData({
-        ...ruleFormData,
-        channels: ruleFormData.channels.filter(c => c !== channel),
-      })
-    } else {
-      setRuleFormData({
-        ...ruleFormData,
-        channels: [...ruleFormData.channels, channel],
-      })
+  const handleProfileSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setSaving(true)
+    try {
+      const payload = { ...profileForm, permissions: profileForm.permissions }
+      if (editingProfile) {
+        const response = await updatePermissionProfile(editingProfile.id, payload)
+        upsertPermissionProfile(response.data)
+        toast.success("Perfil atualizado.")
+      } else {
+        const response = await createPermissionProfile(payload)
+        upsertPermissionProfile(response.data)
+        toast.success("Perfil criado.")
+      }
+      resetProfileForm()
+    } catch {
+      toast.error("Não foi possível salvar o perfil.")
+    } finally {
+      setSaving(false)
     }
   }
 
-  const toggleTeam = (teamId: string) => {
-    if (ruleFormData.targetTeamIds.includes(teamId)) {
-      setRuleFormData({
-        ...ruleFormData,
-        targetTeamIds: ruleFormData.targetTeamIds.filter(t => t !== teamId),
-      })
-    } else {
-      setRuleFormData({
-        ...ruleFormData,
-        targetTeamIds: [...ruleFormData.targetTeamIds, teamId],
-      })
+  const handleUserSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!userForm.permissionProfileId) {
+      toast.error("Selecione um perfil de permissao.")
+      return
+    }
+    if (!editingUser && !userForm.password.trim()) {
+      toast.error("Informe uma senha ou gere uma nova senha.")
+      return
+    }
+
+    setSaving(true)
+    try {
+      if (editingUser) {
+        const response = await updateUser(editingUser.id, {
+          name: userForm.name,
+          email: userForm.email,
+          phone: userForm.phone,
+          cpf: userForm.cpf,
+          role: userForm.role,
+          permissionProfileId: userForm.permissionProfileId,
+          isActive: userForm.isActive,
+          ...(userForm.password.trim() ? { password: userForm.password } : {}),
+        })
+        upsertUser(response.data)
+        toast.success("Usuário atualizado.")
+      } else {
+        const response = await createUser({
+          name: userForm.name,
+          email: userForm.email,
+          phone: userForm.phone,
+          cpf: userForm.cpf,
+          role: userForm.role,
+          password: userForm.password,
+          permissionProfileId: userForm.permissionProfileId,
+          isActive: userForm.isActive,
+        })
+        upsertUser(response.data)
+        toast.success("Usuário criado.")
+      }
+      resetUserForm()
+    } catch {
+      toast.error("Não foi possível salvar o usuário.")
+    } finally {
+      setSaving(false)
     }
   }
 
-  const removeTeamFromRule = (teamId: string) => {
-    setRuleFormData({
-      ...ruleFormData,
-      targetTeamIds: ruleFormData.targetTeamIds.filter(t => t !== teamId),
-    })
+  const handleRuleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setSaving(true)
+    try {
+      const payload = {
+        name: ruleForm.name,
+        type: ruleForm.type,
+        daysBefore: ruleForm.daysBefore,
+        time: ruleForm.time,
+        channels: ruleForm.channels,
+        targetTeamIds: ruleForm.targetTeamIds,
+        isActive: ruleForm.isActive,
+      }
+      if (editingRule) {
+        const response = await updateNotificationRule(editingRule.id, payload)
+        upsertNotificationRule(response.data)
+        toast.success("Regra atualizada.")
+      } else {
+        const response = await createNotificationRule(payload)
+        upsertNotificationRule(response.data)
+        toast.success("Regra criada.")
+      }
+      resetRuleForm()
+    } catch {
+      toast.error("Não foi possível salvar a regra.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDeleteType = async (id: string) => {
+    setSaving(true)
+    try {
+      await deleteClientType(id)
+      setClientTypes((current) => current.filter((item) => item.id !== id))
+      toast.success("Tipo de cliente removido.")
+    } catch {
+      toast.error("Não foi possível excluir o tipo.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDeleteProfile = async (id: string) => {
+    setSaving(true)
+    try {
+      await deletePermissionProfile(id)
+      setPermissionProfiles((current) => current.filter((item) => item.id !== id))
+      toast.success("Perfil removido.")
+    } catch {
+      toast.error("Não foi possível excluir o perfil.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDeleteUser = async (id: string) => {
+    setSaving(true)
+    try {
+      await deleteUser(id)
+      setUsers((current) => current.filter((item) => item.id !== id))
+      toast.success("Usuário removido.")
+    } catch {
+      toast.error("Não foi possível excluir o usuário.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDeleteRule = async (id: string) => {
+    setSaving(true)
+    try {
+      await deleteNotificationRule(id)
+      setNotificationRules((current) => current.filter((item) => item.id !== id))
+      toast.success("Regra removida.")
+    } catch {
+      toast.error("Não foi possível excluir a regra.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const togglePermission = (key: string) => {
+    setProfileForm((current) => ({
+      ...current,
+      permissions: current.permissions.includes(key)
+        ? current.permissions.filter((permission) => permission !== key)
+        : [...current.permissions, key],
+    }))
+  }
+
+  const toggleChannel = (key: string) => {
+    setRuleForm((current) => ({
+      ...current,
+      channels: current.channels.includes(key)
+        ? current.channels.filter((item) => item !== key)
+        : [...current.channels, key],
+    }))
+  }
+
+  const generateUserPassword = () => {
+    setUserForm((current) => ({ ...current, password: generatePassword(), mustChangePassword: true }))
+    setShowTemporaryPassword(true)
+  }
+
+  const copyUserPassword = async () => {
+    if (!userForm.password) return
+    await navigator.clipboard.writeText(userForm.password)
+    toast.success("Senha copiada.")
+  }
+
+  const handleResetUserPassword = async () => {
+    if (!editingUser) return
+
+    setSaving(true)
+    try {
+      const response = await resetUserPassword(editingUser.id)
+      upsertUser(response.data)
+      setEditingUser(response.data)
+      setUserForm((current) => ({
+        ...current,
+        password: response.data.temporaryPassword ?? "",
+        mustChangePassword: true,
+      }))
+      setShowTemporaryPassword(false)
+      toast.success("Senha redefinida.")
+    } catch {
+      toast.error("Não foi possível redefinir a senha.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const upsertClientType = (record: ClientTypeRecord) => {
+    setClientTypes((current) => current.some((item) => item.id === record.id)
+      ? current.map((item) => (item.id === record.id ? record : item))
+      : [...current, record])
+  }
+
+  const upsertPermissionProfile = (record: PermissionProfileRecord) => {
+    setPermissionProfiles((current) => current.some((item) => item.id === record.id)
+      ? current.map((item) => (item.id === record.id ? record : item))
+      : [...current, record])
+  }
+
+  const upsertUser = (record: UserRecord) => {
+    setUsers((current) => current.some((item) => item.id === record.id)
+      ? current.map((item) => (item.id === record.id ? record : item))
+      : [...current, record])
+  }
+
+  const upsertNotificationRule = (record: NotificationRuleRecord) => {
+    setNotificationRules((current) => current.some((item) => item.id === record.id)
+      ? current.map((item) => (item.id === record.id ? record : item))
+      : [...current, record])
+  }
+
+  const shouldShowPasswordFields = !editingUser || userForm.mustChangePassword
+
+  const groupedPermissions = useMemo(() => {
+    return PERMISSION_MODULES.map((module) => ({
+      ...module,
+      permissions: permissionCatalog.filter((permission) => permission.key.startsWith(`${module.key}_`)),
+    }))
+  }, [permissionCatalog])
+
+  const getModuleSelectionState = (moduleKey: string) => {
+    const modulePermissions = permissionCatalog.filter((permission) => permission.key.startsWith(`${moduleKey}_`))
+    const selectedCount = modulePermissions.filter((permission) => profileForm.permissions.includes(permission.key)).length
+    const allSelected = modulePermissions.length > 0 && selectedCount === modulePermissions.length
+    const partialSelected = selectedCount > 0 && !allSelected
+    return { allSelected, partialSelected, modulePermissions }
+  }
+
+  const toggleModulePermissions = (moduleKey: string) => {
+    const { allSelected, modulePermissions } = getModuleSelectionState(moduleKey)
+    const moduleKeys = modulePermissions.map((permission) => permission.key)
+    setProfileForm((current) => ({
+      ...current,
+      permissions: allSelected
+        ? current.permissions.filter((permission) => !moduleKeys.includes(permission))
+        : Array.from(new Set([...current.permissions, ...moduleKeys])),
+    }))
+  }
+
+  const confirmPendingDelete = async () => {
+    if (!pendingDelete) return
+    const target = pendingDelete
+    setPendingDelete(null)
+
+    if (target.kind === "client-type") {
+      await handleDeleteType(target.id)
+      return
+    }
+
+    if (target.kind === "profile") {
+      await handleDeleteProfile(target.id)
+      return
+    }
+
+    if (target.kind === "user") {
+      await handleDeleteUser(target.id)
+      return
+    }
+
+    await handleDeleteRule(target.id)
+  }
+
+  if (loading) {
+    return <div className="rounded-xl border bg-card p-6 text-sm text-muted-foreground">Carregando configurações...</div>
   }
 
   return (
     <div className="space-y-6">
-      {/* Mobile: pills horizontais */}
       <div className="flex gap-2 overflow-x-auto pb-2 sm:hidden">
         {SETTINGS_CARDS.map((card) => (
           <button
             key={card.id}
-            className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors shrink-0 ${
-              activeSection === card.id
-                ? "bg-primary text-primary-foreground"
-                : "bg-muted text-muted-foreground hover:bg-muted/80"
-            }`}
+            className={cn(
+              "flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium whitespace-nowrap shrink-0 transition-colors",
+              activeSection === card.id ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80",
+            )}
             onClick={() => setActiveSection(card.id)}
           >
             <card.icon className="h-4 w-4" />
@@ -463,18 +621,17 @@ export function ConfiguracoesContent() {
           </button>
         ))}
       </div>
-      {/* Desktop: cards */}
-      <div className="hidden sm:grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+
+      <div className="hidden gap-4 sm:grid sm:grid-cols-2 lg:grid-cols-4">
         {SETTINGS_CARDS.map((card) => (
           <Card
             key={card.id}
-            className={`cursor-pointer transition-all hover:shadow-md ${activeSection === card.id ? "ring-2 ring-primary bg-primary/5" : ""
-              }`}
+            className={cn("cursor-pointer transition-all hover:shadow-md", activeSection === card.id && "ring-2 ring-primary bg-primary/5")}
             onClick={() => setActiveSection(card.id)}
           >
             <CardHeader className="pb-2">
               <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg ${activeSection === card.id ? "bg-primary/20" : "bg-primary/10"}`}>
+                <div className={cn("rounded-lg p-2", activeSection === card.id ? "bg-primary/20" : "bg-primary/10")}>
                   <card.icon className="h-6 w-6 text-primary" />
                 </div>
                 <CardTitle className="text-base">{card.label}</CardTitle>
@@ -487,84 +644,24 @@ export function ConfiguracoesContent() {
         ))}
       </div>
 
-      {/* Client Types Section */}
       {activeSection === "tipos-cliente" && (
-        <div>
-          <div className="flex items-center gap-3 mb-4">
-            <div className="relative w-full sm:w-1/3">
+        <div className="space-y-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="relative w-full sm:max-w-md">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Buscar tipos..."
-                value={typeSearchTerm}
-                onChange={(e) => { setTypeSearchTerm(e.target.value); setTypeCurrentPage(1) }}
-                className="pl-10"
-              />
+              <Input placeholder="Buscar tipos..." value={typeSearch} onChange={(event) => { setTypeSearch(event.target.value); setTypePage(1) }} className="pl-10" />
             </div>
-            <Dialog open={isTypeDialogOpen} onOpenChange={setIsTypeDialogOpen}>
-              <DialogTrigger asChild>
-                <Button className="bg-primary hover:bg-primary/90 text-primary-foreground">
-                  <Plus className="mr-2 h-4 w-4" />
-                  Novo Tipo
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>{editingType ? "Editar Tipo" : "Novo Tipo de Cliente"}</DialogTitle>
-                </DialogHeader>
-                <form onSubmit={handleTypeSubmit} className="space-y-6">
-                  <div className="space-y-6">
-                    <Label htmlFor="typeName">Nome</Label>
-                    <Input
-                      id="typeName"
-                      value={typeFormData.name}
-                      onChange={(e) => setTypeFormData({ ...typeFormData, name: e.target.value })}
-                      placeholder="Ex: Condominio"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-6">
-                    <Label htmlFor="typeDesc">Descrição</Label>
-                    <Input
-                      id="typeDesc"
-                      value={typeFormData.description}
-                      onChange={(e) => setTypeFormData({ ...typeFormData, description: e.target.value })}
-                      placeholder="Descrição do tipo"
-                    />
-                  </div>
-                  <div className="space-y-6">
-                    <Label htmlFor="typeColor">Cor</Label>
-                    <div className="flex gap-2">
-                      <Input
-                        id="typeColor"
-                        type="color"
-                        value={typeFormData.color}
-                        onChange={(e) => setTypeFormData({ ...typeFormData, color: e.target.value })}
-                        className="w-16 h-10 p-1"
-                      />
-                      <Input
-                        value={typeFormData.color}
-                        onChange={(e) => setTypeFormData({ ...typeFormData, color: e.target.value })}
-                        className="flex-1"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex gap-2 justify-end">
-                    <Button type="button" variant="outline" onClick={resetTypeForm}>
-                      Cancelar
-                    </Button>
-                    <Button type="submit" className="bg-primary hover:bg-primary/90 text-primary-foreground">
-                      {editingType ? "Salvar" : "Criar"}
-                    </Button>
-                  </div>
-                </form>
-              </DialogContent>
-            </Dialog>
+            <Button onClick={() => openTypeDialog()} className="bg-primary text-primary-foreground hover:bg-primary/90">
+              <Plus className="mr-2 h-4 w-4" />
+              Novo Tipo
+            </Button>
           </div>
+
           <div className="rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[60px]">Cor</TableHead>
+                  <TableHead>Cor</TableHead>
                   <TableHead>Nome</TableHead>
                   <TableHead>Descrição</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
@@ -573,28 +670,104 @@ export function ConfiguracoesContent() {
               <TableBody>
                 {paginatedTypes.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="h-24 text-center">
-                      Nenhum tipo encontrado.
-                    </TableCell>
+                    <TableCell colSpan={4} className="h-24 text-center">Nenhum tipo encontrado.</TableCell>
                   </TableRow>
                 ) : (
-                  paginatedTypes.map((type) => (
-                    <TableRow key={type.id}>
-                      <TableCell>
-                        <div
-                          className="w-6 h-6 rounded-full"
-                          style={{ backgroundColor: getColorFromClass(type.color) }}
-                        />
+                  paginatedTypes.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell><span className="inline-flex h-5 w-5 rounded-full" style={{ backgroundColor: item.color }} /></TableCell>
+                      <TableCell className="font-medium">{item.name}</TableCell>
+                      <TableCell>{item.description || "Sem descricao"}</TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="ghost" size="icon" onClick={() => openTypeDialog(item)}><Edit className="h-4 w-4" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => setPendingDelete({ kind: "client-type", id: item.id, label: item.name })}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                       </TableCell>
-                      <TableCell className="font-medium">{type.name}</TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {type.description || "Sem descricao"}
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+
+          <DataPagination
+            currentPage={typePage}
+            totalPages={Math.max(1, Math.ceil(filteredTypes.length / typePageSize))}
+            pageSize={typePageSize}
+            totalItems={filteredTypes.length}
+            onPageChange={setTypePage}
+            onPageSizeChange={(size) => { setTypePageSize(size); setTypePage(1) }}
+          />
+
+          <Dialog open={isTypeDialogOpen} onOpenChange={(open) => (open ? setIsTypeDialogOpen(true) : resetTypeForm())}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>{editingType ? "Editar Tipo de Cliente" : "Novo Tipo de Cliente"}</DialogTitle>
+              </DialogHeader>
+              <form onSubmit={handleTypeSubmit} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="type-name">Nome</Label>
+                  <Input id="type-name" value={typeForm.name} onChange={(event) => setTypeForm({ ...typeForm, name: event.target.value })} required />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="type-description">Descrição</Label>
+                  <Textarea id="type-description" value={typeForm.description} onChange={(event) => setTypeForm({ ...typeForm, description: event.target.value })} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="type-color">Cor</Label>
+                  <Input id="type-color" type="color" value={typeForm.color} onChange={(event) => setTypeForm({ ...typeForm, color: event.target.value })} className="h-11 w-24 p-1" />
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button type="button" variant="outline" onClick={resetTypeForm}>Cancelar</Button>
+                  <Button type="submit" disabled={saving}>{editingType ? "Salvar" : "Criar"}</Button>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
+        </div>
+      )}
+
+      {activeSection === "permissoes" && (
+        <div className="space-y-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="relative w-full sm:max-w-md">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input placeholder="Buscar perfis..." value={profileSearch} onChange={(event) => { setProfileSearch(event.target.value); setProfilePage(1) }} className="pl-10" />
+            </div>
+            <Button onClick={() => openProfileDialog()} className="bg-primary text-primary-foreground hover:bg-primary/90">
+              <Plus className="mr-2 h-4 w-4" />
+              Novo Perfil
+            </Button>
+          </div>
+
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nome</TableHead>
+                  <TableHead>Descrição</TableHead>
+                  <TableHead>Permissões</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {paginatedProfiles.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={4} className="h-24 text-center">Nenhum perfil encontrado.</TableCell>
+                  </TableRow>
+                ) : (
+                  paginatedProfiles.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell className="font-medium">{item.name}</TableCell>
+                      <TableCell>{item.description || "Sem descricao"}</TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-1">
+                          <Badge variant="secondary">{item.permissions.length} permissões</Badge>
+                          {item.id === "profile-admin" && <Badge className="bg-primary/10 text-primary hover:bg-primary/10">Padrao</Badge>}
+                        </div>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button variant="ghost" size="icon" onClick={() => handleEditType(type)}>
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleDeleteType(type.id)}>
+                        <Button variant="ghost" size="icon" onClick={() => openProfileDialog(item)}><Edit className="h-4 w-4" /></Button>
+                        <Button variant="ghost" size="icon" disabled={item.id === "profile-admin"} onClick={() => setPendingDelete({ kind: "profile", id: item.id, label: item.name })}>
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </TableCell>
@@ -604,234 +777,108 @@ export function ConfiguracoesContent() {
               </TableBody>
             </Table>
           </div>
+
           <DataPagination
-            currentPage={typeCurrentPage}
-            totalPages={typeTotalPages}
-            pageSize={typePageSize}
-            totalItems={filteredTypes.length}
-            onPageChange={setTypeCurrentPage}
-            onPageSizeChange={(size) => { setTypePageSize(size); setTypeCurrentPage(1) }}
+            currentPage={profilePage}
+            totalPages={Math.max(1, Math.ceil(filteredProfiles.length / profilePageSize))}
+            pageSize={profilePageSize}
+            totalItems={filteredProfiles.length}
+            onPageChange={setProfilePage}
+            onPageSizeChange={(size) => { setProfilePageSize(size); setProfilePage(1) }}
           />
-        </div>
-      )}
 
-      {/* Permission Profiles Section */}
-      {activeSection === "permissoes" && (
-        <div className="space-y-6">
-          <div className="flex justify-start mb-4">
-            <Dialog open={isProfileDialogOpen} onOpenChange={setIsProfileDialogOpen}>
-              <DialogTrigger asChild>
-                <Button className="bg-primary hover:bg-primary/90 text-primary-foreground">
-                  <Plus className="mr-2 h-4 w-4" />
-                  Novo Perfil
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-                <DialogHeader>
-                  <DialogTitle>{editingProfile ? "Editar Perfil" : "Novo Perfil de Permissões"}</DialogTitle>
-                </DialogHeader>
-                <form onSubmit={handleProfileSubmit} className="space-y-6">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-6">
-                      <Label htmlFor="profileName">Nome</Label>
-                      <Input
-                        id="profileName"
-                        value={profileFormData.name}
-                        onChange={(e) => setProfileFormData({ ...profileFormData, name: e.target.value })}
-                        placeholder="Ex: Administrador"
-                        required
-                      />
-                    </div>
-                    <div className="space-y-6">
-                      <Label htmlFor="profileDesc">Descrição</Label>
-                      <Input
-                        id="profileDesc"
-                        value={profileFormData.description}
-                        onChange={(e) => setProfileFormData({ ...profileFormData, description: e.target.value })}
-                        placeholder="Descrição do perfil"
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Permissões</Label>
-                    <div className="border rounded-lg p-4 max-h-[300px] overflow-y-auto">
-                      <div className="grid gap-3">
-                        {ALL_PERMISSIONS.map((perm) => (
-                          <div key={perm.key} className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <Checkbox
-                                id={perm.key}
-                                checked={profileFormData.permissions.includes(perm.key)}
-                                onCheckedChange={() => togglePermission(perm.key)}
-                              />
-                              <div>
-                                <Label htmlFor={perm.key} className="font-medium cursor-pointer">
-                                  {perm.label}
-                                </Label>
-                                <p className="text-xs text-muted-foreground">{perm.description}</p>
+          <Dialog open={isProfileDialogOpen} onOpenChange={(open) => (open ? setIsProfileDialogOpen(true) : resetProfileForm())}>
+            <DialogContent className="max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>{editingProfile ? "Editar Perfil" : "Novo Perfil de Permissao"}</DialogTitle>
+              </DialogHeader>
+              <form onSubmit={handleProfileSubmit} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="profile-name">Nome</Label>
+                  <Input id="profile-name" value={profileForm.name} onChange={(event) => setProfileForm({ ...profileForm, name: event.target.value })} required />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="profile-description">Descrição</Label>
+                  <Textarea id="profile-description" value={profileForm.description} onChange={(event) => setProfileForm({ ...profileForm, description: event.target.value })} />
+                </div>
+                <div className="space-y-3">
+                  <Label>Permissões</Label>
+                  <Accordion type="multiple" className="rounded-xl border">
+                    {groupedPermissions.map((module) => {
+                      if (module.permissions.length === 0) return null
+
+                      const moduleState = getModuleSelectionState(module.key)
+
+                      return (
+                        <AccordionItem key={module.key} value={module.key} className="px-4">
+                          <div className="flex items-center gap-3 py-4">
+                            <Checkbox
+                              checked={moduleState.allSelected ? true : moduleState.partialSelected ? "indeterminate" : false}
+                              onCheckedChange={() => toggleModulePermissions(module.key)}
+                            />
+                            <AccordionTrigger className="flex-1 py-0 no-underline hover:no-underline">
+                              <div className="flex w-full items-center justify-between gap-4 text-left">
+                                <div className="space-y-1">
+                                  <div className="font-medium">{module.title}</div>
+                                  <div className="text-xs text-muted-foreground">{module.description}</div>
+                                </div>
+                                <Badge variant="secondary" className="shrink-0">
+                                  {moduleState.modulePermissions.filter((permission) => profileForm.permissions.includes(permission.key)).length}/{moduleState.modulePermissions.length}
+                                </Badge>
                               </div>
-                            </div>
+                            </AccordionTrigger>
                           </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex gap-2 justify-end">
-                    <Button type="button" variant="outline" onClick={resetProfileForm}>
-                      Cancelar
-                    </Button>
-                    <Button type="submit" className="bg-primary hover:bg-primary/90 text-primary-foreground">
-                      {editingProfile ? "Salvar" : "Criar"}
-                    </Button>
-                  </div>
-                </form>
-              </DialogContent>
-            </Dialog>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {permissionProfiles.map((profile) => (
-              <Card key={profile.id}>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Shield className="h-5 w-5 text-primary" />
-                      <CardTitle className="text-base">{profile.name}</CardTitle>
-                    </div>
-                    <div className="flex gap-1">
-                      <Button variant="ghost" size="icon" onClick={() => handleEditProfile(profile)}>
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" onClick={() => handleDeleteProfile(profile.id)}>
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </div>
-                  </div>
-                  <CardDescription>{profile.description}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex flex-wrap gap-1">
-                    {profile.permissions.slice(0, 5).map((perm) => (
-                      <Badge key={perm} variant="secondary" className="text-xs">
-                        {ALL_PERMISSIONS.find(p => p.key === perm)?.label || perm}
-                      </Badge>
-                    ))}
-                    {profile.permissions.length > 5 && (
-                      <Badge variant="outline" className="text-xs">
-                        +{profile.permissions.length - 5} mais
-                      </Badge>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                          <AccordionContent>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              {module.permissions.map((permission) => (
+                                <label key={permission.key} className="flex items-start gap-3 rounded-lg border bg-card p-3">
+                                  <Checkbox
+                                    checked={profileForm.permissions.includes(permission.key)}
+                                    onCheckedChange={() => togglePermission(permission.key)}
+                                  />
+                                  <div>
+                                    <div className="font-medium">{permission.label}</div>
+                                    <div className="text-xs text-muted-foreground">{permission.description}</div>
+                                  </div>
+                                </label>
+                              ))}
+                            </div>
+                          </AccordionContent>
+                        </AccordionItem>
+                      )
+                    })}
+                  </Accordion>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button type="button" variant="outline" onClick={resetProfileForm}>Cancelar</Button>
+                  <Button type="submit" disabled={saving}>{editingProfile ? "Salvar" : "Criar"}</Button>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
         </div>
       )}
 
-      {/* Users Section */}
       {activeSection === "usuarios" && (
-        <div>
-          <div className="flex items-center gap-3 mb-4">
-            <div className="relative w-full sm:w-1/3">
+        <div className="space-y-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="relative w-full sm:max-w-md">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Buscar usuários..."
-                value={userSearchTerm}
-                onChange={(e) => { setUserSearchTerm(e.target.value); setUserCurrentPage(1) }}
-                className="pl-10"
-              />
+              <Input placeholder="Buscar usuários..." value={userSearch} onChange={(event) => { setUserSearch(event.target.value); setUserPage(1) }} className="pl-10" />
             </div>
-            <Dialog open={isUserDialogOpen} onOpenChange={setIsUserDialogOpen}>
-              <DialogTrigger asChild>
-                <Button className="bg-primary hover:bg-primary/90 text-primary-foreground">
-                  <Plus className="mr-2 h-4 w-4" />
-                  Novo Usuário
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>{editingUser ? "Editar Usuário" : "Novo Usuário"}</DialogTitle>
-                </DialogHeader>
-                <form onSubmit={handleUserSubmit} className="space-y-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="userName">Nome *</Label>
-                    <Input
-                      id="userName"
-                      value={userFormData.name}
-                      onChange={(e) => setUserFormData({ ...userFormData, name: e.target.value })}
-                      placeholder="Nome do usuário"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="userEmail">E-mail *</Label>
-                    <Input
-                      id="userEmail"
-                      type="email"
-                      value={userFormData.email}
-                      onChange={(e) => setUserFormData({ ...userFormData, email: e.target.value })}
-                      placeholder="email@exemplo.com"
-                      required
-                    />
-                  </div>
-                  {!editingUser && (
-                    <div className="space-y-2">
-                      <Label htmlFor="userPassword">Senha *</Label>
-                      <Input
-                        id="userPassword"
-                        type="password"
-                        value={userFormData.password}
-                        onChange={(e) => setUserFormData({ ...userFormData, password: e.target.value })}
-                        placeholder="Senha"
-                        required={!editingUser}
-                      />
-                    </div>
-                  )}
-                  <div className="space-y-2">
-                    <Label>Perfil de Permissões *</Label>
-                    <Select
-                      required
-                      value={userFormData.permissionProfileId}
-                      onValueChange={(value) => setUserFormData({ ...userFormData, permissionProfileId: value })}
-                    >
-                      <SelectTrigger className={!userFormData.permissionProfileId ? "border-destructive" : ""}>
-                        <SelectValue placeholder="Selecione um perfil" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {permissionProfiles.map(profile => (
-                          <SelectItem key={profile.id} value={profile.id}>
-                            {profile.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Switch
-                      checked={userFormData.isActive}
-                      onCheckedChange={(checked) => setUserFormData({ ...userFormData, isActive: checked })}
-                    />
-                    <Label>Usuário ativo</Label>
-                  </div>
-                  <div className="flex gap-2 justify-end">
-                    <Button type="button" variant="outline" onClick={resetUserForm}>
-                      Cancelar
-                    </Button>
-                    <Button type="submit" className="bg-primary hover:bg-primary/90 text-primary-foreground">
-                      {editingUser ? "Salvar" : "Criar"}
-                    </Button>
-                  </div>
-                </form>
-              </DialogContent>
-            </Dialog>
+            <Button onClick={() => openUserDialog()} className="bg-primary text-primary-foreground hover:bg-primary/90">
+              <Plus className="mr-2 h-4 w-4" />
+              Novo Usuário
+            </Button>
           </div>
+
           <div className="rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Nome</TableHead>
                   <TableHead>E-mail</TableHead>
+                  <TableHead>CPF</TableHead>
                   <TableHead>Perfil</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
@@ -840,338 +887,356 @@ export function ConfiguracoesContent() {
               <TableBody>
                 {paginatedUsers.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="h-24 text-center">
-                      Nenhum usuário encontrado.
-                    </TableCell>
+                    <TableCell colSpan={6} className="h-24 text-center">Nenhum usuario encontrado.</TableCell>
                   </TableRow>
                 ) : (
-                  paginatedUsers.map((user) => {
-                    const profile = permissionProfiles.find(p => p.id === user.permissionProfileId)
-                    return (
-                      <TableRow key={user.id}>
-                        <TableCell className="font-medium">{user.name}</TableCell>
-                        <TableCell>{user.email}</TableCell>
-                        <TableCell>
-                          <Badge variant="secondary">
-                            {profile?.name || "Sem perfil"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge className={user.isActive ? "bg-green-100 text-green-700 hover:bg-green-100" : "bg-gray-100 text-gray-700 hover:bg-gray-100"}>
-                            {user.isActive ? "Ativo" : "Inativo"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button variant="ghost" size="icon" onClick={() => handleEditUser(user)}>
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" onClick={() => handleDeleteUser(user.id)}>
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })
+                  paginatedUsers.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell className="font-medium">
+                        <div className="flex items-center gap-2">
+                          {item.name}
+                          {item.mustChangePassword && <Badge variant="outline">Primeiro acesso</Badge>}
+                        </div>
+                      </TableCell>
+                      <TableCell>{item.email}</TableCell>
+                      <TableCell className="font-mono text-sm">{item.cpf ? formatCPF(item.cpf) : "-"}</TableCell>
+                      <TableCell>
+                        <Badge variant="secondary">{item.permissionProfileName}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={item.isActive ? "bg-green-100 text-green-700 hover:bg-green-100" : "bg-gray-100 text-gray-700 hover:bg-gray-100"}>
+                          {item.isActive ? "Ativo" : "Inativo"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="ghost" size="icon" onClick={() => openUserDialog(item)}><Edit className="h-4 w-4" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => setPendingDelete({ kind: "user", id: item.id, label: item.name })}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
                 )}
               </TableBody>
             </Table>
           </div>
+
           <DataPagination
-            currentPage={userCurrentPage}
-            totalPages={userTotalPages}
+            currentPage={userPage}
+            totalPages={Math.max(1, Math.ceil(filteredUsers.length / userPageSize))}
             pageSize={userPageSize}
             totalItems={filteredUsers.length}
-            onPageChange={setUserCurrentPage}
-            onPageSizeChange={(size) => { setUserPageSize(size); setUserCurrentPage(1) }}
+            onPageChange={setUserPage}
+            onPageSizeChange={(size) => { setUserPageSize(size); setUserPage(1) }}
           />
+
+          <Dialog open={isUserDialogOpen} onOpenChange={(open) => (open ? setIsUserDialogOpen(true) : resetUserForm())}>
+            <DialogContent className="max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>{editingUser ? "Editar Usuário do Sistema" : "Novo Usuário do Sistema"}</DialogTitle>
+              </DialogHeader>
+              <form onSubmit={handleUserSubmit} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="user-name">Nome</Label>
+                  <Input id="user-name" value={userForm.name} onChange={(event) => setUserForm({ ...userForm, name: event.target.value })} required />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="user-email">E-mail</Label>
+                  <Input id="user-email" type="email" value={userForm.email} onChange={(event) => setUserForm({ ...userForm, email: event.target.value })} required />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="user-phone">Telefone</Label>
+                  <Input
+                    id="user-phone"
+                    value={userForm.phone}
+                    onChange={(event) => setUserForm({ ...userForm, phone: formatPhone(event.target.value) })}
+                    placeholder="(51) 99999-9999"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="user-cpf">CPF</Label>
+                  <Input
+                    id="user-cpf"
+                    value={userForm.cpf}
+                    onChange={(event) => setUserForm({ ...userForm, cpf: formatCPF(event.target.value) })}
+                    placeholder="000.000.000-00"
+                    inputMode="numeric"
+                    maxLength={14}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="user-role">Cargo</Label>
+                  <Input
+                    id="user-role"
+                    value={userForm.role}
+                    onChange={(event) => setUserForm({ ...userForm, role: event.target.value })}
+                    placeholder="Ex: Gerente, Operador, Administrativo"
+                  />
+                </div>
+                {shouldShowPasswordFields && (
+                  <div className="space-y-2">
+                    <Label htmlFor="user-password">{userForm.mustChangePassword ? "Senha temporária" : "Senha *"}</Label>
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <Input
+                          id="user-password"
+                          type={userForm.mustChangePassword && !showTemporaryPassword ? "password" : "text"}
+                          value={userForm.password}
+                          onChange={(event) => setUserForm({ ...userForm, password: event.target.value })}
+                          placeholder="Senha temporária"
+                          className={userForm.mustChangePassword ? "pr-20" : ""}
+                          required={!editingUser}
+                        />
+                        {userForm.mustChangePassword && (
+                          <div className="absolute inset-y-0 right-2 flex items-center gap-1">
+                            <Button type="button" variant="ghost" size="icon" onClick={() => setShowTemporaryPassword((value) => !value)} className="h-8 w-8">
+                              {showTemporaryPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                            </Button>
+                            <Button type="button" variant="ghost" size="icon" onClick={copyUserPassword} className="h-8 w-8">
+                              <Copy className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                      <Button type="button" variant="outline" onClick={generateUserPassword}>
+                        Gerar senha
+                      </Button>
+                    </div>
+                    {userForm.mustChangePassword && (
+                      <p className="text-xs text-muted-foreground">
+                        Use essa senha no primeiro acesso. O sistema vai obrigar a troca ao entrar.
+                      </p>
+                    )}
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <Label>Perfil de permissao</Label>
+                  <Select value={userForm.permissionProfileId} onValueChange={(value) => setUserForm({ ...userForm, permissionProfileId: value })}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Selecione um perfil" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {permissionProfiles.map((profile) => (
+                        <SelectItem key={profile.id} value={profile.id}>{profile.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Status</Label>
+                  <Select value={userForm.isActive ? "active" : "inactive"} onValueChange={(value) => setUserForm({ ...userForm, isActive: value === "active" })}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="active">Ativo</SelectItem>
+                      <SelectItem value="inactive">Inativo</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button type="button" variant="outline" onClick={resetUserForm}>Cancelar</Button>
+                  {editingUser && !userForm.mustChangePassword && (
+                    <Button type="button" variant="outline" onClick={handleResetUserPassword} disabled={saving}>
+                      <RefreshCcw className="mr-2 h-4 w-4" />
+                      Resetar senha
+                    </Button>
+                  )}
+                  <Button type="submit" disabled={saving}>{editingUser ? "Salvar" : "Criar"}</Button>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
         </div>
       )}
 
-      {/* Notifications Section - Regras de Notificação */}
       {activeSection === "notificacoes" && (
-        <div className="space-y-6">
-          <div className="flex justify-start items-center mb-4">
-            <Dialog open={isRuleDialogOpen} onOpenChange={setIsRuleDialogOpen}>
-              <DialogTrigger asChild>
-                <Button className="bg-primary hover:bg-primary/90 text-primary-foreground">
-                  <Plus className="mr-2 h-4 w-4" />
-                  Nova Regra
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-lg">
-                <DialogHeader>
-                  <DialogTitle>{editingRule ? "Editar Regra" : "Nova Regra de Notificação"}</DialogTitle>
-                </DialogHeader>
-                <form onSubmit={handleRuleSubmit} className="space-y-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="ruleName">Nome da Regra</Label>
-                    <Input
-                      id="ruleName"
-                      value={ruleFormData.name}
-                      onChange={(e) => setRuleFormData({ ...ruleFormData, name: e.target.value })}
-                      placeholder="Ex: Lembrete de serviço"
-                      required
-                    />
-                  </div>
-                  <div className="grid grid-cols-[2fr_1fr] gap-4">
-                    <div className="space-y-2">
-                      <Label>Tipo de Notificação</Label>
-                      <Select
-                        value={ruleFormData.type}
-                        onValueChange={(value) => setRuleFormData({ ...ruleFormData, type: value as NotificationType })}
-                      >
-                        <SelectTrigger className="w-full">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {NOTIFICATION_TYPES.map(type => (
-                            <SelectItem key={type.value} value={type.value}>
-                              {type.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="daysBefore">Dias de Antecedência</Label>
-                      <Input
-                        id="daysBefore"
-                        type="number"
-                        value={ruleFormData.daysBefore}
-                        onChange={(e) => setRuleFormData({ ...ruleFormData, daysBefore: Number(e.target.value) })}
-                        min={0}
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2 w-1/3">
-                    <Label htmlFor="time">Horário de Envio</Label>
-                    <Input
-                      id="time"
-                      type="time"
-                      value={ruleFormData.time}
-                      onChange={(e) => setRuleFormData({ ...ruleFormData, time: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-3">
-                    <Label>Canais de Envio</Label>
-                    <div className="flex gap-2">
-                      {CHANNELS.map(channel => {
-                        const isSelected = ruleFormData.channels.includes(channel.value)
-                        return (
-                          <button
-                            key={channel.value}
-                            type="button"
-                            onClick={() => toggleChannel(channel.value)}
-                            className={cn(
-                              "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-all border cursor-pointer",
-                              isSelected
-                                ? "bg-primary/10 text-primary border-primary"
-                                : "bg-transparent text-muted-foreground border-border hover:border-primary/50"
-                            )}
-                          >
-                            <channel.icon className="h-3.5 w-3.5" />
-                            {channel.label}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Equipes Destinatárias</Label>
-                    <Popover open={teamsPopoverOpen} onOpenChange={setTeamsPopoverOpen}>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          role="combobox"
-                          className="w-full justify-between font-normal"
-                        >
-                          <span className="text-muted-foreground">Buscar e adicionar equipes...</span>
-                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-full p-0" align="start">
-                        <Command>
-                          <CommandInput
-                            placeholder="Buscar equipe..."
-                            value={teamSearchTerm}
-                            onValueChange={setTeamSearchTerm}
-                          />
-                          <CommandList>
-                            <CommandEmpty>Nenhuma equipe encontrada.</CommandEmpty>
-                            <CommandGroup>
-                              {filteredTeamsForRule.map((team) => {
-                                const teamColor = getColorFromClass(team.color)
-                                return (
-                                  <CommandItem
-                                    key={team.id}
-                                    value={team.name}
-                                    onSelect={() => toggleTeam(team.id)}
-                                    className="cursor-pointer"
-                                  >
-                                    <Check
-                                      className={cn(
-                                        "mr-2 h-4 w-4",
-                                        ruleFormData.targetTeamIds.includes(team.id) ? "opacity-100" : "opacity-0"
-                                      )}
-                                    />
-                                    <span
-                                      className="w-2.5 h-2.5 rounded-full shrink-0"
-                                      style={{ backgroundColor: teamColor }}
-                                    />
-                                    <span>{team.name}</span>
-                                  </CommandItem>
-                                )
-                              })}
-                            </CommandGroup>
-                          </CommandList>
-                        </Command>
-                      </PopoverContent>
-                    </Popover>
-                    {ruleFormData.targetTeamIds.length > 0 && (
-                      <div className="flex flex-wrap gap-2 mt-2">
-                        {ruleFormData.targetTeamIds.map(teamId => {
-                          const team = mockTeams.find(t => t.id === teamId)
-                          const teamColor = team ? getColorFromClass(team.color) : "#94A3B8"
-                          return team ? (
-                            <Badge
-                              key={teamId}
-                              variant="secondary"
-                              className="px-3 py-1 flex items-center gap-2 text-foreground/80"
-                              style={{ backgroundColor: `${teamColor}1A` }}
-                            >
-                              <span
-                                className="w-2.5 h-2.5 rounded-full shrink-0"
-                                style={{ backgroundColor: teamColor }}
-                              />
-                              <span>{team.name}</span>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="h-3.5 w-3.5 p-0 hover:bg-transparent"
-                                onClick={() => removeTeamFromRule(teamId)}
-                              >
-                                <X className="h-2.5 w-2.5" />
-                              </Button>
-                            </Badge>
-                          ) : null
-                        })}
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Switch
-                      id="ruleActive"
-                      checked={ruleFormData.isActive}
-                      onCheckedChange={(checked) => setRuleFormData({ ...ruleFormData, isActive: checked })}
-                    />
-                    <Label htmlFor="ruleActive">Regra ativa</Label>
-                  </div>
-                  <div className="flex gap-2 justify-end">
-                    <Button type="button" variant="outline" onClick={resetRuleForm}>
-                      Cancelar
-                    </Button>
-                    <Button type="submit" className="bg-primary hover:bg-primary/90 text-primary-foreground">
-                      {editingRule ? "Salvar" : "Criar"}
-                    </Button>
-                  </div>
-                </form>
-              </DialogContent>
-            </Dialog>
+        <div className="space-y-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="relative w-full sm:max-w-md">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input placeholder="Buscar regras..." value={ruleSearch} onChange={(event) => { setRuleSearch(event.target.value); setRulePage(1) }} className="pl-10" />
+            </div>
+            <Button onClick={() => openRuleDialog()} className="bg-primary text-primary-foreground hover:bg-primary/90">
+              <Plus className="mr-2 h-4 w-4" />
+              Nova Regra
+            </Button>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            {rules.map((rule) => {
-              const typeConfig = NOTIFICATION_TYPES.find(t => t.value === rule.type)
-              return (
-                <Card key={rule.id} className={!rule.isActive ? "opacity-60" : ""}>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {paginatedRules.length === 0 ? (
+              <Card className="md:col-span-2 xl:col-span-3">
+                <CardContent className="p-6 text-center text-sm text-muted-foreground">Nenhuma regra encontrada.</CardContent>
+              </Card>
+            ) : (
+              paginatedRules.map((item) => (
+                <Card key={item.id} className={cn(!item.isActive && "opacity-60")}>
                   <CardHeader className="pb-2">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-base flex items-center gap-2">
-                        <Bell className="h-4 w-4 text-primary" />
-                        {rule.name}
-                      </CardTitle>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <CardTitle className="text-base flex items-center gap-2">
+                          <Bell className="h-4 w-4 text-primary" />
+                          {item.name}
+                        </CardTitle>
+                        <CardDescription>{NOTIFICATION_TYPE_LABELS[item.type] ?? item.type}</CardDescription>
+                      </div>
                       <div className="flex items-center gap-1">
                         <Switch
-                          checked={rule.isActive}
-                          onCheckedChange={() => toggleRuleActive(rule.id)}
+                          checked={item.isActive}
+                          onCheckedChange={async () => {
+                            setSaving(true)
+                            try {
+                              const response = await updateNotificationRule(item.id, { isActive: !item.isActive })
+                              upsertNotificationRule(response.data)
+                            } catch {
+                              toast.error("Não foi possível atualizar a regra.")
+                            } finally {
+                              setSaving(false)
+                            }
+                          }}
                         />
-                        <Button variant="ghost" size="icon" onClick={() => handleEditRule(rule)}>
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleDeleteRule(rule.id)}>
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => openRuleDialog(item)}><Edit className="h-4 w-4" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => setPendingDelete({ kind: "rule", id: item.id, label: item.name })}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                       </div>
                     </div>
-                    <CardDescription>{typeConfig?.label}</CardDescription>
                   </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex items-center gap-2 text-muted-foreground mb-5">
-                        <Clock className="w-4 h-4 shrink-0" />
-                        <span>
-                          {rule.daysBefore === 0
-                            ? "No dia"
-                            : `${rule.daysBefore} dia(s) antes`}
-                          {rule.time && ` às ${rule.time}`}
-                        </span>
-                      </div>
-
-                      <div className="flex flex-wrap gap-1.5 mb-3">
-                        {rule.channels.map(channel => {
-                          const channelConfig = CHANNELS.find(c => c.value === channel)
-                          return channelConfig ? (
-                            <Badge key={channel} variant="outline" className="text-xs">
-                              <channelConfig.icon className="h-3 w-3 mr-1" />
-                              {channelConfig.label}
-                            </Badge>
-                          ) : null
-                        })}
-                      </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {rule.targetTeamIds.map(teamId => {
-                          const team = mockTeams.find(t => t.id === teamId)
-                          return team ? (
-                            <Badge
-                              key={teamId}
-                              variant="secondary"
-                              className="px-3 py-1 flex items-center gap-2 text-xs text-foreground/80"
-                              style={{ backgroundColor: `${team.color}1A` }}
-                            >
-                              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: team.color }} />
-                              {team.name}
-                            </Badge>
-                          ) : null
-                        })}
-                      </div>
+                  <CardContent className="space-y-3 text-sm">
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <span>{item.daysBefore === 0 ? "No dia" : `${item.daysBefore} dia(s) antes`}</span>
+                      <span>as {item.time}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {item.channels.map((channel) => {
+                        const channelLabel = CHANNELS.find((entry) => entry.value === channel)?.label ?? channel
+                        return <Badge key={channel} variant="outline">{channelLabel}</Badge>
+                      })}
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {item.targetTeamIds.length > 0 ? item.targetTeamIds.map((teamId) => (
+                        <Badge key={teamId} variant="secondary">{teamId}</Badge>
+                      )) : <span className="text-xs text-muted-foreground">Nenhuma equipe vinculada.</span>}
                     </div>
                   </CardContent>
                 </Card>
-              )
-            })}
+              ))
+            )}
           </div>
 
-          {/* Info about automatic notifications */}
-          <Card className="mt-4">
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Bell className="h-4 w-4 text-primary" />
-                Notificações Automáticas de Serviços
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="p-4 bg-muted/50 rounded-lg">
-                <p className="text-sm text-muted-foreground">
-                  <strong>Nota:</strong> As notificações de serviços agendados, lembretes e conclusão são enviadas automaticamente
-                  para a equipe designada ao serviço. Esta configuração não pode ser alterada para garantir que apenas a equipe
-                  responsável receba os alertas relevantes.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+          <DataPagination
+            currentPage={rulePage}
+            totalPages={Math.max(1, Math.ceil(filteredRules.length / rulePageSize))}
+            pageSize={rulePageSize}
+            totalItems={filteredRules.length}
+            onPageChange={setRulePage}
+            onPageSizeChange={(size) => { setRulePageSize(size); setRulePage(1) }}
+          />
+
+          <Dialog open={isRuleDialogOpen} onOpenChange={(open) => (open ? setIsRuleDialogOpen(true) : resetRuleForm())}>
+            <DialogContent className="max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>{editingRule ? "Editar Regra de Notificação" : "Nova Regra de Notificação"}</DialogTitle>
+              </DialogHeader>
+              <form onSubmit={handleRuleSubmit} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="rule-name">Nome</Label>
+                  <Input id="rule-name" value={ruleForm.name} onChange={(event) => setRuleForm({ ...ruleForm, name: event.target.value })} required />
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Tipo</Label>
+                    <Select value={ruleForm.type} onValueChange={(value) => setRuleForm({ ...ruleForm, type: value })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(NOTIFICATION_TYPE_LABELS).map(([value, label]) => (
+                          <SelectItem key={value} value={value}>{label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="rule-days">Dias de antecedencia</Label>
+                    <Input id="rule-days" type="number" min={0} value={ruleForm.daysBefore} onChange={(event) => setRuleForm({ ...ruleForm, daysBefore: Number(event.target.value) })} />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="rule-time">Horario</Label>
+                  <Input id="rule-time" type="time" value={ruleForm.time} onChange={(event) => setRuleForm({ ...ruleForm, time: event.target.value })} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Canais</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {CHANNELS.map((channel) => {
+                      const active = ruleForm.channels.includes(channel.value)
+                      return (
+                        <button
+                          key={channel.value}
+                          type="button"
+                          onClick={() => toggleChannel(channel.value)}
+                          className={cn(
+                            "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
+                            active ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground",
+                          )}
+                        >
+                          <channel.icon className="h-3.5 w-3.5" />
+                          {channel.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="rule-teams">Equipes destinatarias</Label>
+                  <Textarea
+                    id="rule-teams"
+                    value={ruleForm.targetTeamIds.join(", ")}
+                    onChange={(event) => setRuleForm({ ...ruleForm, targetTeamIds: parseCsv(event.target.value) })}
+                    placeholder="id-equipe-1, id-equipe-2"
+                  />
+                  <p className="text-xs text-muted-foreground">Informe os IDs das equipes enquanto o cadastro de equipes nao estiver integrado.</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Switch checked={ruleForm.isActive} onCheckedChange={(checked) => setRuleForm({ ...ruleForm, isActive: checked })} />
+                  <Label>Regra ativa</Label>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button type="button" variant="outline" onClick={resetRuleForm}>Cancelar</Button>
+                  <Button type="submit" disabled={saving}>{editingRule ? "Salvar" : "Criar"}</Button>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
         </div>
       )}
+
+      <ConfirmActionDialog
+        open={Boolean(pendingDelete)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingDelete(null)
+          }
+        }}
+        title={
+          pendingDelete?.kind === "client-type"
+            ? "Excluir tipo de cliente"
+            : pendingDelete?.kind === "profile"
+              ? "Excluir perfil de permissão"
+              : pendingDelete?.kind === "user"
+                ? "Excluir usuário"
+                : "Excluir regra de notificação"
+        }
+        description={
+          pendingDelete?.kind === "client-type"
+            ? `Esta ação vai excluir o tipo "${pendingDelete?.label ?? ""}".`
+            : pendingDelete?.kind === "profile"
+              ? `Esta ação vai excluir o perfil "${pendingDelete?.label ?? ""}".`
+              : pendingDelete?.kind === "user"
+                ? `Esta ação vai excluir o usuário "${pendingDelete?.label ?? ""}".`
+                : `Esta ação vai excluir a regra "${pendingDelete?.label ?? ""}".`
+        }
+        confirmLabel="Excluir"
+        onConfirm={confirmPendingDelete}
+        busy={saving}
+      />
     </div>
   )
 }
+

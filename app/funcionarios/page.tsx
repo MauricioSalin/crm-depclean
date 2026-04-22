@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { Suspense, useState } from "react"
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { Header } from "@/components/dashboard/header"
 import { EmployeesContent } from "@/components/funcionarios/employees-content"
@@ -43,7 +43,9 @@ export default function FuncionariosPage() {
             </Button>
           }
         />
-        <EmployeesContent viewMode={viewMode} viewToggle={toggle} openDialog={dialogOpen} onDialogChange={setDialogOpen} />
+        <Suspense fallback={<div className="mt-4 md:mt-5 rounded-xl border bg-card p-6 text-sm text-muted-foreground">Carregando...</div>}>
+          <EmployeesContent viewMode={viewMode} viewToggle={toggle} openDialog={dialogOpen} onDialogChange={setDialogOpen} />
+        </Suspense>
       </main>
     </div>
   )

@@ -39,9 +39,9 @@ import {
   CalendarCheck,
   DollarSign
 } from "lucide-react"
-import { HeaderFiltersPortal } from "@/components/ui/header-filters-portal"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { DataPagination } from "@/components/ui/data-pagination"
+import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 import { 
   contracts, 
   getClientById, 
@@ -56,7 +56,7 @@ interface ContractsContentProps {
 }
 
 export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps) {
-  const [searchTerm, setSearchTerm] = useState("")
+  const [searchTerm, setSearchTerm] = useUrlQueryState("q")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
@@ -100,9 +100,8 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
   }
 
   return (
-    <div>
-        <HeaderFiltersPortal>
-          <div className="grid grid-cols-2 sm:flex sm:items-center gap-2">
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 sm:flex sm:items-center gap-2">
             <div className="relative sm:flex-none sm:w-80">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -131,9 +130,7 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
               className="sm:flex-none sm:w-[160px]"
             />
             {viewToggle && <div className="hidden sm:block shrink-0">{viewToggle}</div>}
-          </div>
-        </HeaderFiltersPortal>
-
+      </div>
         {viewMode === "table" ? (
           <div className="rounded-md overflow-x-auto">
             <Table>

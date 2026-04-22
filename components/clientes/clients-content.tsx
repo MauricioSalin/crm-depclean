@@ -39,11 +39,11 @@ import {
   Mail,
   FileText,
 } from "lucide-react"
-import { HeaderFiltersPortal } from "@/components/ui/header-filters-portal"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { clients, contracts, clientTypes, getClientTypeById, formatCNPJ } from "@/lib/mock-data"
 import { getColorFromClass } from "@/lib/utils"
+import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 import Link from "next/link"
 
 interface ClientsContentProps {
@@ -52,7 +52,7 @@ interface ClientsContentProps {
 }
 
 export function ClientsContent({ viewMode, viewToggle }: ClientsContentProps) {
-  const [searchTerm, setSearchTerm] = useState("")
+  const [searchTerm, setSearchTerm] = useUrlQueryState("q")
   const [typeFilter, setTypeFilter] = useState<string>("all")
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
@@ -74,9 +74,7 @@ export function ClientsContent({ viewMode, viewToggle }: ClientsContentProps) {
   }, [filteredClients, currentPage, pageSize])
 
   return (
-    <>
-      {/* <CardContent className="p-3 sm:p-4 md:p-6"> */}
-      <HeaderFiltersPortal>
+    <div className="space-y-4">
         <div className="grid grid-cols-2 sm:flex sm:items-center gap-2">
           <div className="relative sm:flex-none sm:w-80">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -98,7 +96,6 @@ export function ClientsContent({ viewMode, viewToggle }: ClientsContentProps) {
           />
           {viewToggle && <div className="hidden sm:block shrink-0">{viewToggle}</div>}
         </div>
-      </HeaderFiltersPortal>
 
       {viewMode === "table" ? (
         <div className="rounded-md overflow-x-auto">
@@ -276,6 +273,6 @@ export function ClientsContent({ viewMode, viewToggle }: ClientsContentProps) {
         onPageSizeChange={(size) => { setPageSize(size); setCurrentPage(1) }}
       />
       {/* </CardContent> */}
-    </>
+    </div>
   )
 }

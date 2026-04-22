@@ -6,7 +6,16 @@ export type AuthenticatedUser = {
   permissionProfileId: string
   permissionProfileName: string
   permissions: string[]
+  employeeId: string
+  employeeStatus: "active" | "inactive"
+  phone: string
+  cpf: string
+  role: string
+  avatar: string
+  isSystemUser: boolean
+  mustChangePassword: boolean
   createdAt: string
+  updatedAt: string
 }
 
 export type LoginResponse = {

@@ -44,10 +44,11 @@ import {
 } from "lucide-react"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { DateRangePicker } from "@/components/ui/date-range-picker"
-import { HeaderFiltersPortal } from "@/components/ui/header-filters-portal"
 import type { DateRange } from "react-day-picker"
 import { format } from "date-fns"
 import { DataPagination } from "@/components/ui/data-pagination"
+import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
+import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 import { mockScheduledServices, mockClients, mockServiceTypes, mockTeams, mockEmployees, formatCurrency } from "@/lib/mock-data"
 import { SchedulingFormDialog, type SchedulingFormData } from "./scheduling-form-dialog"
 import { addClientAttachment } from "@/lib/client-attachments-store"
@@ -72,7 +73,7 @@ interface AgendamentosContentProps {
 
 export function AgendamentosContent({ viewMode, openDialog, onDialogChange, viewToggle }: AgendamentosContentProps) {
   const [scheduledServices, setScheduledServices] = useState<ScheduledServiceRow[]>(mockScheduledServices as ScheduledServiceRow[])
-  const [searchTerm, setSearchTerm] = useState("")
+  const [searchTerm, setSearchTerm] = useUrlQueryState("q")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [dateRange, setDateRange] = useState<DateRange | undefined>()
   const [currentPage, setCurrentPage] = useState(1)
@@ -88,6 +89,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
   const [completionStartTime, setCompletionStartTime] = useState("")
   const [completionEndTime, setCompletionEndTime] = useState("")
   const [completionFile, setCompletionFile] = useState<File | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<ScheduledServiceRow | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
   
@@ -276,9 +278,13 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
   }
 
   const handleDelete = (id: string) => {
-    if (confirm("Tem certeza que deseja excluir este agendamento?")) {
-      setScheduledServices(scheduledServices.filter(ss => ss.id !== id))
-    }
+    setPendingDelete(scheduledServices.find((schedule) => schedule.id === id) ?? null)
+  }
+
+  const confirmDelete = () => {
+    if (!pendingDelete) return
+    setScheduledServices((current) => current.filter((schedule) => schedule.id !== pendingDelete.id))
+    setPendingDelete(null)
   }
 
   const getStatusBadge = (status: ScheduledServiceRow["status"]) => {
@@ -476,7 +482,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
         </DialogContent>
       </Dialog>
 
-      <HeaderFiltersPortal>
+      <div className="space-y-4">
         <div className="grid grid-cols-2 sm:flex sm:items-center gap-2">
           <div className="relative col-span-2 sm:flex-none sm:w-80">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -509,9 +515,6 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
           />
           {viewToggle && <div className="hidden sm:block shrink-0">{viewToggle}</div>}
         </div>
-      </HeaderFiltersPortal>
-
-      <div>
 
           {viewMode === "table" ? (
             <div className="rounded-md overflow-x-auto">
@@ -710,6 +713,17 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
             onPageSizeChange={(size) => { setItemsPerPage(size); setCurrentPage(1) }}
           />
         </div>
+
+      <ConfirmActionDialog
+        open={!!pendingDelete}
+        title="Excluir agendamento"
+        description={`Tem certeza que deseja excluir ${pendingDelete?.clientName ? `o agendamento de ${pendingDelete.clientName}` : "este agendamento"}? Esta ação não pode ser desfeita.`}
+        confirmLabel="Excluir"
+        onOpenChange={(open) => {
+          if (!open) setPendingDelete(null)
+        }}
+        onConfirm={confirmDelete}
+      />
     </>
   )
 }

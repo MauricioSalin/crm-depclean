@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { Suspense, useState } from "react"
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { Header } from "@/components/dashboard/header"
 import { AgendaContent } from "@/components/agenda/agenda-content"
@@ -52,7 +52,9 @@ export default function AgendaPage() {
           onSubmit={handleFormSubmit}
         />
 
-        <AgendaContent />
+        <Suspense fallback={<div className="mt-4 rounded-xl border bg-card p-6 text-sm text-muted-foreground">Carregando...</div>}>
+          <AgendaContent />
+        </Suspense>
       </main>
     </div>
   )

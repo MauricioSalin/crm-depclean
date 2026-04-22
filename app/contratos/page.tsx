@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { Suspense, useState } from "react"
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { Header } from "@/components/dashboard/header"
 import { ContractsContent } from "@/components/contratos/contracts-content"
@@ -41,7 +41,9 @@ export default function ContratosPage() {
             </Link>
           }
         />
-        <ContractsContent viewMode={viewMode} viewToggle={toggle} />
+        <Suspense fallback={<div className="mt-4 md:mt-5 rounded-xl border bg-card p-6 text-sm text-muted-foreground">Carregando...</div>}>
+          <ContractsContent viewMode={viewMode} viewToggle={toggle} />
+        </Suspense>
       </main>
     </div>
   )

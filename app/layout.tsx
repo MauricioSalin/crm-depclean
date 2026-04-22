@@ -5,6 +5,8 @@ import { Analytics } from "@vercel/analytics/next"
 
 import { QueryProvider } from "@/components/providers/query-provider"
 import { ThemeProvider } from "@/components/theme-provider"
+import { AuthGate } from "@/components/auth/auth-gate"
+import { FirstAccessDialog } from "@/components/auth/first-access-dialog"
 import { Toaster } from "@/components/ui/sonner"
 import "./globals.css"
 
@@ -43,7 +45,10 @@ export default function RootLayout({
       <body className="font-sans antialiased">
         <ThemeProvider defaultTheme="light" storageKey="tasko-theme">
           <QueryProvider>
-            {children}
+            <AuthGate>
+              {children}
+              <FirstAccessDialog />
+            </AuthGate>
             <Toaster richColors position="top-right" />
           </QueryProvider>
         </ThemeProvider>

@@ -1,3 +1,4 @@
+import { Suspense } from "react"
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { Header } from "@/components/dashboard/header"
 import { ConfiguracoesContent } from "@/components/configuracoes/configuracoes-content"
@@ -16,7 +17,9 @@ export default function ConfiguracoesPage() {
         />
 
         <div className="mt-4 md:mt-5">
-          <ConfiguracoesContent />
+          <Suspense fallback={<div className="rounded-xl border bg-card p-6 text-sm text-muted-foreground">Carregando configurações...</div>}>
+            <ConfiguracoesContent />
+          </Suspense>
         </div>
       </main>
     </div>

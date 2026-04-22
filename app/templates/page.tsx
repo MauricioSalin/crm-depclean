@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useRef } from "react"
+import { Suspense, useState, useCallback, useRef } from "react"
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { Header } from "@/components/dashboard/header"
 import { TemplatesContent, type EditorState } from "@/components/templates/templates-content"
@@ -76,11 +76,13 @@ export default function TemplatesPage() {
         />
 
         <div className="mt-4 md:mt-5">
-          <TemplatesContent
-            openImport={importOpen}
-            onImportChange={setImportOpen}
-            onEditorStateChange={handleEditorStateChange}
-          />
+          <Suspense fallback={<div className="rounded-xl border bg-card p-6 text-sm text-muted-foreground">Carregando...</div>}>
+            <TemplatesContent
+              openImport={importOpen}
+              onImportChange={setImportOpen}
+              onEditorStateChange={handleEditorStateChange}
+            />
+          </Suspense>
         </div>
       </main>
     </div>

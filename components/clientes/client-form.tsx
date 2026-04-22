@@ -17,6 +17,7 @@ import { Plus, Trash2, Building2, MapPin, Save, Loader2 } from "lucide-react"
 import { clientTypes, clients } from "@/lib/mock-data"
 import type { Client, ClientUnit } from "@/lib/types"
 import { useRouter } from "next/navigation"
+import { formatCNPJ } from "@/lib/masks"
 
 interface ClientFormProps {
   clientId?: string
@@ -174,16 +175,6 @@ export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
     if (units.length > 1) {
       setUnits(prev => prev.filter((_, i) => i !== index))
     }
-  }
-
-  const formatCNPJ = (value: string) => {
-    const numbers = value.replace(/\D/g, "")
-    return numbers
-      .replace(/^(\d{2})(\d)/, "$1.$2")
-      .replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3")
-      .replace(/\.(\d{3})(\d)/, ".$1/$2")
-      .replace(/(\d{4})(\d)/, "$1-$2")
-      .slice(0, 18)
   }
 
   const formatPhone = (value: string) => {

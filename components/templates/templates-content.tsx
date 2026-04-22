@@ -28,6 +28,8 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
+import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
 import { Search, Plus, Upload, Edit, Trash2, FileText, Eye, PenTool } from "lucide-react"
 import { ContractRichEditor } from "@/components/contratos/contract-rich-editor"
 import { mockEmployees } from "@/lib/mock-data"
@@ -128,11 +130,12 @@ interface TemplatesContentProps {
 
 export function TemplatesContent({ openImport, onImportChange, onEditorStateChange }: TemplatesContentProps) {
   const [templates, setTemplates] = useState<ContractTemplate[]>(mockTemplates)
-  const [searchTerm, setSearchTerm] = useState("")
+  const [searchTerm, setSearchTerm] = useUrlQueryState("q")
   const [editingTemplate, setEditingTemplate] = useState<ContractTemplate | null>(null)
   const [isEditorOpen, setIsEditorOpen] = useState(false)
   const [isImportOpen, setIsImportOpen] = useState(false)
   const [editorTab, setEditorTab] = useState<"editor" | "preview">("editor")
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; label: string } | null>(null)
 
   useEffect(() => {
     if (openImport) {
@@ -231,9 +234,16 @@ export function TemplatesContent({ openImport, onImportChange, onEditorStateChan
   }, [isEditorOpen, editingTemplate, formData.name, formData.signerId])
 
   const handleDelete = (id: string) => {
-    if (confirm("Tem certeza que deseja excluir este template?")) {
-      setTemplates(templates.filter(t => t.id !== id))
-    }
+    setPendingDelete({
+      id,
+      label: templates.find((template) => template.id === id)?.name ?? "este template",
+    })
+  }
+
+  const confirmDelete = () => {
+    if (!pendingDelete) return
+    setTemplates((current) => current.filter((template) => template.id !== pendingDelete.id))
+    setPendingDelete(null)
   }
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -529,6 +539,18 @@ export function TemplatesContent({ openImport, onImportChange, onEditorStateChan
           </form>
         </DialogContent>
       </Dialog>
+
+      <ConfirmActionDialog
+        open={Boolean(pendingDelete)}
+        onOpenChange={(open) => {
+          if (!open) setPendingDelete(null)
+        }}
+        title="Excluir template"
+        description={`Esta ação vai excluir o template "${pendingDelete?.label}".`}
+        confirmLabel="Excluir"
+        onConfirm={confirmDelete}
+        busy={false}
+      />
 
       {/* Templates List */}
       <div className="space-y-4">

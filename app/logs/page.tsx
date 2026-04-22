@@ -1,3 +1,4 @@
+import { Suspense } from "react"
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { Header } from "@/components/dashboard/header"
 import { LogsContent } from "@/components/logs/logs-content"
@@ -16,7 +17,9 @@ export default function LogsPage() {
         />
 
         <div className="mt-4 md:mt-5">
-          <LogsContent />
+          <Suspense fallback={<div className="rounded-xl border bg-card p-6 text-sm text-muted-foreground">Carregando logs...</div>}>
+            <LogsContent />
+          </Suspense>
         </div>
       </main>
     </div>

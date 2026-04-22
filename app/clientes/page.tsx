@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { Suspense, useState } from "react"
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { Header } from "@/components/dashboard/header"
 import { ClientsContent } from "@/components/clientes/clients-content"
@@ -42,7 +42,9 @@ export default function ClientesPage() {
             </Link>
           }
         />
-        <ClientsContent viewMode={viewMode} viewToggle={toggle} />
+        <Suspense fallback={<div className="mt-4 md:mt-5 rounded-xl border bg-card p-6 text-sm text-muted-foreground">Carregando...</div>}>
+          <ClientsContent viewMode={viewMode} viewToggle={toggle} />
+        </Suspense>
       </main>
     </div>
   )

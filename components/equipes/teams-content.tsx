@@ -29,8 +29,10 @@ import { Label } from "@/components/ui/label"
 import { Plus, Search, Users, Edit, Trash2, UserPlus, Check, ChevronsUpDown, X } from "lucide-react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { DataPagination } from "@/components/ui/data-pagination"
+import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
 import { mockTeams, mockEmployees } from "@/lib/mock-data"
 import { cn } from "@/lib/utils"
+import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 
 type TeamRow = (typeof mockTeams)[number]
 
@@ -43,7 +45,7 @@ interface TeamsContentProps {
 
 export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle }: TeamsContentProps) {
   const [teams, setTeams] = useState<TeamRow[]>(mockTeams)
-  const [searchTerm, setSearchTerm] = useState("")
+  const [searchTerm, setSearchTerm] = useUrlQueryState("q")
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   
   // Sync dialog state with parent
@@ -56,6 +58,7 @@ export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle 
   const [editingTeam, setEditingTeam] = useState<TeamRow | null>(null)
   const [memberSearchOpen, setMemberSearchOpen] = useState(false)
   const [memberSearchTerm, setMemberSearchTerm] = useState("")
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; label: string } | null>(null)
   
   // Pagination
   const [currentPage, setCurrentPage] = useState(1)
@@ -131,9 +134,16 @@ export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle 
   }
 
   const handleDelete = (id: string) => {
-    if (confirm("Tem certeza que deseja excluir esta equipe?")) {
-      setTeams(teams.filter(t => t.id !== id))
-    }
+    setPendingDelete({
+      id,
+      label: teams.find((team) => team.id === id)?.name ?? "esta equipe",
+    })
+  }
+
+  const confirmDelete = () => {
+    if (!pendingDelete) return
+    setTeams((current) => current.filter((team) => team.id !== pendingDelete.id))
+    setPendingDelete(null)
   }
 
   const toggleMember = (employeeId: string) => {
@@ -280,7 +290,19 @@ export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle 
               </div>
             </form>
           </DialogContent>
-        </Dialog>
+      </Dialog>
+
+      <ConfirmActionDialog
+        open={Boolean(pendingDelete)}
+        onOpenChange={(open) => {
+          if (!open) setPendingDelete(null)
+        }}
+        title="Excluir equipe"
+        description={`Esta ação vai excluir a equipe "${pendingDelete?.label}".`}
+        confirmLabel="Excluir"
+        onConfirm={confirmDelete}
+        busy={false}
+      />
 
       <div>
           <div className="flex items-center gap-2 mb-6">

@@ -15,9 +15,10 @@ import {
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { login } from "@/lib/api/auth"
+import { login, requestPasswordReset } from "@/lib/api/auth"
 import { isAuthenticated, persistSession } from "@/lib/auth/session"
 
 export default function LoginPage() {
@@ -28,6 +29,9 @@ export default function LoginPage() {
   const [email, setEmail] = useState("teste@depclean.com")
   const [password, setPassword] = useState("teste123")
   const [rememberMe, setRememberMe] = useState(true)
+  const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false)
+  const [resetEmail, setResetEmail] = useState("")
+  const [resetSubmitting, setResetSubmitting] = useState(false)
   const [blocks, setBlocks] = useState<FloatingBlockSnapshot[]>([])
   const [wordBounds, setWordBounds] = useState({
     width: 0,
@@ -91,6 +95,20 @@ export default function LoginPage() {
       email,
       password,
     })
+  }
+
+  const handleRequestPasswordReset = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setResetSubmitting(true)
+    try {
+      await requestPasswordReset({ email: resetEmail || email })
+      toast.success("Se o e-mail estiver cadastrado, você receberá um link para redefinir a senha.")
+      setForgotPasswordOpen(false)
+    } catch {
+      toast.error("Não foi possível solicitar a redefinição de senha.")
+    } finally {
+      setResetSubmitting(false)
+    }
   }
 
   return (
@@ -226,7 +244,10 @@ export default function LoginPage() {
                   <button
                     type="button"
                     className="cursor-pointer font-medium text-primary transition-opacity hover:opacity-80"
-                    onClick={() => toast.info("Recuperacao de senha sera a proxima etapa da API.")}
+                    onClick={() => {
+                      setResetEmail(email)
+                      setForgotPasswordOpen(true)
+                    }}
                   >
                     Esqueci a senha
                   </button>
@@ -251,6 +272,38 @@ export default function LoginPage() {
           </Card>
         </div>
       </div>
+
+      <Dialog open={forgotPasswordOpen} onOpenChange={setForgotPasswordOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Recuperar senha</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleRequestPasswordReset} className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Informe seu e-mail para receber o link de redefinição.
+            </p>
+            <div className="space-y-2">
+              <Label htmlFor="reset-email">E-mail</Label>
+              <Input
+                id="reset-email"
+                type="email"
+                value={resetEmail}
+                onChange={(event) => setResetEmail(event.target.value)}
+                placeholder="seuemail@depclean.com"
+                required
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setForgotPasswordOpen(false)} disabled={resetSubmitting}>
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={resetSubmitting}>
+                {resetSubmitting ? "Enviando..." : "Enviar link"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </main>
   )
 }

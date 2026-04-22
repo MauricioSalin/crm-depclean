@@ -41,6 +41,7 @@ import {
 } from "lucide-react"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { DataPagination } from "@/components/ui/data-pagination"
+import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 
 type LogAction =
   | "create"
@@ -336,7 +337,7 @@ const moduleConfig: Record<LogModule, { label: string; icon: typeof User }> = {
 }
 
 export function LogsContent() {
-  const [searchTerm, setSearchTerm] = useState("")
+  const [searchTerm, setSearchTerm] = useUrlQueryState("q")
   const [actionFilter, setActionFilter] = useState<string>("all")
   const [moduleFilter, setModuleFilter] = useState<string>("all")
   const [userFilter, setUserFilter] = useState<string>("all")

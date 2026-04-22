@@ -36,8 +36,8 @@ import {
   Search,
 } from "lucide-react"
 import { mockScheduledServices, mockClients, mockTeams, mockServiceTypes } from "@/lib/mock-data"
-import { HeaderFiltersPortal } from "@/components/ui/header-filters-portal"
 import { SearchableSelect } from "@/components/ui/searchable-select"
+import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 
 import type { RecurrenceType } from "@/lib/types"
 import { WeekTimeline } from "./week-timeline"
@@ -87,7 +87,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   )
   const [currentDate, setCurrentDate] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState<Date | null>(() => new Date())
-  const [searchTerm, setSearchTerm] = useState("")
+  const [searchTerm, setSearchTerm] = useUrlQueryState("q")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [viewMode, setViewMode] = useState<"month" | "week">("month")
 
@@ -492,9 +492,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
         </DialogContent>
       </Dialog>
 
-      {/* Filters */}
-      <HeaderFiltersPortal>
-        <div className="grid grid-cols-2 sm:flex sm:items-center gap-2">
+      <div className="grid grid-cols-2 sm:flex sm:items-center gap-2">
           <div className="relative sm:flex-none sm:w-80">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -530,8 +528,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
               <TabsTrigger value="week" className="text-xs px-3">Semana</TabsTrigger>
             </TabsList>
           </Tabs>
-        </div>
-      </HeaderFiltersPortal>
+      </div>
 
       {viewMode === "month" ? (
       <div className="grid gap-4 lg:grid-cols-5 lg:flex-1 lg:overflow-hidden">
