@@ -405,7 +405,7 @@ function ChatComposer({
   onRemoveFile: (id: string) => void
 }) {
   return (
-    <form onSubmit={onSubmit} className="rounded-3xl border border-border bg-card p-2 shadow-xl shadow-black/5">
+    <form autoComplete="off" onSubmit={onSubmit} className="rounded-3xl border border-border bg-card p-2 shadow-xl shadow-black/5">
       {files.length > 0 && (
         <div className="mb-2 flex flex-wrap gap-2 px-2 pt-1">
           {files.map((file) => (

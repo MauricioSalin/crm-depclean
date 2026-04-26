@@ -65,7 +65,7 @@ export function ResetPasswordForm() {
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form autoComplete="off" onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-2">
               <Label htmlFor="newPassword">Nova senha</Label>
               <div className="relative">

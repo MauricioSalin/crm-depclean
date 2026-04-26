@@ -8,6 +8,7 @@ import { ThemeProvider } from "@/components/theme-provider"
 import { AuthGate } from "@/components/auth/auth-gate"
 import { FirstAccessDialog } from "@/components/auth/first-access-dialog"
 import { Toaster } from "@/components/ui/sonner"
+import "@eigenpal/docx-js-editor/styles.css"
 import "./globals.css"
 
 const _geist = Geist({ subsets: ["latin", "latin-ext"] })

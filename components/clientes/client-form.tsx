@@ -1,10 +1,12 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useEffect, useState } from "react"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Select,
   SelectContent,
@@ -13,20 +15,46 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
-import { Plus, Trash2, Building2, MapPin, Save, Loader2 } from "lucide-react"
+import { Plus, Trash2, Building2, MapPin, Save, Loader2, Users } from "lucide-react"
 import { clientTypes, clients } from "@/lib/mock-data"
 import type { Client, ClientUnit } from "@/lib/types"
 import { useRouter } from "next/navigation"
-import { formatCNPJ } from "@/lib/masks"
+import { formatCNPJ, formatPhone } from "@/lib/masks"
+import { toast } from "@/components/ui/use-toast"
+import { createClient, getClientById, updateClient, type ClientPayload } from "@/lib/api/clients"
 
 interface ClientFormProps {
   clientId?: string
   isEditing?: boolean
 }
 
+type ClientUnitForm = {
+  id?: string
+  name?: string
+  isPrimary?: boolean
+  unitCount?: number
+  address?: {
+    street?: string
+    number?: string
+    complement?: string
+    neighborhood?: string
+    city?: string
+    state?: string
+    zipCode?: string
+  }
+}
+
 export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
   const router = useRouter()
-  const client = clientId ? clients.find(c => c.id === clientId) : undefined
+  const queryClient = useQueryClient()
+
+  const clientQuery = useQuery({
+    queryKey: ["client", clientId],
+    queryFn: () => getClientById(clientId!),
+    enabled: Boolean(clientId),
+  })
+
+  const client = clientQuery.data?.data ?? (clientId ? clients.find(c => c.id === clientId) : undefined)
   
   const [formData, setFormData] = useState({
     companyName: client?.companyName || "",
@@ -35,9 +63,13 @@ export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
     phone: client?.phone || "",
     email: client?.email || "",
     clientTypeId: client?.clientTypeId || "",
+    assessorName: "",
+    assessorEmail: "",
+    assessorPhone: "",
+    copyNotificationsToOwner: false,
   })
 
-  const [units, setUnits] = useState<Partial<ClientUnit>[]>(
+  const [units, setUnits] = useState<ClientUnitForm[]>(
     client?.units || [
       {
         id: "new-1",
@@ -103,6 +135,60 @@ export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
   }
 
   const [cepLoading, setCepLoading] = useState<number | null>(null)
+
+  useEffect(() => {
+    const loadedClient = clientQuery.data?.data
+    if (!loadedClient) return
+
+    setFormData({
+      companyName: loadedClient.companyName || "",
+      cnpj: formatCNPJ(loadedClient.cnpj || ""),
+      responsibleName: loadedClient.responsibleName || "",
+      phone: formatPhone(loadedClient.phone || ""),
+      email: loadedClient.email || "",
+      clientTypeId: loadedClient.clientTypeId || "",
+      assessorName: loadedClient.assessor?.name || "",
+      assessorEmail: loadedClient.assessor?.email || "",
+      assessorPhone: formatPhone(loadedClient.assessor?.phone || ""),
+      copyNotificationsToOwner: Boolean(loadedClient.copyNotificationsToOwner),
+    })
+
+    setUnits(
+      loadedClient.units?.length
+        ? loadedClient.units.map((unit) => ({
+            id: unit.id,
+            name: unit.name,
+            isPrimary: unit.isPrimary,
+            unitCount: unit.unitCount,
+            address: {
+              street: unit.address?.street || "",
+              number: unit.address?.number || "",
+              complement: unit.address?.complement || "",
+              neighborhood: unit.address?.neighborhood || "",
+              city: unit.address?.city || "",
+              state: unit.address?.state || "",
+              zipCode: unit.address?.zipCode || "",
+            },
+          }))
+        : [
+            {
+              id: "new-1",
+              name: "Matriz",
+              isPrimary: true,
+              unitCount: 0,
+              address: {
+                street: "",
+                number: "",
+                complement: "",
+                neighborhood: "",
+                city: "",
+                state: "",
+                zipCode: "",
+              },
+            },
+          ],
+    )
+  }, [clientQuery.data])
 
   const lookupCEP = async (cepDigits: string, unitIndex: number) => {
     if (cepDigits.length !== 8) return
@@ -177,28 +263,74 @@ export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
     }
   }
 
-  const formatPhone = (value: string) => {
-    const numbers = value.replace(/\D/g, "")
-    return numbers
-      .replace(/^(\d{2})(\d)/, "($1) $2")
-      .replace(/(\d{5})(\d)/, "$1-$2")
-      .slice(0, 15)
-  }
-
   const formatCEP = (value: string) => {
     const numbers = value.replace(/\D/g, "")
     return numbers.replace(/^(\d{5})(\d)/, "$1-$2").slice(0, 9)
   }
 
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const payload: ClientPayload = {
+        companyName: formData.companyName.trim(),
+        cnpj: formData.cnpj.trim(),
+        responsibleName: formData.responsibleName.trim(),
+        phone: formData.phone.trim(),
+        email: formData.email.trim(),
+        clientTypeId: formData.clientTypeId,
+        assessorName: formData.assessorName.trim(),
+        assessorEmail: formData.assessorEmail.trim(),
+        assessorPhone: formData.assessorPhone.trim(),
+        copyNotificationsToOwner: formData.copyNotificationsToOwner,
+        isActive: true,
+        units: units.map((unit, index) => ({
+          id: typeof unit.id === "string" ? unit.id : undefined,
+          name: unit.name || (index === 0 ? "Matriz" : `Filial ${index}`),
+          isPrimary: Boolean(unit.isPrimary),
+          unitCount: Number(unit.unitCount) || 0,
+          address: {
+            street: unit.address?.street || "",
+            number: unit.address?.number || "",
+            complement: unit.address?.complement || "",
+            neighborhood: unit.address?.neighborhood || "",
+            city: unit.address?.city || "",
+            state: unit.address?.state || "",
+            zipCode: unit.address?.zipCode || "",
+          },
+        })),
+      }
+
+      if (clientId) {
+        return updateClient(clientId, payload)
+      }
+
+      return createClient(payload)
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["clients"] })
+      if (clientId) {
+        await queryClient.invalidateQueries({ queryKey: ["client", clientId] })
+      }
+      toast({
+        title: isEditing ? "Cliente atualizado" : "Cliente criado",
+        description: "Os dados foram salvos com sucesso.",
+      })
+      router.push("/clientes")
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Não foi possível salvar o cliente",
+        description: error?.response?.data?.message ?? "Verifique os dados e tente novamente.",
+      })
+    },
+  })
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    // Here you would save to backend
-    console.log("[v0] Saving client:", { ...formData, units })
-    router.push("/clientes")
+    saveMutation.mutate()
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form autoComplete="off" onSubmit={handleSubmit} className="space-y-6">
       {/* Client Data */}
       <Card className="p-6">
         <div className="flex items-center gap-2 mb-6">
@@ -296,7 +428,7 @@ export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
               <Label htmlFor="email">E-mail *</Label>
               <Input
                 id="email"
-                type="email"
+                type="email" autoComplete="off"
                 value={formData.email}
                 onChange={(e) => handleInputChange("email", e.target.value)}
                 placeholder={cnpjLoading ? "Buscando..." : "email@empresa.com.br"}
@@ -308,126 +440,58 @@ export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
         </div>
       </Card>
 
-      {/* Matriz */}
       <Card className="p-6">
         <div className="flex items-center gap-2 mb-6">
-          <Building2 className="w-5 h-5 text-primary" />
-          <h3 className="font-semibold text-lg">Matriz</h3>
-          <span className="text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded-full">
-            Principal
-          </span>
+          <Users className="w-5 h-5 text-primary" />
+          <h3 className="font-semibold text-lg">Assessor</h3>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          <div className="space-y-2">
-            <Label>Nome *</Label>
-            <Input
-              value={units[0]?.name || ""}
-              onChange={(e) => handleUnitChange(0, "name", e.target.value)}
-              placeholder="Matriz"
-              required
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label>Unidades *</Label>
-            <Input
-              type="number"
-              value={units[0]?.unitCount || ""}
-              onChange={(e) => handleUnitChange(0, "unitCount", e.target.value)}
-              placeholder="Nº de unidades"
-              min={1}
-              required
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label>CEP *</Label>
-            <div className="relative">
+        <div className="space-y-5">
+          <div className="flex flex-col md:flex-row gap-3">
+            <div className="space-y-2 md:w-[320px]">
+              <Label htmlFor="assessorName">Nome</Label>
               <Input
-                value={units[0]?.address?.zipCode || ""}
-                onChange={(e) => {
-                  const formatted = formatCEP(e.target.value)
-                  handleUnitChange(0, "address.zipCode", formatted)
-                  const digits = formatted.replace(/\D/g, "")
-                  if (digits.length === 8) lookupCEP(digits, 0)
-                }}
-                placeholder="00000-000"
-                required
+                id="assessorName"
+                value={formData.assessorName}
+                onChange={(e) => handleInputChange("assessorName", e.target.value)}
+                placeholder="Nome do assessor"
               />
-              {cepLoading === 0 && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />}
+            </div>
+            <div className="space-y-2 md:w-[320px]">
+              <Label htmlFor="assessorEmail">E-mail</Label>
+              <Input
+                id="assessorEmail"
+                type="email"
+                autoComplete="off"
+                value={formData.assessorEmail}
+                onChange={(e) => handleInputChange("assessorEmail", e.target.value)}
+                placeholder="email@empresa.com.br"
+              />
             </div>
           </div>
 
-          <div className="md:col-span-1 lg:col-span-2 space-y-2">
-            <Label>Logradouro *</Label>
-            <Input
-              value={units[0]?.address?.street || ""}
-              onChange={(e) => handleUnitChange(0, "address.street", e.target.value)}
-              placeholder={cepLoading === 0 ? "Buscando..." : "Rua, Avenida, etc."}
-              disabled={cepLoading === 0}
-              required
-            />
+          <div className="flex flex-col md:flex-row gap-3">
+            <div className="space-y-2 md:w-[320px]">
+              <Label htmlFor="assessorPhone">Telefone</Label>
+              <Input
+                id="assessorPhone"
+                value={formData.assessorPhone}
+                onChange={(e) => handleInputChange("assessorPhone", formatPhone(e.target.value))}
+                placeholder="(00) 00000-0000"
+              />
+            </div>
           </div>
 
-          <div className="space-y-2">
-            <Label>Número *</Label>
-            <Input
-              value={units[0]?.address?.number || ""}
-              onChange={(e) => handleUnitChange(0, "address.number", e.target.value)}
-              placeholder="123"
-              required
+          <label className="flex items-center gap-2 rounded-md border border-border/60 bg-muted/20 px-4 py-3 text-sm text-foreground/80">
+            <Checkbox
+              checked={formData.copyNotificationsToOwner}
+              onCheckedChange={(checked) => setFormData((prev) => ({
+                ...prev,
+                copyNotificationsToOwner: checked === true,
+              }))}
             />
-          </div>
-
-          <div className="space-y-2">
-            <Label>Complemento</Label>
-            <Input
-              value={units[0]?.address?.complement || ""}
-              onChange={(e) => handleUnitChange(0, "address.complement", e.target.value)}
-              placeholder="Apto, Bloco, etc."
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label>Bairro *</Label>
-            <Input
-              value={units[0]?.address?.neighborhood || ""}
-              onChange={(e) => handleUnitChange(0, "address.neighborhood", e.target.value)}
-              placeholder={cepLoading === 0 ? "Buscando..." : "Bairro"}
-              disabled={cepLoading === 0}
-              required
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label>Cidade *</Label>
-            <Input
-              value={units[0]?.address?.city || ""}
-              onChange={(e) => handleUnitChange(0, "address.city", e.target.value)}
-              placeholder={cepLoading === 0 ? "Buscando..." : "Cidade"}
-              disabled={cepLoading === 0}
-              required
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label>Estado *</Label>
-            <Select
-              value={units[0]?.address?.state || ""}
-              onValueChange={(value) => handleUnitChange(0, "address.state", value)}
-              disabled={cepLoading === 0}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="UF" />
-              </SelectTrigger>
-              <SelectContent>
-                {["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"].map((uf) => (
-                  <SelectItem key={uf} value={uf}>{uf}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+            Enviar cópia das notificações para o proprietário
+          </label>
         </div>
       </Card>
 
@@ -597,7 +661,7 @@ export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
         >
           Cancelar
         </Button>
-        <Button type="submit">
+        <Button type="submit" disabled={saveMutation.isPending || cnpjLoading || cepLoading !== null}>
           <Save className="w-4 h-4 mr-2" />
           {isEditing ? "Salvar Alterações" : "Cadastrar Cliente"}
         </Button>

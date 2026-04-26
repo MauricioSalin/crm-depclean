@@ -17,10 +17,12 @@ import { Textarea } from "@/components/ui/textarea"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
+import { MultiSelect } from "@/components/ui/multi-select"
 import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 import { formatCPF, formatPhone } from "@/lib/masks"
+import { listEmployees, type EmployeeRecord } from "@/lib/api/employees"
 import {
   createClientType,
   createNotificationRule,
@@ -41,6 +43,7 @@ import {
   type PermissionProfileRecord,
   type UserRecord,
 } from "@/lib/api/settings"
+import { listTeams, type TeamRecord } from "@/lib/api/teams"
 
 type SettingsSection = "tipos-cliente" | "permissoes" | "usuarios" | "notificacoes"
 
@@ -75,13 +78,6 @@ function generatePassword(length = 12) {
   const bytes = new Uint8Array(length)
   window.crypto.getRandomValues(bytes)
   return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join("")
-}
-
-function parseCsv(value: string) {
-  return value
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean)
 }
 
 type PermissionModule = {
@@ -121,6 +117,8 @@ export function ConfiguracoesContent() {
   const [permissionProfiles, setPermissionProfiles] = useState<PermissionProfileRecord[]>([])
   const [users, setUsers] = useState<UserRecord[]>([])
   const [notificationRules, setNotificationRules] = useState<NotificationRuleRecord[]>([])
+  const [teams, setTeams] = useState<TeamRecord[]>([])
+  const [employees, setEmployees] = useState<EmployeeRecord[]>([])
   const [permissionCatalog, setPermissionCatalog] = useState<Array<{ key: string; label: string; description: string }>>([])
 
   const [typeSearch, setTypeSearch] = useUrlQueryState("q-types")
@@ -149,6 +147,7 @@ export function ConfiguracoesContent() {
   const [isUserDialogOpen, setIsUserDialogOpen] = useState(false)
   const [editingUser, setEditingUser] = useState<UserRecord | null>(null)
   const [showTemporaryPassword, setShowTemporaryPassword] = useState(false)
+  const [temporaryPasswords, setTemporaryPasswords] = useState<Record<string, string>>({})
   const [userForm, setUserForm] = useState({
     name: "",
     email: "",
@@ -170,6 +169,7 @@ export function ConfiguracoesContent() {
     time: "08:00",
     channels: [] as string[],
     targetTeamIds: [] as string[],
+    targetEmployeeIds: [] as string[],
     isActive: true,
   })
   const [pendingDelete, setPendingDelete] = useState<
@@ -183,12 +183,28 @@ export function ConfiguracoesContent() {
   const refreshSettings = async () => {
     setLoading(true)
     try {
-      const response = await getSettings()
+      const [settingsResponse, teamsResponse, employeesResponse] = await Promise.all([
+        getSettings(),
+        listTeams(),
+        listEmployees(),
+      ])
+      const response = settingsResponse
       setClientTypes(response.data.clientTypes)
       setPermissionProfiles(response.data.permissionProfiles)
       setUsers(response.data.users)
+      setTemporaryPasswords((current) => {
+        const next = { ...current }
+        response.data.users.forEach((user) => {
+          if (user.temporaryPassword) {
+            next[user.id] = user.temporaryPassword
+          }
+        })
+        return next
+      })
       setNotificationRules(response.data.notificationRules)
       setPermissionCatalog(response.data.permissions)
+      setTeams(teamsResponse.data.filter((team) => team.isActive))
+      setEmployees(employeesResponse.data.filter((employee) => employee.status === "active"))
     } catch {
       toast.error("Não foi possível carregar as configurações.")
     } finally {
@@ -212,9 +228,32 @@ export function ConfiguracoesContent() {
     [item.name, item.email, item.phone, item.cpf, item.role, item.permissionProfileName].join(" ").toLowerCase().includes(userSearch.toLowerCase()),
   ), [users, userSearch])
 
-  const filteredRules = useMemo(() => notificationRules.filter((item) =>
-    [item.name, item.type, item.channels.join(" "), item.targetTeamIds.join(" ")].join(" ").toLowerCase().includes(ruleSearch.toLowerCase()),
-  ), [notificationRules, ruleSearch])
+  const filteredRules = useMemo(() => notificationRules.filter((item) => {
+    const teamNames = item.targetTeamIds.map((teamId) => teams.find((team) => team.id === teamId)?.name ?? teamId).join(" ")
+    const employeeNames = item.targetEmployeeIds.map((employeeId) => employees.find((employee) => employee.id === employeeId)?.name ?? employeeId).join(" ")
+
+    return [
+      item.name,
+      item.type,
+      item.channels.join(" "),
+      item.targetTeamIds.join(" "),
+      item.targetEmployeeIds.join(" "),
+      teamNames,
+      employeeNames,
+    ].join(" ").toLowerCase().includes(ruleSearch.toLowerCase())
+  }), [notificationRules, ruleSearch, teams, employees])
+
+  const teamOptions = useMemo(() => teams.map((team) => ({
+    id: team.id,
+    name: team.name,
+    subtitle: team.description,
+  })), [teams])
+
+  const employeeOptions = useMemo(() => employees.map((employee) => ({
+    id: employee.id,
+    name: employee.name,
+    subtitle: `${employee.role || "Sem cargo"} • ${formatPhone(employee.phone)}`,
+  })), [employees])
 
   const paginatedTypes = useMemo(() => filteredTypes.slice((typePage - 1) * typePageSize, typePage * typePageSize), [filteredTypes, typePage, typePageSize])
   const paginatedProfiles = useMemo(() => filteredProfiles.slice((profilePage - 1) * profilePageSize, profilePage * profilePageSize), [filteredProfiles, profilePage, profilePageSize])
@@ -242,7 +281,7 @@ export function ConfiguracoesContent() {
 
   const resetRuleForm = () => {
     setEditingRule(null)
-    setRuleForm({ name: "", type: "new_schedule", daysBefore: 1, time: "08:00", channels: [], targetTeamIds: [], isActive: true })
+    setRuleForm({ name: "", type: "new_schedule", daysBefore: 1, time: "08:00", channels: [], targetTeamIds: [], targetEmployeeIds: [], isActive: true })
     setIsRuleDialogOpen(false)
   }
 
@@ -265,13 +304,14 @@ export function ConfiguracoesContent() {
   const openUserDialog = (record?: UserRecord) => {
     if (record) {
       setEditingUser(record)
+      const cachedTemporaryPassword = record.temporaryPassword ?? temporaryPasswords[record.id] ?? ""
       setUserForm({
         name: record.name,
         email: record.email,
         phone: record.phone,
-        cpf: record.cpf,
+        cpf: formatCPF(record.cpf),
         role: record.role,
-        password: record.mustChangePassword ? (record.temporaryPassword ?? "") : "",
+        password: record.mustChangePassword ? cachedTemporaryPassword : "",
         permissionProfileId: record.permissionProfileId,
         isActive: record.isActive,
         mustChangePassword: record.mustChangePassword,
@@ -295,6 +335,7 @@ export function ConfiguracoesContent() {
         time: record.time,
         channels: [...record.channels],
         targetTeamIds: [...record.targetTeamIds],
+        targetEmployeeIds: [...record.targetEmployeeIds],
         isActive: record.isActive,
       })
     }
@@ -369,6 +410,12 @@ export function ConfiguracoesContent() {
           ...(userForm.password.trim() ? { password: userForm.password } : {}),
         })
         upsertUser(response.data)
+        if (response.data.temporaryPassword) {
+          setTemporaryPasswords((current) => ({
+            ...current,
+            [response.data.id]: response.data.temporaryPassword ?? "",
+          }))
+        }
         toast.success("Usuário atualizado.")
       } else {
         const response = await createUser({
@@ -382,6 +429,12 @@ export function ConfiguracoesContent() {
           isActive: userForm.isActive,
         })
         upsertUser(response.data)
+        if (response.data.temporaryPassword) {
+          setTemporaryPasswords((current) => ({
+            ...current,
+            [response.data.id]: response.data.temporaryPassword ?? "",
+          }))
+        }
         toast.success("Usuário criado.")
       }
       resetUserForm()
@@ -403,6 +456,7 @@ export function ConfiguracoesContent() {
         time: ruleForm.time,
         channels: ruleForm.channels,
         targetTeamIds: ruleForm.targetTeamIds,
+        targetEmployeeIds: ruleForm.targetEmployeeIds,
         isActive: ruleForm.isActive,
       }
       if (editingRule) {
@@ -511,6 +565,12 @@ export function ConfiguracoesContent() {
       const response = await resetUserPassword(editingUser.id)
       upsertUser(response.data)
       setEditingUser(response.data)
+      if (response.data.temporaryPassword) {
+        setTemporaryPasswords((current) => ({
+          ...current,
+          [response.data.id]: response.data.temporaryPassword ?? "",
+        }))
+      }
       setUserForm((current) => ({
         ...current,
         password: response.data.temporaryPassword ?? "",
@@ -703,7 +763,7 @@ export function ConfiguracoesContent() {
               <DialogHeader>
                 <DialogTitle>{editingType ? "Editar Tipo de Cliente" : "Novo Tipo de Cliente"}</DialogTitle>
               </DialogHeader>
-              <form onSubmit={handleTypeSubmit} className="space-y-4">
+              <form autoComplete="off" onSubmit={handleTypeSubmit} className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="type-name">Nome</Label>
                   <Input id="type-name" value={typeForm.name} onChange={(event) => setTypeForm({ ...typeForm, name: event.target.value })} required />
@@ -792,7 +852,7 @@ export function ConfiguracoesContent() {
               <DialogHeader>
                 <DialogTitle>{editingProfile ? "Editar Perfil" : "Novo Perfil de Permissao"}</DialogTitle>
               </DialogHeader>
-              <form onSubmit={handleProfileSubmit} className="space-y-4">
+              <form autoComplete="off" onSubmit={handleProfileSubmit} className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="profile-name">Nome</Label>
                   <Input id="profile-name" value={profileForm.name} onChange={(event) => setProfileForm({ ...profileForm, name: event.target.value })} required />
@@ -933,14 +993,14 @@ export function ConfiguracoesContent() {
               <DialogHeader>
                 <DialogTitle>{editingUser ? "Editar Usuário do Sistema" : "Novo Usuário do Sistema"}</DialogTitle>
               </DialogHeader>
-              <form onSubmit={handleUserSubmit} className="space-y-4">
+              <form autoComplete="off" onSubmit={handleUserSubmit} className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="user-name">Nome</Label>
-                  <Input id="user-name" value={userForm.name} onChange={(event) => setUserForm({ ...userForm, name: event.target.value })} required />
+                  <Input id="user-name" placeholder="Nome completo" value={userForm.name} onChange={(event) => setUserForm({ ...userForm, name: event.target.value })} required />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="user-email">E-mail</Label>
-                  <Input id="user-email" type="email" value={userForm.email} onChange={(event) => setUserForm({ ...userForm, email: event.target.value })} required />
+                  <Input id="user-email" type="email" autoComplete="off" placeholder="email@empresa.com" value={userForm.email} onChange={(event) => setUserForm({ ...userForm, email: event.target.value })} required />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="user-phone">Telefone</Label>
@@ -1001,11 +1061,6 @@ export function ConfiguracoesContent() {
                         Gerar senha
                       </Button>
                     </div>
-                    {userForm.mustChangePassword && (
-                      <p className="text-xs text-muted-foreground">
-                        Use essa senha no primeiro acesso. O sistema vai obrigar a troca ao entrar.
-                      </p>
-                    )}
                   </div>
                 )}
                 <div className="space-y-2">
@@ -1033,15 +1088,19 @@ export function ConfiguracoesContent() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="flex justify-end gap-2">
-                  <Button type="button" variant="outline" onClick={resetUserForm}>Cancelar</Button>
-                  {editingUser && !userForm.mustChangePassword && (
-                    <Button type="button" variant="outline" onClick={handleResetUserPassword} disabled={saving}>
-                      <RefreshCcw className="mr-2 h-4 w-4" />
-                      Resetar senha
-                    </Button>
-                  )}
-                  <Button type="submit" disabled={saving}>{editingUser ? "Salvar" : "Criar"}</Button>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    {editingUser && !userForm.mustChangePassword && (
+                      <Button type="button" variant="outline" onClick={handleResetUserPassword} disabled={saving}>
+                        <RefreshCcw className="mr-2 h-4 w-4" />
+                        Resetar senha
+                      </Button>
+                    )}
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <Button type="button" variant="outline" onClick={resetUserForm}>Cancelar</Button>
+                    <Button type="submit" disabled={saving}>{editingUser ? "Salvar" : "Criar"}</Button>
+                  </div>
                 </div>
               </form>
             </DialogContent>
@@ -1072,12 +1131,16 @@ export function ConfiguracoesContent() {
                 <Card key={item.id} className={cn(!item.isActive && "opacity-60")}>
                   <CardHeader className="pb-2">
                     <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <CardTitle className="text-base flex items-center gap-2">
-                          <Bell className="h-4 w-4 text-primary" />
-                          {item.name}
-                        </CardTitle>
-                        <CardDescription>{NOTIFICATION_TYPE_LABELS[item.type] ?? item.type}</CardDescription>
+                      <div className="flex min-w-0 items-start gap-3">
+                        <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                          <Bell className="h-4.5 w-4.5" />
+                        </div>
+                        <div className="min-w-0">
+                          <CardTitle className="text-base">{item.name}</CardTitle>
+                          <CardDescription className="mt-1 text-sm">
+                            {NOTIFICATION_TYPE_LABELS[item.type] ?? item.type}
+                          </CardDescription>
+                        </div>
                       </div>
                       <div className="flex items-center gap-1">
                         <Switch
@@ -1100,9 +1163,10 @@ export function ConfiguracoesContent() {
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-3 text-sm">
-                    <div className="flex items-center gap-2 text-muted-foreground">
+                    <div className="text-sm text-muted-foreground">
                       <span>{item.daysBefore === 0 ? "No dia" : `${item.daysBefore} dia(s) antes`}</span>
-                      <span>as {item.time}</span>
+                      <span className="mx-1">•</span>
+                      <span>às {item.time}</span>
                     </div>
                     <div className="flex flex-wrap gap-1.5">
                       {item.channels.map((channel) => {
@@ -1110,11 +1174,40 @@ export function ConfiguracoesContent() {
                         return <Badge key={channel} variant="outline">{channelLabel}</Badge>
                       })}
                     </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {item.targetTeamIds.length > 0 ? item.targetTeamIds.map((teamId) => (
-                        <Badge key={teamId} variant="secondary">{teamId}</Badge>
-                      )) : <span className="text-xs text-muted-foreground">Nenhuma equipe vinculada.</span>}
-                    </div>
+                    {(item.targetTeamIds.length > 0 || item.targetEmployeeIds.length > 0) ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {item.targetTeamIds.map((teamId) => {
+                          const team = teams.find((entry) => entry.id === teamId)
+                          const teamName = team?.name ?? teamId
+                          return (
+                            <Badge
+                              key={teamId}
+                              variant="secondary"
+                              className="px-3 py-1 flex items-center gap-2 text-xs text-foreground/80"
+                              style={team?.color ? { backgroundColor: `${team.color}1A` } : undefined}
+                            >
+                              {team?.color ? (
+                                <span
+                                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                                  style={{ backgroundColor: team.color }}
+                                />
+                              ) : null}
+                              {teamName}
+                            </Badge>
+                          )
+                        })}
+                        {item.targetEmployeeIds.map((employeeId) => {
+                          const employeeName = employees.find((employee) => employee.id === employeeId)?.name ?? employeeId
+                          return (
+                            <Badge key={employeeId} variant="outline" className="px-3 py-1 text-xs">
+                              {employeeName}
+                            </Badge>
+                          )
+                        })}
+                      </div>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">Nenhum destinatário vinculado.</span>
+                    )}
                   </CardContent>
                 </Card>
               ))
@@ -1135,7 +1228,7 @@ export function ConfiguracoesContent() {
               <DialogHeader>
                 <DialogTitle>{editingRule ? "Editar Regra de Notificação" : "Nova Regra de Notificação"}</DialogTitle>
               </DialogHeader>
-              <form onSubmit={handleRuleSubmit} className="space-y-4">
+              <form autoComplete="off" onSubmit={handleRuleSubmit} className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="rule-name">Nome</Label>
                   <Input id="rule-name" value={ruleForm.name} onChange={(event) => setRuleForm({ ...ruleForm, name: event.target.value })} required />
@@ -1183,16 +1276,31 @@ export function ConfiguracoesContent() {
                     })}
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="rule-teams">Equipes destinatarias</Label>
-                  <Textarea
-                    id="rule-teams"
-                    value={ruleForm.targetTeamIds.join(", ")}
-                    onChange={(event) => setRuleForm({ ...ruleForm, targetTeamIds: parseCsv(event.target.value) })}
-                    placeholder="id-equipe-1, id-equipe-2"
-                  />
-                  <p className="text-xs text-muted-foreground">Informe os IDs das equipes enquanto o cadastro de equipes nao estiver integrado.</p>
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Equipes destinatárias</Label>
+                    <MultiSelect
+                      options={teamOptions}
+                      selected={ruleForm.targetTeamIds}
+                      onChange={(selected) => setRuleForm({ ...ruleForm, targetTeamIds: selected })}
+                      placeholder="Buscar e adicionar equipes..."
+                      searchPlaceholder="Buscar equipe..."
+                      emptyMessage="Nenhuma equipe encontrada."
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Funcionários avulsos</Label>
+                    <MultiSelect
+                      options={employeeOptions}
+                      selected={ruleForm.targetEmployeeIds}
+                      onChange={(selected) => setRuleForm({ ...ruleForm, targetEmployeeIds: selected })}
+                      placeholder="Buscar e adicionar funcionários..."
+                      searchPlaceholder="Buscar funcionário..."
+                      emptyMessage="Nenhum funcionário encontrado."
+                    />
+                  </div>
                 </div>
+                <p className="text-xs text-muted-foreground">Selecione equipes, funcionários avulsos ou ambos para definir quem recebe a notificação.</p>
                 <div className="flex items-center gap-2">
                   <Switch checked={ruleForm.isActive} onCheckedChange={(checked) => setRuleForm({ ...ruleForm, isActive: checked })} />
                   <Label>Regra ativa</Label>

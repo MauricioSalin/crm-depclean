@@ -1,6 +1,9 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
+import { Search, Edit, Trash2, Clock, ClipboardList } from "lucide-react"
+
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -14,10 +17,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Search, Edit, Trash2, Clock, ClipboardList } from "lucide-react"
 import { mockServiceTypes, mockTeams } from "@/lib/mock-data"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
-import Link from "next/link"
 
 type ServiceTypeRow = (typeof mockServiceTypes)[number]
 
@@ -42,7 +43,7 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
   const handleDeleteType = (id: string) => {
     setPendingDelete({
       id,
-      label: serviceTypes.find((type) => type.id === id)?.name ?? "este tipo de servico",
+      label: serviceTypes.find((type) => type.id === id)?.name ?? "este tipo de serviço",
     })
   }
 
@@ -52,34 +53,32 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
     setPendingDelete(null)
   }
 
-  const filteredTypes = serviceTypes.filter((st) =>
-    st.name.toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  const filteredTypes = serviceTypes.filter((st) => st.name.toLowerCase().includes(searchTerm.toLowerCase()))
 
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
-          <div className="relative w-full sm:max-w-sm">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Buscar tipos de servico..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-          {viewToggle && <div className="hidden sm:block shrink-0">{viewToggle}</div>}
+        <div className="relative w-full sm:max-w-sm">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Buscar tipos de serviço..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+        {viewToggle ? <div className="hidden shrink-0 sm:block">{viewToggle}</div> : null}
       </div>
 
       {viewMode === "table" ? (
-        <div className="rounded-md overflow-x-auto">
+        <div className="overflow-x-auto rounded-md">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Serviço</TableHead>
                 <TableHead className="hidden sm:table-cell">Descrição</TableHead>
                 <TableHead className="hidden md:table-cell">Equipe / Funcionários</TableHead>
-                <TableHead>Duracao</TableHead>
+                <TableHead>Duração</TableHead>
                 <TableHead className="text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
@@ -87,7 +86,7 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
               {filteredTypes.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={5} className="h-24 text-center">
-                    Nenhum tipo de servico encontrado.
+                    Nenhum tipo de serviço encontrado.
                   </TableCell>
                 </TableRow>
               ) : (
@@ -95,7 +94,7 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
                   <TableRow key={type.id}>
                     <TableCell>
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
                           <ClipboardList className="h-5 w-5 text-primary" />
                         </div>
                         <div>
@@ -103,21 +102,21 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell className="hidden sm:table-cell text-muted-foreground">
+                    <TableCell className="hidden text-muted-foreground sm:table-cell">
                       <span className="line-clamp-1">{type.description || "-"}</span>
                     </TableCell>
                     <TableCell className="hidden md:table-cell">
                       <div className="flex flex-wrap gap-1">
                         {(type.teamIds || []).map((teamId: string) => {
-                          const team = mockTeams.find((t) => t.id === teamId)
+                          const team = mockTeams.find((item) => item.id === teamId)
                           return team ? (
                             <Badge
                               key={team.id}
                               variant="secondary"
-                              className="px-2 py-0.5 flex items-center gap-1.5 text-xs text-foreground/80"
+                              className="flex items-center gap-1.5 px-2 py-0.5 text-xs text-foreground/80"
                               style={{ backgroundColor: `${team.color}1A` }}
                             >
-                              <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: team.color }} />
+                              <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: team.color }} />
                               {team.name}
                             </Badge>
                           ) : null
@@ -152,21 +151,23 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
           </Table>
         </div>
       ) : (
-        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {filteredTypes.map((type) => (
-            <Card key={type.id} className="overflow-hidden hover:shadow-lg transition-shadow">
+            <Card key={type.id} className="overflow-hidden transition-shadow hover:shadow-lg">
               <CardContent className="p-4">
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                <div className="mb-3 flex items-start justify-between">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
                       <ClipboardList className="h-5 w-5 text-primary" />
                     </div>
                     <div className="min-w-0">
-                      <h3 className="font-semibold truncate text-sm">{type.name}</h3>
-                      <p className="text-xs text-muted-foreground line-clamp-1">{type.description || "Sem descricao"}</p>
+                      <h3 className="truncate text-sm font-semibold">{type.name}</h3>
+                      <p className="line-clamp-1 text-xs text-muted-foreground">
+                        {type.description || "Sem descrição"}
+                      </p>
                     </div>
                   </div>
-                  <div className="flex gap-0.5 shrink-0">
+                  <div className="flex shrink-0 gap-0.5">
                     <Link href={`/servicos/${type.id}/editar`}>
                       <Button variant="ghost" size="icon" className="h-8 w-8">
                         <Edit className="h-3.5 w-3.5" />
@@ -177,28 +178,30 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
                     </Button>
                   </div>
                 </div>
+
                 <div className="flex items-center gap-1 text-sm text-muted-foreground">
                   <Clock className="h-4 w-4" />
                   <span>{formatDuration(type)}</span>
                 </div>
-                {type.teamIds?.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-2">
+
+                {type.teamIds?.length > 0 ? (
+                  <div className="mt-2 flex flex-wrap gap-1">
                     {type.teamIds.map((teamId: string) => {
-                      const team = mockTeams.find((t) => t.id === teamId)
+                      const team = mockTeams.find((item) => item.id === teamId)
                       return team ? (
                         <Badge
                           key={team.id}
                           variant="secondary"
-                          className="px-2 py-0.5 flex items-center gap-1.5 text-xs text-foreground/80"
+                          className="flex items-center gap-1.5 px-2 py-0.5 text-xs text-foreground/80"
                           style={{ backgroundColor: `${team.color}1A` }}
                         >
-                          <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: team.color }} />
+                          <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: team.color }} />
                           {team.name}
                         </Badge>
                       ) : null
                     })}
                   </div>
-                )}
+                ) : null}
               </CardContent>
             </Card>
           ))}
@@ -207,8 +210,8 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
 
       <ConfirmActionDialog
         open={!!pendingDelete}
-        title="Excluir tipo de servico"
-        description={`Tem certeza que deseja excluir ${pendingDelete?.label ?? "este tipo de servico"}? Esta acao nao pode ser desfeita.`}
+        title="Excluir tipo de serviço"
+        description={`Tem certeza que deseja excluir ${pendingDelete?.label ?? "este tipo de serviço"}? Esta ação não pode ser desfeita.`}
         confirmLabel="Excluir"
         onOpenChange={(open) => {
           if (!open) setPendingDelete(null)

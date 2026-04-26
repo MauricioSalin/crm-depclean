@@ -1,224 +1,308 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { Card } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
+import Link from "next/link"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import {
+  Building2,
+  Calendar,
+  CheckCircle,
+  Clock,
+  DollarSign,
+  Download,
+  ExternalLink,
+  FileText,
+  Eye,
+  MapPin,
+  MoreHorizontal,
+  RefreshCw,
+  Users,
+} from "lucide-react"
+
 import { Badge } from "@/components/ui/badge"
-import { Progress } from "@/components/ui/progress"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
-} from "@/components/ui/table"
+import { Button } from "@/components/ui/button"
+import { Card } from "@/components/ui/card"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import {
-  FileText,
-  Building2,
-  Calendar,
-  DollarSign,
-  Users,
-  Download,
-  ExternalLink,
-  CheckCircle,
-  Clock,
-  AlertTriangle,
-  MapPin,
-  MoreHorizontal
-} from "lucide-react"
-import {
-  contracts,
-  getClientById,
-  getServiceTypeById,
-  getTeamById,
-  formatCurrency,
-  formatDate
-} from "@/lib/mock-data"
-import type { RecurrenceRule } from "@/lib/types"
+import { Progress } from "@/components/ui/progress"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { toast } from "@/components/ui/use-toast"
+import { ServiceClausesDialog } from "@/components/servicos/service-clauses-dialog"
+import { buildApiFileUrl } from "@/lib/api/client"
+import { getClientById } from "@/lib/api/clients"
+import { getContractById, updateInstallment } from "@/lib/api/contracts"
+import { listEmployees } from "@/lib/api/employees"
+import { listServices, type ServiceRecurrenceRuleRecord } from "@/lib/api/services"
+import { listTeams } from "@/lib/api/teams"
 import { cn } from "@/lib/utils"
-import { RefreshCw } from "lucide-react"
-import Link from "next/link"
 
 interface ContractDetailProps {
   contractId: string
 }
 
+const formatCurrency = (value: number) =>
+  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value)
+
+const formatDate = (value?: string) =>
+  value ? new Intl.DateTimeFormat("pt-BR").format(new Date(value)) : "-"
+
+const formatDuration = (duration: number, durationType: "hours" | "shift" | "days") => {
+  if (durationType === "hours") return `${duration} hora${duration === 1 ? "" : "s"}`
+  if (durationType === "days") return `${duration} dia${duration === 1 ? "" : "s"}`
+  return `${duration} turno${duration === 1 ? "" : "s"}`
+}
+
+const getRecurrenceLabel = (value: string) =>
+  (
+    {
+      weekly: "Semanal",
+      biweekly: "Quinzenal",
+      monthly: "Mensal",
+      bimonthly: "Bimestral",
+      quarterly: "Trimestral",
+      semiannual: "Semestral",
+      annual: "Anual",
+    } as Record<string, string>
+  )[value] ?? value
+
+const getStatusBadge = (status: string) => {
+  switch (status) {
+    case "active":
+      return <Badge className="bg-green-100 text-green-700 hover:bg-green-100">Assinado</Badge>
+    case "pending_signature":
+      return <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">Aguardando assinatura</Badge>
+    case "overdue":
+      return <Badge className="bg-red-100 text-red-700 hover:bg-red-100">Em atraso</Badge>
+    case "refused":
+      return <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100">Recusado</Badge>
+    case "expired":
+      return <Badge className="bg-gray-100 text-gray-700 hover:bg-gray-100">Expirado</Badge>
+    case "deadline_expired":
+      return <Badge className="bg-purple-100 text-purple-700 hover:bg-purple-100">Prazo expirado</Badge>
+    case "cancelled":
+      return <Badge className="bg-red-100 text-red-700 hover:bg-red-100">Cancelado</Badge>
+    default:
+      return <Badge variant="secondary">Rascunho</Badge>
+  }
+}
+
+const getInstallmentStatusBadge = (status: string) => {
+  switch (status) {
+    case "paid":
+      return <Badge className="bg-green-100 text-green-700 hover:bg-green-100">Paga</Badge>
+    case "overdue":
+      return <Badge className="bg-red-100 text-red-700 hover:bg-red-100">Vencida</Badge>
+    case "cancelled":
+      return <Badge className="bg-gray-100 text-gray-700 hover:bg-gray-100">Cancelada</Badge>
+    default:
+      return <Badge variant="secondary">Pendente</Badge>
+  }
+}
+
 export function ContractDetail({ contractId }: ContractDetailProps) {
-  const contract = contracts.find(c => c.id === contractId)
-  
-  if (!contract) {
+  const queryClient = useQueryClient()
+  const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null)
+
+  const contractQuery = useQuery({
+    queryKey: ["contract", contractId],
+    queryFn: () => getContractById(contractId),
+  })
+
+  const contract = contractQuery.data?.data
+
+  const clientQuery = useQuery({
+    queryKey: ["client", contract?.clientId],
+    queryFn: () => getClientById(contract!.clientId),
+    enabled: Boolean(contract?.clientId),
+  })
+
+  const servicesQuery = useQuery({
+    queryKey: ["services", "contract-detail"],
+    queryFn: () => listServices(""),
+  })
+
+  const teamsQuery = useQuery({
+    queryKey: ["teams", "contract-detail"],
+    queryFn: () => listTeams(""),
+  })
+
+  const employeesQuery = useQuery({
+    queryKey: ["employees", "contract-detail"],
+    queryFn: () => listEmployees(""),
+  })
+
+  const client = clientQuery.data?.data
+  const serviceTypes = servicesQuery.data?.data ?? []
+  const teams = teamsQuery.data?.data ?? []
+  const employees = employeesQuery.data?.data ?? []
+
+  const serviceTypeMap = useMemo(() => new Map(serviceTypes.map((item) => [item.id, item])), [serviceTypes])
+  const teamMap = useMemo(() => new Map(teams.map((item) => [item.id, item])), [teams])
+  const employeeMap = useMemo(() => new Map(employees.map((item) => [item.id, item])), [employees])
+
+  const selectedService = useMemo(
+    () => contract?.services.find((service) => service.id === selectedServiceId) ?? null,
+    [contract?.services, selectedServiceId],
+  )
+
+  const paidInstallments = useMemo(
+    () => contract?.installments.filter((installment) => installment.status === "paid") ?? [],
+    [contract?.installments],
+  )
+
+  const overdueInstallments = useMemo(
+    () => contract?.installments.filter((installment) => installment.status === "overdue") ?? [],
+    [contract?.installments],
+  )
+
+  const totalPaid = useMemo(
+    () =>
+      paidInstallments.reduce(
+        (accumulator, installment) => accumulator + Number(installment.paidValue ?? installment.value),
+        0,
+      ),
+    [paidInstallments],
+  )
+
+  const totalOverdue = useMemo(
+    () => overdueInstallments.reduce((accumulator, installment) => accumulator + Number(installment.value ?? 0), 0),
+    [overdueInstallments],
+  )
+
+  const progress = contract && contract.installmentsCount > 0 ? (paidInstallments.length / contract.installmentsCount) * 100 : 0
+
+  const units = useMemo(() => {
+    if (!client?.units?.length || !contract) return []
+    const directUnitIds = contract.unitIds ?? []
+    const serviceUnitIds = contract.services.flatMap((service) => service.unitIds ?? [])
+    const unitIds = [...new Set([...directUnitIds, ...serviceUnitIds])]
+
+    if (unitIds.length === 0) return client.units
+    return client.units.filter((unit) => unitIds.includes(unit.id))
+  }, [client?.units, contract])
+
+  const recurrenceRules = useMemo(
+    () => (contract?.recurrenceRules ?? []) as ServiceRecurrenceRuleRecord[],
+    [contract?.recurrenceRules],
+  )
+
+  const installmentMutation = useMutation({
+    mutationFn: ({
+      installmentId,
+      status,
+    }: {
+      installmentId: string
+      status: "pending" | "paid" | "overdue" | "cancelled"
+    }) =>
+      updateInstallment(contractId, installmentId, {
+        status,
+        paidDate: status === "paid" ? new Date().toISOString() : undefined,
+        paidValue:
+          status === "paid" && contract
+            ? contract.installments.find((installment) => installment.id === installmentId)?.value
+            : undefined,
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["contract", contractId] })
+      await queryClient.invalidateQueries({ queryKey: ["contracts"] })
+      toast({
+        title: "Parcela atualizada",
+        description: "O status da parcela foi atualizado com sucesso.",
+      })
+    },
+  })
+
+  if (contractQuery.isLoading) {
+    return <Card className="p-8 text-center text-sm text-muted-foreground">Carregando contrato...</Card>
+  }
+
+  if (contractQuery.isError) {
     return (
       <Card className="p-8 text-center">
-        <FileText className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-        <h3 className="font-semibold mb-2">Contrato não encontrado</h3>
-        <p className="text-sm text-muted-foreground mb-4">
-          O contrato solicitado não existe ou foi removido
+        <FileText className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
+        <h3 className="mb-2 font-semibold">Erro ao carregar contrato</h3>
+        <p className="mb-4 text-sm text-muted-foreground">
+          Não foi possível buscar os dados do contrato agora. Verifique a conexão com a API e tente novamente.
         </p>
         <Link href="/contratos">
-          <Button>Voltar para Contratos</Button>
+          <Button>Voltar para contratos</Button>
         </Link>
       </Card>
     )
   }
 
-  const client = getClientById(contract.clientId)
-  const [installments, setInstallments] = useState(() => contract.installments)
-
-  const paidInstallments = useMemo(
-    () => installments.filter(i => i.status === "paid"),
-    [installments]
-  )
-  const overdueInstallments = useMemo(
-    () => installments.filter(i => i.status === "overdue"),
-    [installments]
-  )
-  const pendingInstallments = useMemo(
-    () => installments.filter(i => i.status === "pending"),
-    [installments]
-  )
-  const progress = useMemo(
-    () => (paidInstallments.length / contract.installmentsCount) * 100,
-    [paidInstallments.length, contract.installmentsCount]
-  )
-  const totalPaid = useMemo(
-    () => paidInstallments.reduce((acc, i) => acc + (i.paidValue || 0), 0),
-    [paidInstallments]
-  )
-  const totalOverdue = useMemo(
-    () => overdueInstallments.reduce((acc, i) => acc + i.value, 0),
-    [overdueInstallments]
-  )
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "active":
-        return <Badge className="bg-green-500 text-white">Assinado</Badge>
-      case "pending_signature":
-        return <Badge className="bg-amber-500 text-white">Aguardando Assinatura</Badge>
-      case "overdue":
-        return <Badge className="bg-red-500 text-white">Em Atraso</Badge>
-      case "refused":
-        return <Badge className="bg-orange-500 text-white">Recusado</Badge>
-      case "expired":
-        return <Badge variant="secondary">Expirado</Badge>
-      case "deadline_expired":
-        return <Badge className="bg-purple-500 text-white">Prazo Expirado</Badge>
-      case "cancelled":
-        return <Badge variant="destructive">Cancelado</Badge>
-      default:
-        return <Badge variant="secondary">Rascunho</Badge>
-    }
-  }
-
-  const getInstallmentStatusBadge = (status: string) => {
-    switch (status) {
-      case "paid":
-        return <Badge className="bg-green-500 text-white">Pago</Badge>
-      case "overdue":
-        return <Badge variant="destructive">Vencido</Badge>
-      default:
-        return <Badge variant="secondary">Pendente</Badge>
-    }
-  }
-
-  const setInstallmentStatus = (installmentId: string, status: "pending" | "paid" | "overdue") => {
-    setInstallments((prev) =>
-      prev.map((i) => {
-        if (i.id !== installmentId) return i
-        if (status === "paid") {
-          return {
-            ...i,
-            status,
-            paidDate: new Date(),
-            paidValue: i.value,
-          }
-        }
-        if (status === "overdue") {
-          return {
-            ...i,
-            status,
-            paidDate: undefined,
-            paidValue: undefined,
-          }
-        }
-        return {
-          ...i,
-          status: "pending",
-          paidDate: undefined,
-          paidValue: undefined,
-        }
-      })
+  if (!contract) {
+    return (
+      <Card className="p-8 text-center">
+        <FileText className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
+        <h3 className="mb-2 font-semibold">Contrato não encontrado</h3>
+        <p className="mb-4 text-sm text-muted-foreground">O contrato solicitado não existe ou foi removido.</p>
+        <Link href="/contratos">
+          <Button>Voltar para contratos</Button>
+        </Link>
+      </Card>
     )
   }
 
-  const unitIds = useMemo(() => {
-    const directUnitIds = (contract as unknown as { unitIds?: string[] }).unitIds ?? []
-    const serviceUnitIds = contract.services.flatMap((s) => (s.unitIds ?? []))
-
-    const merged = [...new Set([...directUnitIds, ...serviceUnitIds])]
-    if (merged.length > 0) return merged
-
-    const primary = client?.units?.find((u) => u.isPrimary) ?? client?.units?.[0]
-    return primary ? [primary.id] : []
-  }, [client?.units, contract.services])
-
-  const units = useMemo(() => {
-    if (!client?.units?.length || unitIds.length === 0) return []
-    const byId = new Map(client.units.map((u) => [u.id, u] as const))
-    const linked = unitIds.map((id) => byId.get(id)).filter(Boolean) as NonNullable<typeof client>["units"]
-    return [...linked].sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary))
-  }, [client?.units, unitIds])
-
   return (
     <div className="space-y-6">
-      {/* Contract Header */}
       <Card className="p-6">
-        <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+        <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
           <div className="flex items-start gap-4">
-            <div className="w-14 h-14 rounded-xl bg-primary/10 flex items-center justify-center">
-              <FileText className="w-7 h-7 text-primary" />
+            <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-primary/10">
+              <FileText className="h-7 w-7 text-primary" />
             </div>
             <div>
-              <div className="flex items-center gap-2 mb-1">
+              <div className="mb-1 flex flex-wrap items-center gap-2">
                 <h2 className="text-xl font-bold">{contract.contractNumber}</h2>
                 {getStatusBadge(contract.status)}
               </div>
-              <Link href={`/clientes/${client?.id}`} className="flex items-center gap-2 text-muted-foreground hover:text-primary">
-                <Building2 className="w-4 h-4" />
-                <span>{client?.companyName}</span>
+              <Link
+                href={`/clientes/${contract.clientId}`}
+                className="flex items-center gap-2 text-muted-foreground hover:text-primary"
+              >
+                <Building2 className="h-4 w-4" />
+                <span>{contract.clientCompanyName ?? client?.companyName ?? "Cliente"}</span>
               </Link>
-              <div className="flex items-center gap-1 mt-2 text-sm text-muted-foreground">
-                <Calendar className="w-4 h-4" />
-                <span>{formatDate(contract.startDate)} - {formatDate(contract.endDate)}</span>
+              <div className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
+                <Calendar className="h-4 w-4" />
+                <span>
+                  {formatDate(contract.startDate)} - {formatDate(contract.endDate)}
+                </span>
               </div>
             </div>
           </div>
-          <div className="flex flex-col items-end gap-6">
-            <div className="flex gap-2 [&>*]:flex-1 [&>*]:sm:flex-initial">
-              {contract.documentUrl && (
-                <Button variant="outline" size="sm">
-                  <Download className="w-4 h-4 mr-2" />
-                  Baixar PDF
+
+          <div className="space-y-4 lg:min-w-[260px]">
+            <div className="flex flex-wrap gap-2">
+              {contract.documentUrl ? (
+                <Button variant="outline" size="sm" asChild>
+                  <a href={buildApiFileUrl(contract.documentUrl)} target="_blank" rel="noreferrer">
+                    <Download className="mr-2 h-4 w-4" />
+                    Baixar DOCX
+                  </a>
                 </Button>
-              )}
-              {contract.signatureUrl && (
-                <Button variant="outline" size="sm">
-                  <ExternalLink className="w-4 h-4 mr-2" />
-                  ClickSign
+              ) : null}
+              {contract.signatureUrl ? (
+                <Button variant="outline" size="sm" asChild>
+                  <a href={contract.signatureUrl} target="_blank" rel="noreferrer">
+                    <ExternalLink className="mr-2 h-4 w-4" />
+                    ClickSign
+                  </a>
                 </Button>
-              )}
+              ) : null}
             </div>
-            <div className="w-full sm:w-[220px]">
-              <div className="flex justify-between text-xs mb-1">
-                <span className="text-muted-foreground">{paidInstallments.length}/{contract.installmentsCount} parcelas</span>
+
+            <div>
+              <div className="mb-1 flex justify-between text-xs">
+                <span className="text-muted-foreground">
+                  {paidInstallments.length}/{contract.installmentsCount} parcelas pagas
+                </span>
                 <span className="font-medium">{Math.round(progress)}%</span>
               </div>
               <Progress value={progress} className="h-2" />
@@ -227,205 +311,210 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
         </div>
       </Card>
 
-      {/* Summary Widgets */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Card className="p-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-              <DollarSign className="w-5 h-5 text-primary" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+              <DollarSign className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Valor Total</p>
-              <p className="text-lg font-bold text-foreground">{formatCurrency(contract.totalValue)}</p>
+              <p className="text-sm text-muted-foreground">Valor total</p>
+              <p className="text-lg font-bold">{formatCurrency(contract.totalValue)}</p>
             </div>
           </div>
         </Card>
+
         <Card className="p-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-green-500/10 flex items-center justify-center">
-              <CheckCircle className="w-5 h-5 text-green-500" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-500/10">
+              <CheckCircle className="h-5 w-5 text-green-500" />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Valor Pago</p>
+              <p className="text-sm text-muted-foreground">Valor pago</p>
               <p className="text-lg font-bold text-green-600">{formatCurrency(totalPaid)}</p>
             </div>
           </div>
         </Card>
+
         <Card className="p-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-amber-500/10 flex items-center justify-center">
-              <Clock className="w-5 h-5 text-amber-500" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500/10">
+              <Clock className="h-5 w-5 text-amber-500" />
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Pendente</p>
-              <p className="text-lg font-bold text-amber-600">{formatCurrency(contract.totalValue - totalPaid)}</p>
+              <p className="text-lg font-bold text-amber-600">
+                {formatCurrency(Math.max(contract.totalValue - totalPaid, 0))}
+              </p>
             </div>
           </div>
         </Card>
+
         <Card className="p-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-red-500/10 flex items-center justify-center">
-              <AlertTriangle className="w-5 h-5 text-red-500" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-500/10">
+              <RefreshCw className="h-5 w-5 text-red-500" />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Em Atraso</p>
+              <p className="text-sm text-muted-foreground">Em atraso</p>
               <p className="text-lg font-bold text-red-600">{formatCurrency(totalOverdue)}</p>
             </div>
           </div>
         </Card>
       </div>
 
-      {/* Recurrence Rules */}
-      {(() => {
-        const recurrenceRules = (contract as unknown as { recurrenceRules?: RecurrenceRule[] }).recurrenceRules ?? []
-        const contractRecurrence = (contract as unknown as { recurrence?: string }).recurrence ?? ""
-        const totalUnitCount = units.reduce((acc, u) => acc + (u.unitCount ?? 0), 0)
+      <Card className="p-6">
+        <div className="mb-4 flex items-center gap-2">
+          <RefreshCw className="h-5 w-5 text-primary" />
+          <h3 className="font-semibold">Recorrência das visitas</h3>
+          <Badge variant="secondary" className="ml-auto">
+            {getRecurrenceLabel(contract.recurrence)}
+          </Badge>
+        </div>
 
-        const getRecurrenceLabel = (recurrence: string) => {
-          const labels: Record<string, string> = {
-            weekly: "Semanal",
-            biweekly: "Quinzenal",
-            monthly: "Mensal",
-            bimonthly: "Bimestral",
-            quarterly: "Trimestral",
-            semiannual: "Semestral",
-            annual: "Anual"
-          }
-          return labels[recurrence] || recurrence
-        }
+        <p className="mb-4 text-sm text-muted-foreground">
+          Total de unidades vinculadas:{" "}
+          <span className="font-medium text-foreground">
+            {units.reduce((sum, unit) => sum + Number(unit.unitCount ?? 0), 0)}
+          </span>
+        </p>
 
-        return (
-          <Card className="p-6">
-            <div className="flex items-center gap-2 mb-4">
-              <RefreshCw className="w-5 h-5 text-primary" />
-              <h3 className="font-semibold">Recorrência das Visitas</h3>
-              {contractRecurrence && (
-                <Badge variant="secondary" className="ml-auto">
-                  {getRecurrenceLabel(contractRecurrence)}
-                </Badge>
-              )}
-            </div>
+        <div className="overflow-x-auto rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Tipo</TableHead>
+                <TableHead>Condição</TableHead>
+                <TableHead>Recorrência</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {recurrenceRules.map((rule, index) => (
+                <TableRow key={`${rule.type}-${index}`}>
+                  <TableCell>
+                    <Badge variant="outline">{rule.type === "range" ? "De - Até" : "Acima de"}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    {rule.type === "range"
+                      ? `${rule.minUnits} até ${rule.maxUnits} unidades`
+                      : `Acima de ${rule.minUnits} unidades`}
+                  </TableCell>
+                  <TableCell>{getRecurrenceLabel(rule.recurrence)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </Card>
 
-            {totalUnitCount > 0 && (
-              <p className="text-sm text-muted-foreground mb-4">
-                Total de unidades: <span className="font-medium text-foreground">{totalUnitCount}</span>
-              </p>
-            )}
-
-            {recurrenceRules.length > 0 ? (
-              <div className="overflow-x-auto rounded-md border">
-                <table className="min-w-[520px] w-full text-sm">
-                  <thead>
-                    <tr className="border-b bg-muted/50">
-                      <th className="text-left font-medium text-xs px-3 py-2">Tipo</th>
-                      <th className="text-left font-medium text-xs px-3 py-2">Condição</th>
-                      <th className="text-left font-medium text-xs px-3 py-2">Recorrência</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recurrenceRules.map((rule: RecurrenceRule, idx: number) => {
-                      const isActiveRule = totalUnitCount > 0 && (
-                        (rule.type === "range" && totalUnitCount >= rule.minUnits && totalUnitCount <= rule.maxUnits) ||
-                        (rule.type === "above" && totalUnitCount > rule.minUnits)
-                      )
-                      return (
-                        <tr key={idx} className={cn("border-b last:border-b-0", isActiveRule && "bg-primary/5")}>
-                          <td className="px-3 py-2">
-                            <Badge variant="outline" className="text-[10px] whitespace-nowrap">
-                              {rule.type === "range" ? "De - Até" : "Acima de"}
-                            </Badge>
-                          </td>
-                          <td className="px-3 py-2">
-                            {rule.type === "range" ? (
-                              <div className="flex items-center gap-1.5">
-                                <span className="font-medium">{rule.minUnits}</span>
-                                <span className="text-muted-foreground">até</span>
-                                <span className="font-medium">{rule.maxUnits}</span>
-                                <span className="text-muted-foreground text-xs">unid.</span>
-                                {isActiveRule && (
-                                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Aplicada</Badge>
-                                )}
-                              </div>
-                            ) : (
-                              <div className="flex items-center gap-1.5">
-                                <span className="font-medium">{rule.minUnits}</span>
-                                <span className="text-muted-foreground text-xs">unid.</span>
-                                {isActiveRule && (
-                                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Aplicada</Badge>
-                                )}
-                              </div>
-                            )}
-                          </td>
-                          <td className="px-3 py-2">
-                            <span className="font-medium">{getRecurrenceLabel(rule.recurrence)}</span>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">Nenhuma regra de recorrência definida</p>
-            )}
-          </Card>
-        )
-      })()}
-
-      {/* Tabs for Services, Installments, Units */}
       <Tabs defaultValue="services" className="w-full">
-        <TabsList className="flex h-auto w-full justify-start gap-2 overflow-x-auto bg-transparent p-0 sm:grid sm:grid-cols-3">
-          <TabsTrigger onFocus={(event) => event.currentTarget.focus({ preventScroll: true })} value="services" className="shrink-0 rounded-full bg-muted px-4 py-2 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground sm:min-h-[130px] sm:flex-col sm:items-start sm:justify-start sm:gap-3 sm:rounded-2xl sm:border sm:border-border sm:bg-card sm:p-6 sm:text-left sm:shadow-none sm:data-[state=active]:border-primary sm:data-[state=active]:bg-primary/5 sm:data-[state=active]:text-foreground sm:data-[state=active]:ring-1 sm:data-[state=active]:ring-primary">
-            <span className="hidden rounded-lg bg-primary/10 p-2 sm:inline-flex">
-              <Users className="h-5 w-5 text-primary" />
-            </span>
-            <span className="text-sm font-semibold sm:text-base">Serviços ({contract.services.length})</span>
-            <span className="hidden text-sm font-normal leading-relaxed text-muted-foreground sm:block">Serviços contratados</span>
+        <TabsList className="grid w-full grid-cols-3 gap-2 bg-transparent p-0">
+          <TabsTrigger
+            onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
+            value="services"
+            className="w-full rounded-full bg-muted px-4 py-2 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+          >
+            <span className="font-semibold">Serviços ({contract.services.length})</span>
           </TabsTrigger>
-          <TabsTrigger onFocus={(event) => event.currentTarget.focus({ preventScroll: true })} value="installments" className="shrink-0 rounded-full bg-muted px-4 py-2 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground sm:min-h-[130px] sm:flex-col sm:items-start sm:justify-start sm:gap-3 sm:rounded-2xl sm:border sm:border-border sm:bg-card sm:p-6 sm:text-left sm:shadow-none sm:data-[state=active]:border-primary sm:data-[state=active]:bg-primary/5 sm:data-[state=active]:text-foreground sm:data-[state=active]:ring-1 sm:data-[state=active]:ring-primary">
-            <span className="hidden rounded-lg bg-primary/10 p-2 sm:inline-flex">
-              <DollarSign className="h-5 w-5 text-primary" />
-            </span>
-            <span className="text-sm font-semibold sm:text-base">Parcelas ({contract.installmentsCount})</span>
-            <span className="hidden text-sm font-normal leading-relaxed text-muted-foreground sm:block">Controle financeiro</span>
+          <TabsTrigger
+            onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
+            value="installments"
+            className="w-full rounded-full bg-muted px-4 py-2 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+          >
+            <span className="font-semibold">Parcelas ({contract.installmentsCount})</span>
           </TabsTrigger>
-          <TabsTrigger onFocus={(event) => event.currentTarget.focus({ preventScroll: true })} value="units" className="shrink-0 rounded-full bg-muted px-4 py-2 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground sm:min-h-[130px] sm:flex-col sm:items-start sm:justify-start sm:gap-3 sm:rounded-2xl sm:border sm:border-border sm:bg-card sm:p-6 sm:text-left sm:shadow-none sm:data-[state=active]:border-primary sm:data-[state=active]:bg-primary/5 sm:data-[state=active]:text-foreground sm:data-[state=active]:ring-1 sm:data-[state=active]:ring-primary">
-            <span className="hidden rounded-lg bg-primary/10 p-2 sm:inline-flex">
-              <Building2 className="h-5 w-5 text-primary" />
-            </span>
-            <span className="text-sm font-semibold sm:text-base">Filiais ({unitIds.length})</span>
-            <span className="hidden text-sm font-normal leading-relaxed text-muted-foreground sm:block">Unidades vinculadas</span>
+          <TabsTrigger
+            onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
+            value="units"
+            className="w-full rounded-full bg-muted px-4 py-2 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+          >
+            <span className="font-semibold">Filiais ({units.length})</span>
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="services" className="mt-4">
-          <div className="rounded-md overflow-x-auto">
+          <div className="overflow-x-auto rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Serviço</TableHead>
-                  <TableHead>Equipe</TableHead>
-                  <TableHead className="text-right">Valor</TableHead>
+                  <TableHead>Descrição</TableHead>
+                  <TableHead>Equipe / Funcionários</TableHead>
+                  <TableHead>Duração</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {contract.services.map((service) => {
-                  const serviceType = getServiceTypeById(service.serviceTypeId)
-                  const teamsLabel = (service.teamIds ?? [])
-                    .map((id) => getTeamById(id)?.name)
-                    .filter(Boolean)
-                    .join(", ")
+                  const serviceType = serviceTypeMap.get(service.serviceTypeId)
+                  const serviceTeams = teams.filter((team) => service.teamIds.includes(team.id))
+                  const serviceEmployees = employees.filter((employee) =>
+                    (service.additionalEmployeeIds ?? []).includes(employee.id),
+                  )
+
                   return (
-                    <TableRow key={service.id}>
-                      <TableCell className="font-medium">{serviceType?.name}</TableCell>
+                    <TableRow
+                      key={service.id}
+                      className="cursor-pointer"
+                      onClick={() => setSelectedServiceId(service.id)}
+                    >
                       <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Users className="w-4 h-4 text-muted-foreground" />
-                          <span>{teamsLabel || "Não definida"}</span>
+                        <div className="space-y-1">
+                          <p className="font-medium">{serviceType?.name ?? service.serviceTypeId}</p>
                         </div>
                       </TableCell>
-                      <TableCell className="text-right font-medium">
-                        {formatCurrency(service.value)}
+                      <TableCell className="text-muted-foreground">
+                        {serviceType?.description || "Sem descrição cadastrada."}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-2">
+                          {serviceTeams.length > 0 || serviceEmployees.length > 0 ? (
+                            <>
+                              {serviceTeams.map((team) => (
+                                <Badge key={team.id} variant="secondary" className="gap-2 px-3 py-1">
+                                  <span
+                                    className="h-2.5 w-2.5 rounded-full"
+                                    style={{ backgroundColor: team.color }}
+                                  />
+                                  {team.name}
+                                </Badge>
+                              ))}
+                              {serviceEmployees.map((employee) => (
+                                <Badge key={employee.id} variant="outline" className="gap-2 px-3 py-1">
+                                  <Users className="h-3.5 w-3.5" />
+                                  {employee.name}
+                                </Badge>
+                              ))}
+                            </>
+                          ) : (
+                            <div className="flex items-center gap-2 text-muted-foreground">
+                              <Users className="h-4 w-4" />
+                              <span>Não definida</span>
+                            </div>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2 text-foreground">
+                          <Clock className="h-4 w-4 text-muted-foreground" />
+                          <span>
+                            {serviceType
+                              ? formatDuration(serviceType.defaultDuration, serviceType.durationType)
+                              : "-"}
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            setSelectedServiceId(service.id)
+                          }}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
                       </TableCell>
                     </TableRow>
                   )
@@ -436,7 +525,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
         </TabsContent>
 
         <TabsContent value="installments" className="mt-4">
-          <div className="rounded-md overflow-x-auto">
+          <div className="overflow-x-auto rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -444,35 +533,47 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                   <TableHead>Vencimento</TableHead>
                   <TableHead>Valor</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Data Pagamento</TableHead>
+                  <TableHead>Data de pagamento</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {installments.map((installment, index) => (
+                {contract.installments.map((installment) => (
                   <TableRow key={installment.id}>
-                    <TableCell className="font-medium">{index + 1}/{contract.installmentsCount}</TableCell>
+                    <TableCell className="font-medium">
+                      {installment.number}/{contract.installmentsCount}
+                    </TableCell>
                     <TableCell>{formatDate(installment.dueDate)}</TableCell>
                     <TableCell>{formatCurrency(installment.value)}</TableCell>
                     <TableCell>{getInstallmentStatusBadge(installment.status)}</TableCell>
-                    <TableCell>
-                      {installment.paidDate ? formatDate(installment.paidDate) : "-"}
-                    </TableCell>
+                    <TableCell>{formatDate(installment.paidDate)}</TableCell>
                     <TableCell className="text-right">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="icon">
-                            <MoreHorizontal className="w-4 h-4" />
+                            <MoreHorizontal className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => setInstallmentStatus(installment.id, "paid")}>
+                          <DropdownMenuItem
+                            onClick={() =>
+                              installmentMutation.mutate({ installmentId: installment.id, status: "paid" })
+                            }
+                          >
                             Marcar como paga
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => setInstallmentStatus(installment.id, "overdue")}>
-                            Marcar como atrasada
+                          <DropdownMenuItem
+                            onClick={() =>
+                              installmentMutation.mutate({ installmentId: installment.id, status: "overdue" })
+                            }
+                          >
+                            Marcar como vencida
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => setInstallmentStatus(installment.id, "pending")}>
+                          <DropdownMenuItem
+                            onClick={() =>
+                              installmentMutation.mutate({ installmentId: installment.id, status: "pending" })
+                            }
+                          >
                             Marcar como pendente
                           </DropdownMenuItem>
                         </DropdownMenuContent>
@@ -486,7 +587,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
         </TabsContent>
 
         <TabsContent value="units" className="mt-4">
-          <div className="rounded-md overflow-x-auto">
+          <div className="overflow-x-auto rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -500,7 +601,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                 {units.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
-                      Nenhuma filial vinculada a este contrato
+                      Nenhuma filial vinculada a este contrato.
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -508,18 +609,20 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                     <TableRow key={unit.id}>
                       <TableCell className="font-medium">
                         <div className="flex items-center gap-2">
-                          <MapPin className="w-4 h-4 text-muted-foreground" />
+                          <MapPin className="h-4 w-4 text-muted-foreground" />
                           {unit.name}
                         </div>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {unit.address.street}, {unit.address.number} - {unit.address.city}/{unit.address.state}
                       </TableCell>
+                      <TableCell>{unit.unitCount}</TableCell>
                       <TableCell>
-                        {unit.unitCount ?? "-"}
-                      </TableCell>
-                      <TableCell>
-                        {unit.isPrimary ? <Badge variant="secondary">Matriz</Badge> : <Badge variant="outline">Filial</Badge>}
+                        {unit.isPrimary ? (
+                          <Badge variant="secondary">Matriz</Badge>
+                        ) : (
+                          <Badge variant="outline">Filial</Badge>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))
@@ -529,6 +632,27 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
           </div>
         </TabsContent>
       </Tabs>
+
+      <ServiceClausesDialog
+        open={Boolean(selectedService)}
+        title={
+          selectedService
+            ? serviceTypeMap.get(selectedService.serviceTypeId)?.name ?? "Cláusulas do serviço"
+            : "Cláusulas do serviço"
+        }
+        description={
+          selectedService
+            ? serviceTypeMap.get(selectedService.serviceTypeId)?.description || "Sem descrição cadastrada."
+            : undefined
+        }
+        clauses={
+          selectedService
+            ? serviceTypeMap.get(selectedService.serviceTypeId)?.clauses ?? selectedService.clauses ?? []
+            : []
+        }
+        clausePrefix={selectedService ? String(contract.services.findIndex((service) => service.id === selectedService.id) + 1) : undefined}
+        onOpenChange={(open) => !open && setSelectedServiceId(null)}
+      />
     </div>
   )
 }

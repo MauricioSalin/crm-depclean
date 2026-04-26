@@ -198,7 +198,7 @@ export function AjudaContent() {
               <CardDescription>Nos envie sua dúvida ou sugestão.</CardDescription>
             </CardHeader>
             <CardContent>
-              <form onSubmit={handleContactSubmit} className="space-y-6">
+              <form autoComplete="off" onSubmit={handleContactSubmit} className="space-y-6">
                 <div className="space-y-2">
                   <Label htmlFor="name">Nome</Label>
                   <Input
@@ -212,7 +212,7 @@ export function AjudaContent() {
                   <Label htmlFor="email">E-mail</Label>
                   <Input
                     id="email"
-                    type="email"
+                    type="email" autoComplete="off"
                     value={contactForm.email}
                     onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })}
                     required

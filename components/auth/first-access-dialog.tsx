@@ -98,7 +98,7 @@ export function FirstAccessDialog() {
             Primeiro acesso
           </DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form autoComplete="off" onSubmit={handleSubmit} className="space-y-4">
           <p className="text-sm text-muted-foreground">
             Você precisa definir uma nova senha antes de continuar.
           </p>
@@ -106,7 +106,7 @@ export function FirstAccessDialog() {
             <Label htmlFor="currentPassword">Senha temporária</Label>
             <Input
               id="currentPassword"
-              type="password"
+              type="password" autoComplete="off"
               value={formData.currentPassword}
               onChange={(event) => setFormData({ ...formData, currentPassword: event.target.value })}
               required
@@ -116,7 +116,7 @@ export function FirstAccessDialog() {
             <Label htmlFor="newPassword">Nova senha</Label>
             <Input
               id="newPassword"
-              type="password"
+              type="password" autoComplete="off"
               value={formData.newPassword}
               onChange={(event) => setFormData({ ...formData, newPassword: event.target.value })}
               required
@@ -126,7 +126,7 @@ export function FirstAccessDialog() {
             <Label htmlFor="confirmPassword">Confirmar nova senha</Label>
             <Input
               id="confirmPassword"
-              type="password"
+              type="password" autoComplete="off"
               value={formData.confirmPassword}
               onChange={(event) => setFormData({ ...formData, confirmPassword: event.target.value })}
               required

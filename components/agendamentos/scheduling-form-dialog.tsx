@@ -38,6 +38,10 @@ import { cn } from "@/lib/utils"
 import { Check, ChevronsUpDown, X } from "lucide-react"
 import { mockClients, mockServiceTypes, mockTeams, mockEmployees } from "@/lib/mock-data"
 import { CurrencyInput } from "@/components/ui/currency-input"
+import type { ClientRecord } from "@/lib/api/clients"
+import type { EmployeeRecord } from "@/lib/api/employees"
+import type { ServiceRecord } from "@/lib/api/services"
+import type { TeamRecord } from "@/lib/api/teams"
 
 export interface SchedulingFormData {
   clientId: string
@@ -76,6 +80,10 @@ interface SchedulingFormDialogProps {
   editingSchedule?: EditingSchedule | null
   onSubmit: (formData: SchedulingFormData, isEditing: boolean) => void
   onCancel?: () => void
+  clients?: ClientRecord[]
+  serviceTypes?: ServiceRecord[]
+  teams?: TeamRecord[]
+  employees?: EmployeeRecord[]
 }
 
 const DEFAULT_FORM_DATA: SchedulingFormData = {
@@ -97,6 +105,10 @@ export function SchedulingFormDialog({
   onOpenChange,
   editingSchedule,
   onSubmit,
+  clients = mockClients as unknown as ClientRecord[],
+  serviceTypes = mockServiceTypes as unknown as ServiceRecord[],
+  teams = mockTeams as unknown as TeamRecord[],
+  employees = mockEmployees as unknown as EmployeeRecord[],
 }: SchedulingFormDialogProps) {
   const [formData, setFormData] = useState<SchedulingFormData>(DEFAULT_FORM_DATA)
 
@@ -107,21 +119,21 @@ export function SchedulingFormDialog({
   const [teamSearchTerm, setTeamSearchTerm] = useState("")
   const [employeeSearchTerm, setEmployeeSearchTerm] = useState("")
 
-  const filteredClients = mockClients.filter(c =>
+  const filteredClients = clients.filter(c =>
     c.companyName.toLowerCase().includes(clientSearchTerm.toLowerCase()) ||
     c.cnpj.includes(clientSearchTerm)
   )
 
-  const filteredTeams = mockTeams.filter(t =>
+  const filteredTeams = teams.filter(t =>
     t.name.toLowerCase().includes(teamSearchTerm.toLowerCase())
   )
 
-  const filteredEmployees = mockEmployees.filter(e =>
+  const filteredEmployees = employees.filter(e =>
     e.name.toLowerCase().includes(employeeSearchTerm.toLowerCase()) ||
     e.role.toLowerCase().includes(employeeSearchTerm.toLowerCase())
   )
 
-  const selectedClient = mockClients.find(c => c.id === formData.clientId)
+  const selectedClient = clients.find(c => c.id === formData.clientId)
 
   const getInitialFormData = (schedule: EditingSchedule): SchedulingFormData => ({
     clientId: schedule.clientId,
@@ -186,7 +198,7 @@ export function SchedulingFormDialog({
         <DialogHeader>
           <DialogTitle>{editingSchedule ? "Editar Agendamento" : "Novo Agendamento Manual"}</DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form autoComplete="off" onSubmit={handleSubmit} className="space-y-6">
           {/* Client Selection */}
           <div className="space-y-2">
             <Label>Cliente *</Label>
@@ -239,7 +251,7 @@ export function SchedulingFormDialog({
             <Select
               value={formData.serviceTypeId}
               onValueChange={(value) => {
-                const serviceType = mockServiceTypes.find(st => st.id === value)
+                const serviceType = serviceTypes.find(st => st.id === value)
                 setFormData({
                   ...formData,
                   serviceTypeId: value,
@@ -251,7 +263,7 @@ export function SchedulingFormDialog({
                 <SelectValue placeholder="Selecione o serviço" />
               </SelectTrigger>
               <SelectContent>
-                {mockServiceTypes.map((st) => (
+                {serviceTypes.map((st) => (
                   <SelectItem key={st.id} value={st.id}>{st.name}</SelectItem>
                 ))}
               </SelectContent>
@@ -306,7 +318,7 @@ export function SchedulingFormDialog({
             {formData.teamIds.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {formData.teamIds.map(teamId => {
-                  const team = mockTeams.find(t => t.id === teamId)
+                  const team = teams.find(t => t.id === teamId)
                   return team ? (
                     <Badge
                       key={teamId}
@@ -386,7 +398,7 @@ export function SchedulingFormDialog({
             {formData.employeeIds.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {formData.employeeIds.map(empId => {
-                  const emp = mockEmployees.find(e => e.id === empId)
+                  const emp = employees.find(e => e.id === empId)
                   return emp ? (
                     <Badge key={empId} variant="outline" className="px-3 py-1 flex items-center gap-2">
                       <span>{emp.name}</span>

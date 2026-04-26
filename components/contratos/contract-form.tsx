@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useEffect, useMemo, useRef, useState } from "react"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -73,18 +74,25 @@ import {
 } from "lucide-react"
 import { cn, getColorFromClass } from "@/lib/utils"
 import {
-  clients,
-  contracts,
-  serviceTypes,
-  mockTeams as teams,
-  mockEmployees,
   formatCurrency,
   getClientTypeById,
   formatDate,
 } from "@/lib/mock-data"
-import { mockTemplates } from "@/components/templates/templates-content"
 import type { RecurrenceRule, RecurrenceRuleType, RecurrenceType } from "@/lib/types"
 import { useRouter } from "next/navigation"
+import { toast } from "sonner"
+import { listClients } from "@/lib/api/clients"
+import {
+  createContract,
+  getContractById,
+  previewContract,
+  updateContract,
+  type ContractPayload,
+} from "@/lib/api/contracts"
+import { listServices } from "@/lib/api/services"
+import { listTemplates } from "@/lib/api/templates"
+import { listTeams } from "@/lib/api/teams"
+import { listEmployees } from "@/lib/api/employees"
 
 interface ContractFormProps {
   contractId?: string
@@ -100,14 +108,48 @@ interface ContractService {
 
 export function ContractForm({ contractId, isEditing = false }: ContractFormProps) {
   const router = useRouter()
-  const contract = contractId ? contracts.find(c => c.id === contractId) : undefined
-  const client = contract ? clients.find(c => c.id === contract.clientId) : undefined
+  const queryClient = useQueryClient()
+
+  const clientsQuery = useQuery({
+    queryKey: ["clients", "contract-form"],
+    queryFn: () => listClients(),
+  })
+  const servicesQuery = useQuery({
+    queryKey: ["services", "contract-form"],
+    queryFn: () => listServices(),
+  })
+  const templatesQuery = useQuery({
+    queryKey: ["templates", "contract-form"],
+    queryFn: () => listTemplates("", "contract"),
+  })
+  const teamsQuery = useQuery({
+    queryKey: ["teams", "contract-form"],
+    queryFn: () => listTeams(),
+  })
+  const employeesQuery = useQuery({
+    queryKey: ["employees", "contract-form"],
+    queryFn: () => listEmployees(),
+  })
+  const contractQuery = useQuery({
+    queryKey: ["contract", contractId],
+    queryFn: () => getContractById(contractId!),
+    enabled: Boolean(contractId),
+  })
+
+  const clients = clientsQuery.data?.data ?? []
+  const serviceTypes = servicesQuery.data?.data ?? []
+  const templates = templatesQuery.data?.data ?? []
+  const teams = teamsQuery.data?.data ?? []
+  const employees = employeesQuery.data?.data ?? []
+  const contract = contractQuery.data?.data
+  const client = contract ? clients.find((c) => c.id === contract.clientId) : undefined
 
   type CreateStep = "form" | "editor" | "done"
 
   const [step, setStep] = useState<CreateStep>("form")
   const [confirmCreateOpen, setConfirmCreateOpen] = useState(false)
   const [draftMeta, setDraftMeta] = useState<{ contractNumber: string; createdAt: Date } | null>(null)
+  const [createdContractId, setCreatedContractId] = useState<string | null>(null)
   const [draftInitialHtml, setDraftInitialHtml] = useState("")
   const previewIframeRef = useRef<HTMLIFrameElement | null>(null)
   const importInputRef = useRef<HTMLInputElement | null>(null)
@@ -131,7 +173,9 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
 
   const [selectedClientId, setSelectedClientId] = useState(contract?.clientId || "")
   const [selectedTemplateId, setSelectedTemplateId] = useState("")
-  const [startDate, setStartDate] = useState(contract?.startDate?.toISOString().split("T")[0] || "")
+  const [startDate, setStartDate] = useState(
+    contract?.startDate ? String(contract.startDate).split("T")[0] : ""
+  )
   const [installmentsCount, setInstallmentsCount] = useState(contract?.installmentsCount || 1)
   const endDate = useMemo(() => {
     if (!startDate) return ""
@@ -175,6 +219,45 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
   const selectedClient = clients.find(c => c.id === selectedClientId)
   const totalValue = contractValue / 100
   const editingService = services.find(s => s.id === editingServiceId)
+
+  useEffect(() => {
+    if (!contract) return
+
+    const directUnitIds = contract.unitIds ?? []
+    const serviceUnitIds = contract.services?.flatMap((service) => service.unitIds ?? []) ?? []
+    const initialServiceList = (contract.services ?? []).map((service) => ({
+      id: service.id,
+      serviceTypeId: service.serviceTypeId,
+      teamIds: service.teamIds ?? [],
+      employeeIds: service.additionalEmployeeIds ?? [],
+    }))
+
+    setSelectedClientId(contract.clientId ?? "")
+    setSelectedTemplateId(contract.templateId ?? "")
+    setStartDate(contract.startDate ? String(contract.startDate).split("T")[0] : "")
+    setInstallmentsCount(contract.installmentsCount ?? 1)
+    setDueDay(contract.paymentDay ?? 10)
+    setSelectedUnitIds(Array.from(new Set([...directUnitIds, ...serviceUnitIds])))
+    setServices(initialServiceList)
+    setContractValue(Math.round((contract.totalValue ?? 0) * 100))
+    setContractRecurrenceRules(
+      contract.recurrenceRules?.length
+        ? contract.recurrenceRules.map((rule) => ({
+            type: rule.type,
+            minUnits: rule.minUnits,
+            maxUnits: rule.maxUnits,
+            recurrence: rule.recurrence as RecurrenceType,
+          }))
+        : [
+            { type: "range", minUnits: 1, maxUnits: 100, recurrence: "semiannual" },
+            { type: "range", minUnits: 101, maxUnits: 200, recurrence: "quarterly" },
+            { type: "above", minUnits: 200, maxUnits: Infinity, recurrence: "monthly" },
+          ],
+    )
+    setContractRecurrence(contract.recurrence || "semiannual")
+    setDraftHtml(contract.renderedHtml || "")
+    setDraftInitialHtml(contract.renderedHtml || "")
+  }, [contract])
 
   // Total de unidades das filiais selecionadas (para regras de recorrência)
   const selectedTotalUnitCount = useMemo(() => {
@@ -255,9 +338,64 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
 
   const createDraftContractNumber = () => {
     const year = new Date().getFullYear()
-    const seq = String((contracts?.length ?? 0) + 1).padStart(3, "0")
+    const seq = String(Date.now()).slice(-3)
     return `DEP-${year}-${seq}`
   }
+
+  const buildContractPayload = (renderedHtml?: string): ContractPayload => ({
+    clientId: selectedClientId,
+    templateId: selectedTemplateId,
+    unitIds: selectedUnitIds,
+    totalValue,
+    duration: installmentsCount,
+    startDate,
+    paymentDay: dueDay,
+    installmentsCount,
+    recurrence: contractRecurrence,
+    recurrenceRules: contractRecurrenceRules.map((rule) => ({
+      type: rule.type,
+      minUnits: Number(rule.minUnits),
+      maxUnits: Number.isFinite(rule.maxUnits) ? Number(rule.maxUnits) : Number.MAX_SAFE_INTEGER,
+      recurrence: rule.recurrence,
+    })),
+    services: services
+      .filter((service) => service.serviceTypeId)
+      .map((service) => {
+        const serviceType = serviceTypes.find((item) => item.id === service.serviceTypeId)
+        return {
+          id: service.id.startsWith("temp-") ? undefined : service.id,
+          serviceTypeId: service.serviceTypeId,
+          value: serviceType?.baseValue ?? 0,
+          teamIds: service.teamIds,
+          additionalEmployeeIds: service.employeeIds,
+          unitIds: selectedUnitIds,
+          clauses: serviceType?.clauses ?? [],
+          isActive: true,
+        }
+      }),
+    renderedHtml,
+  })
+
+  const previewMutation = useMutation({
+    mutationFn: previewContract,
+  })
+
+  const createMutation = useMutation({
+    mutationFn: createContract,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["contracts"] })
+      await queryClient.invalidateQueries({ queryKey: ["contracts", "list"] })
+    },
+  })
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Partial<ContractPayload> }) => updateContract(id, payload),
+    onSuccess: async (response) => {
+      await queryClient.invalidateQueries({ queryKey: ["contract", response.data.id] })
+      await queryClient.invalidateQueries({ queryKey: ["contracts"] })
+      await queryClient.invalidateQueries({ queryKey: ["contracts", "list"] })
+    },
+  })
 
   const buildDraftHtml = (contractNumber: string, createdAt: Date) => {
     const clientName = selectedClient?.companyName || "Cliente"
@@ -725,7 +863,7 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
         return {
           ...s,
           [field]: value as string,
-          teamIds: serviceType?.defaultTeamIds || [],
+          teamIds: serviceType?.teamIds || [],
         }
       }
       return { ...s, [field]: value }
@@ -757,7 +895,7 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
     t.name.toLowerCase().includes(teamSearchTerm.toLowerCase())
   )
 
-  const filteredEmployees = mockEmployees.filter(e =>
+  const filteredEmployees = employees.filter(e =>
     e.name.toLowerCase().includes(employeeSearchTerm.toLowerCase()) ||
     e.role.toLowerCase().includes(employeeSearchTerm.toLowerCase())
   )
@@ -770,25 +908,67 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
     )
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (isEditing) {
-      router.push("/contratos")
+
+    if (!selectedClientId) {
+      toast.error("Selecione um cliente para continuar.")
       return
     }
 
-    const contractNumber = createDraftContractNumber()
-    const createdAt = new Date()
-    setDraftMeta({ contractNumber, createdAt })
-    const html = buildDraftHtml(contractNumber, createdAt)
-    setDraftInitialHtml(html)
-    setDraftHtml(html)
-    setStep("editor")
+    if (!selectedTemplateId) {
+      toast.error("Selecione um template para continuar.")
+      return
+    }
+
+    if (!startDate) {
+      toast.error("Preencha a data de início do contrato.")
+      return
+    }
+
+    if (services.filter((service) => service.serviceTypeId).length === 0) {
+      toast.error("Adicione ao menos um serviço ao contrato.")
+      return
+    }
+
+    const payload = buildContractPayload()
+
+    if (isEditing) {
+      if (!contractId) return
+      try {
+        await updateMutation.mutateAsync({ id: contractId, payload })
+        toast.success("Contrato atualizado com sucesso.")
+        router.push("/contratos")
+      } catch (error) {
+        toast.error("Não foi possível atualizar o contrato.")
+      }
+      return
+    }
+
+    try {
+      const preview = await previewMutation.mutateAsync(payload)
+      const createdAt = new Date()
+      setDraftMeta({ contractNumber: preview.data.contractNumber, createdAt })
+      setDraftInitialHtml(preview.data.renderedHtml || buildDraftHtml(preview.data.contractNumber, createdAt))
+      setDraftHtml(preview.data.renderedHtml || buildDraftHtml(preview.data.contractNumber, createdAt))
+      setStep("editor")
+    } catch (error) {
+      toast.error("Não foi possível gerar a prévia do contrato.")
+    }
   }
 
-  const finalizeCreate = () => {
-    setConfirmCreateOpen(false)
-    setStep("done")
+  const finalizeCreate = async () => {
+    try {
+      const response = await createMutation.mutateAsync(buildContractPayload(draftHtml || draftInitialHtml))
+      setCreatedContractId(response.data.id)
+      setDraftMeta((current) =>
+        current ?? { contractNumber: response.data.contractNumber, createdAt: new Date(response.data.createdAt) }
+      )
+      setConfirmCreateOpen(false)
+      setStep("done")
+    } catch (error) {
+      toast.error("Não foi possível criar o contrato.")
+    }
   }
 
   if (!isEditing && step === "editor") {
@@ -919,7 +1099,10 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
             <Button variant="outline" onClick={() => router.push("/contratos")} className="w-full sm:w-auto">
               Voltar para contratos
             </Button>
-            <Button onClick={() => router.push("/contratos")} className="w-full sm:w-auto bg-primary hover:bg-primary/90">
+            <Button
+              onClick={() => router.push(createdContractId ? `/contratos/${createdContractId}` : "/contratos")}
+              className="w-full sm:w-auto bg-primary hover:bg-primary/90"
+            >
               Ver contrato
             </Button>
           </div>
@@ -1063,7 +1246,7 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
                   className="w-full justify-between font-normal"
                 >
                   {selectedTemplateId
-                    ? mockTemplates.find(t => t.id === selectedTemplateId)?.name
+                    ? templates.find(t => t.id === selectedTemplateId)?.name
                     : "Selecione um template"}
                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
@@ -1074,7 +1257,7 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
                   <CommandList>
                     <CommandEmpty>Nenhum template encontrado.</CommandEmpty>
                     <CommandGroup>
-                      {mockTemplates.filter(t => t.isActive).map((t) => (
+                      {templates.filter(t => t.isActive).map((t) => (
                         <CommandItem
                           key={t.id}
                           value={t.name}
@@ -1092,7 +1275,7 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
             </Popover>
           </div>
           {selectedTemplateId && (() => {
-            const template = mockTemplates.find(t => t.id === selectedTemplateId)
+            const template = templates.find(t => t.id === selectedTemplateId)
             if (!template) return null
             return (
               <div className="p-3 rounded-lg bg-muted/50 flex items-start gap-3 shrink-0">
@@ -1105,7 +1288,9 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
                     <Badge className="bg-green-100 text-green-700 border-0 hover:bg-green-100">Ativo</Badge>
                   </div>
                   <p className="text-sm text-muted-foreground">{template.description}</p>
-                  <p className="text-xs text-muted-foreground mt-1">Atualizado em {template.updatedAt}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Atualizado em {new Date(template.updatedAt).toLocaleDateString("pt-BR")}
+                  </p>
                 </div>
               </div>
             )
@@ -1354,15 +1539,15 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
               <TableBody>
                 {services.map((service) => {
                   const serviceTeams = teams.filter(t => service.teamIds.includes(t.id))
-                  const serviceEmployees = mockEmployees.filter(e => service.employeeIds.includes(e.id))
+                  const serviceEmployees = employees.filter(e => service.employeeIds.includes(e.id))
                   return (
                     <TableRow key={service.id} className="hover:bg-transparent !border-0">
-                      <TableCell>
+                      <TableCell className="w-[220px]">
                         <Select
                           value={service.serviceTypeId}
                           onValueChange={(v) => updateService(service.id, "serviceTypeId", v)}
                         >
-                          <SelectTrigger className="w-full min-w-[260px]">
+                          <SelectTrigger className="w-full min-w-[220px]">
                             <SelectValue placeholder="Selecione" />
                           </SelectTrigger>
                           <SelectContent>
@@ -1577,7 +1762,7 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
                 {editingService.employeeIds.length > 0 && (
                   <div className="flex flex-wrap gap-2">
                     {editingService.employeeIds.map(empId => {
-                      const emp = mockEmployees.find(e => e.id === empId)
+                      const emp = employees.find(e => e.id === empId)
                       return emp ? (
                         <Badge key={empId} variant="outline" className="px-3 py-1 flex items-center gap-2">
                           <span>{emp.name}</span>

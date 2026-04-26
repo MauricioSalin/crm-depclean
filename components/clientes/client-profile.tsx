@@ -1,108 +1,107 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { Card, CardContent } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
+import Link from "next/link"
+import { useQuery } from "@tanstack/react-query"
+import {
+  AlertTriangle,
+  Building2,
+  Calendar,
+  CheckCircle,
+  Clock,
+  DollarSign,
+  Download,
+  ExternalLink,
+  FileCheck2,
+  FileText,
+  Mail,
+  MapPin,
+  MoreHorizontal,
+  Paperclip,
+  Phone,
+} from "lucide-react"
+
 import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
-} from "@/components/ui/table"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Progress } from "@/components/ui/progress"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { buildApiFileUrl } from "@/lib/api/client"
+import { getClientAttachments } from "@/lib/api/clients"
 import {
-  Building2,
-  Phone,
-  Mail,
-  MapPin,
-  FileText,
-  Calendar,
-  DollarSign,
-  Download,
-  ExternalLink,
-  Clock,
-  CheckCircle,
-  AlertTriangle,
-  MoreHorizontal,
-  Paperclip,
-  FileCheck2
-} from "lucide-react"
-import { 
-  clients, 
-  contracts, 
-  scheduledServices,
-  getClientTypeById, 
+  clients,
+  contracts,
+  formatCNPJ,
+  formatCurrency,
+  formatDate,
+  getClientTypeById,
   getServiceTypeById,
   getTeamById,
-  formatCNPJ, 
-  formatCurrency, 
-  formatDate 
+  scheduledServices,
 } from "@/lib/mock-data"
-import { getColorFromClass } from "@/lib/utils"
-import Link from "next/link"
 import type { ClientAttachmentType, InstallmentStatus } from "@/lib/types"
-import { getClientAttachments } from "@/lib/client-attachments-store"
+import { getColorFromClass } from "@/lib/utils"
 
 interface ClientProfileProps {
   clientId: string
 }
 
 export function ClientProfile({ clientId }: ClientProfileProps) {
-  const client = clients.find(c => c.id === clientId)
-  
+  const client = clients.find((item) => item.id === clientId)
+
   if (!client) {
     return (
       <Card className="p-8 text-center">
-        <Building2 className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-        <h3 className="font-semibold mb-2">Cliente não encontrado</h3>
-        <p className="text-sm text-muted-foreground mb-4">
-          O cliente solicitado não existe ou foi removido
+        <Building2 className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
+        <h3 className="mb-2 font-semibold">Cliente não encontrado</h3>
+        <p className="mb-4 text-sm text-muted-foreground">
+          O cliente solicitado não existe ou foi removido.
         </p>
         <Link href="/clientes">
-          <Button>Voltar para Clientes</Button>
+          <Button>Voltar para clientes</Button>
         </Link>
       </Card>
     )
   }
 
   const clientType = getClientTypeById(client.clientTypeId)
-  const clientContracts = contracts.filter(c => c.clientId === client.id)
-  const activeContracts = clientContracts.filter(c => c.status === "active").length
-  const clientServices = scheduledServices.filter(s => s.clientId === client.id)
-  const clientAttachments = getClientAttachments(client.id)
+  const clientContracts = contracts.filter((contract) => contract.clientId === client.id)
+  const activeContracts = clientContracts.filter((contract) => contract.status === "active").length
+  const clientServices = scheduledServices.filter((service) => service.clientId === client.id)
+  const attachmentsQuery = useQuery({
+    queryKey: ["client-attachments", client.id],
+    queryFn: () => getClientAttachments(client.id),
+  })
+  const clientAttachments = attachmentsQuery.data?.data ?? []
 
-  const [installmentOverrides, setInstallmentOverrides] = useState<Record<
-    string,
-    { status: InstallmentStatus; paidDate?: Date; paidValue?: number }
-  >>({})
+  const [installmentOverrides, setInstallmentOverrides] = useState<
+    Record<string, { status: InstallmentStatus; paidDate?: Date; paidValue?: number }>
+  >({})
 
   const allInstallments = useMemo(() => {
-    return clientContracts.flatMap((c) =>
-      c.installments.map((i) => {
-        const ov = installmentOverrides[i.id]
-        return ov ? { ...i, ...ov } : i
-      })
+    return clientContracts.flatMap((contract) =>
+      contract.installments.map((installment) => {
+        const override = installmentOverrides[installment.id]
+        return override ? { ...installment, ...override } : installment
+      }),
     )
   }, [clientContracts, installmentOverrides])
-  
-  // Calculate financial status
-  const paidInstallments = allInstallments.filter(i => i.status === "paid")
-  const overdueInstallments = allInstallments.filter(i => i.status === "overdue")
-  const pendingInstallments = allInstallments.filter(i => i.status === "pending")
-  const totalPaid = paidInstallments.reduce((acc, i) => acc + (i.paidValue || 0), 0)
-  const totalOverdue = overdueInstallments.reduce((acc, i) => acc + i.value, 0)
-  const totalPending = pendingInstallments.reduce((acc, i) => acc + i.value, 0)
 
+  const paidInstallments = allInstallments.filter((installment) => installment.status === "paid")
+  const overdueInstallments = allInstallments.filter((installment) => installment.status === "overdue")
+  const pendingInstallments = allInstallments.filter((installment) => installment.status === "pending")
+  const totalPaid = paidInstallments.reduce(
+    (accumulator, installment) => accumulator + (installment.paidValue || 0),
+    0,
+  )
+  const totalOverdue = overdueInstallments.reduce((accumulator, installment) => accumulator + installment.value, 0)
+  const totalPending = pendingInstallments.reduce((accumulator, installment) => accumulator + installment.value, 0)
 
   const getAttachmentTypeLabel = (type: ClientAttachmentType) => {
     switch (type) {
@@ -126,12 +125,14 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
   }
 
   const setInstallmentStatus = (installmentId: string, status: InstallmentStatus) => {
-    setInstallmentOverrides((prev) => {
+    setInstallmentOverrides((previous) => {
       if (status === "paid") {
-        const original = clientContracts.flatMap((c) => c.installments).find((i) => i.id === installmentId)
+        const original = clientContracts
+          .flatMap((contract) => contract.installments)
+          .find((installment) => installment.id === installmentId)
         const value = original?.value ?? 0
         return {
-          ...prev,
+          ...previous,
           [installmentId]: {
             status,
             paidDate: new Date(),
@@ -139,89 +140,102 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
           },
         }
       }
+
       if (status === "overdue") {
         return {
-          ...prev,
-          [installmentId]: { status, paidDate: undefined, paidValue: undefined },
+          ...previous,
+          [installmentId]: {
+            status,
+            paidDate: undefined,
+            paidValue: undefined,
+          },
         }
       }
+
       return {
-        ...prev,
-        [installmentId]: { status: "pending", paidDate: undefined, paidValue: undefined },
+        ...previous,
+        [installmentId]: {
+          status: "pending",
+          paidDate: undefined,
+          paidValue: undefined,
+        },
       }
     })
   }
 
   return (
     <div className="space-y-6">
-      {/* Client Header */}
       <Card className="overflow-hidden">
         <CardContent className="p-4">
-          <div className="flex items-center gap-3 mb-3">
+          <div className="mb-3 flex items-center gap-3">
             <div
-              className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
               style={{ backgroundColor: `${getColorFromClass(clientType?.color || "")}1A` }}
             >
-              <Building2 className="w-5 h-5" style={{ color: getColorFromClass(clientType?.color || "") }} />
+              <Building2 className="h-5 w-5" style={{ color: getColorFromClass(clientType?.color || "") }} />
             </div>
             <div className="min-w-0">
-              <h3 className="font-semibold truncate text-sm">{client.companyName}</h3>
-              <p className="text-xs text-muted-foreground font-mono">{formatCNPJ(client.cnpj)}</p>
+              <h3 className="truncate text-sm font-semibold">{client.companyName}</h3>
+              <p className="font-mono text-xs text-muted-foreground">{formatCNPJ(client.cnpj)}</p>
             </div>
           </div>
+
           <div className="space-y-2 text-sm">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Phone className="w-4 h-4 shrink-0" />
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-2 text-muted-foreground">
+                <Phone className="h-4 w-4 shrink-0" />
                 <span>{client.phone}</span>
               </div>
               <Badge
                 style={{ backgroundColor: getColorFromClass(clientType?.color || "") }}
-                className="text-white border-0 hover:opacity-90 shrink-0 text-xs"
+                className="shrink-0 border-0 text-xs text-white hover:opacity-90"
               >
                 {clientType?.name}
               </Badge>
             </div>
+
             <div className="flex items-center gap-2 text-muted-foreground">
-              <Mail className="w-4 h-4 shrink-0" />
+              <Mail className="h-4 w-4 shrink-0" />
               <span className="truncate">{client.email}</span>
             </div>
+
             <div className="flex items-center gap-2 text-muted-foreground">
-              <FileText className="w-4 h-4 shrink-0" />
+              <FileText className="h-4 w-4 shrink-0" />
               <span>{activeContracts} contrato(s) ativo(s)</span>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Card className="p-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-              <FileText className="w-5 h-5 text-primary" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+              <FileText className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Contratos Ativos</p>
+              <p className="text-sm text-muted-foreground">Contratos ativos</p>
               <p className="text-2xl font-bold">{activeContracts}</p>
             </div>
           </div>
         </Card>
+
         <Card className="p-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-green-500/10 flex items-center justify-center">
-              <DollarSign className="w-5 h-5 text-green-500" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-500/10">
+              <DollarSign className="h-5 w-5 text-green-500" />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Total Pago</p>
+              <p className="text-sm text-muted-foreground">Total pago</p>
               <p className="text-2xl font-bold text-green-600">{formatCurrency(totalPaid)}</p>
             </div>
           </div>
         </Card>
+
         <Card className="p-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-amber-500/10 flex items-center justify-center">
-              <Clock className="w-5 h-5 text-amber-500" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500/10">
+              <Clock className="h-5 w-5 text-amber-500" />
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Pendente</p>
@@ -229,10 +243,11 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
             </div>
           </div>
         </Card>
+
         <Card className="p-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-destructive/10 flex items-center justify-center">
-              <AlertTriangle className="w-5 h-5 text-destructive" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-destructive/10">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Vencido</p>
@@ -242,66 +257,64 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
         </Card>
       </div>
 
-      {/* Tabs */}
-      <Tabs defaultValue="dados" className="space-y-4">
-        <TabsList className="flex h-auto w-full justify-start gap-2 overflow-x-auto bg-transparent p-0 sm:grid sm:grid-cols-2 lg:grid-cols-6">
-          <TabsTrigger onFocus={(event) => event.currentTarget.focus({ preventScroll: true })} value="dados" className="shrink-0 rounded-full bg-muted px-4 py-2 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground sm:min-h-[130px] sm:flex-col sm:items-start sm:justify-start sm:gap-3 sm:rounded-2xl sm:border sm:border-border sm:bg-card sm:p-6 sm:text-left sm:shadow-none sm:data-[state=active]:border-primary sm:data-[state=active]:bg-primary/5 sm:data-[state=active]:text-foreground sm:data-[state=active]:ring-1 sm:data-[state=active]:ring-primary">
-            <span className="hidden rounded-lg bg-primary/10 p-2 sm:inline-flex">
-              <Building2 className="h-5 w-5 text-primary" />
-            </span>
-            <span className="text-sm font-semibold sm:text-base">Dados</span>
-            <span className="hidden text-sm font-normal leading-relaxed text-muted-foreground sm:block">Informações gerais</span>
+      <Tabs defaultValue="dados" className="w-full">
+        <TabsList className="grid w-full grid-cols-2 gap-2 bg-transparent p-0 sm:grid-cols-3 lg:grid-cols-6">
+          <TabsTrigger
+            onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
+            value="dados"
+            className="w-full rounded-full bg-muted px-4 py-2 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+          >
+            <span className="font-semibold">Dados</span>
           </TabsTrigger>
-          <TabsTrigger onFocus={(event) => event.currentTarget.focus({ preventScroll: true })} value="contratos" className="shrink-0 rounded-full bg-muted px-4 py-2 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground sm:min-h-[130px] sm:flex-col sm:items-start sm:justify-start sm:gap-3 sm:rounded-2xl sm:border sm:border-border sm:bg-card sm:p-6 sm:text-left sm:shadow-none sm:data-[state=active]:border-primary sm:data-[state=active]:bg-primary/5 sm:data-[state=active]:text-foreground sm:data-[state=active]:ring-1 sm:data-[state=active]:ring-primary">
-            <span className="hidden rounded-lg bg-primary/10 p-2 sm:inline-flex">
-              <FileText className="h-5 w-5 text-primary" />
-            </span>
-            <span className="text-sm font-semibold sm:text-base">Contratos</span>
-            <span className="hidden text-sm font-normal leading-relaxed text-muted-foreground sm:block">Histórico contratual</span>
+          <TabsTrigger
+            onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
+            value="contratos"
+            className="w-full rounded-full bg-muted px-4 py-2 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+          >
+            <span className="font-semibold">Contratos</span>
           </TabsTrigger>
-          <TabsTrigger onFocus={(event) => event.currentTarget.focus({ preventScroll: true })} value="parcelas" className="shrink-0 rounded-full bg-muted px-4 py-2 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground sm:min-h-[130px] sm:flex-col sm:items-start sm:justify-start sm:gap-3 sm:rounded-2xl sm:border sm:border-border sm:bg-card sm:p-6 sm:text-left sm:shadow-none sm:data-[state=active]:border-primary sm:data-[state=active]:bg-primary/5 sm:data-[state=active]:text-foreground sm:data-[state=active]:ring-1 sm:data-[state=active]:ring-primary">
-            <span className="hidden rounded-lg bg-primary/10 p-2 sm:inline-flex">
-              <DollarSign className="h-5 w-5 text-primary" />
-            </span>
-            <span className="text-sm font-semibold sm:text-base">Parcelas</span>
-            <span className="hidden text-sm font-normal leading-relaxed text-muted-foreground sm:block">Financeiro do cliente</span>
+          <TabsTrigger
+            onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
+            value="parcelas"
+            className="w-full rounded-full bg-muted px-4 py-2 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+          >
+            <span className="font-semibold">Parcelas</span>
           </TabsTrigger>
-          <TabsTrigger onFocus={(event) => event.currentTarget.focus({ preventScroll: true })} value="servicos" className="shrink-0 rounded-full bg-muted px-4 py-2 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground sm:min-h-[130px] sm:flex-col sm:items-start sm:justify-start sm:gap-3 sm:rounded-2xl sm:border sm:border-border sm:bg-card sm:p-6 sm:text-left sm:shadow-none sm:data-[state=active]:border-primary sm:data-[state=active]:bg-primary/5 sm:data-[state=active]:text-foreground sm:data-[state=active]:ring-1 sm:data-[state=active]:ring-primary">
-            <span className="hidden rounded-lg bg-primary/10 p-2 sm:inline-flex">
-              <CheckCircle className="h-5 w-5 text-primary" />
-            </span>
-            <span className="text-sm font-semibold sm:text-base">Serviços</span>
-            <span className="hidden text-sm font-normal leading-relaxed text-muted-foreground sm:block">Serviços realizados</span>
+          <TabsTrigger
+            onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
+            value="servicos"
+            className="w-full rounded-full bg-muted px-4 py-2 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+          >
+            <span className="font-semibold">Serviços</span>
           </TabsTrigger>
-          <TabsTrigger onFocus={(event) => event.currentTarget.focus({ preventScroll: true })} value="agenda" className="shrink-0 rounded-full bg-muted px-4 py-2 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground sm:min-h-[130px] sm:flex-col sm:items-start sm:justify-start sm:gap-3 sm:rounded-2xl sm:border sm:border-border sm:bg-card sm:p-6 sm:text-left sm:shadow-none sm:data-[state=active]:border-primary sm:data-[state=active]:bg-primary/5 sm:data-[state=active]:text-foreground sm:data-[state=active]:ring-1 sm:data-[state=active]:ring-primary">
-            <span className="hidden rounded-lg bg-primary/10 p-2 sm:inline-flex">
-              <Calendar className="h-5 w-5 text-primary" />
-            </span>
-            <span className="text-sm font-semibold sm:text-base">Agenda</span>
-            <span className="hidden text-sm font-normal leading-relaxed text-muted-foreground sm:block">Próximos serviços</span>
+          <TabsTrigger
+            onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
+            value="agenda"
+            className="w-full rounded-full bg-muted px-4 py-2 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+          >
+            <span className="font-semibold">Agenda</span>
           </TabsTrigger>
-          <TabsTrigger onFocus={(event) => event.currentTarget.focus({ preventScroll: true })} value="anexos" className="shrink-0 rounded-full bg-muted px-4 py-2 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground sm:min-h-[130px] sm:flex-col sm:items-start sm:justify-start sm:gap-3 sm:rounded-2xl sm:border sm:border-border sm:bg-card sm:p-6 sm:text-left sm:shadow-none sm:data-[state=active]:border-primary sm:data-[state=active]:bg-primary/5 sm:data-[state=active]:text-foreground sm:data-[state=active]:ring-1 sm:data-[state=active]:ring-primary">
-            <span className="hidden rounded-lg bg-primary/10 p-2 sm:inline-flex">
-              <Paperclip className="h-5 w-5 text-primary" />
-            </span>
-            <span className="text-sm font-semibold sm:text-base">Anexos</span>
-            <span className="hidden text-sm font-normal leading-relaxed text-muted-foreground sm:block">NAs e documentos</span>
+          <TabsTrigger
+            onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
+            value="anexos"
+            className="w-full rounded-full bg-muted px-4 py-2 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+          >
+            <span className="font-semibold">Anexos</span>
           </TabsTrigger>
         </TabsList>
 
-        {/* Dados Tab */}
-        <TabsContent value="dados">
+        <TabsContent value="dados" className="mt-4">
           <div className="space-y-4">
-            <div className="rounded-md overflow-x-auto">
+            <div className="overflow-x-auto rounded-md">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead colSpan={2}>Informações do Cliente</TableHead>
+                    <TableHead colSpan={2}>Informações do cliente</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   <TableRow>
-                    <TableCell className="text-muted-foreground w-[220px]">Razão Social</TableCell>
+                    <TableCell className="w-[220px] text-muted-foreground">Razão social</TableCell>
                     <TableCell className="font-medium">{client.companyName}</TableCell>
                   </TableRow>
                   <TableRow>
@@ -323,16 +336,14 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                   <TableRow>
                     <TableCell className="text-muted-foreground">Tipo</TableCell>
                     <TableCell>
-                      <Badge className={`${clientType?.color} text-white`}>
-                        {clientType?.name}
-                      </Badge>
+                      <Badge className={`${clientType?.color} text-white`}>{clientType?.name}</Badge>
                     </TableCell>
                   </TableRow>
                 </TableBody>
               </Table>
             </div>
 
-            <div className="rounded-md overflow-x-auto">
+            <div className="overflow-x-auto rounded-md">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -346,7 +357,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                   {client.units.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
-                        Nenhuma filial cadastrada
+                        Nenhuma filial cadastrada.
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -354,18 +365,16 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                       <TableRow key={unit.id}>
                         <TableCell className="font-medium">
                           <div className="flex items-center gap-2">
-                            <MapPin className="w-4 h-4 text-muted-foreground" />
+                            <MapPin className="h-4 w-4 text-muted-foreground" />
                             {unit.name}
                           </div>
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           {unit.address.street}, {unit.address.number}
-                          {unit.address.complement ? ` - ${unit.address.complement}` : ""},{" "}
-                          {unit.address.neighborhood} - {unit.address.city}/{unit.address.state} (CEP: {unit.address.zipCode})
+                          {unit.address.complement ? ` - ${unit.address.complement}` : ""}, {unit.address.neighborhood} -{" "}
+                          {unit.address.city}/{unit.address.state} (CEP: {unit.address.zipCode})
                         </TableCell>
-                        <TableCell>
-                          {unit.unitCount ?? "-"}
-                        </TableCell>
+                        <TableCell>{unit.unitCount ?? "-"}</TableCell>
                         <TableCell>
                           {unit.isPrimary ? <Badge variant="secondary">Matriz</Badge> : <Badge variant="outline">Filial</Badge>}
                         </TableCell>
@@ -378,14 +387,13 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
           </div>
         </TabsContent>
 
-        {/* Contratos Tab */}
-        <TabsContent value="contratos">
-          <div className="rounded-md overflow-x-auto">
+        <TabsContent value="contratos" className="mt-4">
+          <div className="overflow-x-auto rounded-md">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Contrato</TableHead>
-                  <TableHead>Valor Total</TableHead>
+                  <TableHead>Valor total</TableHead>
                   <TableHead className="hidden md:table-cell">Vigência</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
@@ -397,69 +405,82 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                     <TableCell>
                       <div>
                         <p className="font-medium">{contract.contractNumber}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {contract.services.length} serviço(s)
-                        </p>
+                        <p className="text-xs text-muted-foreground">{contract.services.length} serviço(s)</p>
                       </div>
                     </TableCell>
-                    <TableCell className="font-medium">
-                      {formatCurrency(contract.totalValue)}
-                    </TableCell>
+                    <TableCell className="font-medium">{formatCurrency(contract.totalValue)}</TableCell>
                     <TableCell className="hidden md:table-cell text-sm">
                       {formatDate(contract.startDate)} - {formatDate(contract.endDate)}
                     </TableCell>
                     <TableCell>
-                      <Badge className={
-                        contract.status === "active" ? "bg-green-100 text-green-700" :
-                        contract.status === "pending_signature" ? "bg-amber-100 text-amber-700" :
-                        contract.status === "overdue" ? "bg-red-100 text-red-700" :
-                        contract.status === "refused" ? "bg-orange-100 text-orange-700" :
-                        contract.status === "deadline_expired" ? "bg-purple-100 text-purple-700" :
-                        contract.status === "cancelled" ? "bg-red-100 text-red-700" :
-                        contract.status === "expired" ? "bg-gray-100 text-gray-700" :
-                        "bg-gray-100 text-gray-600"
-                      }>
-                        {contract.status === "active" ? "Assinado" :
-                         contract.status === "pending_signature" ? "Aguardando Assinatura" :
-                         contract.status === "overdue" ? "Em Atraso" :
-                         contract.status === "refused" ? "Recusado" :
-                         contract.status === "deadline_expired" ? "Prazo Expirado" :
-                         contract.status === "expired" ? "Expirado" :
-                         contract.status === "cancelled" ? "Cancelado" : "Rascunho"}
+                      <Badge
+                        className={
+                          contract.status === "active"
+                            ? "bg-green-100 text-green-700"
+                            : contract.status === "pending_signature"
+                              ? "bg-amber-100 text-amber-700"
+                              : contract.status === "overdue"
+                                ? "bg-red-100 text-red-700"
+                                : contract.status === "refused"
+                                  ? "bg-orange-100 text-orange-700"
+                                  : contract.status === "deadline_expired"
+                                    ? "bg-purple-100 text-purple-700"
+                                    : contract.status === "cancelled"
+                                      ? "bg-red-100 text-red-700"
+                                      : contract.status === "expired"
+                                        ? "bg-gray-100 text-gray-700"
+                                        : "bg-gray-100 text-gray-600"
+                        }
+                      >
+                        {contract.status === "active"
+                          ? "Assinado"
+                          : contract.status === "pending_signature"
+                            ? "Aguardando assinatura"
+                            : contract.status === "overdue"
+                              ? "Em atraso"
+                              : contract.status === "refused"
+                                ? "Recusado"
+                                : contract.status === "deadline_expired"
+                                  ? "Prazo expirado"
+                                  : contract.status === "expired"
+                                    ? "Expirado"
+                                    : contract.status === "cancelled"
+                                      ? "Cancelado"
+                                      : "Rascunho"}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
                         <Button variant="ghost" size="icon" asChild>
                           <Link href={`/contratos/${contract.id}`}>
-                            <ExternalLink className="w-4 h-4" />
+                            <ExternalLink className="h-4 w-4" />
                           </Link>
                         </Button>
-                        {contract.documentUrl && (
+                        {contract.documentUrl ? (
                           <Button variant="ghost" size="icon">
-                            <Download className="w-4 h-4" />
+                            <Download className="h-4 w-4" />
                           </Button>
-                        )}
+                        ) : null}
                       </div>
                     </TableCell>
                   </TableRow>
                 ))}
-                {clientContracts.length === 0 && (
+
+                {clientContracts.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center py-8">
-                      <FileText className="w-8 h-8 mx-auto text-muted-foreground mb-2" />
-                      <p className="text-muted-foreground">Nenhum contrato encontrado</p>
+                    <TableCell colSpan={5} className="py-8 text-center">
+                      <FileText className="mx-auto mb-2 h-8 w-8 text-muted-foreground" />
+                      <p className="text-muted-foreground">Nenhum contrato encontrado.</p>
                     </TableCell>
                   </TableRow>
-                )}
+                ) : null}
               </TableBody>
             </Table>
           </div>
         </TabsContent>
 
-        {/* Parcelas Tab */}
-        <TabsContent value="parcelas">
-          <div className="rounded-md overflow-x-auto">
+        <TabsContent value="parcelas" className="mt-4">
+          <div className="overflow-x-auto rounded-md">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -472,61 +493,67 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {clientContracts.flatMap(contract => 
-                  contract.installments.map(installment => {
-                    const ov = installmentOverrides[installment.id]
-                    const display = ov ? { ...installment, ...ov } : installment
+                {clientContracts.flatMap((contract) =>
+                  contract.installments.map((installment) => {
+                    const override = installmentOverrides[installment.id]
+                    const displayInstallment = override ? { ...installment, ...override } : installment
+
                     return (
                       <TableRow key={installment.id}>
-                      <TableCell className="text-sm">{contract.contractNumber}</TableCell>
-                      <TableCell>{installment.number}/{contract.installmentsCount}</TableCell>
-                      <TableCell className="font-medium">{formatCurrency(installment.value)}</TableCell>
-                      <TableCell className="hidden md:table-cell text-sm">
-                        {formatDate(installment.dueDate)}
-                      </TableCell>
-                      <TableCell>
-                        <Badge 
-                          variant={
-                            display.status === "paid" ? "default" :
-                            display.status === "overdue" ? "destructive" : "secondary"
-                          }
-                        >
-                          {display.status === "paid" ? "Paga" :
-                           display.status === "overdue" ? "Vencida" : "Pendente"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
-                              <MoreHorizontal className="w-4 h-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => setInstallmentStatus(installment.id, "paid")}>
-                              Marcar como paga
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setInstallmentStatus(installment.id, "overdue")}>
-                              Marcar como atrasada
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setInstallmentStatus(installment.id, "pending")}>
-                              Marcar como pendente
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
+                        <TableCell className="text-sm">{contract.contractNumber}</TableCell>
+                        <TableCell>
+                          {installment.number}/{contract.installmentsCount}
+                        </TableCell>
+                        <TableCell className="font-medium">{formatCurrency(installment.value)}</TableCell>
+                        <TableCell className="hidden md:table-cell text-sm">{formatDate(installment.dueDate)}</TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={
+                              displayInstallment.status === "paid"
+                                ? "default"
+                                : displayInstallment.status === "overdue"
+                                  ? "destructive"
+                                  : "secondary"
+                            }
+                          >
+                            {displayInstallment.status === "paid"
+                              ? "Paga"
+                              : displayInstallment.status === "overdue"
+                                ? "Vencida"
+                                : "Pendente"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => setInstallmentStatus(installment.id, "paid")}>
+                                Marcar como paga
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => setInstallmentStatus(installment.id, "overdue")}>
+                                Marcar como atrasada
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => setInstallmentStatus(installment.id, "pending")}>
+                                Marcar como pendente
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
                     )
-                  })
+                  }),
                 )}
               </TableBody>
             </Table>
           </div>
         </TabsContent>
 
-        {/* Serviços Tab (Histórico) */}
-        <TabsContent value="servicos">
-          <div className="rounded-md overflow-x-auto">
+        <TabsContent value="servicos" className="mt-4">
+          <div className="overflow-x-auto rounded-md">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -537,45 +564,44 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {clientServices.filter(s => s.status === "completed").map(service => {
-                  const serviceType = getServiceTypeById(service.serviceTypeId)
-                  const team = getTeamById(service.teamIds[0])
-                  return (
-                    <TableRow key={service.id}>
-                      <TableCell>
-                        <p className="font-medium">{serviceType?.name}</p>
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell">
-                        {team?.name}
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        {formatDate(service.completedAt || service.scheduledDate)}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="default">
-                          <CheckCircle className="w-3 h-3 mr-1" />
-                          Concluído
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  )
-                })}
-                {clientServices.filter(s => s.status === "completed").length === 0 && (
+                {clientServices
+                  .filter((service) => service.status === "completed")
+                  .map((service) => {
+                    const serviceType = getServiceTypeById(service.serviceTypeId)
+                    const team = getTeamById(service.teamIds[0])
+
+                    return (
+                      <TableRow key={service.id}>
+                        <TableCell>
+                          <p className="font-medium">{serviceType?.name}</p>
+                        </TableCell>
+                        <TableCell className="hidden md:table-cell">{team?.name}</TableCell>
+                        <TableCell className="text-sm">{formatDate(service.completedAt || service.scheduledDate)}</TableCell>
+                        <TableCell>
+                          <Badge variant="default">
+                            <CheckCircle className="mr-1 h-3 w-3" />
+                            Concluído
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
+
+                {clientServices.filter((service) => service.status === "completed").length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center py-8">
-                      <CheckCircle className="w-8 h-8 mx-auto text-muted-foreground mb-2" />
-                      <p className="text-muted-foreground">Nenhum serviço realizado ainda</p>
+                    <TableCell colSpan={4} className="py-8 text-center">
+                      <CheckCircle className="mx-auto mb-2 h-8 w-8 text-muted-foreground" />
+                      <p className="text-muted-foreground">Nenhum serviço realizado ainda.</p>
                     </TableCell>
                   </TableRow>
-                )}
+                ) : null}
               </TableBody>
             </Table>
           </div>
         </TabsContent>
 
-        {/* Agenda Tab */}
-        <TabsContent value="agenda">
-          <div className="rounded-md overflow-x-auto">
+        <TabsContent value="agenda" className="mt-4">
+          <div className="overflow-x-auto rounded-md">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -587,52 +613,47 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {clientServices.filter(s => s.status === "scheduled" || s.status === "in_progress").map(service => {
-                  const serviceType = getServiceTypeById(service.serviceTypeId)
-                  const team = getTeamById(service.teamIds[0])
-                  return (
-                    <TableRow key={service.id}>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <p className="font-medium">{serviceType?.name}</p>
-                          {service.isEmergency && (
-                            <AlertTriangle className="w-4 h-4 text-destructive" />
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell">
-                        {team?.name}
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        {formatDate(service.scheduledDate)}
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        {service.scheduledTime || "08:00"}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={service.status === "in_progress" ? "default" : "secondary"}>
-                          {service.status === "in_progress" ? "Em Andamento" : "Agendado"}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  )
-                })}
-                {clientServices.filter(s => s.status === "scheduled" || s.status === "in_progress").length === 0 && (
+                {clientServices
+                  .filter((service) => service.status === "scheduled" || service.status === "in_progress")
+                  .map((service) => {
+                    const serviceType = getServiceTypeById(service.serviceTypeId)
+                    const team = getTeamById(service.teamIds[0])
+
+                    return (
+                      <TableRow key={service.id}>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium">{serviceType?.name}</p>
+                            {service.isEmergency ? <AlertTriangle className="h-4 w-4 text-destructive" /> : null}
+                          </div>
+                        </TableCell>
+                        <TableCell className="hidden md:table-cell">{team?.name}</TableCell>
+                        <TableCell className="text-sm">{formatDate(service.scheduledDate)}</TableCell>
+                        <TableCell className="text-sm">{service.scheduledTime || "08:00"}</TableCell>
+                        <TableCell>
+                          <Badge variant={service.status === "in_progress" ? "default" : "secondary"}>
+                            {service.status === "in_progress" ? "Em andamento" : "Agendado"}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
+
+                {clientServices.filter((service) => service.status === "scheduled" || service.status === "in_progress").length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center py-8">
-                      <Calendar className="w-8 h-8 mx-auto text-muted-foreground mb-2" />
-                      <p className="text-muted-foreground">Nenhum serviço agendado</p>
+                    <TableCell colSpan={5} className="py-8 text-center">
+                      <Calendar className="mx-auto mb-2 h-8 w-8 text-muted-foreground" />
+                      <p className="text-muted-foreground">Nenhum serviço agendado.</p>
                     </TableCell>
                   </TableRow>
-                )}
+                ) : null}
               </TableBody>
             </Table>
           </div>
         </TabsContent>
 
-        {/* Anexos Tab */}
-        <TabsContent value="anexos">
-          <div className="rounded-md overflow-x-auto">
+        <TabsContent value="anexos" className="mt-4">
+          <div className="overflow-x-auto rounded-md">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -655,8 +676,8 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                           <FileCheck2 className="h-4 w-4 text-primary" />
                         </div>
                         <div className="min-w-0">
-                          <p className="font-medium truncate">{attachment.title}</p>
-                          <p className="text-xs text-muted-foreground truncate">
+                          <p className="truncate font-medium">{attachment.title}</p>
+                          <p className="truncate text-xs text-muted-foreground">
                             {attachment.fileName} - {formatAttachmentSize(attachment.fileSize)}
                           </p>
                         </div>
@@ -669,20 +690,31 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                       {new Date(attachment.uploadedAt).toLocaleDateString("pt-BR")}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button variant="ghost" size="icon">
-                        <Download className="w-4 h-4" />
+                      <Button variant="ghost" size="icon" asChild>
+                        <a href={buildApiFileUrl(attachment.documentUrl)} target="_blank" rel="noreferrer">
+                          <Download className="h-4 w-4" />
+                        </a>
                       </Button>
                     </TableCell>
                   </TableRow>
                 ))}
-                {clientAttachments.length === 0 && (
+
+                {!attachmentsQuery.isLoading && clientAttachments.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center py-8">
-                      <Paperclip className="w-8 h-8 mx-auto text-muted-foreground mb-2" />
-                      <p className="text-muted-foreground">Nenhum anexo vinculado a este cliente</p>
+                    <TableCell colSpan={5} className="py-8 text-center">
+                      <Paperclip className="mx-auto mb-2 h-8 w-8 text-muted-foreground" />
+                      <p className="text-muted-foreground">Nenhum anexo vinculado a este cliente.</p>
                     </TableCell>
                   </TableRow>
-                )}
+                ) : null}
+
+                {attachmentsQuery.isLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
+                      Carregando anexos...
+                    </TableCell>
+                  </TableRow>
+                ) : null}
               </TableBody>
             </Table>
           </div>

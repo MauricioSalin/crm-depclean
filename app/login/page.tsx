@@ -185,14 +185,14 @@ export default function LoginPage() {
 
           <Card className="w-full max-w-[420px] border-0 bg-white py-0 shadow-[0_18px_50px_rgba(0,0,0,0.14)]">
             <CardContent className="p-8 sm:p-10">
-              <form onSubmit={handleSubmit} className="space-y-6">
+              <form autoComplete="off" onSubmit={handleSubmit} className="space-y-6">
                 <div className="space-y-2">
                   <Label htmlFor="email">Usuario</Label>
                   <div className="relative">
                     <Mail className="pointer-events-none absolute left-0 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
                       id="email"
-                      type="email"
+                      type="email" autoComplete="off"
                       value={email}
                       onChange={(event) => setEmail(event.target.value)}
                       placeholder="seuemail@depclean.com"
@@ -278,7 +278,7 @@ export default function LoginPage() {
           <DialogHeader>
             <DialogTitle>Recuperar senha</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleRequestPasswordReset} className="space-y-4">
+          <form autoComplete="off" onSubmit={handleRequestPasswordReset} className="space-y-4">
             <p className="text-sm text-muted-foreground">
               Informe seu e-mail para receber o link de redefinição.
             </p>
@@ -286,7 +286,7 @@ export default function LoginPage() {
               <Label htmlFor="reset-email">E-mail</Label>
               <Input
                 id="reset-email"
-                type="email"
+                type="email" autoComplete="off"
                 value={resetEmail}
                 onChange={(event) => setResetEmail(event.target.value)}
                 placeholder="seuemail@depclean.com"

@@ -198,7 +198,7 @@ export function PerfilContent() {
           <CardTitle>Informacoes Pessoais</CardTitle>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSave} className="space-y-6">
+          <form autoComplete="off" onSubmit={handleSave} className="space-y-6">
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
               <div className="space-y-2 sm:col-span-2">
                 <Label htmlFor="name" className="flex items-center gap-1.5">
@@ -245,7 +245,7 @@ export function PerfilContent() {
                   <Mail className="h-3.5 w-3.5 text-muted-foreground" />
                   E-mail
                 </Label>
-                <Input id="email" type="email" value={formData.email} onChange={(event) => setProfile({ ...formData, email: event.target.value })} required />
+                <Input id="email" type="email" autoComplete="off" value={formData.email} onChange={(event) => setProfile({ ...formData, email: event.target.value })} required />
               </div>
 
               <div className="space-y-2">
@@ -317,18 +317,18 @@ export function PerfilContent() {
               Alterar Senha
             </DialogTitle>
           </DialogHeader>
-          <form onSubmit={handlePasswordChange} className="space-y-4">
+          <form autoComplete="off" onSubmit={handlePasswordChange} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="currentPassword">Senha Atual</Label>
-              <Input id="currentPassword" type="password" value={passwordData.currentPassword} onChange={(event) => setPasswordData({ ...passwordData, currentPassword: event.target.value })} required />
+              <Input id="currentPassword" type="password" autoComplete="off" value={passwordData.currentPassword} onChange={(event) => setPasswordData({ ...passwordData, currentPassword: event.target.value })} required />
             </div>
             <div className="space-y-2">
               <Label htmlFor="newPassword">Nova Senha</Label>
-              <Input id="newPassword" type="password" value={passwordData.newPassword} onChange={(event) => setPasswordData({ ...passwordData, newPassword: event.target.value })} required />
+              <Input id="newPassword" type="password" autoComplete="off" value={passwordData.newPassword} onChange={(event) => setPasswordData({ ...passwordData, newPassword: event.target.value })} required />
             </div>
             <div className="space-y-2">
               <Label htmlFor="confirmPassword">Confirmar Nova Senha</Label>
-              <Input id="confirmPassword" type="password" value={passwordData.confirmPassword} onChange={(event) => setPasswordData({ ...passwordData, confirmPassword: event.target.value })} required />
+              <Input id="confirmPassword" type="password" autoComplete="off" value={passwordData.confirmPassword} onChange={(event) => setPasswordData({ ...passwordData, confirmPassword: event.target.value })} required />
             </div>
             {passwordError && <p className="text-sm text-destructive">{passwordError}</p>}
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">

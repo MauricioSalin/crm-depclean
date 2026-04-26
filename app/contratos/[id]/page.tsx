@@ -1,6 +1,3 @@
-"use client"
-
-import { use } from "react"
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { Header } from "@/components/dashboard/header"
 import { ContractDetail } from "@/components/contratos/contract-detail"
@@ -12,9 +9,9 @@ interface PageProps {
   params: Promise<{ id: string }>
 }
 
-export default function ContractDetailPage({ params }: PageProps) {
-  const { id } = use(params)
-  
+export default async function ContractDetailPage({ params }: PageProps) {
+  const { id } = await params
+
   return (
     <div className="flex min-h-screen bg-background">
       <div className="hidden lg:block">

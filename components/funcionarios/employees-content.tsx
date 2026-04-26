@@ -261,7 +261,7 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
           <DialogHeader>
             <DialogTitle>{editingEmployee ? "Editar Funcionário" : "Novo Funcionário"}</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form autoComplete="off" onSubmit={handleSubmit} className="space-y-5">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="sm:col-span-2 space-y-2">
                 <Label htmlFor="employee-name">Nome Completo</Label>
@@ -290,7 +290,7 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
               </div>
               <div className="sm:col-span-2 space-y-2">
                 <Label htmlFor="employee-email">E-mail</Label>
-                <Input id="employee-email" type="email" value={formData.email} onChange={(event) => setFormData({ ...formData, email: event.target.value })} required />
+                <Input id="employee-email" type="email" autoComplete="off" value={formData.email} onChange={(event) => setFormData({ ...formData, email: event.target.value })} required />
               </div>
               <div className="sm:col-span-2 space-y-2">
                 <Label htmlFor="employee-role">Cargo</Label>
@@ -324,7 +324,7 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
           <DialogHeader>
             <DialogTitle>Transformar em usuario do sistema</DialogTitle>
           </DialogHeader>
-          <form onSubmit={submitSystemUser} className="space-y-4">
+          <form autoComplete="off" onSubmit={submitSystemUser} className="space-y-4">
             <div className="space-y-2">
               <Label>Funcionario</Label>
               <Input value={systemUserEmployee?.name ?? ""} disabled />
@@ -368,7 +368,7 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
             <div className="relative sm:w-80">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Buscar por nome, e-mail, CPF ou funcao..."
+                placeholder="Buscar por nome, e-mail, CPF ou cargo..."
                 value={searchTerm}
                 onChange={(event) => {
                   setSearchTerm(event.target.value)
@@ -402,7 +402,7 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
                 <TableRow>
                   <TableHead>Funcionario</TableHead>
                   <TableHead className="hidden md:table-cell">CPF</TableHead>
-                  <TableHead className="hidden sm:table-cell">Funcao</TableHead>
+                  <TableHead className="hidden sm:table-cell">Cargo</TableHead>
                   <TableHead className="hidden lg:table-cell">Contato</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Sistema</TableHead>
