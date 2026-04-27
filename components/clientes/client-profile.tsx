@@ -33,27 +33,138 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { buildApiFileUrl } from "@/lib/api/client"
-import { getClientAttachments } from "@/lib/api/clients"
-import {
-  clients,
-  contracts,
-  formatCNPJ,
-  formatCurrency,
-  formatDate,
-  getClientTypeById,
-  getServiceTypeById,
-  getTeamById,
-  scheduledServices,
-} from "@/lib/mock-data"
-import type { ClientAttachmentType, InstallmentStatus } from "@/lib/types"
-import { getColorFromClass } from "@/lib/utils"
+import { getClientAttachments, getClientById, type ClientAttachmentRecord } from "@/lib/api/clients"
+import { listContracts, type ContractInstallmentRecord } from "@/lib/api/contracts"
+import { listSchedules } from "@/lib/api/schedules"
+import { listServices } from "@/lib/api/services"
+import { listClientTypes } from "@/lib/api/settings"
+import { listTeams } from "@/lib/api/teams"
 
 interface ClientProfileProps {
   clientId: string
 }
 
+const formatCurrency = (value: number) =>
+  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value)
+
+const formatDate = (value?: string) =>
+  value ? new Intl.DateTimeFormat("pt-BR").format(new Date(value)) : "-"
+
+const formatCNPJ = (value: string) => {
+  const digits = value.replace(/\D/g, "")
+  if (digits.length !== 14) return value
+  return digits.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5")
+}
+
+const resolveColor = (color?: string) => {
+  if (!color) return "#84CC16"
+  if (color.startsWith("#")) return color
+  return "#84CC16"
+}
+
+const getScheduleStatusLabel = (status: string) => {
+  switch (status) {
+    case "draft":
+      return "Rascunho"
+    case "scheduled":
+      return "Agendado"
+    case "in_progress":
+      return "Em andamento"
+    case "completed":
+      return "Concluído"
+    case "cancelled":
+      return "Cancelado"
+    case "rescheduled":
+      return "Reagendado"
+    default:
+      return status
+  }
+}
+
 export function ClientProfile({ clientId }: ClientProfileProps) {
-  const client = clients.find((item) => item.id === clientId)
+  const clientQuery = useQuery({
+    queryKey: ["client", clientId],
+    queryFn: () => getClientById(clientId),
+  })
+
+  const contractsQuery = useQuery({
+    queryKey: ["contracts", "client-profile"],
+    queryFn: () => listContracts(""),
+  })
+
+  const schedulesQuery = useQuery({
+    queryKey: ["schedules", "client-profile"],
+    queryFn: () => listSchedules({}),
+  })
+
+  const servicesQuery = useQuery({
+    queryKey: ["services", "client-profile"],
+    queryFn: () => listServices(""),
+  })
+
+  const teamsQuery = useQuery({
+    queryKey: ["teams", "client-profile"],
+    queryFn: () => listTeams(""),
+  })
+
+  const clientTypesQuery = useQuery({
+    queryKey: ["client-types", "client-profile"],
+    queryFn: () => listClientTypes(""),
+  })
+
+  const attachmentsQuery = useQuery({
+    queryKey: ["client-attachments", clientId],
+    queryFn: () => getClientAttachments(clientId),
+  })
+
+  const [installmentOverrides, setInstallmentOverrides] = useState<
+    Record<string, { status: ContractInstallmentRecord["status"]; paidDate?: string; paidValue?: number }>
+  >({})
+
+  const client = clientQuery.data?.data
+  const clientContracts = useMemo(
+    () => (contractsQuery.data?.data ?? []).filter((contract) => contract.clientId === clientId),
+    [contractsQuery.data?.data, clientId],
+  )
+  const clientServices = useMemo(
+    () => (schedulesQuery.data?.data ?? []).filter((service) => service.clientId === clientId),
+    [schedulesQuery.data?.data, clientId],
+  )
+  const clientAttachments = attachmentsQuery.data?.data ?? []
+  const serviceTypeMap = useMemo(
+    () => new Map((servicesQuery.data?.data ?? []).map((service) => [service.id, service] as const)),
+    [servicesQuery.data?.data],
+  )
+  const teamMap = useMemo(
+    () => new Map((teamsQuery.data?.data ?? []).map((team) => [team.id, team] as const)),
+    [teamsQuery.data?.data],
+  )
+  const clientType = (clientTypesQuery.data?.data.items ?? []).find((item) => item.id === client?.clientTypeId)
+  const clientTypeColor = resolveColor(clientType?.color)
+  const activeContracts = clientContracts.filter((contract) => ["signed", "active"].includes(contract.status)).length
+
+  const allInstallments = useMemo(() => {
+    return clientContracts.flatMap((contract) =>
+      contract.installments.map((installment) => {
+        const override = installmentOverrides[installment.id]
+        return override ? { ...installment, ...override } : installment
+      }),
+    )
+  }, [clientContracts, installmentOverrides])
+
+  const paidInstallments = allInstallments.filter((installment) => installment.status === "paid")
+  const overdueInstallments = allInstallments.filter((installment) => installment.status === "overdue")
+  const pendingInstallments = allInstallments.filter((installment) => installment.status === "pending")
+  const totalPaid = paidInstallments.reduce(
+    (accumulator, installment) => accumulator + (installment.paidValue ?? installment.value),
+    0,
+  )
+  const totalOverdue = overdueInstallments.reduce((accumulator, installment) => accumulator + installment.value, 0)
+  const totalPending = pendingInstallments.reduce((accumulator, installment) => accumulator + installment.value, 0)
+
+  if (clientQuery.isLoading) {
+    return <Card className="p-8 text-center text-sm text-muted-foreground">Carregando cliente...</Card>
+  }
 
   if (!client) {
     return (
@@ -70,40 +181,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
     )
   }
 
-  const clientType = getClientTypeById(client.clientTypeId)
-  const clientContracts = contracts.filter((contract) => contract.clientId === client.id)
-  const activeContracts = clientContracts.filter((contract) => contract.status === "active").length
-  const clientServices = scheduledServices.filter((service) => service.clientId === client.id)
-  const attachmentsQuery = useQuery({
-    queryKey: ["client-attachments", client.id],
-    queryFn: () => getClientAttachments(client.id),
-  })
-  const clientAttachments = attachmentsQuery.data?.data ?? []
-
-  const [installmentOverrides, setInstallmentOverrides] = useState<
-    Record<string, { status: InstallmentStatus; paidDate?: Date; paidValue?: number }>
-  >({})
-
-  const allInstallments = useMemo(() => {
-    return clientContracts.flatMap((contract) =>
-      contract.installments.map((installment) => {
-        const override = installmentOverrides[installment.id]
-        return override ? { ...installment, ...override } : installment
-      }),
-    )
-  }, [clientContracts, installmentOverrides])
-
-  const paidInstallments = allInstallments.filter((installment) => installment.status === "paid")
-  const overdueInstallments = allInstallments.filter((installment) => installment.status === "overdue")
-  const pendingInstallments = allInstallments.filter((installment) => installment.status === "pending")
-  const totalPaid = paidInstallments.reduce(
-    (accumulator, installment) => accumulator + (installment.paidValue || 0),
-    0,
-  )
-  const totalOverdue = overdueInstallments.reduce((accumulator, installment) => accumulator + installment.value, 0)
-  const totalPending = pendingInstallments.reduce((accumulator, installment) => accumulator + installment.value, 0)
-
-  const getAttachmentTypeLabel = (type: ClientAttachmentType) => {
+  const getAttachmentTypeLabel = (type: ClientAttachmentRecord["type"]) => {
     switch (type) {
       case "service_na":
         return "NA"
@@ -124,7 +202,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
     return `${(size / (1024 * 1024)).toFixed(1)} MB`
   }
 
-  const setInstallmentStatus = (installmentId: string, status: InstallmentStatus) => {
+  const setInstallmentStatus = (installmentId: string, status: ContractInstallmentRecord["status"]) => {
     setInstallmentOverrides((previous) => {
       if (status === "paid") {
         const original = clientContracts
@@ -135,7 +213,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
           ...previous,
           [installmentId]: {
             status,
-            paidDate: new Date(),
+            paidDate: new Date().toISOString(),
             paidValue: value,
           },
         }
@@ -170,9 +248,9 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
           <div className="mb-3 flex items-center gap-3">
             <div
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
-              style={{ backgroundColor: `${getColorFromClass(clientType?.color || "")}1A` }}
+              style={{ backgroundColor: `${clientTypeColor}1A` }}
             >
-              <Building2 className="h-5 w-5" style={{ color: getColorFromClass(clientType?.color || "") }} />
+              <Building2 className="h-5 w-5" style={{ color: clientTypeColor }} />
             </div>
             <div className="min-w-0">
               <h3 className="truncate text-sm font-semibold">{client.companyName}</h3>
@@ -187,10 +265,10 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                 <span>{client.phone}</span>
               </div>
               <Badge
-                style={{ backgroundColor: getColorFromClass(clientType?.color || "") }}
+                style={{ backgroundColor: clientTypeColor }}
                 className="shrink-0 border-0 text-xs text-white hover:opacity-90"
               >
-                {clientType?.name}
+                {clientType?.name ?? "Cliente"}
               </Badge>
             </div>
 
@@ -336,7 +414,9 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                   <TableRow>
                     <TableCell className="text-muted-foreground">Tipo</TableCell>
                     <TableCell>
-                      <Badge className={`${clientType?.color} text-white`}>{clientType?.name}</Badge>
+                      <Badge className="border-0 text-white" style={{ backgroundColor: clientTypeColor }}>
+                        {clientType?.name ?? "Cliente"}
+                      </Badge>
                     </TableCell>
                   </TableRow>
                 </TableBody>
@@ -415,7 +495,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                     <TableCell>
                       <Badge
                         className={
-                          contract.status === "active"
+                          ["signed", "active"].includes(contract.status)
                             ? "bg-green-100 text-green-700"
                             : contract.status === "pending_signature"
                               ? "bg-amber-100 text-amber-700"
@@ -432,7 +512,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                                         : "bg-gray-100 text-gray-600"
                         }
                       >
-                        {contract.status === "active"
+                        {["signed", "active"].includes(contract.status)
                           ? "Assinado"
                           : contract.status === "pending_signature"
                             ? "Aguardando assinatura"
@@ -567,16 +647,16 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                 {clientServices
                   .filter((service) => service.status === "completed")
                   .map((service) => {
-                    const serviceType = getServiceTypeById(service.serviceTypeId)
-                    const team = getTeamById(service.teamIds[0])
+                    const serviceType = serviceTypeMap.get(service.serviceTypeId)
+                    const team = service.teams[0] ?? (service.teamId ? teamMap.get(service.teamId) : undefined)
 
                     return (
                       <TableRow key={service.id}>
                         <TableCell>
-                          <p className="font-medium">{serviceType?.name}</p>
+                          <p className="font-medium">{serviceType?.name ?? service.serviceTypeName}</p>
                         </TableCell>
                         <TableCell className="hidden md:table-cell">{team?.name}</TableCell>
-                        <TableCell className="text-sm">{formatDate(service.completedAt || service.scheduledDate)}</TableCell>
+                        <TableCell className="text-sm">{formatDate(service.date)}</TableCell>
                         <TableCell>
                           <Badge variant="default">
                             <CheckCircle className="mr-1 h-3 w-3" />
@@ -614,32 +694,32 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
               </TableHeader>
               <TableBody>
                 {clientServices
-                  .filter((service) => service.status === "scheduled" || service.status === "in_progress")
+                  .filter((service) => ["draft", "scheduled", "in_progress", "rescheduled"].includes(service.status))
                   .map((service) => {
-                    const serviceType = getServiceTypeById(service.serviceTypeId)
-                    const team = getTeamById(service.teamIds[0])
+                    const serviceType = serviceTypeMap.get(service.serviceTypeId)
+                    const team = service.teams[0] ?? (service.teamId ? teamMap.get(service.teamId) : undefined)
 
                     return (
                       <TableRow key={service.id}>
                         <TableCell>
                           <div className="flex items-center gap-2">
-                            <p className="font-medium">{serviceType?.name}</p>
+                            <p className="font-medium">{serviceType?.name ?? service.serviceTypeName}</p>
                             {service.isEmergency ? <AlertTriangle className="h-4 w-4 text-destructive" /> : null}
                           </div>
                         </TableCell>
                         <TableCell className="hidden md:table-cell">{team?.name}</TableCell>
-                        <TableCell className="text-sm">{formatDate(service.scheduledDate)}</TableCell>
-                        <TableCell className="text-sm">{service.scheduledTime || "08:00"}</TableCell>
+                        <TableCell className="text-sm">{formatDate(service.date)}</TableCell>
+                        <TableCell className="text-sm">{service.time || "08:00"}</TableCell>
                         <TableCell>
                           <Badge variant={service.status === "in_progress" ? "default" : "secondary"}>
-                            {service.status === "in_progress" ? "Em andamento" : "Agendado"}
+                            {getScheduleStatusLabel(service.status)}
                           </Badge>
                         </TableCell>
                       </TableRow>
                     )
                   })}
 
-                {clientServices.filter((service) => service.status === "scheduled" || service.status === "in_progress").length === 0 ? (
+                {clientServices.filter((service) => ["draft", "scheduled", "in_progress", "rescheduled"].includes(service.status)).length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={5} className="py-8 text-center">
                       <Calendar className="mx-auto mb-2 h-8 w-8 text-muted-foreground" />
@@ -684,7 +764,13 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                       </div>
                     </TableCell>
                     <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
-                      {attachment.source === "agenda" ? "Agenda" : attachment.source === "ai" ? "IA" : "Manual"}
+                      {attachment.source === "agenda"
+                        ? "Agenda"
+                        : attachment.source === "contracts"
+                          ? "Contratos"
+                          : attachment.source === "ai"
+                            ? "IA"
+                            : "Manual"}
                     </TableCell>
                     <TableCell className="hidden md:table-cell text-sm">
                       {new Date(attachment.uploadedAt).toLocaleDateString("pt-BR")}

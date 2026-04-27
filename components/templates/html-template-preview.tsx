@@ -7,6 +7,7 @@ type HtmlTemplatePreviewProps = {
   title?: string
   mode?: "paged" | "single-page"
   templateKind?: TemplateKind
+  watermarkImageUrl?: string
 }
 
 function getSinglePageCss(templateKind: Exclude<TemplateKind, "contract">) {
@@ -109,6 +110,7 @@ export function HtmlTemplatePreview({
   html,
   mode = "paged",
   templateKind = "contract",
+  watermarkImageUrl,
 }: HtmlTemplatePreviewProps) {
   const safeHtml = html.trim() || "<p></p>"
 
@@ -119,7 +121,7 @@ export function HtmlTemplatePreview({
       <div className="h-full min-h-0 overflow-auto rounded-lg border bg-muted/20 p-4">
         <style>{getSinglePageCss(singlePageKind)}</style>
         <div className="single-template-page" data-kind={singlePageKind}>
-          <img className="single-template-background" src="/template-assets/marca-dagua-real.jpg" alt="" />
+          {watermarkImageUrl ? <img className="single-template-background" src={watermarkImageUrl} alt="" /> : null}
           <div className="single-template-body" dangerouslySetInnerHTML={{ __html: safeHtml }} />
         </div>
       </div>

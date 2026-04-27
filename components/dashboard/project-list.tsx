@@ -28,7 +28,7 @@ export function ClientList() {
         {recentClients.map((client, index) => {
           const clientType = getClientTypeById(client.clientTypeId)
           const clientContracts = contracts.filter(c => c.clientId === client.id)
-          const activeContracts = clientContracts.filter(c => c.status === "active").length
+          const activeContracts = clientContracts.filter(c => ["signed", "active"].includes(c.status)).length
           
           return (
             <Link 

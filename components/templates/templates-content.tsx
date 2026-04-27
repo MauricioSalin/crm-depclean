@@ -1,26 +1,27 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Braces, Download, Edit, Eye, FileText, PenTool, Search, Trash2, Upload } from "lucide-react"
+import { Braces, Download, Edit, Eye, FileText, ImageIcon, PenTool, Plus, Search, Trash2, Upload, X } from "lucide-react"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
+import { toast as sonnerToast } from "sonner"
 
 import { DocxTemplateEditor, type DocxTemplateEditorRef } from "@/components/templates/docx-template-editor"
 import {
   getTemplateVariableGroups,
-  type TemplateVariable,
 } from "@/components/templates/template-variables"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
+import { DataPagination } from "@/components/ui/data-pagination"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { toast } from "@/components/ui/use-toast"
 import { listClients, type ClientRecord, type ClientUnitRecord } from "@/lib/api/clients"
 import { listContracts, type ContractRecord } from "@/lib/api/contracts"
 import { listEmployees } from "@/lib/api/employees"
@@ -29,13 +30,16 @@ import { listServices, type ServiceRecord } from "@/lib/api/services"
 import {
   createTemplate,
   deleteTemplate,
+  getTemplateById,
   listTemplates,
   type TemplateFormat,
   type TemplateKind,
   type TemplateRecord,
   updateTemplate,
   uploadTemplateBaseFile,
+  uploadTemplateWatermarkFile,
 } from "@/lib/api/templates"
+import { buildApiFileUrl } from "@/lib/api/client"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 
 export type ContractTemplate = TemplateRecord
@@ -79,6 +83,7 @@ export interface EditorState {
   isEditing: boolean
   name: string
   canSave: boolean
+  isSaving: boolean
   onSave: () => void
   onCancel: () => void
 }
@@ -91,9 +96,17 @@ type TemplateFormState = {
   html: string
   signerId: string
   isActive: boolean
+  watermarkFileName: string
+  watermarkFileUrl: string
+  informativeSendDaysBefore: number
+  certificateSendDaysAfter: number
 }
 
 type TemplateEditorTab = "editor" | "preview"
+
+function getTemplateEditorTab(value: string | null): TemplateEditorTab {
+  return value === "preview" ? "preview" : "editor"
+}
 
 interface TemplatesContentProps {
   kind: TemplateKind
@@ -104,6 +117,23 @@ interface TemplatesContentProps {
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Não foi possível concluir a operação."
+}
+
+function notify({
+  title,
+  description,
+  variant,
+}: {
+  title: string
+  description?: string
+  variant?: "destructive"
+}) {
+  if (variant === "destructive") {
+    sonnerToast.error(title, { description })
+    return
+  }
+
+  sonnerToast.success(title, { description })
 }
 
 function formatDate(value?: string | Date | null) {
@@ -317,20 +347,29 @@ function buildPreviewVariables(params: {
 }
 
 export function TemplatesContent({ kind, openImport, onImportChange, onEditorStateChange }: TemplatesContentProps) {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const queryClient = useQueryClient()
   const config = TEMPLATE_CONFIG[kind]
   const docxEditorRef = useRef<DocxTemplateEditorRef | null>(null)
+  const closingEditorRef = useRef(false)
+  const routeTemplateId = searchParams.get("template")
+  const routeTemplateMode = searchParams.get("templateMode")
+  const routeEditorTab = getTemplateEditorTab(searchParams.get("view"))
   const [searchTerm, setSearchTerm] = useUrlQueryState(config.searchKey)
   const [editingTemplate, setEditingTemplate] = useState<TemplateRecord | null>(null)
   const [isEditorOpen, setIsEditorOpen] = useState(false)
   const [isImportOpen, setIsImportOpen] = useState(false)
   const [editorTab, setEditorTab] = useState<TemplateEditorTab>("editor")
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
   const [pendingDelete, setPendingDelete] = useState<{ id: string; label: string } | null>(null)
   const [previewClientId, setPreviewClientId] = useState("")
   const [previewDocumentId, setPreviewDocumentId] = useState("")
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false)
-  const [selectedVariable, setSelectedVariable] = useState<TemplateVariable | null>(null)
-  const [selectedVariablePath, setSelectedVariablePath] = useState("")
+  const [selectedWatermarkFile, setSelectedWatermarkFile] = useState<File | null>(null)
+  const [selectedWatermarkPreviewUrl, setSelectedWatermarkPreviewUrl] = useState("")
 
   const [formData, setFormData] = useState<TemplateFormState>({
     name: "",
@@ -340,6 +379,10 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
     html: "",
     signerId: "",
     isActive: true,
+    watermarkFileName: "",
+    watermarkFileUrl: "",
+    informativeSendDaysBefore: 1,
+    certificateSendDaysAfter: 0,
   })
 
   const templatesQuery = useQuery({
@@ -377,12 +420,27 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
   })
 
   const templates = templatesQuery.data?.data ?? []
+  const totalPages = Math.max(1, Math.ceil(templates.length / pageSize))
+  const paginatedTemplates = useMemo(() => {
+    const start = (currentPage - 1) * pageSize
+    return templates.slice(start, start + pageSize)
+  }, [currentPage, pageSize, templates])
+  const routeTemplateFromList = routeTemplateId ? templates.find((template) => template.id === routeTemplateId) : null
+
+  const routeTemplateQuery = useQuery({
+    enabled: Boolean(routeTemplateId && !routeTemplateFromList),
+    queryKey: ["template", routeTemplateId],
+    queryFn: () => getTemplateById(routeTemplateId ?? ""),
+  })
+
+  const routeTemplate = routeTemplateFromList ?? routeTemplateQuery.data?.data ?? null
   const employees = employeesQuery.data?.data ?? []
   const clients = clientsQuery.data?.data ?? []
   const contracts = contractsQuery.data?.data ?? []
   const schedules = schedulesQuery.data?.data ?? []
   const services = servicesQuery.data?.data ?? []
   const variableGroups = useMemo(() => getTemplateVariableGroups(kind), [kind])
+  const watermarkImageUrl = selectedWatermarkPreviewUrl || (formData.watermarkFileUrl ? buildApiFileUrl(formData.watermarkFileUrl) : "")
 
   const previewClient = clients.find((client) => client.id === previewClientId)
   const previewContracts = contracts.filter((contract) => contract.clientId === previewClientId)
@@ -411,15 +469,42 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
     servicesQuery.dataUpdatedAt,
   ].join(":")
 
+  const replaceRouteParams = useCallback(
+    (updates: Record<string, string | null>) => {
+      const params = new URLSearchParams(searchParams.toString())
+
+      Object.entries(updates).forEach(([key, value]) => {
+        if (value) {
+          params.set(key, value)
+        } else {
+          params.delete(key)
+        }
+      })
+
+      const query = params.toString()
+      router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false })
+    },
+    [pathname, router, searchParams],
+  )
+
+  useEffect(() => {
+    return () => {
+      if (selectedWatermarkPreviewUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(selectedWatermarkPreviewUrl)
+      }
+    }
+  }, [selectedWatermarkPreviewUrl])
+
   useEffect(() => {
     setEditingTemplate(null)
     setIsEditorOpen(false)
     setIsImportOpen(false)
     setEditorTab("editor")
+    setCurrentPage(1)
     setPreviewClientId("")
     setPreviewDocumentId("")
-    setSelectedVariable(null)
-    setSelectedVariablePath("")
+    setSelectedWatermarkFile(null)
+    setSelectedWatermarkPreviewUrl("")
     setFormData({
       name: "",
       description: "",
@@ -428,17 +513,56 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
       html: "",
       signerId: "",
       isActive: true,
+      watermarkFileName: "",
+      watermarkFileUrl: "",
+      informativeSendDaysBefore: 1,
+      certificateSendDaysAfter: 0,
     })
   }, [kind])
+
+  useEffect(() => {
+    setCurrentPage((page) => Math.min(page, totalPages))
+  }, [totalPages])
+
+  useEffect(() => {
+    if (closingEditorRef.current) {
+      if (!routeTemplateId && routeTemplateMode !== "new") {
+        closingEditorRef.current = false
+      }
+
+      return
+    }
+
+    if (routeTemplateId) {
+      if (!routeTemplate || routeTemplate.kind !== kind) return
+
+      if (isEditorOpen && editingTemplate?.id === routeTemplate.id) {
+        setEditorTab((current) => (current === routeEditorTab ? current : routeEditorTab))
+        return
+      }
+
+      openTemplateEditor(routeTemplate, routeEditorTab)
+      return
+    }
+
+    if (routeTemplateMode === "new") {
+      if (isEditorOpen && !editingTemplate) {
+        setEditorTab((current) => (current === routeEditorTab ? current : routeEditorTab))
+        return
+      }
+
+      openNewTemplateEditor(routeEditorTab)
+    }
+  }, [editingTemplate, isEditorOpen, kind, routeEditorTab, routeTemplate, routeTemplateId, routeTemplateMode])
 
   useEffect(() => {
     setPreviewDocumentId("")
   }, [kind, previewClientId])
 
-  useEffect(() => {
-    if (!openImport) return
-
+  function prepareNewTemplateForm() {
     setEditingTemplate(null)
+    setSelectedWatermarkFile(null)
+    setSelectedWatermarkPreviewUrl("")
     setFormData({
       name: "",
       description: "",
@@ -447,10 +571,25 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
       html: "",
       signerId: "",
       isActive: true,
+      watermarkFileName: "",
+      watermarkFileUrl: "",
+      informativeSendDaysBefore: 1,
+      certificateSendDaysAfter: 0,
     })
+  }
+
+  useEffect(() => {
+    if (!openImport) return
+
+    prepareNewTemplateForm()
     setIsImportOpen(true)
     onImportChange?.(false)
   }, [onImportChange, openImport])
+
+  function handleOpenImportDialog() {
+    prepareNewTemplateForm()
+    setIsImportOpen(true)
+  }
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -469,26 +608,51 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
         signerId: config.requiresSigner ? formData.signerId : "",
         baseFileName: docxFile.name,
         isActive: formData.isActive,
+        watermarkFileName: formData.watermarkFileName,
+        informativeSendDaysBefore: kind === "informative" ? formData.informativeSendDaysBefore : 0,
+        certificateSendDaysAfter: kind === "certificate" ? formData.certificateSendDaysAfter : 0,
       }
 
-      const template = editingTemplate
+      let template = editingTemplate
         ? (await updateTemplate(editingTemplate.id, payload)).data
         : (await createTemplate(payload)).data
+
+      if (selectedWatermarkFile) {
+        template = (await uploadTemplateWatermarkFile(template.id, selectedWatermarkFile)).data
+      }
 
       const uploadResponse = await uploadTemplateBaseFile(template.id, docxFile)
       return uploadResponse.data
     },
-    onSuccess: () => {
-      toast({
+    onSuccess: (savedTemplate) => {
+      notify({
         title: editingTemplate ? "Template atualizado" : "Template criado",
         description: "O template foi salvo com sucesso.",
       })
       queryClient.invalidateQueries({ queryKey: ["templates"] })
-      setIsEditorOpen(false)
-      setEditingTemplate(null)
+      setEditingTemplate(savedTemplate)
+      setFormData((current) => ({
+        ...current,
+        name: savedTemplate.name,
+        description: savedTemplate.description,
+        baseFileName: savedTemplate.baseFileName || current.baseFileName,
+        format: savedTemplate.format || "docx",
+        html: savedTemplate.html || "",
+        signerId: savedTemplate.signerId || "",
+        isActive: savedTemplate.isActive,
+        watermarkFileName: savedTemplate.watermarkFileName || "",
+        watermarkFileUrl: savedTemplate.watermarkFileUrl || "",
+      }))
+      setSelectedWatermarkFile(null)
+      setSelectedWatermarkPreviewUrl("")
+      replaceRouteParams({
+        template: savedTemplate.id,
+        templateMode: null,
+        view: editorTab,
+      })
     },
     onError: (error) => {
-      toast({
+      notify({
         title: "Erro ao salvar template",
         description: getErrorMessage(error),
         variant: "destructive",
@@ -499,7 +663,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
   const deleteMutation = useMutation({
     mutationFn: deleteTemplate,
     onSuccess: () => {
-      toast({
+      notify({
         title: "Template excluído",
         description: "O template foi removido com sucesso.",
       })
@@ -520,14 +684,18 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
       isOpen: isEditorOpen,
       isEditing: Boolean(editingTemplate),
       name: formData.name,
-      canSave: Boolean(formData.name.trim() && (!config.requiresSigner || formData.signerId)),
+      canSave: Boolean(formData.name.trim() && (!config.requiresSigner || formData.signerId)) && !saveMutation.isPending,
+      isSaving: saveMutation.isPending,
       onSave: handleSave,
       onCancel: handleCancel,
     })
-  }, [config.requiresSigner, editingTemplate, formData.name, formData.signerId, isEditorOpen, onEditorStateChange])
+  })
 
-  function handleEdit(template: TemplateRecord) {
+  function openTemplateEditor(template: TemplateRecord, nextTab: TemplateEditorTab = "editor") {
+    closingEditorRef.current = false
     setEditingTemplate(template)
+    setSelectedWatermarkFile(null)
+    setSelectedWatermarkPreviewUrl("")
     setFormData({
       name: template.name,
       description: template.description,
@@ -536,29 +704,66 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
       html: template.html || "",
       signerId: template.signerId,
       isActive: template.isActive,
+      watermarkFileName: template.watermarkFileName || "",
+      watermarkFileUrl: template.watermarkFileUrl || "",
+      informativeSendDaysBefore: template.informativeSendDaysBefore ?? 1,
+      certificateSendDaysAfter: template.certificateSendDaysAfter ?? 0,
     })
-    setEditorTab("editor")
+    setEditorTab(nextTab)
     setPreviewClientId("")
     setPreviewDocumentId("")
-    setSelectedVariable(null)
-    setSelectedVariablePath("")
     setIsEditorOpen(true)
+  }
+
+  function openNewTemplateEditor(nextTab: TemplateEditorTab = "editor") {
+    closingEditorRef.current = false
+    setEditingTemplate(null)
+    setSelectedWatermarkFile(null)
+    setSelectedWatermarkPreviewUrl("")
+    setFormData({
+      name: "",
+      description: "",
+      baseFileName: "",
+      format: "docx",
+      html: "",
+      signerId: "",
+      isActive: true,
+      watermarkFileName: "",
+      watermarkFileUrl: "",
+      informativeSendDaysBefore: 1,
+      certificateSendDaysAfter: 0,
+    })
+    setEditorTab(nextTab)
+    setPreviewClientId("")
+    setPreviewDocumentId("")
+    setIsEditorOpen(true)
+  }
+
+  function handleEdit(template: TemplateRecord) {
+    openTemplateEditor(template, "editor")
+    replaceRouteParams({
+      template: template.id,
+      templateMode: null,
+      view: "editor",
+    })
   }
 
   function handleImportSubmit(event: React.FormEvent) {
     event.preventDefault()
     setIsImportOpen(false)
-    setEditorTab("editor")
-    setPreviewClientId("")
-    setPreviewDocumentId("")
-    setSelectedVariable(null)
-    setSelectedVariablePath("")
-    setIsEditorOpen(true)
+    openNewTemplateEditor("editor")
+    replaceRouteParams({
+      template: null,
+      templateMode: "new",
+      view: "editor",
+    })
   }
 
   function handleSave() {
+    if (saveMutation.isPending) return
+
     if (!formData.name.trim() || (config.requiresSigner && !formData.signerId)) {
-      toast({
+      notify({
         title: "Campos obrigatórios",
         description: config.requiresSigner
           ? "Preencha nome e assinante antes de salvar."
@@ -567,24 +772,64 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
       return
     }
 
-    saveMutation.mutate()
+    const loadingToast = sonnerToast.loading("Salvando template...", {
+      description: "Gerando o DOCX atual e enviando para a API.",
+    })
+
+    saveMutation.mutate(undefined, {
+      onSettled: () => sonnerToast.dismiss(loadingToast),
+    })
   }
 
   function handleCancel() {
+    closingEditorRef.current = true
     setIsEditorOpen(false)
     setEditingTemplate(null)
+    replaceRouteParams({
+      tab: kind,
+      template: null,
+      templateMode: null,
+      view: null,
+    })
   }
 
-  function handleInsertVariable(variable: TemplateVariable) {
+  function handleEditorTabChange(nextTab: TemplateEditorTab) {
+    if (nextTab !== "preview" || editorTab === "preview") {
+      setEditorTab(nextTab)
+      replaceRouteParams({ view: nextTab })
+      return
+    }
+
+    const previewPromise = docxEditorRef.current?.refreshPreview()
+    if (!previewPromise) {
+      setEditorTab("preview")
+      replaceRouteParams({ view: "preview" })
+      return
+    }
+
+    void previewPromise
+      .then(() => {
+        setEditorTab("preview")
+        replaceRouteParams({ view: "preview" })
+      })
+      .catch((error) => {
+        notify({
+          title: "Não foi possível atualizar a prévia",
+          description: getErrorMessage(error),
+          variant: "destructive",
+        })
+      })
+  }
+
+  function handleInsertVariable(path: string) {
     try {
-      const path = selectedVariable?.path === variable.path ? selectedVariablePath.trim() || variable.path : variable.path
       docxEditorRef.current?.insertVariable(path)
-      toast({
+      notify({
         title: "Variável inserida",
         description: path,
       })
     } catch (error) {
-      toast({
+      notify({
         title: "Não foi possível inserir a variável",
         description: getErrorMessage(error),
         variant: "destructive",
@@ -592,21 +837,43 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
     }
   }
 
-  function handleSelectVariable(variable: TemplateVariable) {
-    setSelectedVariable(variable)
-    setSelectedVariablePath(variable.path)
+  function handleSelectVariable(path: string) {
+    handleInsertVariable(path)
   }
 
-  function handleSelectVariablePath(path: string) {
-    const variable =
-      variableGroups.flatMap((group) => group.variables).find((candidate) => candidate.path === path) ??
-      ({
-        label: "Variável do documento",
-        path,
-      } satisfies TemplateVariable)
+  function handleSelectVariablePath(_path: string) {}
 
-    setSelectedVariable(variable)
-    setSelectedVariablePath(path)
+  function handleWatermarkFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    event.target.value = ""
+
+    if (!file) return
+
+    if (!file.type.startsWith("image/")) {
+      notify({
+        title: "Imagem inválida",
+        description: "Selecione uma imagem PNG, JPG ou WEBP.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setSelectedWatermarkFile(file)
+    setSelectedWatermarkPreviewUrl(URL.createObjectURL(file))
+    setFormData((current) => ({
+      ...current,
+      watermarkFileName: file.name,
+    }))
+  }
+
+  function handleRemoveWatermark() {
+    setSelectedWatermarkFile(null)
+    setSelectedWatermarkPreviewUrl("")
+    setFormData((current) => ({
+      ...current,
+      watermarkFileName: "",
+      watermarkFileUrl: "",
+    }))
   }
 
   async function handleGeneratePreviewPdf() {
@@ -614,12 +881,12 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
       setIsGeneratingPdf(true)
       const file = await docxEditorRef.current?.generatePreviewPdf()
 
-      toast({
+      notify({
         title: "PDF gerado para teste",
         description: file ? `Arquivo ${file.name} baixado com a prévia atual.` : "A prévia ainda não carregou.",
       })
     } catch (error) {
-      toast({
+      notify({
         title: "Erro ao gerar PDF",
         description: getErrorMessage(error),
         variant: "destructive",
@@ -633,11 +900,11 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
 
   if (isEditorOpen) {
     return (
-      <div className="grid h-full min-h-0 flex-1 gap-4 overflow-hidden xl:grid-cols-[minmax(0,1fr)_360px] 2xl:grid-cols-[minmax(0,1fr)_400px]">
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_360px] 2xl:grid-cols-[minmax(0,1fr)_400px]">
         <Tabs
           value={editorTab}
-          onValueChange={(value) => setEditorTab(value as TemplateEditorTab)}
-          className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden"
+          onValueChange={(value) => handleEditorTabChange(value as TemplateEditorTab)}
+          className="flex h-[calc(100dvh-170px)] min-h-[760px] min-w-0 flex-col"
         >
           <TabsList className="mb-3 shrink-0">
             <TabsTrigger value="editor" className="gap-1.5">
@@ -668,15 +935,16 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
             templateFormat={formData.format}
             templateId={editingTemplate?.id}
             templateName={formData.name || config.label}
+            watermarkImageUrl={watermarkImageUrl}
           />
 
         </Tabs>
 
-        <Card className="h-full min-h-0 overflow-hidden xl:sticky xl:top-4 xl:mt-[55px]">
-          <CardContent className="flex h-full min-h-0 flex-col gap-4 overflow-hidden pt-4">
+        <Card className="h-[calc(100dvh-170px)] min-h-[760px] overflow-hidden xl:sticky xl:top-4 xl:mt-[55px]">
+          <CardContent className="flex h-full min-h-0 flex-col gap-4 overflow-hidden px-0 pt-4">
             {editorTab === "preview" ? (
               <>
-                <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+                <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 pr-8 pb-1">
                 <div>
                   <h3 className="text-base font-semibold">Dados da prévia</h3>
                   <p className="text-sm text-muted-foreground">
@@ -772,7 +1040,55 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
               </>
             ) : (
               <>
-              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 pr-8 pb-1">
+              <div className="space-y-2">
+                <Label htmlFor="tpl-watermark" className="flex items-center gap-1.5">
+                  <ImageIcon className="h-3.5 w-3.5 text-muted-foreground" />
+                  Marca d'água
+                </Label>
+                <div className="space-y-3">
+                  {watermarkImageUrl ? (
+                    <div className="overflow-hidden rounded-lg border bg-muted/40">
+                      <img
+                        src={watermarkImageUrl}
+                        alt="Prévia da marca d'água"
+                        className="h-32 w-full object-contain"
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex h-32 items-center justify-center rounded-lg border border-dashed bg-muted/30 px-4 text-center text-sm text-muted-foreground">
+                      Nenhuma imagem selecionada.
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap gap-2">
+                    <Button type="button" variant="outline" size="sm" asChild>
+                      <label htmlFor="tpl-watermark">
+                        <Upload className="h-4 w-4" />
+                        Escolher imagem
+                      </label>
+                    </Button>
+                    {watermarkImageUrl ? (
+                      <Button type="button" variant="ghost" size="sm" onClick={handleRemoveWatermark}>
+                        <X className="h-4 w-4" />
+                        Remover
+                      </Button>
+                    ) : null}
+                  </div>
+
+                  <Input
+                    id="tpl-watermark"
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    className="hidden"
+                    onChange={handleWatermarkFileChange}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Resolução recomendada: 1414px x 2000px.
+                  </p>
+                </div>
+              </div>
+
               <div className="space-y-2">
                 <Label htmlFor="tpl-name">Nome do Template</Label>
                 <Input
@@ -793,6 +1109,42 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
                   placeholder="Breve descrição"
                 />
               </div>
+
+              {kind === "informative" ? (
+                <div className="space-y-2">
+                  <Label htmlFor="tpl-informative-days">Enviar informativo quantos dias antes?</Label>
+                  <Input
+                    id="tpl-informative-days"
+                    type="number"
+                    min={0}
+                    value={formData.informativeSendDaysBefore}
+                    onChange={(event) =>
+                      setFormData((current) => ({
+                        ...current,
+                        informativeSendDaysBefore: Math.max(0, Number.parseInt(event.target.value, 10) || 0),
+                      }))
+                    }
+                  />
+                </div>
+              ) : null}
+
+              {kind === "certificate" ? (
+                <div className="space-y-2">
+                  <Label htmlFor="tpl-certificate-days">Gerar/enviar certificado quantos dias depois?</Label>
+                  <Input
+                    id="tpl-certificate-days"
+                    type="number"
+                    min={0}
+                    value={formData.certificateSendDaysAfter}
+                    onChange={(event) =>
+                      setFormData((current) => ({
+                        ...current,
+                        certificateSendDaysAfter: Math.max(0, Number.parseInt(event.target.value, 10) || 0),
+                      }))
+                    }
+                  />
+                </div>
+              ) : null}
 
               {config.requiresSigner ? (
                 <div className="space-y-2">
@@ -836,18 +1188,20 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
                 </Select>
               </div>
 
-              <div className="space-y-2 border-t pt-4">
+              <div className="space-y-2">
                 <Label className="flex items-center gap-2">
                   <Braces className="h-4 w-4 text-primary" />
                   Variáveis do template
                 </Label>
-                <Accordion type="single" collapsible className="max-h-72 overflow-y-auto rounded-xl border bg-background px-2">
+                <Accordion type="single" collapsible className="rounded-xl border bg-background px-2">
                   {variableGroups.map((group) => (
                     <AccordionItem key={group.id} value={group.id}>
-                      <AccordionTrigger className="py-3 hover:no-underline">
-                        <span>{group.label}</span>
-                        <span className="mr-2 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-                          {group.variables.length}
+                      <AccordionTrigger className="items-center py-3 hover:no-underline">
+                        <span className="flex min-w-0 flex-1 items-center gap-3">
+                          <span className="truncate">{group.label}</span>
+                          <span className="ml-auto min-w-7 rounded-full bg-muted px-2 py-0.5 text-center text-xs text-muted-foreground">
+                            {group.variables.length}
+                          </span>
                         </span>
                       </AccordionTrigger>
                       <AccordionContent className="space-y-2 pb-3">
@@ -855,10 +1209,8 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
                           <button
                             key={variable.path}
                             type="button"
-                            className={`w-full rounded-xl border px-3 py-2 text-left transition hover:border-primary/50 hover:bg-primary/5 ${
-                              selectedVariable?.path === variable.path ? "border-primary/60 bg-primary/10" : "bg-card"
-                            }`}
-                            onClick={() => handleSelectVariable(variable)}
+                            className="w-full rounded-xl border bg-card px-3 py-2 text-left transition hover:border-primary/50 hover:bg-primary/5"
+                            onClick={() => handleSelectVariable(variable.path)}
                           >
                             <span className="block text-sm font-medium">{variable.label}</span>
                             <span className="mt-1 block truncate font-mono text-[11px] text-muted-foreground">{`{{${variable.path}}}`}</span>
@@ -869,29 +1221,8 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
                   ))}
                 </Accordion>
 
-                {selectedVariable ? (
-                  <div className="space-y-3 rounded-xl border bg-muted/25 p-3">
-                    <div>
-                      <p className="text-sm font-semibold">{selectedVariable.label}</p>
-                      <p className="text-xs text-muted-foreground">Edite o caminho se precisar de uma variável customizada.</p>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="selected-variable-path">Variável</Label>
-                      <Input
-                        id="selected-variable-path"
-                        value={selectedVariablePath}
-                        onChange={(event) => setSelectedVariablePath(event.target.value)}
-                        className="font-mono text-xs"
-                      />
-                    </div>
-                    <Button type="button" className="w-full gap-2" onClick={() => handleInsertVariable(selectedVariable)}>
-                      <Braces className="h-4 w-4" />
-                      Inserir no documento
-                    </Button>
-                  </div>
-                ) : null}
                 <p className="text-xs text-muted-foreground">
-                  Clique no ponto do documento, escolha uma variável e insira sem decorar o código manualmente.
+                  Clique no ponto do documento e escolha uma variável para inserir automaticamente.
                 </p>
               </div>
               </div>
@@ -916,6 +1247,51 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
 
           <form autoComplete="off" onSubmit={handleImportSubmit} className="space-y-4">
             <div className="space-y-2">
+              <Label htmlFor="import-watermark" className="flex items-center gap-1.5">
+                <ImageIcon className="h-3.5 w-3.5 text-muted-foreground" />
+                Marca d'água
+              </Label>
+              <div className="space-y-3">
+                {watermarkImageUrl ? (
+                  <div className="overflow-hidden rounded-lg border bg-muted/40">
+                    <img
+                      src={watermarkImageUrl}
+                      alt="Prévia da marca d'água"
+                      className="h-28 w-full object-contain"
+                    />
+                  </div>
+                ) : (
+                  <div className="flex h-28 items-center justify-center rounded-lg border border-dashed bg-muted/30 px-4 text-center text-sm text-muted-foreground">
+                    Nenhuma imagem selecionada.
+                  </div>
+                )}
+
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" variant="outline" size="sm" asChild>
+                    <label htmlFor="import-watermark">
+                      <Upload className="h-4 w-4" />
+                      Escolher imagem
+                    </label>
+                  </Button>
+                  {watermarkImageUrl ? (
+                    <Button type="button" variant="ghost" size="sm" onClick={handleRemoveWatermark}>
+                      <X className="h-4 w-4" />
+                      Remover
+                    </Button>
+                  ) : null}
+                </div>
+
+                <Input
+                  id="import-watermark"
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="hidden"
+                  onChange={handleWatermarkFileChange}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
               <Label htmlFor="import-name">Nome do Template</Label>
               <Input
                 id="import-name"
@@ -935,6 +1311,42 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
                 placeholder="Breve descrição do template"
               />
             </div>
+
+            {kind === "informative" ? (
+              <div className="space-y-2">
+                <Label htmlFor="import-informative-days">Enviar informativo quantos dias antes?</Label>
+                <Input
+                  id="import-informative-days"
+                  type="number"
+                  min={0}
+                  value={formData.informativeSendDaysBefore}
+                  onChange={(event) =>
+                    setFormData((current) => ({
+                      ...current,
+                      informativeSendDaysBefore: Math.max(0, Number.parseInt(event.target.value, 10) || 0),
+                    }))
+                  }
+                />
+              </div>
+            ) : null}
+
+            {kind === "certificate" ? (
+              <div className="space-y-2">
+                <Label htmlFor="import-certificate-days">Gerar/enviar certificado quantos dias depois?</Label>
+                <Input
+                  id="import-certificate-days"
+                  type="number"
+                  min={0}
+                  value={formData.certificateSendDaysAfter}
+                  onChange={(event) =>
+                    setFormData((current) => ({
+                      ...current,
+                      certificateSendDaysAfter: Math.max(0, Number.parseInt(event.target.value, 10) || 0),
+                    }))
+                  }
+                />
+              </div>
+            ) : null}
 
             {config.requiresSigner ? (
               <div className="space-y-2">
@@ -990,17 +1402,23 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
       />
 
       <div className="space-y-4">
-        <div className="flex flex-col gap-3 sm:flex-row">
-          <div className="relative flex-1">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="relative w-full sm:max-w-md">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder={`Buscar ${config.pluralLabel}...`}
               value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
+              onChange={(event) => {
+                setSearchTerm(event.target.value)
+                setCurrentPage(1)
+              }}
               className="pl-10"
             />
           </div>
-
+          <Button onClick={handleOpenImportDialog} className="h-9 w-full bg-primary text-primary-foreground hover:bg-primary/90 sm:w-auto">
+            <Plus className="mr-2 h-4 w-4" />
+            Novo Template
+          </Button>
         </div>
 
         <div className="overflow-x-auto rounded-md">
@@ -1015,14 +1433,14 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
               </TableRow>
             </TableHeader>
             <TableBody>
-              {templates.length === 0 ? (
+              {paginatedTemplates.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={config.requiresSigner ? 5 : 4} className="h-24 text-center">
                     Nenhum template encontrado.
                   </TableCell>
                 </TableRow>
               ) : (
-                templates.map((template) => (
+                paginatedTemplates.map((template) => (
                   <TableRow key={template.id}>
                     <TableCell>
                       <div className="flex items-center gap-3">
@@ -1083,6 +1501,18 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
             </TableBody>
           </Table>
         </div>
+
+        <DataPagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          pageSize={pageSize}
+          totalItems={templates.length}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={(size) => {
+            setPageSize(size)
+            setCurrentPage(1)
+          }}
+        />
       </div>
     </>
   )

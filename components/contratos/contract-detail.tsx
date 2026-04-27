@@ -35,8 +35,9 @@ import { toast } from "@/components/ui/use-toast"
 import { ServiceClausesDialog } from "@/components/servicos/service-clauses-dialog"
 import { buildApiFileUrl } from "@/lib/api/client"
 import { getClientById } from "@/lib/api/clients"
-import { getContractById, updateInstallment } from "@/lib/api/contracts"
+import { getContractById, sendContractToClicksign, syncContractClicksign, updateInstallment } from "@/lib/api/contracts"
 import { listEmployees } from "@/lib/api/employees"
+import { listSchedules } from "@/lib/api/schedules"
 import { listServices, type ServiceRecurrenceRuleRecord } from "@/lib/api/services"
 import { listTeams } from "@/lib/api/teams"
 import { cn } from "@/lib/utils"
@@ -72,6 +73,7 @@ const getRecurrenceLabel = (value: string) =>
 
 const getStatusBadge = (status: string) => {
   switch (status) {
+    case "signed":
     case "active":
       return <Badge className="bg-green-100 text-green-700 hover:bg-green-100">Assinado</Badge>
     case "pending_signature":
@@ -101,6 +103,42 @@ const getInstallmentStatusBadge = (status: string) => {
       return <Badge className="bg-gray-100 text-gray-700 hover:bg-gray-100">Cancelada</Badge>
     default:
       return <Badge variant="secondary">Pendente</Badge>
+  }
+}
+
+const getScheduleStatusBadge = (status: string) => {
+  switch (status) {
+    case "draft":
+      return <Badge variant="secondary">Rascunho</Badge>
+    case "scheduled":
+      return <Badge className="bg-green-100 text-green-700 hover:bg-green-100">Agendado</Badge>
+    case "in_progress":
+      return <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">Em andamento</Badge>
+    case "completed":
+      return <Badge className="bg-primary/10 text-primary hover:bg-primary/10">Concluído</Badge>
+    case "cancelled":
+      return <Badge className="bg-red-100 text-red-700 hover:bg-red-100">Cancelado</Badge>
+    case "rescheduled":
+      return <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">Reagendado</Badge>
+    default:
+      return <Badge variant="secondary">{status}</Badge>
+  }
+}
+
+const getClicksignStatusLabel = (status?: string) => {
+  switch (status) {
+    case "running":
+      return "Em assinatura"
+    case "closed":
+      return "Assinado"
+    case "send_failed":
+      return "Falha no envio"
+    case "cancelled":
+      return "Cancelado"
+    case "refused":
+      return "Recusado"
+    default:
+      return status || "Não enviado"
   }
 }
 
@@ -136,10 +174,19 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
     queryFn: () => listEmployees(""),
   })
 
+  const schedulesQuery = useQuery({
+    queryKey: ["schedules", "contract-detail", contractId],
+    queryFn: () => listSchedules({}),
+  })
+
   const client = clientQuery.data?.data
   const serviceTypes = servicesQuery.data?.data ?? []
   const teams = teamsQuery.data?.data ?? []
   const employees = employeesQuery.data?.data ?? []
+  const contractSchedules = useMemo(
+    () => (schedulesQuery.data?.data ?? []).filter((schedule) => schedule.contractId === contractId),
+    [schedulesQuery.data?.data, contractId],
+  )
 
   const serviceTypeMap = useMemo(() => new Map(serviceTypes.map((item) => [item.id, item])), [serviceTypes])
   const teamMap = useMemo(() => new Map(teams.map((item) => [item.id, item])), [teams])
@@ -215,6 +262,45 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
         description: "O status da parcela foi atualizado com sucesso.",
       })
     },
+  })
+
+  const clicksignErrorToast = (error: unknown) => {
+    const message =
+      (error as any)?.response?.data?.message ??
+      (error as Error)?.message ??
+      "Não foi possível concluir a ação no ClickSign."
+    toast({
+      title: "ClickSign",
+      description: Array.isArray(message) ? message.join(", ") : message,
+      variant: "destructive",
+    })
+  }
+
+  const sendClicksignMutation = useMutation({
+    mutationFn: () => sendContractToClicksign(contractId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["contract", contractId] })
+      await queryClient.invalidateQueries({ queryKey: ["contracts"] })
+      toast({
+        title: "Contrato enviado",
+        description: "O contrato foi enviado para assinatura no ClickSign.",
+      })
+    },
+    onError: clicksignErrorToast,
+  })
+
+  const syncClicksignMutation = useMutation({
+    mutationFn: () => syncContractClicksign(contractId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["contract", contractId] })
+      await queryClient.invalidateQueries({ queryKey: ["contracts"] })
+      await queryClient.invalidateQueries({ queryKey: ["schedules", "contract-detail", contractId] })
+      toast({
+        title: "ClickSign sincronizado",
+        description: "O status do contrato e dos agendamentos foi atualizado.",
+      })
+    },
+    onError: clicksignErrorToast,
   })
 
   if (contractQuery.isLoading) {
@@ -296,6 +382,27 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                   </a>
                 </Button>
               ) : null}
+              {contract.clicksign?.envelopeId ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => syncClicksignMutation.mutate()}
+                  disabled={syncClicksignMutation.isPending}
+                >
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Sincronizar ClickSign
+                </Button>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => sendClicksignMutation.mutate()}
+                  disabled={sendClicksignMutation.isPending}
+                >
+                  <ExternalLink className="mr-2 h-4 w-4" />
+                  Enviar ClickSign
+                </Button>
+              )}
             </div>
 
             <div>
@@ -309,6 +416,50 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
             </div>
           </div>
         </div>
+      </Card>
+
+      <Card className="p-6">
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <ExternalLink className="h-5 w-5 text-primary" />
+          <h3 className="font-semibold">ClickSign</h3>
+          <Badge variant="secondary" className="ml-auto">
+            {getClicksignStatusLabel(contract.clicksign?.status)}
+          </Badge>
+        </div>
+        <div className="grid gap-3 text-sm md:grid-cols-2">
+          <div>
+            <p className="text-muted-foreground">Envelope</p>
+            <p className="font-mono text-xs">{contract.clicksign?.envelopeId || "-"}</p>
+          </div>
+          <div>
+            <p className="text-muted-foreground">Última sincronização</p>
+            <p>{formatDate(contract.clicksign?.lastSyncedAt)}</p>
+          </div>
+        </div>
+        {contract.clicksign?.signers?.length ? (
+          <div className="mt-4 overflow-x-auto rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Signatário</TableHead>
+                  <TableHead>E-mail</TableHead>
+                  <TableHead>Papel</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {contract.clicksign.signers.map((signer) => (
+                  <TableRow key={`${signer.signerId}-${signer.email}`}>
+                    <TableCell className="font-medium">{signer.name}</TableCell>
+                    <TableCell>{signer.email}</TableCell>
+                    <TableCell>{signer.role || "-"}</TableCell>
+                    <TableCell>{getClicksignStatusLabel(signer.status)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        ) : null}
       </Card>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -408,7 +559,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
       </Card>
 
       <Tabs defaultValue="services" className="w-full">
-        <TabsList className="grid w-full grid-cols-3 gap-2 bg-transparent p-0">
+        <TabsList className="grid w-full grid-cols-2 gap-2 bg-transparent p-0 sm:grid-cols-4">
           <TabsTrigger
             onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
             value="services"
@@ -429,6 +580,13 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
             className="w-full rounded-full bg-muted px-4 py-2 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
           >
             <span className="font-semibold">Filiais ({units.length})</span>
+          </TabsTrigger>
+          <TabsTrigger
+            onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
+            value="schedule"
+            className="w-full rounded-full bg-muted px-4 py-2 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+          >
+            <span className="font-semibold">Agenda ({contractSchedules.length})</span>
           </TabsTrigger>
         </TabsList>
 
@@ -624,6 +782,56 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                           <Badge variant="outline">Filial</Badge>
                         )}
                       </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="schedule" className="mt-4">
+          <div className="overflow-x-auto rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Serviço</TableHead>
+                  <TableHead>Filial</TableHead>
+                  <TableHead>Equipe</TableHead>
+                  <TableHead>Data</TableHead>
+                  <TableHead>Horário</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {contractSchedules.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                      Nenhum agendamento vinculado a este contrato.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  contractSchedules.map((schedule) => (
+                    <TableRow key={schedule.id}>
+                      <TableCell className="font-medium">{schedule.serviceTypeName}</TableCell>
+                      <TableCell>{schedule.unitName}</TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-2">
+                          {schedule.teams.length > 0 ? (
+                            schedule.teams.map((team) => (
+                              <Badge key={team.id} variant="secondary" className="gap-2 px-3 py-1">
+                                <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: team.color }} />
+                                {team.name}
+                              </Badge>
+                            ))
+                          ) : (
+                            <span className="text-sm text-muted-foreground">Não definida</span>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>{formatDate(schedule.date)}</TableCell>
+                      <TableCell>{schedule.time}</TableCell>
+                      <TableCell>{getScheduleStatusBadge(schedule.status)}</TableCell>
                     </TableRow>
                   ))
                 )}

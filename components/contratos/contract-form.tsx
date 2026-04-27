@@ -122,6 +122,14 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
     queryKey: ["templates", "contract-form"],
     queryFn: () => listTemplates("", "contract"),
   })
+  const informativeTemplatesQuery = useQuery({
+    queryKey: ["templates", "contract-form", "informative"],
+    queryFn: () => listTemplates("", "informative"),
+  })
+  const certificateTemplatesQuery = useQuery({
+    queryKey: ["templates", "contract-form", "certificate"],
+    queryFn: () => listTemplates("", "certificate"),
+  })
   const teamsQuery = useQuery({
     queryKey: ["teams", "contract-form"],
     queryFn: () => listTeams(),
@@ -139,6 +147,8 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
   const clients = clientsQuery.data?.data ?? []
   const serviceTypes = servicesQuery.data?.data ?? []
   const templates = templatesQuery.data?.data ?? []
+  const informativeTemplates = informativeTemplatesQuery.data?.data ?? []
+  const certificateTemplates = certificateTemplatesQuery.data?.data ?? []
   const teams = teamsQuery.data?.data ?? []
   const employees = employeesQuery.data?.data ?? []
   const contract = contractQuery.data?.data
@@ -173,6 +183,11 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
 
   const [selectedClientId, setSelectedClientId] = useState(contract?.clientId || "")
   const [selectedTemplateId, setSelectedTemplateId] = useState("")
+  const [createAutomatedSchedules, setCreateAutomatedSchedules] = useState(false)
+  const [createAutomatedInformatives, setCreateAutomatedInformatives] = useState(false)
+  const [selectedInformativeTemplateId, setSelectedInformativeTemplateId] = useState("")
+  const [createAutomatedCertificates, setCreateAutomatedCertificates] = useState(false)
+  const [selectedCertificateTemplateId, setSelectedCertificateTemplateId] = useState("")
   const [startDate, setStartDate] = useState(
     contract?.startDate ? String(contract.startDate).split("T")[0] : ""
   )
@@ -218,6 +233,14 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
 
   const selectedClient = clients.find(c => c.id === selectedClientId)
   const totalValue = contractValue / 100
+  const activeInformativeTemplates = useMemo(
+    () => informativeTemplates.filter((template) => template.isActive && template.format === "docx"),
+    [informativeTemplates],
+  )
+  const activeCertificateTemplates = useMemo(
+    () => certificateTemplates.filter((template) => template.isActive && template.format === "docx"),
+    [certificateTemplates],
+  )
   const editingService = services.find(s => s.id === editingServiceId)
 
   useEffect(() => {
@@ -234,6 +257,11 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
 
     setSelectedClientId(contract.clientId ?? "")
     setSelectedTemplateId(contract.templateId ?? "")
+    setCreateAutomatedSchedules(contract.automationCreateSchedules ?? true)
+    setCreateAutomatedInformatives(contract.automationCreateInformatives ?? true)
+    setSelectedInformativeTemplateId(contract.automationInformativeTemplateId ?? "")
+    setCreateAutomatedCertificates(contract.automationCreateCertificates ?? true)
+    setSelectedCertificateTemplateId(contract.automationCertificateTemplateId ?? "")
     setStartDate(contract.startDate ? String(contract.startDate).split("T")[0] : "")
     setInstallmentsCount(contract.installmentsCount ?? 1)
     setDueDay(contract.paymentDay ?? 10)
@@ -258,6 +286,35 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
     setDraftHtml(contract.renderedHtml || "")
     setDraftInitialHtml(contract.renderedHtml || "")
   }, [contract])
+
+  useEffect(() => {
+    if (!createAutomatedSchedules) {
+      setCreateAutomatedInformatives(false)
+      setCreateAutomatedCertificates(false)
+      setSelectedInformativeTemplateId("")
+      setSelectedCertificateTemplateId("")
+    }
+  }, [createAutomatedSchedules])
+
+  useEffect(() => {
+    if (!createAutomatedInformatives) {
+      setSelectedInformativeTemplateId("")
+      return
+    }
+    if (!selectedInformativeTemplateId && activeInformativeTemplates.length > 0) {
+      setSelectedInformativeTemplateId(activeInformativeTemplates[0].id)
+    }
+  }, [activeInformativeTemplates, createAutomatedInformatives, selectedInformativeTemplateId])
+
+  useEffect(() => {
+    if (!createAutomatedCertificates) {
+      setSelectedCertificateTemplateId("")
+      return
+    }
+    if (!selectedCertificateTemplateId && activeCertificateTemplates.length > 0) {
+      setSelectedCertificateTemplateId(activeCertificateTemplates[0].id)
+    }
+  }, [activeCertificateTemplates, createAutomatedCertificates, selectedCertificateTemplateId])
 
   // Total de unidades das filiais selecionadas (para regras de recorrência)
   const selectedTotalUnitCount = useMemo(() => {
@@ -345,6 +402,11 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
   const buildContractPayload = (renderedHtml?: string): ContractPayload => ({
     clientId: selectedClientId,
     templateId: selectedTemplateId,
+    automationCreateSchedules: createAutomatedSchedules,
+    automationCreateInformatives: createAutomatedInformatives,
+    automationInformativeTemplateId: createAutomatedInformatives ? selectedInformativeTemplateId : "",
+    automationCreateCertificates: createAutomatedCertificates,
+    automationCertificateTemplateId: createAutomatedCertificates ? selectedCertificateTemplateId : "",
     unitIds: selectedUnitIds,
     totalValue,
     duration: installmentsCount,
@@ -921,6 +983,16 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
       return
     }
 
+    if (createAutomatedInformatives && !selectedInformativeTemplateId) {
+      toast.error("Selecione o template de informativo automatizado.")
+      return
+    }
+
+    if (createAutomatedCertificates && !selectedCertificateTemplateId) {
+      toast.error("Selecione o template de certificado automatizado.")
+      return
+    }
+
     if (!startDate) {
       toast.error("Preencha a data de início do contrato.")
       return
@@ -1229,15 +1301,15 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
         )}
       </Card>
 
-      {/* Template Selection */}
+      {/* Automation Settings */}
       <Card className="p-4 sm:p-6">
         <h3 className="font-semibold mb-4 flex items-center gap-2">
           <FileText className="w-5 h-5 text-primary" />
-          Template do Contrato
+          Configuração de automatização
         </h3>
-        <div className="flex flex-col md:flex-row gap-5">
+        <div className="flex flex-col xl:flex-row gap-5">
           <div className="space-y-2 md:w-[340px] shrink-0">
-            <Label>Selecionar Template *</Label>
+            <Label>Template do contrato *</Label>
             <Popover>
               <PopoverTrigger asChild>
                 <Button
@@ -1295,6 +1367,113 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
               </div>
             )
           })()}
+        </div>
+
+        <div className="mt-6 flex max-w-[520px] flex-col gap-4">
+          <div className="flex flex-col gap-3">
+            <label className={cn(
+              "flex min-h-[66px] cursor-pointer items-start gap-3 rounded-2xl border px-4 py-3 transition-colors",
+              createAutomatedSchedules ? "border-primary/30 bg-[#eef7e8]" : "border-transparent bg-[#f6faf2] hover:bg-[#eef7e8]"
+            )}>
+              <Checkbox
+                className="mt-0.5"
+                checked={createAutomatedSchedules}
+                onCheckedChange={(checked) => setCreateAutomatedSchedules(Boolean(checked))}
+              />
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold leading-5">Criar agendamentos automatizados</span>
+                <span className="block text-xs leading-5 text-muted-foreground">
+                  Agendamentos serão criados pela recorrência do contrato.
+                </span>
+              </span>
+            </label>
+
+            <label className={cn(
+              "flex min-h-[66px] items-start gap-3 rounded-2xl border px-4 py-3 transition-colors",
+              createAutomatedSchedules ? "cursor-pointer" : "cursor-not-allowed opacity-60",
+              createAutomatedInformatives ? "border-primary/30 bg-[#eef7e8]" : "border-transparent bg-[#f6faf2] hover:bg-[#eef7e8]"
+            )}>
+              <Checkbox
+                className="mt-0.5"
+                checked={createAutomatedInformatives}
+                disabled={!createAutomatedSchedules}
+                onCheckedChange={(checked) => setCreateAutomatedInformatives(Boolean(checked))}
+              />
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold leading-5">Criar informativos automatizados</span>
+                <span className="block text-xs leading-5 text-muted-foreground">
+                  Um informativo será gerado para cada agendamento.
+                </span>
+              </span>
+            </label>
+
+            <label className={cn(
+              "flex min-h-[66px] items-start gap-3 rounded-2xl border px-4 py-3 transition-colors",
+              createAutomatedSchedules ? "cursor-pointer" : "cursor-not-allowed opacity-60",
+              createAutomatedCertificates ? "border-primary/30 bg-[#eef7e8]" : "border-transparent bg-[#f6faf2] hover:bg-[#eef7e8]"
+            )}>
+              <Checkbox
+                className="mt-0.5"
+                checked={createAutomatedCertificates}
+                disabled={!createAutomatedSchedules}
+                onCheckedChange={(checked) => setCreateAutomatedCertificates(Boolean(checked))}
+              />
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold leading-5">Criar certificados automatizados</span>
+                <span className="block text-xs leading-5 text-muted-foreground">
+                  Um certificado será gerado ao concluir o atendimento.
+                </span>
+              </span>
+            </label>
+          </div>
+
+          {(createAutomatedInformatives || createAutomatedCertificates) && (
+            <div className="flex flex-col gap-4">
+              {createAutomatedInformatives && (
+                <div className="space-y-2">
+                  <Label>Template do informativo automatizado *</Label>
+                  <Select
+                    value={selectedInformativeTemplateId || undefined}
+                    onValueChange={setSelectedInformativeTemplateId}
+                    disabled={activeInformativeTemplates.length === 0}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder={activeInformativeTemplates.length > 0 ? "Selecione um template" : "Nenhum template ativo"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {activeInformativeTemplates.map((template) => (
+                        <SelectItem key={template.id} value={template.id}>
+                          {template.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {createAutomatedCertificates && (
+                <div className="space-y-2">
+                  <Label>Template do certificado automatizado *</Label>
+                  <Select
+                    value={selectedCertificateTemplateId || undefined}
+                    onValueChange={setSelectedCertificateTemplateId}
+                    disabled={activeCertificateTemplates.length === 0}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder={activeCertificateTemplates.length > 0 ? "Selecione um template" : "Nenhum template ativo"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {activeCertificateTemplates.map((template) => (
+                        <SelectItem key={template.id} value={template.id}>
+                          {template.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </Card>
 

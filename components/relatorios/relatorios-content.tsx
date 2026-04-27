@@ -341,7 +341,7 @@ export function RelatoriosContent() {
                 </div>
                 <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
                   <span className="text-muted-foreground">Contratos Ativos</span>
-                  <span className="font-medium">{contracts.filter(c => c.status === "active").length}</span>
+                  <span className="font-medium">{contracts.filter(c => ["signed", "active"].includes(c.status)).length}</span>
                 </div>
               </div>
             </CardContent>
@@ -425,7 +425,7 @@ export function RelatoriosContent() {
                     <div className="text-right">
                       <div className="font-medium">{formatCurrency(contract.totalValue)}</div>
                       <Badge className={
-                        contract.status === "active" ? "bg-green-100 text-green-700 hover:bg-green-100" :
+                        ["signed", "active"].includes(contract.status) ? "bg-green-100 text-green-700 hover:bg-green-100" :
                         contract.status === "pending_signature" ? "bg-amber-100 text-amber-700 hover:bg-amber-100" :
                         contract.status === "overdue" ? "bg-red-100 text-red-700 hover:bg-red-100" :
                         contract.status === "refused" ? "bg-orange-100 text-orange-700 hover:bg-orange-100" :
@@ -434,7 +434,7 @@ export function RelatoriosContent() {
                         contract.status === "cancelled" ? "bg-red-100 text-red-700 hover:bg-red-100" :
                         "bg-gray-100 text-gray-600 hover:bg-gray-100"
                       }>
-                        {contract.status === "active" ? "Ativo" :
+                        {["signed", "active"].includes(contract.status) ? "Assinado" :
                          contract.status === "pending_signature" ? "Pendente" :
                          contract.status === "overdue" ? "Em Atraso" :
                          contract.status === "refused" ? "Recusado" :

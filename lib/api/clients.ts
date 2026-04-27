@@ -59,6 +59,10 @@ export type ClientAttachmentRecord = {
   metadata?: {
     serviceTypeName?: string
     scheduledDate?: string
+    scheduledSendAt?: string
+    sentAt?: string
+    deliveryChannel?: string
+    deliveryStatus?: string
     startTime?: string
     endTime?: string
     cancellationReason?: string

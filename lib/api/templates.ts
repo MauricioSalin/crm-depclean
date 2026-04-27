@@ -14,6 +14,10 @@ export type TemplateRecord = {
   signerName?: string | null
   baseFileName?: string
   baseFileUrl?: string | null
+  watermarkFileName?: string
+  watermarkFileUrl?: string | null
+  informativeSendDaysBefore: number
+  certificateSendDaysAfter: number
   placeholders: string[]
   isActive: boolean
   createdAt: string
@@ -28,6 +32,9 @@ export type TemplatePayload = {
   html?: string
   signerId?: string
   baseFileName?: string
+  watermarkFileName?: string
+  informativeSendDaysBefore?: number
+  certificateSendDaysAfter?: number
   isActive?: boolean
 }
 
@@ -58,6 +65,18 @@ export async function uploadTemplateBaseFile(id: string, file: File) {
   formData.append("file", file)
 
   const response = await api.post<{ success: true; data: TemplateRecord }>(`/templates/${id}/base-file`, formData, {
+    headers: {
+      "Content-Type": "multipart/form-data",
+    },
+  })
+  return response.data
+}
+
+export async function uploadTemplateWatermarkFile(id: string, file: File) {
+  const formData = new FormData()
+  formData.append("file", file)
+
+  const response = await api.post<{ success: true; data: TemplateRecord }>(`/templates/${id}/watermark`, formData, {
     headers: {
       "Content-Type": "multipart/form-data",
     },

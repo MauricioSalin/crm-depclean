@@ -7,6 +7,25 @@ html {
   overflow-x: clip;
 }
 
+html body[data-scroll-locked] {
+  margin-right: 0 !important;
+  padding-right: 0 !important;
+}
+
+html body[data-depclean-select-open][data-scroll-locked] {
+  overflow: auto !important;
+  overflow-y: auto !important;
+  position: static !important;
+}
+
+html .right-scroll-bar-position {
+  right: 0 !important;
+}
+
+html .width-before-scroll-bar {
+  margin-right: 0 !important;
+}
+
 ::selection {
   background-color: var(--primary);
   color: var(--primary-foreground);
@@ -506,6 +525,16 @@ body.row-resize-cursor,
   min-height: 100%;
 }
 
+.docx-template-editor-shell {
+  --doc-primary: var(--primary);
+  --doc-primary-hover: color-mix(in oklch, var(--primary) 84%, black);
+  --doc-primary-light: color-mix(in oklch, var(--primary) 18%, transparent);
+  --doc-link: var(--primary);
+  isolation: isolate;
+  position: relative;
+  z-index: 0;
+}
+
 .docx-template-editor-shell--preview [data-testid="title-bar"] {
   display: none !important;
 }
@@ -525,13 +554,90 @@ body.row-resize-cursor,
   padding: 0;
 }
 
+.docx-template-editor-shell--editor [data-testid="title-bar"] [role="menubar"] > :last-child {
+  display: none !important;
+}
+
 .docx-template-editor-shell [data-testid="editor-toolbar"] {
   max-width: 100%;
   overflow-x: auto;
   overflow-y: hidden;
   border: 1px solid var(--border);
   border-radius: 14px;
-  background: white;
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+.docx-template-editor-shell [data-testid="editor-toolbar"] > div,
+.docx-template-editor-shell [data-testid="editor-toolbar"] [role="toolbar"] {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+.docx-template-editor-shell [data-testid="toolbar"],
+.docx-template-editor-shell [data-testid="formatting-bar"] {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+html body .docx-template-editor-shell [data-testid="editor-toolbar"] button:not([aria-pressed="true"]):not([class*="bg-slate-900"]):hover,
+html body .docx-template-editor-shell [data-testid="editor-toolbar"] button:not([aria-pressed="true"]):not([class*="bg-slate-900"]):focus-visible,
+html body .docx-template-editor-shell button.docx-list-button:not(.docx-list-button-active):hover,
+html body .docx-template-editor-shell button.docx-list-button:not(.docx-list-button-active):focus-visible {
+  background: #f6faf3 !important;
+  background-color: #f6faf3 !important;
+  color: #14210f !important;
+}
+
+html body .docx-template-editor-shell [data-testid="editor-toolbar"] button[aria-pressed="true"],
+html body .docx-template-editor-shell [data-testid="editor-toolbar"] button[class*="bg-slate-900"],
+html body .docx-template-editor-shell button.docx-list-button-active {
+  background: #95c11e !important;
+  background-color: #95c11e !important;
+  color: #ffffff !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+html body .docx-template-editor-shell [data-testid="editor-toolbar"] button[aria-pressed="true"]:hover,
+html body .docx-template-editor-shell [data-testid="editor-toolbar"] button[aria-pressed="true"]:focus-visible,
+html body .docx-template-editor-shell [data-testid="editor-toolbar"] button[class*="bg-slate-900"]:hover,
+html body .docx-template-editor-shell [data-testid="editor-toolbar"] button[class*="bg-slate-900"]:focus-visible,
+html body .docx-template-editor-shell button.docx-list-button-active:hover,
+html body .docx-template-editor-shell button.docx-list-button-active:focus-visible {
+  background: #7fa319 !important;
+  background-color: #7fa319 !important;
+  color: #ffffff !important;
+}
+
+html body .docx-template-editor-shell [data-testid="editor-toolbar"] button[aria-pressed="true"] svg,
+html body .docx-template-editor-shell [data-testid="editor-toolbar"] button[class*="bg-slate-900"] svg,
+html body .docx-template-editor-shell button.docx-list-button-active svg {
+  color: inherit !important;
+  fill: currentColor !important;
+}
+
+html body .docx-template-editor-shell .fixed[class*="bg-slate-900"][class*="text-white"],
+html body .fixed[class*="z-50"][class*="bg-slate-900"][class*="text-white"] {
+  background: #95c11e !important;
+  background-color: #95c11e !important;
+  color: #ffffff !important;
+}
+
+.docx-template-editor-native-tooltip {
+  position: fixed;
+  z-index: 9999;
+  transform: translateX(-50%);
+  pointer-events: none;
+  white-space: nowrap;
+  border-radius: 6px;
+  background: #95c11e;
+  color: #ffffff;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  box-shadow: 0 6px 16px rgba(20, 33, 15, 0.16);
 }
 
 .docx-template-editor-host {
@@ -547,7 +653,7 @@ body.row-resize-cursor,
 
 .docx-template-editor-shell--watermark .layout-page {
   background-color: white !important;
-  background-image: url("/template-assets/marca-dagua-real.jpg") !important;
+  background-image: var(--docx-template-watermark-image) !important;
   background-position: center center !important;
   background-repeat: no-repeat !important;
   background-size: 100% 100% !important;

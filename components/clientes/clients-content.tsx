@@ -121,7 +121,7 @@ export function ClientsContent({ viewMode, viewToggle }: ClientsContentProps) {
                 paginatedClients.map((client) => {
                   const clientType = getClientTypeById(client.clientTypeId)
                   const clientContracts = contracts.filter(c => c.clientId === client.id)
-                  const activeContracts = clientContracts.filter(c => c.status === "active").length
+                  const activeContracts = clientContracts.filter(c => ["signed", "active"].includes(c.status)).length
 
                   return (
                     <TableRow key={client.id}>
@@ -202,7 +202,7 @@ export function ClientsContent({ viewMode, viewToggle }: ClientsContentProps) {
           {paginatedClients.map((client) => {
             const clientType = getClientTypeById(client.clientTypeId)
             const clientContracts = contracts.filter(c => c.clientId === client.id)
-            const activeContracts = clientContracts.filter(c => c.status === "active").length
+            const activeContracts = clientContracts.filter(c => ["signed", "active"].includes(c.status)).length
 
             return (
               <Card key={client.id} className="overflow-hidden">

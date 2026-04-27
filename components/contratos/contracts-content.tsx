@@ -73,6 +73,7 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
 
   const getStatusBadge = (status: string) => {
     switch (status) {
+      case "signed":
       case "active":
         return <Badge className="bg-green-100 text-green-700 hover:bg-green-100">Assinado</Badge>
       case "pending_signature":
@@ -117,7 +118,7 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
           options={[
             { value: "draft", label: "Rascunho" },
             { value: "pending_signature", label: "Aguardando Assinatura" },
-            { value: "active", label: "Assinado" },
+            { value: "signed", label: "Assinado" },
             { value: "overdue", label: "Em Atraso" },
             { value: "refused", label: "Recusado" },
             { value: "expired", label: "Expirado" },

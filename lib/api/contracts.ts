@@ -15,6 +15,11 @@ export type ContractServicePayload = {
 export type ContractPayload = {
   clientId: string
   templateId: string
+  automationCreateSchedules?: boolean
+  automationCreateInformatives?: boolean
+  automationInformativeTemplateId?: string
+  automationCreateCertificates?: boolean
+  automationCertificateTemplateId?: string
   contractNumber?: string
   unitIds?: string[]
   totalValue?: number
@@ -52,6 +57,11 @@ export type ContractRecord = {
   clientCompanyName?: string | null
   templateId: string
   templateName?: string | null
+  automationCreateSchedules?: boolean
+  automationCreateInformatives?: boolean
+  automationInformativeTemplateId?: string
+  automationCreateCertificates?: boolean
+  automationCertificateTemplateId?: string
   unitIds: string[]
   totalValue: number
   duration: number
@@ -77,6 +87,24 @@ export type ContractRecord = {
   signedAt?: string
   documentUrl?: string
   documentFileName?: string
+  clicksign?: {
+    envelopeId: string
+    documentKey: string
+    documentId: string
+    webhookId: string
+    status: string
+    signers: Array<{
+      signerId: string
+      requestId: string
+      name: string
+      email: string
+      role: string
+      status: string
+      signUrl: string
+      signedAt?: string
+    }>
+    lastSyncedAt?: string
+  }
   renderedHtml: string
   notes?: string
   generatedAt?: string
@@ -115,6 +143,16 @@ export async function createContract(payload: ContractPayload) {
 
 export async function updateContract(id: string, payload: Partial<ContractPayload>) {
   const response = await api.patch<{ success: true; data: ContractRecord }>(`/contracts/${id}`, payload)
+  return response.data
+}
+
+export async function sendContractToClicksign(id: string) {
+  const response = await api.post<{ success: true; data: unknown }>(`/clicksign/contracts/${id}/send`)
+  return response.data
+}
+
+export async function syncContractClicksign(id: string) {
+  const response = await api.post<{ success: true; data: unknown }>(`/clicksign/contracts/${id}/sync`)
   return response.data
 }
 

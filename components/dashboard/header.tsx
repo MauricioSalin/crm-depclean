@@ -74,7 +74,8 @@ export function Header({ title, description, titleAddon, headerActions, actions,
 
   return (
     <>
-      <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-sm -mx-3 md:-mx-4 lg:-mx-5 px-3 md:px-4 lg:px-5 pt-4 pb-4 border-b border-transparent [&:not(:first-child)]:border-border/50">
+      <div className="h-[68px] shrink-0" aria-hidden="true" />
+      <div className="fixed inset-x-0 top-0 z-[80] border-b border-transparent bg-background/95 px-3 pb-4 pt-4 backdrop-blur-sm md:px-4 lg:left-60 lg:px-5 [&:not(:first-child)]:border-border/50">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 flex-1">
             {mounted ? <MobileNav /> : <div className="h-9 w-9 shrink-0" aria-hidden="true" />}
