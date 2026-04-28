@@ -75,21 +75,21 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
     switch (status) {
       case "signed":
       case "active":
-        return <Badge className="bg-green-100 text-green-700 hover:bg-green-100">Assinado</Badge>
+        return <Badge className="shrink-0 bg-green-100 text-green-700 hover:bg-green-100">Assinado</Badge>
       case "pending_signature":
-        return <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">Aguardando Assinatura</Badge>
+        return <Badge className="shrink-0 bg-amber-100 text-amber-700 hover:bg-amber-100">Aguardando Assinatura</Badge>
       case "overdue":
-        return <Badge className="bg-red-100 text-red-700 hover:bg-red-100">Em Atraso</Badge>
+        return <Badge className="shrink-0 bg-red-100 text-red-700 hover:bg-red-100">Em Atraso</Badge>
       case "refused":
-        return <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100">Recusado</Badge>
+        return <Badge className="shrink-0 bg-orange-100 text-orange-700 hover:bg-orange-100">Recusado</Badge>
       case "expired":
-        return <Badge className="bg-gray-100 text-gray-700 hover:bg-gray-100">Expirado</Badge>
+        return <Badge className="shrink-0 bg-gray-100 text-gray-700 hover:bg-gray-100">Expirado</Badge>
       case "deadline_expired":
-        return <Badge className="bg-purple-100 text-purple-700 hover:bg-purple-100">Prazo Expirado</Badge>
+        return <Badge className="shrink-0 bg-purple-100 text-purple-700 hover:bg-purple-100">Prazo Expirado</Badge>
       case "cancelled":
-        return <Badge className="bg-red-100 text-red-700 hover:bg-red-100">Cancelado</Badge>
+        return <Badge className="shrink-0 bg-red-100 text-red-700 hover:bg-red-100">Cancelado</Badge>
       default:
-        return <Badge variant="secondary">Rascunho</Badge>
+        return <Badge variant="secondary" className="shrink-0">Rascunho</Badge>
     }
   }
 
@@ -250,22 +250,24 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
             const progress = contract.installmentsCount > 0 ? (paidInstallments / contract.installmentsCount) * 100 : 0
 
             return (
-              <Card key={contract.id} className="overflow-hidden">
-                <CardContent className="p-4">
-                  <Link href={`/contratos/${contract.id}`}>
-                    <div className="mb-3 flex items-center gap-3">
+              <Card key={contract.id} className="h-full overflow-hidden">
+                <CardContent className="flex h-full flex-col px-4 py-3">
+                  <Link href={`/contratos/${contract.id}`} className="flex-1">
+                    <div className="mb-2 flex items-center gap-3">
                       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
                         <FileText className="h-5 w-5 text-primary" />
                       </div>
-                      <div className="min-w-0">
-                        <h3 className="truncate text-sm font-semibold">{contract.contractNumber}</h3>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-start justify-between gap-x-2 gap-y-1">
+                          <h3 className="min-w-0 flex-1 break-words text-sm font-semibold">{contract.contractNumber}</h3>
+                          {getStatusBadge(contract.status)}
+                        </div>
                         <p className="truncate text-xs text-muted-foreground">{contract.clientCompanyName}</p>
                       </div>
                     </div>
-                    <div className="space-y-3 text-sm">
-                      <div className="flex items-center justify-between">
+                    <div className="space-y-2 text-sm">
+                      <div>
                         <p className="font-medium text-foreground">{formatCurrency(contract.totalValue)}</p>
-                        {getStatusBadge(contract.status)}
                       </div>
                       <div className="flex items-center gap-1 text-muted-foreground">
                         <Calendar className="h-3 w-3" />
@@ -273,30 +275,34 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
                           {formatDate(contract.startDate)} - {formatDate(contract.endDate)}
                         </span>
                       </div>
-                      <div className="mb-2 mt-2 flex justify-between text-xs">
+                    </div>
+                  </Link>
+                  <div className="mt-auto space-y-3 pt-3">
+                    <Link href={`/contratos/${contract.id}`} className="block">
+                      <div className="mb-2 flex justify-between text-xs">
                         <span>
                           {paidInstallments}/{contract.installmentsCount} parcelas pagas
                         </span>
                         <span>{Math.round(progress)}%</span>
                       </div>
-                      <div className="mb-2 h-2 overflow-hidden rounded-full bg-muted">
+                      <div className="h-2 overflow-hidden rounded-full bg-muted">
                         <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${progress}%` }} />
                       </div>
+                    </Link>
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" className="flex-1" asChild>
+                        <Link href={`/contratos/${contract.id}/editar`}>
+                          <Edit className="mr-1 h-4 w-4" />
+                          Editar
+                        </Link>
+                      </Button>
+                      <Button size="sm" className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90" asChild>
+                        <Link href={`/contratos/${contract.id}`}>
+                          <Eye className="mr-1 h-4 w-4" />
+                          Ver
+                        </Link>
+                      </Button>
                     </div>
-                  </Link>
-                  <div className="mt-4 flex gap-2">
-                    <Button variant="outline" size="sm" className="flex-1" asChild>
-                      <Link href={`/contratos/${contract.id}/editar`}>
-                        <Edit className="mr-1 h-4 w-4" />
-                        Editar
-                      </Link>
-                    </Button>
-                    <Button size="sm" className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90" asChild>
-                      <Link href={`/contratos/${contract.id}`}>
-                        <Eye className="mr-1 h-4 w-4" />
-                        Ver
-                      </Link>
-                    </Button>
                   </div>
                 </CardContent>
               </Card>

@@ -4,12 +4,40 @@ import { ArrowUpRight, ArrowDownRight, ArrowRight, Users, DollarSign, Calendar, 
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { useState } from "react"
-import { dashboardStats, formatCurrency, teams } from "@/lib/mock-data"
+import { useQuery } from "@tanstack/react-query"
+import { getDashboardAnalytics, type DashboardStatsRecord } from "@/lib/api/analytics"
 import Link from "next/link"
 import { getColorFromClass } from "@/lib/utils"
 
-export function StatsCards() {
+const emptyStats: DashboardStatsRecord = {
+  activeClients: 0,
+  activeClientsChange: 0,
+  monthlyRevenue: 0,
+  monthlyRevenueChange: 0,
+  scheduledServices: 0,
+  scheduledServicesChange: 0,
+  completedServices: 0,
+  completedServicesChange: 0,
+  overdueInstallments: 0,
+  overdueInstallmentsValue: 0,
+  teamProductivity: [],
+}
+
+type DashboardPeriodProps = {
+  days?: number
+}
+
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value)
+}
+
+export function StatsCards({ days = 30 }: DashboardPeriodProps) {
   const [hoveredCard, setHoveredCard] = useState<number | null>(null)
+  const dashboardQuery = useQuery({
+    queryKey: ["analytics", "dashboard", days],
+    queryFn: () => getDashboardAnalytics({ days }),
+  })
+  const dashboardStats = dashboardQuery.data?.data.stats ?? emptyStats
 
   const stats = [
     {
@@ -108,7 +136,15 @@ export function StatsCards() {
   )
 }
 
-export function ProductivityCards() {
+export function ProductivityCards({ days = 30 }: DashboardPeriodProps) {
+  const dashboardQuery = useQuery({
+    queryKey: ["analytics", "dashboard", days],
+    queryFn: () => getDashboardAnalytics({ days }),
+  })
+  const dashboardData = dashboardQuery.data?.data
+  const dashboardStats = dashboardData?.stats ?? emptyStats
+  const teamColors = new Map((dashboardData?.teamsWithActivity ?? []).map((team) => [team.id, team.color] as const))
+
   return (
     <Card className="p-4 transition-all duration-500 hover:shadow-xl">
       <div className="flex items-center justify-between mb-4">
@@ -121,8 +157,14 @@ export function ProductivityCards() {
         </Link>
       </div>
       <div className="space-y-3">
-        {dashboardStats.teamProductivity.map((team) => {
-          const teamColorClass = teams.find((t) => t.id === team.teamId)?.color
+        {[...dashboardStats.teamProductivity]
+          .sort((left, right) =>
+            right.completedServices - left.completedServices ||
+            right.scheduledServices - left.scheduledServices ||
+            left.teamName.localeCompare(right.teamName),
+          )
+          .map((team) => {
+          const teamColorClass = teamColors.get(team.teamId)
           const color = getColorFromClass(teamColorClass || "bg-lime-500")
           const total = team.completedServices + team.scheduledServices
           const completedPct = total > 0 ? Math.round((team.completedServices / total) * 100) : 0

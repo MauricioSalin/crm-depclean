@@ -88,7 +88,7 @@ type ProseMirrorSelectionSnapshot = {
 }
 
 export type DocxTemplateEditorRef = {
-  generatePreviewPdf: () => Promise<File>
+  generatePreviewPdf: (options?: { download?: boolean }) => Promise<File>
   insertVariable: (path: string) => void
   saveToFile: () => Promise<File>
   refreshPreview: () => Promise<void>
@@ -113,6 +113,7 @@ interface DocxTemplateEditorProps {
   kind: TemplateKind
   onBaseFileNameChange?: (fileName: string) => void
   onVariableTokenClick?: (path: string) => void
+  applyVariablesToEditor?: boolean
   previewDataKey?: string
   previewVariables?: Record<string, unknown> | null
   templateFormat?: TemplateFormat
@@ -293,6 +294,12 @@ async function serializeDocumentModel(document: unknown) {
   return module.DocumentAgent.fromDocument(document as never).toBuffer()
 }
 
+async function waitForEditorMutationFlush() {
+  await new Promise((resolve) => window.requestAnimationFrame(resolve))
+  await new Promise((resolve) => window.requestAnimationFrame(resolve))
+  await new Promise((resolve) => window.setTimeout(resolve, 80))
+}
+
 function preloadDocxEditorFonts() {
   if (typeof document === "undefined") return Promise.resolve()
 
@@ -449,6 +456,50 @@ function escapeXml(value: string) {
     .replace(/'/g, "&apos;")
 }
 
+function stripHtml(value: string) {
+  return value
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .trim()
+}
+
+function buildDocxTableXmlFromHtml(html: string) {
+  const rowMatches = [...html.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)]
+  const rows = rowMatches
+    .map((rowMatch) =>
+      [...(rowMatch[1] ?? "").matchAll(/<t[dh]\b[^>]*>([\s\S]*?)<\/t[dh]>/gi)].map((cellMatch) =>
+        stripHtml(cellMatch[1] ?? ""),
+      ),
+    )
+    .filter((cells) => cells.length > 0)
+
+  if (rows.length === 0) {
+    return escapeXml(stripHtml(html))
+  }
+
+  const border = '<w:top w:val="single" w:sz="8" w:space="0" w:color="000000"/><w:left w:val="single" w:sz="8" w:space="0" w:color="000000"/><w:bottom w:val="single" w:sz="8" w:space="0" w:color="000000"/><w:right w:val="single" w:sz="8" w:space="0" w:color="000000"/><w:insideH w:val="single" w:sz="8" w:space="0" w:color="000000"/><w:insideV w:val="single" w:sz="8" w:space="0" w:color="000000"/>'
+  const tableRows = rows
+    .map((cells) => {
+      const tableCells = cells
+        .map(
+          (cell) =>
+            `<w:tc><w:tcPr><w:tcW w:w="4500" w:type="dxa"/></w:tcPr><w:p><w:r><w:rPr><w:b/></w:rPr><w:t xml:space="preserve">${escapeXml(cell)}</w:t></w:r></w:p></w:tc>`,
+        )
+        .join("")
+
+      return `<w:tr>${tableCells}</w:tr>`
+    })
+    .join("")
+
+  return `</w:t></w:r></w:p><w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/><w:tblBorders>${border}</w:tblBorders></w:tblPr>${tableRows}</w:tbl><w:p><w:r><w:t xml:space="preserve">`
+}
+
 function flattenPreviewVariables(value: unknown, prefix = ""): Record<string, string> {
   if (value == null) return {}
 
@@ -551,7 +602,10 @@ async function replaceDocxTemplateVariables(buffer: ArrayBuffer, variables: Reco
       for (const [path, rawValue] of Object.entries(variables)) {
         if (rawValue === "") continue
 
-        const replacement = escapeXml(rawValue).replace(/\r?\n/g, "</w:t><w:br/><w:t>")
+        const isRecurrenceTable = path === "contract.recurrenceTable" && /<table\b/i.test(rawValue)
+        const replacement = isRecurrenceTable
+          ? buildDocxTableXmlFromHtml(rawValue)
+          : escapeXml(rawValue).replace(/\r?\n/g, "</w:t><w:br/><w:t>")
         const tokens = [`{{${path}}}`, `{{ ${path} }}`]
 
         for (const token of tokens) {
@@ -596,6 +650,7 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
       kind,
       onBaseFileNameChange,
       onVariableTokenClick,
+      applyVariablesToEditor = false,
       previewDataKey,
       previewVariables,
       templateFormat,
@@ -638,7 +693,8 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
     const [nativeTooltip, setNativeTooltip] = useState<NativeTooltipState | null>(null)
 
     const defaultFileUrl = DEFAULT_DOCX_FILES[kind]
-    const loadKey = `${kind}:${templateId || "new"}`
+    const loadKey = `${kind}:${templateId || "new"}${applyVariablesToEditor ? `:${previewDataKey || ""}` : ""}`
+    const editorInitialVariables = applyVariablesToEditor ? previewVariables : null
     const documentLabel = useMemo(() => {
       const fallback = `Template de ${TEMPLATE_LABELS[kind].toLowerCase()}`
       return templateName.trim() || fallback
@@ -972,8 +1028,12 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
       }
     }, [activeTab, applyFontFamilyToSelection, rememberProseMirrorSelection, restoreProseMirrorSelection])
 
-    const applyDocumentBuffer = useCallback(async (buffer: ArrayBuffer, nextFileName: string) => {
-      const normalizedBuffer = await normalizeDocxTemplateBuffer(buffer)
+    const applyDocumentBuffer = useCallback(async (buffer: ArrayBuffer, nextFileName: string, variables?: Record<string, unknown> | null) => {
+      const filledBuffer =
+        applyVariablesToEditor && variables && Object.keys(variables).length > 0
+          ? await processDocxPreviewBuffer(buffer, variables)
+          : buffer
+      const normalizedBuffer = await normalizeDocxTemplateBuffer(filledBuffer)
 
       setEditorRenderKey((current) => current + 1)
       setSourceBuffer(cloneBuffer(normalizedBuffer))
@@ -981,7 +1041,7 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
       setPreviewRender(null)
       setFileName(nextFileName)
       onBaseFileNameChangeRef.current?.(nextFileName)
-    }, [])
+    }, [applyVariablesToEditor])
 
     useEffect(() => {
       let cancelled = false
@@ -995,7 +1055,7 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
             const buffer = await fetchTemplateBaseBinary(templateId)
 
             if (!cancelled) {
-              await applyDocumentBuffer(buffer, baseFileName)
+              await applyDocumentBuffer(buffer, baseFileName, editorInitialVariables)
             }
 
             return
@@ -1010,7 +1070,7 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
           const buffer = await response.arrayBuffer()
 
           if (!cancelled) {
-            await applyDocumentBuffer(buffer, defaultFileUrl.split("/").pop() || `${kind}-template.docx`)
+            await applyDocumentBuffer(buffer, defaultFileUrl.split("/").pop() || `${kind}-template.docx`, editorInitialVariables)
           }
         } catch (error) {
           if (!cancelled) {
@@ -1028,7 +1088,7 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
       return () => {
         cancelled = true
       }
-    }, [applyDocumentBuffer, loadKey])
+    }, [applyDocumentBuffer, editorInitialVariables, loadKey])
 
     useEffect(() => {
       const host = editorHostRef.current
@@ -1208,36 +1268,16 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
       }
     }, [activeTab, previewRender])
 
-    const saveCurrentBuffer = useCallback(async (options: { syncEditor?: boolean } = {}) => {
+    const saveCurrentBuffer = useCallback(async () => {
       savedBufferRef.current = null
 
-      await new Promise((resolve) => window.requestAnimationFrame(resolve))
+      await waitForEditorMutationFlush()
 
       const commitSavedBuffer = (buffer: ArrayBuffer) => {
         savedBufferRef.current = buffer
         previewBufferRef.current = cloneBuffer(buffer)
         sourceBufferRef.current = cloneBuffer(buffer)
         setPreviewBuffer(cloneBuffer(buffer))
-
-        if (options.syncEditor) {
-          setSourceBuffer(cloneBuffer(buffer))
-          setEditorRenderKey((current) => current + 1)
-        }
-      }
-
-      let savedBuffer: ArrayBuffer | null = null
-
-      try {
-        const saved = await editorHandleRef.current?.save?.({ selective: false })
-        savedBuffer = await toArrayBuffer(saved)
-      } catch {
-        savedBuffer = null
-      }
-
-      if (savedBuffer) {
-        const nextBuffer = await normalizeDocxTemplateBuffer(savedBuffer)
-        commitSavedBuffer(nextBuffer)
-        return cloneBuffer(nextBuffer)
       }
 
       const liveDocument = editorHandleRef.current?.getDocument?.() ?? latestDocumentRef.current
@@ -1251,6 +1291,21 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
 
       if (modelBuffer) {
         const nextBuffer = await normalizeDocxTemplateBuffer(modelBuffer)
+        commitSavedBuffer(nextBuffer)
+        return cloneBuffer(nextBuffer)
+      }
+
+      let savedBuffer: ArrayBuffer | null = null
+
+      try {
+        const saved = await editorHandleRef.current?.save?.({ selective: false })
+        savedBuffer = await toArrayBuffer(saved)
+      } catch {
+        savedBuffer = null
+      }
+
+      if (savedBuffer) {
+        const nextBuffer = await normalizeDocxTemplateBuffer(savedBuffer)
         commitSavedBuffer(nextBuffer)
         return cloneBuffer(nextBuffer)
       }
@@ -1279,10 +1334,10 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
       setErrorMessage(null)
 
       try {
-        const buffer = await saveCurrentBuffer({ syncEditor: true })
+        const buffer = await saveCurrentBuffer()
         const previewVariables = previewVariablesRef.current
         const processedBuffer =
-          previewVariables && Object.keys(previewVariables).length > 0
+          !applyVariablesToEditor && previewVariables && Object.keys(previewVariables).length > 0
             ? await processDocxPreviewBuffer(buffer, previewVariables)
             : buffer
 
@@ -1296,7 +1351,7 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
         setErrorMessage(message)
         throw new Error(message)
       }
-    }, [saveCurrentBuffer])
+    }, [applyVariablesToEditor, saveCurrentBuffer])
 
     useEffect(() => {
       if (activeTab !== "preview") return
@@ -1338,7 +1393,7 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
       [captureEditorSelection],
     )
 
-    const generatePreviewPdf = useCallback(async () => {
+    const generatePreviewPdf = useCallback(async (options?: { download?: boolean }) => {
       setErrorMessage(null)
       await refreshPreview()
       const targetPreviewKey = previewRenderKeyRef.current
@@ -1377,7 +1432,9 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
       const blob = pdf.output("blob")
       const file = new File([blob], pdfName, { type: "application/pdf" })
 
-      downloadGeneratedFile(file)
+      if (options?.download !== false) {
+        downloadGeneratedFile(file)
+      }
 
       return file
     }, [fileName, kind, refreshPreview, templateName])
@@ -1395,6 +1452,29 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
         } flex h-full min-h-0 flex-1 flex-col gap-3 overflow-hidden rounded-2xl border border-border/80 bg-muted/20 p-3`}
         style={watermarkStyle}
       >
+        <style>{`
+          .docx-template-editor-shell [data-testid="editor-toolbar"] button[title^="Editing"],
+          .docx-template-editor-shell [data-testid="editor-toolbar"] button[title^="Suggesting"],
+          .docx-template-editor-shell [data-testid="editor-toolbar"] button[title^="Viewing"],
+          .docx-template-editor-shell [data-testid="editor-toolbar"] button[title^="Editando"],
+          .docx-template-editor-shell [data-testid="editor-toolbar"] button[title^="Sugerindo"],
+          .docx-template-editor-shell [data-testid="editor-toolbar"] button[title^="Visualizando"],
+          .docx-template-editor-shell [data-testid="editor-toolbar"] button[data-depclean-tooltip^="Editing"],
+          .docx-template-editor-shell [data-testid="editor-toolbar"] button[data-depclean-tooltip^="Suggesting"],
+          .docx-template-editor-shell [data-testid="editor-toolbar"] button[data-depclean-tooltip^="Viewing"],
+          .docx-template-editor-shell [data-testid="editor-toolbar"] button[data-depclean-tooltip^="Editando"],
+          .docx-template-editor-shell [data-testid="editor-toolbar"] button[data-depclean-tooltip^="Sugerindo"],
+          .docx-template-editor-shell [data-testid="editor-toolbar"] button[data-depclean-tooltip^="Visualizando"],
+          .docx-template-editor-shell [data-testid="editor-toolbar"] button[aria-label^="Editing"],
+          .docx-template-editor-shell [data-testid="editor-toolbar"] button[aria-label^="Suggesting"],
+          .docx-template-editor-shell [data-testid="editor-toolbar"] button[aria-label^="Viewing"],
+          .docx-template-editor-shell [data-testid="editor-toolbar"] button[aria-label^="Editando"],
+          .docx-template-editor-shell [data-testid="editor-toolbar"] button[aria-label^="Sugerindo"],
+          .docx-template-editor-shell [data-testid="editor-toolbar"] button[aria-label^="Visualizando"] {
+            display: none !important;
+          }
+        `}</style>
+
         {isLoading ? (
           <div className="rounded-xl border bg-background px-4 py-3 text-sm text-muted-foreground">
             Carregando documento DOCX...

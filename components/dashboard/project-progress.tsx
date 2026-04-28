@@ -1,16 +1,22 @@
 "use client"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { servicesByTeamData } from "@/lib/mock-data"
+import { useQuery } from "@tanstack/react-query"
+import { getDashboardAnalytics, getFinancialAnalytics } from "@/lib/api/analytics"
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts"
 
 const COLORS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)"]
 
-export function ServiceDistribution({ showDescription = true }: { showDescription?: boolean }) {
+export function ServiceDistribution({ showDescription = true, days = 30 }: { showDescription?: boolean; days?: number }) {
+  const dashboardQuery = useQuery({
+    queryKey: ["analytics", "dashboard", days],
+    queryFn: () => getDashboardAnalytics({ days }),
+  })
+  const servicesByTeamData = dashboardQuery.data?.data.servicesByTeamData ?? []
   const total = servicesByTeamData.reduce((acc, curr) => acc + curr.services, 0)
 
   return (
-    <Card className="overflow-hidden hover:shadow-xl transition-all duration-500">
+    <Card className="h-full overflow-hidden hover:shadow-xl transition-all duration-500">
       <CardHeader className="pb-3">
         <CardTitle className="text-base">Serviços por Equipe</CardTitle>
         {showDescription && (
@@ -51,7 +57,7 @@ export function ServiceDistribution({ showDescription = true }: { showDescriptio
                 style={{ backgroundColor: COLORS[index % COLORS.length] }}
               />
               <span className="text-muted-foreground whitespace-nowrap">
-                {entry.team}: {Math.round((entry.services / total) * 100)}%
+                {entry.team}: {total > 0 ? Math.round((entry.services / total) * 100) : 0}%
               </span>
             </div>
           ))}
@@ -62,15 +68,19 @@ export function ServiceDistribution({ showDescription = true }: { showDescriptio
 }
 
 const FINANCE_COLORS = ['#22C55E', '#F59E0B', '#EF4444']
-const financeData = [
-  { name: 'Pagas', value: 85 },
-  { name: 'Pendentes', value: 10 },
-  { name: 'Vencidas', value: 5 },
-]
 
 export function FinancialOverview() {
+  const financialQuery = useQuery({
+    queryKey: ["analytics", "financial"],
+    queryFn: getFinancialAnalytics,
+  })
+  const financeData = financialQuery.data?.data.financeHealthData ?? [
+    { name: 'Pagas', value: 0 },
+    { name: 'Pendentes', value: 0 },
+    { name: 'Vencidas', value: 0 },
+  ]
   const total = financeData.reduce((acc, curr) => acc + curr.value, 0)
-  const paidPercentage = Math.round((financeData[0].value / total) * 100)
+  const paidPercentage = total > 0 ? Math.round(((financeData[0]?.value ?? 0) / total) * 100) : 0
 
   return (
     <Card
@@ -125,6 +135,3 @@ export function FinancialOverview() {
     </Card>
   )
 }
-
-// Keep backward compatibility
-export { ServiceDistribution as ProjectProgress }

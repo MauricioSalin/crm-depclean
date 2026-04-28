@@ -1,0 +1,20 @@
+
+> crm-depclean@0.1.0 dev C:\Users\mauri\OneDrive\Desktop\Depclean\depclean-projeto\crm-depclean
+> next dev -p 3100
+
+   ▲ Next.js 16.0.10 (Turbopack)
+   - Local:         http://localhost:3100
+   - Network:       http://192.168.15.5:3100
+   - Environments: .env.local
+
+ ✓ Starting...
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+Creating turbopack project {
+  dir: 'C:\\Users\\mauri\\OneDrive\\Desktop\\Depclean\\depclean-projeto\\crm-depclean',
+  testMode: true
+}
+ ✓ Ready in 632ms
+ GET /servicos 200 in 3.1s (compile: 2.8s, render: 301ms)
+ GET /servicos 200 in 49ms (compile: 5ms, render: 44ms)
+ GET /contratos 200 in 1059ms (compile: 1024ms, render: 34ms)
+ GET / 200 in 1608ms (compile: 1564ms, render: 44ms)

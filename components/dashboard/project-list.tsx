@@ -1,19 +1,24 @@
 "use client"
 
 import { Card } from "@/components/ui/card"
-import { Plus, ArrowRight, Building2 } from "lucide-react"
+import { ArrowRight, Building2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { clients, clientTypes, contracts, getClientTypeById } from "@/lib/mock-data"
+import { useQuery } from "@tanstack/react-query"
+import { getDashboardAnalytics } from "@/lib/api/analytics"
 import { getColorFromClass } from "@/lib/utils"
 import Link from "next/link"
 
-export function ClientList() {
-  const recentClients = clients.slice(0, 5)
+export function ClientList({ days = 30 }: { days?: number }) {
+  const dashboardQuery = useQuery({
+    queryKey: ["analytics", "dashboard", days],
+    queryFn: () => getDashboardAnalytics({ days }),
+  })
+  const recentClients = dashboardQuery.data?.data.recentClients ?? []
 
   return (
     <Card
-      className="p-4 transition-all duration-500 hover:shadow-xl"
+      className="self-start p-4 transition-all duration-500 hover:shadow-xl"
     >
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold text-foreground">Clientes Recentes</h2>
@@ -24,11 +29,9 @@ export function ClientList() {
           </Button>
         </Link>
       </div>
-      <div className="space-y-3">
-        {recentClients.map((client, index) => {
-          const clientType = getClientTypeById(client.clientTypeId)
-          const clientContracts = contracts.filter(c => c.clientId === client.id)
-          const activeContracts = clientContracts.filter(c => ["signed", "active"].includes(c.status)).length
+      <div className="max-h-[420px] space-y-3 overflow-y-auto pr-1">
+        {recentClients.map((client) => {
+          const color = getColorFromClass(client.clientTypeColor || "")
           
           return (
             <Link 
@@ -41,9 +44,9 @@ export function ClientList() {
               >
                 <div
                   className="w-10 h-10 rounded-xl flex items-center justify-center transition-transform duration-300 group-hover:scale-110 shrink-0"
-                  style={{ backgroundColor: `${getColorFromClass(clientType?.color || '')}1A` }}
+                  style={{ backgroundColor: `${color}1A` }}
                 >
-                  <Building2 className="w-5 h-5" style={{ color: getColorFromClass(clientType?.color || '') }} />
+                  <Building2 className="w-5 h-5" style={{ color }} />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-foreground text-sm truncate">{client.companyName}</p>
@@ -51,13 +54,13 @@ export function ClientList() {
                 </div>
                 <div className="flex flex-col items-end gap-1">
                   <Badge
-                    style={{ backgroundColor: getColorFromClass(clientType?.color || '') }}
+                    style={{ backgroundColor: color }}
                     className="text-[10px] text-white border-0 hover:opacity-90"
                   >
-                    {clientType?.name}
+                    {client.clientTypeName}
                   </Badge>
-                  {activeContracts > 0 && (
-                    <span className="text-[10px] text-muted-foreground">{activeContracts} contrato(s)</span>
+                  {client.activeContracts > 0 && (
+                    <span className="text-[10px] text-muted-foreground">{client.activeContracts} contrato(s)</span>
                   )}
                 </div>
               </div>
@@ -69,5 +72,3 @@ export function ClientList() {
   )
 }
 
-// Keep backward compatibility
-export { ClientList as ProjectList }

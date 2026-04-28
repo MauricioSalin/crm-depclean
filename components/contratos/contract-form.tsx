@@ -73,11 +73,6 @@ import {
   RefreshCw
 } from "lucide-react"
 import { cn, getColorFromClass } from "@/lib/utils"
-import {
-  formatCurrency,
-  getClientTypeById,
-  formatDate,
-} from "@/lib/mock-data"
 import type { RecurrenceRule, RecurrenceRuleType, RecurrenceType } from "@/lib/types"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
@@ -93,6 +88,14 @@ import { listServices } from "@/lib/api/services"
 import { listTemplates } from "@/lib/api/templates"
 import { listTeams } from "@/lib/api/teams"
 import { listEmployees } from "@/lib/api/employees"
+import { listClientTypes } from "@/lib/api/settings"
+
+const formatCurrency = (value: number) =>
+  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value)
+
+const formatDate = (value: Date | string) =>
+  new Intl.DateTimeFormat("pt-BR").format(typeof value === "string" ? new Date(value) : value)
+import { formatCNPJ } from "@/lib/masks"
 
 interface ContractFormProps {
   contractId?: string
@@ -126,10 +129,6 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
     queryKey: ["templates", "contract-form", "informative"],
     queryFn: () => listTemplates("", "informative"),
   })
-  const certificateTemplatesQuery = useQuery({
-    queryKey: ["templates", "contract-form", "certificate"],
-    queryFn: () => listTemplates("", "certificate"),
-  })
   const teamsQuery = useQuery({
     queryKey: ["teams", "contract-form"],
     queryFn: () => listTeams(),
@@ -137,6 +136,10 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
   const employeesQuery = useQuery({
     queryKey: ["employees", "contract-form"],
     queryFn: () => listEmployees(),
+  })
+  const clientTypesQuery = useQuery({
+    queryKey: ["client-types", "contract-form"],
+    queryFn: () => listClientTypes(""),
   })
   const contractQuery = useQuery({
     queryKey: ["contract", contractId],
@@ -148,9 +151,10 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
   const serviceTypes = servicesQuery.data?.data ?? []
   const templates = templatesQuery.data?.data ?? []
   const informativeTemplates = informativeTemplatesQuery.data?.data ?? []
-  const certificateTemplates = certificateTemplatesQuery.data?.data ?? []
   const teams = teamsQuery.data?.data ?? []
   const employees = employeesQuery.data?.data ?? []
+  const clientTypes = clientTypesQuery.data?.data.items ?? []
+  const getClientTypeById = (id: string) => clientTypes.find((type) => type.id === id)
   const contract = contractQuery.data?.data
   const client = contract ? clients.find((c) => c.id === contract.clientId) : undefined
 
@@ -186,8 +190,6 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
   const [createAutomatedSchedules, setCreateAutomatedSchedules] = useState(false)
   const [createAutomatedInformatives, setCreateAutomatedInformatives] = useState(false)
   const [selectedInformativeTemplateId, setSelectedInformativeTemplateId] = useState("")
-  const [createAutomatedCertificates, setCreateAutomatedCertificates] = useState(false)
-  const [selectedCertificateTemplateId, setSelectedCertificateTemplateId] = useState("")
   const [startDate, setStartDate] = useState(
     contract?.startDate ? String(contract.startDate).split("T")[0] : ""
   )
@@ -237,10 +239,6 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
     () => informativeTemplates.filter((template) => template.isActive && template.format === "docx"),
     [informativeTemplates],
   )
-  const activeCertificateTemplates = useMemo(
-    () => certificateTemplates.filter((template) => template.isActive && template.format === "docx"),
-    [certificateTemplates],
-  )
   const editingService = services.find(s => s.id === editingServiceId)
 
   useEffect(() => {
@@ -260,8 +258,6 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
     setCreateAutomatedSchedules(contract.automationCreateSchedules ?? true)
     setCreateAutomatedInformatives(contract.automationCreateInformatives ?? true)
     setSelectedInformativeTemplateId(contract.automationInformativeTemplateId ?? "")
-    setCreateAutomatedCertificates(contract.automationCreateCertificates ?? true)
-    setSelectedCertificateTemplateId(contract.automationCertificateTemplateId ?? "")
     setStartDate(contract.startDate ? String(contract.startDate).split("T")[0] : "")
     setInstallmentsCount(contract.installmentsCount ?? 1)
     setDueDay(contract.paymentDay ?? 10)
@@ -290,9 +286,7 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
   useEffect(() => {
     if (!createAutomatedSchedules) {
       setCreateAutomatedInformatives(false)
-      setCreateAutomatedCertificates(false)
       setSelectedInformativeTemplateId("")
-      setSelectedCertificateTemplateId("")
     }
   }, [createAutomatedSchedules])
 
@@ -305,16 +299,6 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
       setSelectedInformativeTemplateId(activeInformativeTemplates[0].id)
     }
   }, [activeInformativeTemplates, createAutomatedInformatives, selectedInformativeTemplateId])
-
-  useEffect(() => {
-    if (!createAutomatedCertificates) {
-      setSelectedCertificateTemplateId("")
-      return
-    }
-    if (!selectedCertificateTemplateId && activeCertificateTemplates.length > 0) {
-      setSelectedCertificateTemplateId(activeCertificateTemplates[0].id)
-    }
-  }, [activeCertificateTemplates, createAutomatedCertificates, selectedCertificateTemplateId])
 
   // Total de unidades das filiais selecionadas (para regras de recorrência)
   const selectedTotalUnitCount = useMemo(() => {
@@ -405,8 +389,8 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
     automationCreateSchedules: createAutomatedSchedules,
     automationCreateInformatives: createAutomatedInformatives,
     automationInformativeTemplateId: createAutomatedInformatives ? selectedInformativeTemplateId : "",
-    automationCreateCertificates: createAutomatedCertificates,
-    automationCertificateTemplateId: createAutomatedCertificates ? selectedCertificateTemplateId : "",
+    automationCreateCertificates: false,
+    automationCertificateTemplateId: "",
     unitIds: selectedUnitIds,
     totalValue,
     duration: installmentsCount,
@@ -459,185 +443,7 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
     },
   })
 
-  const buildDraftHtml = (contractNumber: string, createdAt: Date) => {
-    const clientName = selectedClient?.companyName || "Cliente"
-    const clientCnpj = selectedClient?.cnpj ? `, CNPJ nº ${selectedClient.cnpj}` : ""
-    const unit = selectedUnitsForDraft[0]
-    const address = unit?.address
-      ? `${unit.address.street}, nº ${unit.address.number} - ${unit.address.neighborhood} – ${unit.address.city}/${unit.address.state}, CEP ${unit.address.zipCode}`
-      : "Endereço não informado"
-
-    const start = startDate ? new Date(`${startDate}T00:00:00`) : createdAt
-    const end = endDate ? new Date(`${endDate}T00:00:00`) : createdAt
-
-    const selectedTypeIds = Array.from(new Set(services.map((s) => s.serviceTypeId).filter(Boolean)))
-    const selectedTypes = selectedTypeIds
-      .map((id) => serviceTypes.find((st) => st.id === id))
-      .filter(Boolean)
-
-    const hasDedetizacao = selectedTypeIds.includes("srv3")
-    const hasDesratizacao = selectedTypeIds.includes("srv4")
-    const mergedTypes = selectedTypes
-      .filter((t: any) => t.id !== "srv3" && t.id !== "srv4")
-      .concat(
-        hasDedetizacao && hasDesratizacao
-          ? [
-            {
-              id: "srv3-srv4",
-              name: "Dedetização e Desratização",
-              clauses: [
-                ...(serviceTypes.find((x) => x.id === "srv3")?.clauses ?? []),
-                ...(serviceTypes.find((x) => x.id === "srv4")?.clauses ?? []),
-              ],
-            } as any,
-          ]
-          : []
-      )
-      .concat(hasDedetizacao && !hasDesratizacao ? [serviceTypes.find((x) => x.id === "srv3")] : [])
-      .concat(hasDesratizacao && !hasDedetizacao ? [serviceTypes.find((x) => x.id === "srv4")] : [])
-      .filter(Boolean) as any[]
-
-    const objectServicesText =
-      mergedTypes.length > 0
-        ? mergedTypes
-          .map((t) => (t.name as string).toLowerCase())
-          .join(", ")
-        : "serviços"
-
-    const serviceSectionsHtml = mergedTypes
-      .map((t, index) => {
-        const clauses: string[] = (t.clauses ?? []).filter(Boolean)
-        const head = `${index + 1}. ${t.name}`
-        const clausesHtml =
-          clauses.length > 0
-            ? clauses
-              .map((c, j) => `<p><strong>${index + 1}.${j + 1}.</strong> ${c}</p>`)
-              .join("")
-            : `<p><strong>${index + 1}.1.</strong> Cláusulas específicas não informadas para este serviço.</p>`
-        return `
-          <p><strong>${head}</strong></p>
-          ${clausesHtml}
-        `
-      })
-      .join("")
-
-    const firstDueDate = new Date(start)
-    firstDueDate.setDate(Math.min(dueDay, 28))
-
-    const representativeName = selectedClient?.responsibleName || "Representante"
-
-    return `
-      <h1>CONTRATO DE PRESTAÇÃO DE SERVIÇOS</h1>
-      <p></p>
-
-      <p><strong>CONTRATANTE:</strong> <strong>${clientName}</strong>, pessoa jurídica de direito privado${clientCnpj}, estabelecido na ${address}, neste ato representado por seu síndico, Sr(a). <strong>${representativeName}</strong>, brasileiro(a), <strong>RG nº ________</strong>, <strong>CPF nº ________</strong>, residente e domiciliado na cidade de <strong>${unit?.address?.city ?? "Porto Alegre"}</strong>, denominado <u><strong>CONTRATANTE</strong></u>.</p>
-
-      <p></p>
-
-      <p><strong>CONTRATADA:</strong> <strong>DEPCLEAN SOLUÇÕES AMBIENTAIS EIRELI</strong>, pessoa jurídica de direito privado, CNPJ nº 21.602.658/0001-43, com sede na Rua Um, nº 23, Brigadeira – Canoas/RS, CEP 92.425-692, neste ato representada por sua sócia administradora, <strong>Melina da Costa</strong>, brasileira, solteira, RG nº <strong>[RG]</strong>, CPF nº <strong>[CPF]</strong>, domiciliada na cidade de Canoas/RS, doravante denominada <u><strong>CONTRATADA</strong></u>.</p>
-
-      <p></p>
-
-      <p>Acordam as partes, pelo presente <strong>CONTRATO DE PRESTAÇÃO DE SERVIÇOS</strong>, em comum acordo, e por força da livre manifestação de vontade, que a relação se regerá nos termos das seguintes cláusulas:</p>
-
-      <p></p>
-
-      <p class="clause-title">CLÁUSULA PRIMEIRA – OBJETO DO CONTRATO</p>
-
-      <p>O presente contrato tem por objeto a prestação de serviços profissionais de ${objectServicesText} nas instalações do Condomínio <u><strong>CONTRATANTE</strong></u>.</p>
-
-      <p><strong>Caberá a CONTRATADA atender os seguintes itens:</strong></p>
-
-      ${serviceSectionsHtml || "<p><strong>1.</strong> [Adicionar serviço]</p>"}
-
-      <p></p>
-      <hr />
-
-      <p class="clause-title">CLÁUSULA SEGUNDA – VALOR DO CONTRATO</p>
-
-      <p>O CONTRATANTE pagará à CONTRATADA pelos serviços objeto do presente contrato o valor total de <strong>${formatCurrency(totalValue)}</strong>, correspondente à vigência de <strong>${installmentsCount}</strong> (doze) meses do contrato.</p>
-
-      <p>O faturamento será realizado da seguinte forma: 80% (oitenta por cento) do valor total será emitido por fatura de locação, enquanto os 20% (vinte por cento) restantes serão emitidos por nota fiscal referente ao custeio da mão de obra.</p>
-
-      <p><strong>Parágrafo Primeiro:</strong> O valor global do contrato poderá ser parcelado em até <strong>${installmentsCount}</strong> (doze) parcelas idênticas, mensais e sucessivas, com vencimento sempre no dia <strong>${String(dueDay).padStart(2, "0")}</strong> de cada mês. A primeira parcela deverá ser paga em <strong>${formatDate(firstDueDate)}</strong>, e as demais parcelas terão vencimento no mesmo dia nos meses subsequentes.</p>
-
-      <p><strong>Parágrafo Segundo:</strong> Em caso de atraso no pagamento de qualquer parcela, incidirá sobre o valor devido multa de 2% (dois por cento), atualização monetária pelo IPCA (pro rata die) acrescida de juros calculados pela taxa Selic.</p>
-
-      <p><strong>Parágrafo Terceiro:</strong> Convencionam as partes que, após quinze dias do vencimento da fatura, em caso de falta de pagamento, a mesma poderá ser enviada ao cartório de protestos, onde correrá por conta do CONTRATANTE todas as despesas de cobrança e custas cartoriais.</p>
-
-      <p><strong>Parágrafo Quarto:</strong> Ocorrendo falta de pagamento, a CONTRATADA poderá suspender os atendimentos de emergência, enquanto perdurar a inadimplência.</p>
-
-      <p></p>
-      <hr class="page-break" />
-
-      <p class="clause-title">CLÁUSULA TERCEIRA – RESCISÃO</p>
-
-      <p>Constituem causas de rescisão antecipada do presente contrato, em qualquer época, independentemente de interpelação judicial ou extrajudicial, o descumprimento de quaisquer das cláusulas ora pactuadas, especialmente a inexecução total ou parcial dos serviços descritos na Cláusula Primeira pela CONTRATADA, bem como o inadimplemento dos pagamentos devidos pela CONTRATANTE.</p>
-
-      <p><strong>Parágrafo Único:</strong> Se a rescisão ocorrer por culpa da CONTRATANTE, haverá incidência de multa equivalente a 40% (quarenta por cento) do valor total das parcelas que ainda deveriam ser cumpridas do momento da rescisão até o término previsto.</p>
-
-      <p></p>
-
-      <p class="clause-title">CLÁUSULA QUARTA – SERVIÇOS ADICIONAIS</p>
-      <p>As partes estabelecem ainda que, se na vigência do presente contrato houver necessidade de execução de serviços não constantes neste contrato, estes serão realizados e cobrados mediante orçamento prévio aprovado pela CONTRATANTE.</p>
-
-      <p></p>
-
-      <p class="clause-title">CLÁUSULA QUINTA – OBRIGAÇÕES DA CONTRATADA</p>
-      <p><strong>5.1.</strong> Fornecer técnicos qualificados, nas quantidades necessárias, à execução dos serviços.</p>
-      <p><strong>5.2.</strong> Executar os serviços dentro de um procedimento eficiente e cuidadoso, de acordo com os melhores padrões profissionais.</p>
-      <p><strong>5.3.</strong> Obedecer aos regulamentos e normas de segurança da legislação vigente, sendo de sua exclusiva responsabilidade o fornecimento de EPIs e a aplicação das normas.</p>
-      <p><strong>5.4.</strong> A CONTRATADA é a única responsável por todos os encargos trabalhistas, previdenciários, sociais e securitários da mão de obra alocada para execução deste contrato.</p>
-      <p><strong>5.5.</strong> A CONTRATADA deverá fornecer todos os materiais, equipamentos, veículos, insumos e ferramentas para execução do objeto deste contrato.</p>
-
-      <p></p>
-
-      <p class="clause-title">CLÁUSULA SEXTA – OBRIGAÇÕES DA CONTRATANTE</p>
-      <p><strong>6.1.</strong> Exigir sempre a identificação dos técnicos e funcionários da CONTRATADA, visando preservar sua própria segurança.</p>
-      <p><strong>6.2.</strong> Cumprir fielmente o contratado, quanto aos valores e prazos de pagamentos.</p>
-      <p><strong>6.3.</strong> Comunicar imediatamente a CONTRATADA qualquer irregularidade, dúvida ou ocorrência observada, no decorrer ou após a prestação dos serviços.</p>
-
-      <p></p>
-
-      <p class="clause-title">CLÁUSULA SÉTIMA – LIMITES DE RESPONSABILIDADE</p>
-      <p>A CONTRATADA se responsabiliza, como se seus fossem, por todos os atos, fatos, ações e omissões decorrentes de seu comportamento e/ou de seus empregados que resultem em infração ao presente contrato, nos termos da legislação vigente.</p>
-
-      <p></p>
-
-      <p class="clause-title">CLÁUSULA OITAVA – NOTIFICAÇÕES</p>
-      <p>As partes se comprometem a realizar as notificações através dos endereços de e-mail <strong>${selectedClient?.email ?? "[e-mail da contratante]"}</strong> (CONTRATANTE) e <strong>contato@depcleanrs.com.br</strong> (CONTRATADA), única e exclusivamente para fins fiscais, financeiros e de rescisão.</p>
-      <p>A partir da assinatura deste contrato, a CONTRATANTE concorda em utilizar o gestor de contratos como canal de comunicação com a empresa para assuntos relacionados a serviços, agendamentos, implantação e demandas emergenciais.</p>
-
-      <p></p>
-
-      <p class="clause-title">CLÁUSULA NONA – PRAZO DO CONTRATO</p>
-      <p>Este contrato terá o prazo de <strong>${Math.max(1, Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24 * 30)))}</strong> (doze) meses a partir de sua assinatura.</p>
-
-      <p></p>
-
-      <p class="clause-title">CLÁUSULA DÉCIMA – DA LGPD</p>
-      <p>A Lei Geral de Proteção de Dados será obedecida, em todos os seus termos, pela CONTRATADA, obrigando-se ela a tratar os dados da CONTRATANTE que forem eventualmente coletados, conforme sua necessidade ou obrigatoriedade.</p>
-
-      <p></p>
-
-      <p class="clause-title">CLÁUSULA DÉCIMA PRIMEIRA – DISPOSIÇÕES FINAIS</p>
-      <p>Fica eleito, com expressa renúncia de qualquer outro, por mais privilégio que seja, o Foro da Cidade de Porto Alegre para dirimir quaisquer dúvidas e/ou questões resultantes da interpretação e/ou execução deste contrato.</p>
-
-      <p></p>
-      <hr />
-
-      <p style="text-align:right;">Canoas, ${formatDate(createdAt)}.</p>
-      <p></p>
-
-      <p><strong>CONTRATANTE:</strong> ${clientName}</p>
-      <p><strong>[Nome do representante]</strong> – CPF: <strong>[CPF]</strong></p>
-
-      <p></p>
-
-      <p><strong>CONTRATADA:</strong> DEPCLEAN SOLUÇÕES AMBIENTAIS EIRELI</p>
-      <p><strong>Melina da Costa</strong> – CPF: <strong>[CPF]</strong></p>
-    `
-  }
+  const buildDraftHtml = (_contractNumber: string, _createdAt: Date) => ""
 
   useEffect(() => {
     return () => {
@@ -988,11 +794,6 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
       return
     }
 
-    if (createAutomatedCertificates && !selectedCertificateTemplateId) {
-      toast.error("Selecione o template de certificado automatizado.")
-      return
-    }
-
     if (!startDate) {
       toast.error("Preencha a data de início do contrato.")
       return
@@ -1240,7 +1041,8 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
           {selectedClient && (() => {
             const clientType = getClientTypeById(selectedClient.clientTypeId)
             return (
-              <div className="p-3 rounded-lg bg-muted/50 flex items-start gap-3 shrink-0">
+              <div className="w-full rounded-lg bg-muted/50 p-3 md:max-w-[520px] md:flex-1">
+                <div className="flex items-start gap-3">
                 <div
                   className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
                   style={{ backgroundColor: `${getColorFromClass(clientType?.color || '')}1A` }}
@@ -1257,8 +1059,9 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
                       {clientType?.name}
                     </Badge>
                   </div>
-                  <p className="text-sm text-muted-foreground">{selectedClient.cnpj}</p>
+                  <p className="text-sm text-muted-foreground">{formatCNPJ(selectedClient.cnpj)}</p>
                   <p className="text-sm text-muted-foreground">{selectedClient.email}</p>
+                </div>
                 </div>
               </div>
             )
@@ -1269,7 +1072,7 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
         {selectedClient && selectedClient.units && selectedClient.units.length > 0 && (
           <div className="mt-4">
             <Label className="mb-2 block">Filiais do Contrato</Label>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
               {selectedClient.units.map((unit) => (
                 <label
                   key={unit.id}
@@ -1406,72 +1209,29 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
                 </span>
               </span>
             </label>
-
-            <label className={cn(
-              "flex min-h-[66px] items-start gap-3 rounded-2xl border px-4 py-3 transition-colors",
-              createAutomatedSchedules ? "cursor-pointer" : "cursor-not-allowed opacity-60",
-              createAutomatedCertificates ? "border-primary/30 bg-[#eef7e8]" : "border-transparent bg-[#f6faf2] hover:bg-[#eef7e8]"
-            )}>
-              <Checkbox
-                className="mt-0.5"
-                checked={createAutomatedCertificates}
-                disabled={!createAutomatedSchedules}
-                onCheckedChange={(checked) => setCreateAutomatedCertificates(Boolean(checked))}
-              />
-              <span className="min-w-0">
-                <span className="block text-sm font-semibold leading-5">Criar certificados automatizados</span>
-                <span className="block text-xs leading-5 text-muted-foreground">
-                  Um certificado será gerado ao concluir o atendimento.
-                </span>
-              </span>
-            </label>
           </div>
 
-          {(createAutomatedInformatives || createAutomatedCertificates) && (
+          {createAutomatedInformatives && (
             <div className="flex flex-col gap-4">
-              {createAutomatedInformatives && (
-                <div className="space-y-2">
-                  <Label>Template do informativo automatizado *</Label>
-                  <Select
-                    value={selectedInformativeTemplateId || undefined}
-                    onValueChange={setSelectedInformativeTemplateId}
-                    disabled={activeInformativeTemplates.length === 0}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder={activeInformativeTemplates.length > 0 ? "Selecione um template" : "Nenhum template ativo"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {activeInformativeTemplates.map((template) => (
-                        <SelectItem key={template.id} value={template.id}>
-                          {template.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-
-              {createAutomatedCertificates && (
-                <div className="space-y-2">
-                  <Label>Template do certificado automatizado *</Label>
-                  <Select
-                    value={selectedCertificateTemplateId || undefined}
-                    onValueChange={setSelectedCertificateTemplateId}
-                    disabled={activeCertificateTemplates.length === 0}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder={activeCertificateTemplates.length > 0 ? "Selecione um template" : "Nenhum template ativo"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {activeCertificateTemplates.map((template) => (
-                        <SelectItem key={template.id} value={template.id}>
-                          {template.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
+              <div className="space-y-2">
+                <Label>Template do informativo automatizado *</Label>
+                <Select
+                  value={selectedInformativeTemplateId || undefined}
+                  onValueChange={setSelectedInformativeTemplateId}
+                  disabled={activeInformativeTemplates.length === 0}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder={activeInformativeTemplates.length > 0 ? "Selecione um template" : "Nenhum template ativo"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {activeInformativeTemplates.map((template) => (
+                      <SelectItem key={template.id} value={template.id}>
+                        {template.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           )}
         </div>

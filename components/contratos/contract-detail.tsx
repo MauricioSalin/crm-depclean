@@ -75,21 +75,21 @@ const getStatusBadge = (status: string) => {
   switch (status) {
     case "signed":
     case "active":
-      return <Badge className="bg-green-100 text-green-700 hover:bg-green-100">Assinado</Badge>
+      return <Badge className="shrink-0 bg-green-100 text-green-700 hover:bg-green-100">Assinado</Badge>
     case "pending_signature":
-      return <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">Aguardando assinatura</Badge>
+      return <Badge className="shrink-0 bg-amber-100 text-amber-700 hover:bg-amber-100">Aguardando assinatura</Badge>
     case "overdue":
-      return <Badge className="bg-red-100 text-red-700 hover:bg-red-100">Em atraso</Badge>
+      return <Badge className="shrink-0 bg-red-100 text-red-700 hover:bg-red-100">Em atraso</Badge>
     case "refused":
-      return <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100">Recusado</Badge>
+      return <Badge className="shrink-0 bg-orange-100 text-orange-700 hover:bg-orange-100">Recusado</Badge>
     case "expired":
-      return <Badge className="bg-gray-100 text-gray-700 hover:bg-gray-100">Expirado</Badge>
+      return <Badge className="shrink-0 bg-gray-100 text-gray-700 hover:bg-gray-100">Expirado</Badge>
     case "deadline_expired":
-      return <Badge className="bg-purple-100 text-purple-700 hover:bg-purple-100">Prazo expirado</Badge>
+      return <Badge className="shrink-0 bg-purple-100 text-purple-700 hover:bg-purple-100">Prazo expirado</Badge>
     case "cancelled":
-      return <Badge className="bg-red-100 text-red-700 hover:bg-red-100">Cancelado</Badge>
+      return <Badge className="shrink-0 bg-red-100 text-red-700 hover:bg-red-100">Cancelado</Badge>
     default:
-      return <Badge variant="secondary">Rascunho</Badge>
+      return <Badge variant="secondary" className="shrink-0">Rascunho</Badge>
   }
 }
 
@@ -152,6 +152,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
   })
 
   const contract = contractQuery.data?.data
+  const resolvedContractId = contract?.id ?? contractId
 
   const clientQuery = useQuery({
     queryKey: ["client", contract?.clientId],
@@ -175,7 +176,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
   })
 
   const schedulesQuery = useQuery({
-    queryKey: ["schedules", "contract-detail", contractId],
+    queryKey: ["schedules", "contract-detail", resolvedContractId],
     queryFn: () => listSchedules({}),
   })
 
@@ -184,8 +185,8 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
   const teams = teamsQuery.data?.data ?? []
   const employees = employeesQuery.data?.data ?? []
   const contractSchedules = useMemo(
-    () => (schedulesQuery.data?.data ?? []).filter((schedule) => schedule.contractId === contractId),
-    [schedulesQuery.data?.data, contractId],
+    () => (schedulesQuery.data?.data ?? []).filter((schedule) => schedule.contractId === resolvedContractId),
+    [schedulesQuery.data?.data, resolvedContractId],
   )
 
   const serviceTypeMap = useMemo(() => new Map(serviceTypes.map((item) => [item.id, item])), [serviceTypes])
@@ -246,7 +247,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
       installmentId: string
       status: "pending" | "paid" | "overdue" | "cancelled"
     }) =>
-      updateInstallment(contractId, installmentId, {
+      updateInstallment(resolvedContractId, installmentId, {
         status,
         paidDate: status === "paid" ? new Date().toISOString() : undefined,
         paidValue:
@@ -256,6 +257,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
       }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["contract", contractId] })
+      await queryClient.invalidateQueries({ queryKey: ["contract", resolvedContractId] })
       await queryClient.invalidateQueries({ queryKey: ["contracts"] })
       toast({
         title: "Parcela atualizada",
@@ -277,9 +279,10 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
   }
 
   const sendClicksignMutation = useMutation({
-    mutationFn: () => sendContractToClicksign(contractId),
+    mutationFn: () => sendContractToClicksign(resolvedContractId),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["contract", contractId] })
+      await queryClient.invalidateQueries({ queryKey: ["contract", resolvedContractId] })
       await queryClient.invalidateQueries({ queryKey: ["contracts"] })
       toast({
         title: "Contrato enviado",
@@ -290,11 +293,12 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
   })
 
   const syncClicksignMutation = useMutation({
-    mutationFn: () => syncContractClicksign(contractId),
+    mutationFn: () => syncContractClicksign(resolvedContractId),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["contract", contractId] })
+      await queryClient.invalidateQueries({ queryKey: ["contract", resolvedContractId] })
       await queryClient.invalidateQueries({ queryKey: ["contracts"] })
-      await queryClient.invalidateQueries({ queryKey: ["schedules", "contract-detail", contractId] })
+      await queryClient.invalidateQueries({ queryKey: ["schedules", "contract-detail", resolvedContractId] })
       toast({
         title: "ClickSign sincronizado",
         description: "O status do contrato e dos agendamentos foi atualizado.",
@@ -337,15 +341,15 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
 
   return (
     <div className="space-y-6">
-      <Card className="p-6">
+      <Card className="px-4 py-3">
         <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
           <div className="flex items-start gap-4">
-            <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-primary/10">
-              <FileText className="h-7 w-7 text-primary" />
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10">
+              <FileText className="h-6 w-6 text-primary" />
             </div>
-            <div>
-              <div className="mb-1 flex flex-wrap items-center gap-2">
-                <h2 className="text-xl font-bold">{contract.contractNumber}</h2>
+            <div className="min-w-0 flex-1">
+              <div className="mb-1 flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+                <h2 className="min-w-0 flex-1 break-words text-xl font-bold">{contract.contractNumber}</h2>
                 {getStatusBadge(contract.status)}
               </div>
               <Link

@@ -26,6 +26,7 @@ interface SearchableSelectProps {
   searchPlaceholder?: string
   emptyMessage?: string
   allLabel?: string
+  includeAll?: boolean
   className?: string
 }
 
@@ -37,11 +38,12 @@ export function SearchableSelect({
   searchPlaceholder = "Buscar...",
   emptyMessage = "Nenhum resultado.",
   allLabel = "Todos",
+  includeAll = true,
   className,
 }: SearchableSelectProps) {
   const [open, setOpen] = React.useState(false)
 
-  const allOptions = [{ value: "all", label: allLabel }, ...options]
+  const allOptions = includeAll ? [{ value: "all", label: allLabel }, ...options] : options
   const selectedOption = allOptions.find(o => o.value === value)
 
   return (

@@ -26,6 +26,24 @@ html .width-before-scroll-bar {
   margin-right: 0 !important;
 }
 
+@media (min-width: 1024px) {
+  .lg\:ml-60 {
+    transition: margin-left 300ms cubic-bezier(.2, .8, .2, 1);
+  }
+
+  .lg\:left-60 {
+    transition: left 300ms cubic-bezier(.2, .8, .2, 1);
+  }
+
+  html[data-depclean-sidebar="collapsed"] .lg\:ml-60 {
+    margin-left: 4.5rem;
+  }
+
+  html[data-depclean-sidebar="collapsed"] .lg\:left-60 {
+    left: 4.5rem;
+  }
+}
+
 ::selection {
   background-color: var(--primary);
   color: var(--primary-foreground);
@@ -515,14 +533,6 @@ body.row-resize-cursor,
 .contract-doc table .column-resize-handle,
 .contract-doc table .column-resize-handle * {
   cursor: col-resize;
-}
-
-.docx-js-editor-poc-host {
-  min-height: 680px;
-}
-
-.docx-js-editor-poc-host > * {
-  min-height: 100%;
 }
 
 .docx-template-editor-shell {

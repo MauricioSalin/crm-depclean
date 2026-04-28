@@ -5,7 +5,7 @@ import { ArrowLeft, CalendarDays, Clock3, MapPin, Sparkles, Users } from "lucide
 
 import { AttendanceStartSlider } from "@/components/agendamentos/attendance-start-slider"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogClose, DialogContent, DialogHeader } from "@/components/ui/dialog"
+import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useIsMobile } from "@/hooks/use-mobile"
 import type { ScheduleRecord } from "@/lib/api/schedules"
 import { cn } from "@/lib/utils"
@@ -85,6 +85,9 @@ export function ScheduleDetailsDialog({
         <div className={cn("flex flex-col", isMobile ? "h-full" : "")}>
           <div className="flex-1 overflow-y-auto p-5 sm:p-6">
             <DialogHeader className="relative items-center space-y-1.5 pb-2 text-center sm:pb-3">
+              <DialogTitle className="sr-only">
+                Detalhes do agendamento de {schedule.clientName}
+              </DialogTitle>
               {isMobile ? (
                 <DialogClose asChild>
                   <Button

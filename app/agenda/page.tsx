@@ -6,23 +6,9 @@ import { Header } from "@/components/dashboard/header"
 import { AgendaContent } from "@/components/agenda/agenda-content"
 import { Button } from "@/components/ui/button"
 import { Plus } from "lucide-react"
-import { SchedulingFormDialog, type SchedulingFormData } from "@/components/agendamentos/scheduling-form-dialog"
-import { mockClients, mockServiceTypes, formatCurrency } from "@/lib/mock-data"
 
 export default function AgendaPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
-
-  const handleFormSubmit = (formData: SchedulingFormData) => {
-    const client = mockClients.find(c => c.id === formData.clientId)
-    const serviceType = mockServiceTypes.find(st => st.id === formData.serviceTypeId)
-    if (!client || !serviceType) return
-
-    if (formData.createContract && formData.value > 0) {
-      alert(`Agendamento criado! Cobrança de ${formatCurrency(formData.value)} gerada no financeiro.`)
-    }
-
-    setDialogOpen(false)
-  }
 
   return (
     <div className="flex h-dvh bg-background overflow-hidden lg:h-screen">
@@ -46,14 +32,8 @@ export default function AgendaPage() {
           }
         />
 
-        <SchedulingFormDialog
-          open={dialogOpen}
-          onOpenChange={setDialogOpen}
-          onSubmit={handleFormSubmit}
-        />
-
         <Suspense fallback={<div className="mt-4 rounded-xl border bg-card p-6 text-sm text-muted-foreground">Carregando...</div>}>
-          <AgendaContent />
+          <AgendaContent openDialog={dialogOpen} onDialogChange={setDialogOpen} />
         </Suspense>
       </main>
     </div>

@@ -121,13 +121,23 @@ export type ContractPreviewRecord = {
   firstDueDate: string
 }
 
+const legacyContractIds: Record<string, string> = {
+  contract1: "contract-dep-2026-001",
+  contract2: "contract-dep-2026-002",
+  contract3: "contract-dep-2026-003",
+}
+
+export function resolveContractId(id: string) {
+  return legacyContractIds[id] ?? id
+}
+
 export async function listContracts(search = "") {
   const response = await api.get<{ success: true; data: ContractRecord[] }>("/contracts", { params: { search } })
   return response.data
 }
 
 export async function getContractById(id: string) {
-  const response = await api.get<{ success: true; data: ContractRecord }>(`/contracts/${id}`)
+  const response = await api.get<{ success: true; data: ContractRecord }>(`/contracts/${resolveContractId(id)}`)
   return response.data
 }
 
@@ -142,22 +152,22 @@ export async function createContract(payload: ContractPayload) {
 }
 
 export async function updateContract(id: string, payload: Partial<ContractPayload>) {
-  const response = await api.patch<{ success: true; data: ContractRecord }>(`/contracts/${id}`, payload)
+  const response = await api.patch<{ success: true; data: ContractRecord }>(`/contracts/${resolveContractId(id)}`, payload)
   return response.data
 }
 
 export async function sendContractToClicksign(id: string) {
-  const response = await api.post<{ success: true; data: unknown }>(`/clicksign/contracts/${id}/send`)
+  const response = await api.post<{ success: true; data: unknown }>(`/clicksign/contracts/${resolveContractId(id)}/send`)
   return response.data
 }
 
 export async function syncContractClicksign(id: string) {
-  const response = await api.post<{ success: true; data: unknown }>(`/clicksign/contracts/${id}/sync`)
+  const response = await api.post<{ success: true; data: unknown }>(`/clicksign/contracts/${resolveContractId(id)}/sync`)
   return response.data
 }
 
 export async function deleteContract(id: string) {
-  const response = await api.delete<{ success: true; data: null }>(`/contracts/${id}`)
+  const response = await api.delete<{ success: true; data: null }>(`/contracts/${resolveContractId(id)}`)
   return response.data
 }
 
@@ -173,7 +183,7 @@ export async function updateInstallment(
   },
 ) {
   const response = await api.patch<{ success: true; data: ContractRecord }>(
-    `/contracts/${contractId}/installments/${installmentId}`,
+    `/contracts/${resolveContractId(contractId)}/installments/${installmentId}`,
     payload,
   )
   return response.data

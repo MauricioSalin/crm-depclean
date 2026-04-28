@@ -4,36 +4,21 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ArrowRight, Users } from "lucide-react"
-import { teams, employees, scheduledServices, getServiceTypeById } from "@/lib/mock-data"
+import { useQuery } from "@tanstack/react-query"
+import { getDashboardAnalytics } from "@/lib/api/analytics"
 import { getColorFromClass } from "@/lib/utils"
 import Link from "next/link"
 
-export function TeamCollaboration() {
-  // Get teams with their current activities
-  const teamsWithActivity = teams.slice(0, 4).map(team => {
-    const teamEmployees = employees
-      .filter(e => team.employees.includes(e.id))
-      .map(e => ({ ...e, avatar: e.avatar || "/avatars/avatar-1.jpg" }))
-    const teamServices = scheduledServices.filter(s => 
-      s.teamIds.includes(team.id) && 
-      (s.status === "scheduled" || s.status === "in_progress")
-    )
-    const currentService = teamServices.find(s => s.status === "in_progress")
-    const nextService = teamServices.find(s => s.status === "scheduled")
-    
-    return {
-      ...team,
-      employeeCount: teamEmployees.length,
-      activeEmployees: teamEmployees.slice(0, 3),
-      currentService: currentService ? getServiceTypeById(currentService.serviceTypeId)?.name : null,
-      nextService: nextService ? getServiceTypeById(nextService.serviceTypeId)?.name : null,
-      servicesCount: teamServices.length,
-    }
+export function TeamCollaboration({ days = 30 }: { days?: number }) {
+  const dashboardQuery = useQuery({
+    queryKey: ["analytics", "dashboard", days],
+    queryFn: () => getDashboardAnalytics({ days }),
   })
+  const teamsWithActivity = dashboardQuery.data?.data.teamsWithActivity ?? []
 
   return (
     <Card
-      className="p-4 transition-all duration-500 hover:shadow-xl"
+      className="h-full p-4 transition-all duration-500 hover:shadow-xl"
     >
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold text-foreground">Equipes</h2>
@@ -45,7 +30,7 @@ export function TeamCollaboration() {
         </Link>
       </div>
       <div className="space-y-3">
-        {teamsWithActivity.map((team, index) => (
+        {teamsWithActivity.map((team) => (
           <div
             key={team.id}
             className="flex items-center gap-3 p-3 rounded-lg hover:bg-secondary transition-all duration-300 cursor-pointer group"

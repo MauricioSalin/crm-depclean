@@ -13,13 +13,6 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import {
   Command,
   CommandEmpty,
   CommandGroup,
@@ -36,8 +29,8 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
 import { Check, ChevronsUpDown, X } from "lucide-react"
-import { mockClients, mockServiceTypes, mockTeams, mockEmployees } from "@/lib/mock-data"
 import { CurrencyInput } from "@/components/ui/currency-input"
+import { SearchableSelect } from "@/components/ui/searchable-select"
 import type { ClientRecord } from "@/lib/api/clients"
 import type { EmployeeRecord } from "@/lib/api/employees"
 import type { ServiceRecord } from "@/lib/api/services"
@@ -105,10 +98,10 @@ export function SchedulingFormDialog({
   onOpenChange,
   editingSchedule,
   onSubmit,
-  clients = mockClients as unknown as ClientRecord[],
-  serviceTypes = mockServiceTypes as unknown as ServiceRecord[],
-  teams = mockTeams as unknown as TeamRecord[],
-  employees = mockEmployees as unknown as EmployeeRecord[],
+  clients = [],
+  serviceTypes = [],
+  teams = [],
+  employees = [],
 }: SchedulingFormDialogProps) {
   const [formData, setFormData] = useState<SchedulingFormData>(DEFAULT_FORM_DATA)
 
@@ -248,7 +241,7 @@ export function SchedulingFormDialog({
           {/* Service Type */}
           <div className="space-y-2">
             <Label>Serviço *</Label>
-            <Select
+            <SearchableSelect
               value={formData.serviceTypeId}
               onValueChange={(value) => {
                 const serviceType = serviceTypes.find(st => st.id === value)
@@ -258,16 +251,13 @@ export function SchedulingFormDialog({
                   teamIds: serviceType?.teamIds || [],
                 })
               }}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Selecione o serviço" />
-              </SelectTrigger>
-              <SelectContent>
-                {serviceTypes.map((st) => (
-                  <SelectItem key={st.id} value={st.id}>{st.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              options={serviceTypes.map((st) => ({ value: st.id, label: st.name }))}
+              placeholder="Selecione o serviço"
+              searchPlaceholder="Buscar serviço..."
+              emptyMessage="Nenhum serviço encontrado."
+              includeAll={false}
+              className="w-full"
+            />
           </div>
 
           {/* Teams */}

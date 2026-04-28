@@ -54,6 +54,25 @@ export type NotificationRuleRecord = {
   updatedAt: string
 }
 
+export type OrganizationSettingsRecord = {
+  id: string
+  legalName: string
+  cnpj: string
+  address: {
+    street: string
+    number: string
+    complement: string
+    neighborhood: string
+    city: string
+    state: string
+    zipCode: string
+  }
+  phone: string
+  email: string
+  createdAt: string | null
+  updatedAt: string | null
+}
+
 export async function getSettings() {
   const response = await api.get<{
     success: true
@@ -181,5 +200,15 @@ export async function updateNotificationRule(id: string, payload: Partial<Notifi
 
 export async function deleteNotificationRule(id: string) {
   const response = await api.delete<{ success: true; data: null }>(`/settings/notification-rules/${id}`)
+  return response.data
+}
+
+export async function getOrganizationSettings() {
+  const response = await api.get<{ success: true; data: OrganizationSettingsRecord }>("/settings/organization")
+  return response.data
+}
+
+export async function updateOrganizationSettings(payload: Partial<Pick<OrganizationSettingsRecord, "legalName" | "cnpj" | "address" | "phone" | "email">>) {
+  const response = await api.patch<{ success: true; data: OrganizationSettingsRecord }>("/settings/organization", payload)
   return response.data
 }

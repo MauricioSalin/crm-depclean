@@ -400,8 +400,8 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Funcionario</TableHead>
-                  <TableHead className="hidden md:table-cell">CPF</TableHead>
+                  <TableHead className="min-w-[180px]">Funcionario</TableHead>
+                  <TableHead className="hidden min-w-[150px] md:table-cell">CPF</TableHead>
                   <TableHead className="hidden sm:table-cell">Cargo</TableHead>
                   <TableHead className="hidden lg:table-cell">Contato</TableHead>
                   <TableHead>Status</TableHead>
@@ -417,18 +417,18 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
                 ) : (
                   paginatedEmployees.map((employee) => (
                     <TableRow key={employee.id}>
-                      <TableCell>
+                      <TableCell className="min-w-[180px]">
                         <div className="flex items-center gap-3">
                           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10">
                             <User className="h-5 w-5 text-primary" />
                           </div>
-                          <div>
+                          <div className="min-w-0">
                             <div className="font-medium">{employee.name}</div>
                             <div className="text-xs text-muted-foreground sm:hidden">{employee.role || "-"}</div>
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell className="hidden font-mono text-sm md:table-cell">{formatCPF(employee.cpf)}</TableCell>
+                      <TableCell className="hidden min-w-[150px] whitespace-nowrap font-mono text-sm md:table-cell">{formatCPF(employee.cpf)}</TableCell>
                       <TableCell className="hidden sm:table-cell">{employee.role || "-"}</TableCell>
                       <TableCell className="hidden lg:table-cell">
                         <div className="space-y-1 text-sm">

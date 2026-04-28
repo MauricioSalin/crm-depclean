@@ -1,7 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Search, Edit, Trash2, Clock, ClipboardList } from "lucide-react"
 
 import { Card, CardContent } from "@/components/ui/card"
@@ -9,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
+import { DataPagination } from "@/components/ui/data-pagination"
 import {
   Table,
   TableBody,
@@ -17,10 +19,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { mockServiceTypes, mockTeams } from "@/lib/mock-data"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
+import { deleteService, listServices, type ServiceRecord } from "@/lib/api/services"
+import { listTeams } from "@/lib/api/teams"
 
-type ServiceTypeRow = (typeof mockServiceTypes)[number]
+type ServiceTypeRow = ServiceRecord
 
 interface ServicesContentProps {
   viewMode: "table" | "cards"
@@ -36,9 +39,31 @@ function formatDuration(type: ServiceTypeRow) {
 }
 
 export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) {
-  const [serviceTypes, setServiceTypes] = useState<ServiceTypeRow[]>(mockServiceTypes)
+  const queryClient = useQueryClient()
   const [searchTerm, setSearchTerm] = useUrlQueryState("q")
+  const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage, setItemsPerPage] = useState(10)
   const [pendingDelete, setPendingDelete] = useState<{ id: string; label: string } | null>(null)
+
+  const servicesQuery = useQuery({
+    queryKey: ["services", "content"],
+    queryFn: () => listServices(""),
+  })
+  const teamsQuery = useQuery({
+    queryKey: ["teams", "services-content"],
+    queryFn: () => listTeams(""),
+  })
+
+  const serviceTypes = servicesQuery.data?.data ?? []
+  const teams = teamsQuery.data?.data ?? []
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => deleteService(id),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["services"] })
+      setPendingDelete(null)
+    },
+  })
 
   const handleDeleteType = (id: string) => {
     setPendingDelete({
@@ -49,11 +74,19 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
 
   const confirmDeleteType = () => {
     if (!pendingDelete) return
-    setServiceTypes((current) => current.filter((type) => type.id !== pendingDelete.id))
-    setPendingDelete(null)
+    deleteMutation.mutate(pendingDelete.id)
   }
 
   const filteredTypes = serviceTypes.filter((st) => st.name.toLowerCase().includes(searchTerm.toLowerCase()))
+  const totalItems = filteredTypes.length
+  const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage))
+  const paginatedTypes = filteredTypes.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages)
+    }
+  }, [currentPage, totalPages])
 
   return (
     <div className="space-y-4">
@@ -63,7 +96,10 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
           <Input
             placeholder="Buscar tipos de serviço..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => {
+              setSearchTerm(e.target.value)
+              setCurrentPage(1)
+            }}
             className="pl-10"
           />
         </div>
@@ -83,14 +119,20 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredTypes.length === 0 ? (
+              {servicesQuery.isLoading ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="h-24 text-center">
+                    Carregando tipos de serviço...
+                  </TableCell>
+                </TableRow>
+              ) : filteredTypes.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={5} className="h-24 text-center">
                     Nenhum tipo de serviço encontrado.
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredTypes.map((type) => (
+                paginatedTypes.map((type) => (
                   <TableRow key={type.id}>
                     <TableCell>
                       <div className="flex items-center gap-3">
@@ -108,7 +150,7 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
                     <TableCell className="hidden md:table-cell">
                       <div className="flex flex-wrap gap-1">
                         {(type.teamIds || []).map((teamId: string) => {
-                          const team = mockTeams.find((item) => item.id === teamId)
+                          const team = teams.find((item) => item.id === teamId)
                           return team ? (
                             <Badge
                               key={team.id}
@@ -152,10 +194,10 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filteredTypes.map((type) => (
-            <Card key={type.id} className="overflow-hidden transition-shadow hover:shadow-lg">
-              <CardContent className="p-4">
-                <div className="mb-3 flex items-start justify-between">
+          {paginatedTypes.map((type) => (
+            <Card key={type.id} className="overflow-hidden py-4 transition-shadow hover:shadow-lg">
+              <CardContent className="px-4">
+                <div className="mb-2 flex items-start justify-between">
                   <div className="flex min-w-0 items-center gap-3">
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
                       <ClipboardList className="h-5 w-5 text-primary" />
@@ -185,9 +227,9 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
                 </div>
 
                 {type.teamIds?.length > 0 ? (
-                  <div className="mt-2 flex flex-wrap gap-1">
+                  <div className="mt-1.5 flex flex-wrap gap-1">
                     {type.teamIds.map((teamId: string) => {
-                      const team = mockTeams.find((item) => item.id === teamId)
+                      const team = teams.find((item) => item.id === teamId)
                       return team ? (
                         <Badge
                           key={team.id}
@@ -208,11 +250,24 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
         </div>
       )}
 
+      <DataPagination
+        currentPage={currentPage}
+        totalPages={totalPages}
+        pageSize={itemsPerPage}
+        totalItems={totalItems}
+        onPageChange={setCurrentPage}
+        onPageSizeChange={(size) => {
+          setItemsPerPage(size)
+          setCurrentPage(1)
+        }}
+      />
+
       <ConfirmActionDialog
         open={!!pendingDelete}
         title="Excluir tipo de serviço"
         description={`Tem certeza que deseja excluir ${pendingDelete?.label ?? "este tipo de serviço"}? Esta ação não pode ser desfeita.`}
         confirmLabel="Excluir"
+        busy={deleteMutation.isPending}
         onOpenChange={(open) => {
           if (!open) setPendingDelete(null)
         }}

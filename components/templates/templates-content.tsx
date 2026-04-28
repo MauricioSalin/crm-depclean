@@ -27,6 +27,7 @@ import { listContracts, type ContractRecord } from "@/lib/api/contracts"
 import { listEmployees } from "@/lib/api/employees"
 import { listSchedules, type ScheduleRecord } from "@/lib/api/schedules"
 import { listServices, type ServiceRecord } from "@/lib/api/services"
+import { listClientTypes, type ClientTypeRecord } from "@/lib/api/settings"
 import {
   createTemplate,
   deleteTemplate,
@@ -43,7 +44,6 @@ import { buildApiFileUrl } from "@/lib/api/client"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 
 export type ContractTemplate = TemplateRecord
-export const mockTemplates: ContractTemplate[] = []
 
 const TEMPLATE_CONFIG = {
   contract: {
@@ -205,6 +205,68 @@ function recurrenceLabel(value?: string | null) {
   return labels[value ?? ""] ?? value ?? ""
 }
 
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+}
+
+function capitalizeFirst(value?: string | null) {
+  const normalized = (value ?? "").trim()
+  if (!normalized) return "Cliente"
+  return normalized.charAt(0).toLocaleUpperCase("pt-BR") + normalized.slice(1)
+}
+
+function buildRecurrenceConditionLabel(
+  clientTypeName: string,
+  rule: ContractRecord["recurrenceRules"][number],
+  previousMaxUnits?: number,
+) {
+  const typeName = capitalizeFirst(clientTypeName)
+
+  if (rule.type === "above") {
+    return `${typeName} acima de ${rule.minUnits} unidades`
+  }
+
+  if (rule.minUnits <= 1) {
+    return `${typeName} com até ${rule.maxUnits} unidades`
+  }
+
+  const startUnits = previousMaxUnits && previousMaxUnits > 0 ? previousMaxUnits : rule.minUnits
+  return `${typeName} de ${startUnits} a ${rule.maxUnits} unidades`
+}
+
+function buildRecurrenceTableHtml(clientTypeName: string, rules: ContractRecord["recurrenceRules"] = []) {
+  const sortedRules = [...rules].sort((current, next) => {
+    if (current.minUnits !== next.minUnits) return current.minUnits - next.minUnits
+    return current.maxUnits - next.maxUnits
+  })
+
+  const rows = sortedRules.length
+    ? sortedRules
+    : [
+        { type: "range" as const, minUnits: 1, maxUnits: 100, recurrence: "semiannual" },
+        { type: "range" as const, minUnits: 101, maxUnits: 200, recurrence: "quarterly" },
+        { type: "above" as const, minUnits: 200, maxUnits: 999999, recurrence: "monthly" },
+      ]
+
+  let previousRangeMax = 0
+  const tableRows = rows
+    .map((rule) => {
+      const condition = buildRecurrenceConditionLabel(clientTypeName, rule, previousRangeMax)
+      if (rule.type === "range") previousRangeMax = rule.maxUnits
+      const visitLabel = `Visita ${recurrenceLabel(rule.recurrence).toLocaleLowerCase("pt-BR")}`
+
+      return `<tr><td style="border:1px solid #000;padding:4px 8px;font-weight:700;">${escapeHtml(condition)}</td><td style="border:1px solid #000;padding:4px 8px;font-weight:700;">${escapeHtml(visitLabel)}</td></tr>`
+    })
+    .join("")
+
+  return `<table style="border-collapse:collapse;width:100%;max-width:520px;"><tbody>${tableRows}</tbody></table>`
+}
+
 function buildServiceSectionsText(contract: ContractRecord, services: ServiceRecord[]) {
   return contract.services
     .map((item, index) => {
@@ -226,13 +288,14 @@ function buildReservoirRows(unit?: ClientUnitRecord | null) {
 
 function buildPreviewVariables(params: {
   client?: ClientRecord
+  clientTypes: ClientTypeRecord[]
   contract?: ContractRecord
   employeeName?: string
   kind: TemplateKind
   schedule?: ScheduleRecord
   services: ServiceRecord[]
 }) {
-  const { client, contract, employeeName, kind, schedule, services } = params
+  const { client, clientTypes, contract, employeeName, kind, schedule, services } = params
   if (!client) return null
 
   const unit = contract
@@ -251,6 +314,7 @@ function buildPreviewVariables(params: {
       .filter(Boolean)
       .join(", ") || ""
   const serviceSectionsText = contract ? buildServiceSectionsText(contract, services) : ""
+  const clientTypeName = clientTypes.find((item) => item.id === client.clientTypeId)?.name ?? "Cliente"
 
   const base = {
     client: {
@@ -262,12 +326,13 @@ function buildPreviewVariables(params: {
       responsibleName: client.responsibleName,
     },
     contractor: {
-      address: "Rua Um, 23 - Brigadeira - Canoas/RS - CEP 92425-692",
-      cnpj: "21.602.658/0001-43",
-      email: "contato@depcleanrs.com.br",
-      legalName: "Depclean Soluções Ambientais LTDA",
-      signerName: employeeName || "Melina Costa",
-      signerRole: "Sócia administradora",
+      address: "",
+      cnpj: "",
+      email: "",
+      legalName: "",
+      phone: "",
+      signerName: employeeName || "",
+      signerRole: "",
     },
     document: {
       generatedDate: formatDate(new Date()),
@@ -309,6 +374,7 @@ function buildPreviewVariables(params: {
         number: contract.contractNumber,
         paymentDay: String(contract.paymentDay).padStart(2, "0"),
         recurrence: recurrenceLabel(contract.recurrence),
+        recurrenceTable: buildRecurrenceTableHtml(clientTypeName, contract.recurrenceRules),
         startDate: formatDate(contract.startDate),
         totalValue: formatCurrency(contract.totalValue),
       },
@@ -419,6 +485,12 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
     queryFn: () => listServices(""),
   })
 
+  const clientTypesQuery = useQuery({
+    enabled: isEditorOpen,
+    queryKey: ["client-types", "templates-preview"],
+    queryFn: () => listClientTypes(""),
+  })
+
   const templates = templatesQuery.data?.data ?? []
   const totalPages = Math.max(1, Math.ceil(templates.length / pageSize))
   const paginatedTemplates = useMemo(() => {
@@ -439,6 +511,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
   const contracts = contractsQuery.data?.data ?? []
   const schedules = schedulesQuery.data?.data ?? []
   const services = servicesQuery.data?.data ?? []
+  const clientTypes = clientTypesQuery.data?.data.items ?? []
   const variableGroups = useMemo(() => getTemplateVariableGroups(kind), [kind])
   const watermarkImageUrl = selectedWatermarkPreviewUrl || (formData.watermarkFileUrl ? buildApiFileUrl(formData.watermarkFileUrl) : "")
 
@@ -451,13 +524,14 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
     () =>
       buildPreviewVariables({
         client: previewClient,
+        clientTypes,
         contract: kind === "contract" ? selectedPreviewContract : undefined,
         employeeName: employees.find((employee) => employee.id === formData.signerId)?.name,
         kind,
         schedule: kind === "contract" ? undefined : selectedPreviewSchedule,
         services,
       }),
-    [employees, formData.signerId, kind, previewClient, selectedPreviewContract, selectedPreviewSchedule, services],
+    [clientTypes, employees, formData.signerId, kind, previewClient, selectedPreviewContract, selectedPreviewSchedule, services],
   )
   const previewDataKey = [
     kind,
@@ -465,6 +539,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
     previewDocumentId,
     clientsQuery.dataUpdatedAt,
     contractsQuery.dataUpdatedAt,
+    clientTypesQuery.dataUpdatedAt,
     schedulesQuery.dataUpdatedAt,
     servicesQuery.dataUpdatedAt,
   ].join(":")
@@ -1128,24 +1203,6 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
                 </div>
               ) : null}
 
-              {kind === "certificate" ? (
-                <div className="space-y-2">
-                  <Label htmlFor="tpl-certificate-days">Gerar/enviar certificado quantos dias depois?</Label>
-                  <Input
-                    id="tpl-certificate-days"
-                    type="number"
-                    min={0}
-                    value={formData.certificateSendDaysAfter}
-                    onChange={(event) =>
-                      setFormData((current) => ({
-                        ...current,
-                        certificateSendDaysAfter: Math.max(0, Number.parseInt(event.target.value, 10) || 0),
-                      }))
-                    }
-                  />
-                </div>
-              ) : null}
-
               {config.requiresSigner ? (
                 <div className="space-y-2">
                   <Label htmlFor="tpl-signer" className="flex items-center gap-1.5">
@@ -1324,24 +1381,6 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
                     setFormData((current) => ({
                       ...current,
                       informativeSendDaysBefore: Math.max(0, Number.parseInt(event.target.value, 10) || 0),
-                    }))
-                  }
-                />
-              </div>
-            ) : null}
-
-            {kind === "certificate" ? (
-              <div className="space-y-2">
-                <Label htmlFor="import-certificate-days">Gerar/enviar certificado quantos dias depois?</Label>
-                <Input
-                  id="import-certificate-days"
-                  type="number"
-                  min={0}
-                  value={formData.certificateSendDaysAfter}
-                  onChange={(event) =>
-                    setFormData((current) => ({
-                      ...current,
-                      certificateSendDaysAfter: Math.max(0, Number.parseInt(event.target.value, 10) || 0),
                     }))
                   }
                 />

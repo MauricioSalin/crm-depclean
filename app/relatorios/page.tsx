@@ -15,6 +15,7 @@ export default function RelatoriosPage() {
         <Header
           title="Relatórios"
           description="Visualize e exporte relatórios de desempenho"
+          showDivider={false}
         />
 
         <div className="mt-4 md:mt-5">

@@ -8,6 +8,8 @@ import {
   Calendar as CalendarIcon,
   Camera,
   Check,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   Edit,
   FileUp,
@@ -20,7 +22,6 @@ import { listClients } from "@/lib/api/clients"
 import { listSchedules, createSchedule, updateSchedule, startSchedule, completeSchedule, cancelSchedule, uploadScheduleNa, type ScheduleRecord } from "@/lib/api/schedules"
 import { listServices } from "@/lib/api/services"
 import { listTeams } from "@/lib/api/teams"
-import { addClientAttachment } from "@/lib/client-attachments-store"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 import type { RecurrenceType } from "@/lib/types"
 import { Badge } from "@/components/ui/badge"
@@ -40,13 +41,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { SearchableSelect } from "@/components/ui/searchable-select"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { WeekTimeline } from "./week-timeline"
@@ -140,6 +134,12 @@ const mapSchedule = (schedule: ScheduleRecord): AgendaScheduledServiceRow => ({
   recurrence: schedule.recurrence ?? { ...DEFAULT_RECURRENCE },
   notes: schedule.notes ?? "",
 })
+
+function getScheduleIconTone(schedule: Pick<ScheduleRecord, "isEmergency">) {
+  return schedule.isEmergency
+    ? { wrapper: "bg-red-50", icon: "text-red-600" }
+    : { wrapper: "bg-primary/10", icon: "text-primary" }
+}
 
 export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps) {
   const queryClient = useQueryClient()
@@ -309,26 +309,6 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
     },
     onSuccess: async ({ data }) => {
       await invalidateSchedules()
-      if (completionFile) {
-        addClientAttachment({
-          clientId: data.clientId,
-          scheduledServiceId: data.id,
-          type: "service_na",
-          title: `NA - ${data.serviceTypeName}`,
-          fileName: completionFile.name,
-          mimeType: completionFile.type || "application/octet-stream",
-          fileSize: completionFile.size,
-          source: "agenda",
-          description: "Nota de atendimento vinculada à visita concluída.",
-          metadata: {
-            serviceTypeName: data.serviceTypeName,
-            scheduledDate: data.date,
-            startTime: completionStartTime,
-            endTime: completionEndTime,
-          },
-        })
-      }
-
       setCompletionTarget(null)
       setCompletionStartTime("")
       setCompletionEndTime("")
@@ -404,6 +384,9 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   }
 
   const handleEditService = (service: AgendaScheduledServiceRow) => {
+    setSelectedSchedule(null)
+    setCancelTarget(null)
+    setCompletionTarget(null)
     setEditingService(service)
     setFormData({
       clientId: service.clientId,
@@ -418,7 +401,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       notes: service.notes || "",
       isEmergency: service.isEmergency ?? false,
     })
-    handleDialogChange(true)
+    window.setTimeout(() => setIsDialogOpen(true), 0)
   }
 
   const openSchedule = (schedule: AgendaScheduledServiceRow) => {
@@ -458,6 +441,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   }
 
   const selectedDateServices = selectedDate ? getServicesForDate(selectedDate) : []
+  const isEditingAutomatedSchedule = Boolean(editingService?.contractId && !editingService.isManual)
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
@@ -471,59 +455,46 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
             <div className="grid grid-cols-2 gap-4">
               <div className="col-span-2 space-y-2">
                 <Label>Cliente</Label>
-                <Select
+                <SearchableSelect
                   value={formData.clientId}
                   onValueChange={(value) => setFormData((previous) => ({ ...previous, clientId: value }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione o cliente" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {clients.map((client) => (
-                      <SelectItem key={client.id} value={client.id}>
-                        {client.companyName}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  options={clients.map((client) => ({ value: client.id, label: client.companyName }))}
+                  placeholder="Selecione o cliente"
+                  searchPlaceholder="Buscar cliente..."
+                  emptyMessage="Nenhum cliente encontrado."
+                  includeAll={false}
+                  className="w-full"
+                />
               </div>
 
               <div className="col-span-2 space-y-2">
                 <Label>Tipo de Serviço</Label>
-                <Select
+                <SearchableSelect
                   value={formData.serviceTypeId}
                   onValueChange={(value) => setFormData((previous) => ({ ...previous, serviceTypeId: value }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {serviceTypes.filter((serviceType) => serviceType.isActive).map((serviceType) => (
-                      <SelectItem key={serviceType.id} value={serviceType.id}>
-                        {serviceType.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  options={serviceTypes
+                    .filter((serviceType) => serviceType.isActive)
+                    .map((serviceType) => ({ value: serviceType.id, label: serviceType.name }))}
+                  placeholder="Selecione"
+                  searchPlaceholder="Buscar serviço..."
+                  emptyMessage="Nenhum serviço encontrado."
+                  includeAll={false}
+                  className="w-full"
+                />
               </div>
 
               <div className="space-y-2">
                 <Label>Equipe</Label>
-                <Select
+                <SearchableSelect
                   value={formData.teamId}
                   onValueChange={(value) => setFormData((previous) => ({ ...previous, teamId: value }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {teams.map((team) => (
-                      <SelectItem key={team.id} value={team.id}>
-                        {team.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  options={teams.map((team) => ({ value: team.id, label: team.name }))}
+                  placeholder="Selecione"
+                  searchPlaceholder="Buscar equipe..."
+                  emptyMessage="Nenhuma equipe encontrada."
+                  includeAll={false}
+                  className="w-full"
+                />
               </div>
 
               <div className="space-y-2">
@@ -559,17 +530,19 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label>Valor (R$)</Label>
-                <CurrencyInput
-                  value={Math.round(formData.value * 100)}
-                  onChange={(cents) => setFormData((previous) => ({ ...previous, value: cents / 100 }))}
-                />
-              </div>
+              {!isEditingAutomatedSchedule ? (
+                <div className="space-y-2">
+                  <Label>Valor (R$)</Label>
+                  <CurrencyInput
+                    value={Math.round(formData.value * 100)}
+                    onChange={(cents) => setFormData((previous) => ({ ...previous, value: cents / 100 }))}
+                  />
+                </div>
+              ) : null}
 
               <div className="space-y-2">
                 <Label>Recorrência</Label>
-                <Select
+                <SearchableSelect
                   value={formData.recurrence.type}
                   onValueChange={(value) =>
                     setFormData((previous) => ({
@@ -577,18 +550,19 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                       recurrence: { ...previous.recurrence, type: value as AgendaRecurrenceType },
                     }))
                   }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Único</SelectItem>
-                    <SelectItem value="daily">Diário</SelectItem>
-                    <SelectItem value="weekly">Semanal</SelectItem>
-                    <SelectItem value="biweekly">Quinzenal</SelectItem>
-                    <SelectItem value="monthly">Mensal</SelectItem>
-                  </SelectContent>
-                </Select>
+                  options={[
+                    { value: "none", label: "Único" },
+                    { value: "daily", label: "Diário" },
+                    { value: "weekly", label: "Semanal" },
+                    { value: "biweekly", label: "Quinzenal" },
+                    { value: "monthly", label: "Mensal" },
+                  ]}
+                  placeholder="Selecione"
+                  searchPlaceholder="Buscar recorrência..."
+                  emptyMessage="Nenhuma recorrência encontrada."
+                  includeAll={false}
+                  className="w-full"
+                />
               </div>
             </div>
 
@@ -932,16 +906,16 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
           <Card className="flex flex-col lg:col-span-3 lg:overflow-hidden xl:col-span-3">
             <CardHeader className="shrink-0 px-4 py-2">
               <div className="flex items-center justify-between">
-                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigateMonth(-1)}>
+                <Button variant="ghost" size="icon" className="h-10 w-10" onClick={() => navigateMonth(-1)}>
                   <span className="sr-only">Mês anterior</span>
-                  ‹
+                  <ChevronLeft className="h-6 w-6" />
                 </Button>
                 <CardTitle className="text-base">
                   {MONTHS[currentMonth]} {currentYear}
                 </CardTitle>
-                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigateMonth(1)}>
+                <Button variant="ghost" size="icon" className="h-10 w-10" onClick={() => navigateMonth(1)}>
                   <span className="sr-only">Próximo mês</span>
-                  ›
+                  <ChevronRight className="h-6 w-6" />
                 </Button>
               </div>
             </CardHeader>
@@ -1025,8 +999,8 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                           <CardContent>
                             <div className="mb-4 flex items-start justify-between gap-3">
                               <div className="flex min-w-0 flex-1 items-center gap-2">
-                                <div className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 sm:flex">
-                                  <Calendar className="h-5 w-5 text-primary" />
+                                <div className={`hidden h-10 w-10 shrink-0 items-center justify-center rounded-lg sm:flex ${getScheduleIconTone(service).wrapper}`}>
+                                  <Calendar className={`h-5 w-5 ${getScheduleIconTone(service).icon}`} />
                                 </div>
                                 <div className="min-w-0 flex-1 pr-1">
                                   <h4 className="max-w-[190px] whitespace-normal break-words text-sm font-medium leading-snug sm:max-w-none">
@@ -1084,19 +1058,21 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                                 <Edit className="mr-1 h-3 w-3" />
                                 Editar
                               </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-7 text-xs"
-                                onClick={() => {
-                                  setCompletionTarget(service)
-                                  setCompletionStartTime(service.completionStartTime || service.time || "")
-                                  setCompletionEndTime(service.completionEndTime || "")
-                                  setCompletionFile(null)
-                                }}
-                              >
-                                <Check className="h-3 w-3" />
-                              </Button>
+                              {service.status === "in_progress" && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-xs"
+                                  onClick={() => {
+                                    setCompletionTarget(service)
+                                    setCompletionStartTime(service.completionStartTime || service.time || "")
+                                    setCompletionEndTime(service.completionEndTime || "")
+                                    setCompletionFile(null)
+                                  }}
+                                >
+                                  <Check className="h-3 w-3" />
+                                </Button>
+                              )}
                               <Button
                                 variant="outline"
                                 size="sm"
@@ -1188,8 +1164,8 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                           <CardContent>
                             <div className="mb-4 flex items-start justify-between gap-3">
                               <div className="flex min-w-0 flex-1 items-center gap-2">
-                                <div className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 sm:flex">
-                                  <Calendar className="h-5 w-5 text-primary" />
+                                <div className={`hidden h-10 w-10 shrink-0 items-center justify-center rounded-lg sm:flex ${getScheduleIconTone(service).wrapper}`}>
+                                  <Calendar className={`h-5 w-5 ${getScheduleIconTone(service).icon}`} />
                                 </div>
                                 <div className="min-w-0 flex-1 pr-1">
                                   <h4 className="max-w-[190px] whitespace-normal break-words text-sm font-medium leading-snug sm:max-w-none">
@@ -1247,19 +1223,21 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                                 <Edit className="mr-1 h-3 w-3" />
                                 Editar
                               </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-7 text-xs"
-                                onClick={() => {
-                                  setCompletionTarget(service)
-                                  setCompletionStartTime(service.completionStartTime || service.time || "")
-                                  setCompletionEndTime(service.completionEndTime || "")
-                                  setCompletionFile(null)
-                                }}
-                              >
-                                <Check className="h-3 w-3" />
-                              </Button>
+                              {service.status === "in_progress" && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-xs"
+                                  onClick={() => {
+                                    setCompletionTarget(service)
+                                    setCompletionStartTime(service.completionStartTime || service.time || "")
+                                    setCompletionEndTime(service.completionEndTime || "")
+                                    setCompletionFile(null)
+                                  }}
+                                >
+                                  <Check className="h-3 w-3" />
+                                </Button>
+                              )}
                               <Button
                                 variant="outline"
                                 size="sm"

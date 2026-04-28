@@ -2,7 +2,8 @@
 
 import { Card } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { monthlyRevenueData, servicesByPeriodData, formatCurrency } from "@/lib/mock-data"
+import { useQuery } from "@tanstack/react-query"
+import { getDashboardAnalytics } from "@/lib/api/analytics"
 import {
   BarChart,
   Bar,
@@ -16,9 +17,20 @@ import {
   Legend,
 } from "recharts"
 
-export function ProjectAnalytics() {
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value)
+}
+
+export function ProjectAnalytics({ days = 30 }: { days?: number }) {
+  const dashboardQuery = useQuery({
+    queryKey: ["analytics", "dashboard", days],
+    queryFn: () => getDashboardAnalytics({ days }),
+  })
+  const monthlyRevenueData = dashboardQuery.data?.data.monthlyRevenueData ?? []
+  const servicesByPeriodData = dashboardQuery.data?.data.servicesByPeriodData ?? []
+
   return (
-    <Card className="p-4 md:p-5">
+    <Card className="h-full p-4 md:p-5">
       <Tabs defaultValue="faturamento" className="w-full">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
           <h3 className="font-semibold text-base">Análise Operacional</h3>

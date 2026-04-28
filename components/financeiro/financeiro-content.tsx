@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useMemo } from "react"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -20,13 +21,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import {
   Search,
   MoreHorizontal,
   DollarSign,
@@ -35,18 +29,12 @@ import {
   CheckCircle,
   TrendingUp,
   Calendar,
-  Receipt,
 } from "lucide-react"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
-import { 
-  contracts, 
-  getClientById, 
-  formatCurrency, 
-  formatDate,
-  monthlyRevenueData
-} from "@/lib/mock-data"
+import { getFinancialAnalytics, type FinancialInstallmentRecord } from "@/lib/api/analytics"
+import { updateInstallment } from "@/lib/api/contracts"
 import Link from "next/link"
 import {
   BarChart,
@@ -66,64 +54,113 @@ interface FinanceiroContentProps {
   viewToggle?: React.ReactNode
 }
 
+type InstallmentStatusAction = "pending" | "paid" | "overdue"
+
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value)
+}
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat("pt-BR").format(new Date(value))
+}
+
+function startOfDay(date: Date) {
+  const copy = new Date(date)
+  copy.setHours(0, 0, 0, 0)
+  return copy
+}
+
+function selectCurrentInstallment(installments: FinancialInstallmentRecord[]) {
+  const today = startOfDay(new Date()).getTime()
+  const sorted = [...installments].sort((left, right) => new Date(left.dueDate).getTime() - new Date(right.dueDate).getTime())
+  const dueOrPast = sorted
+    .filter((installment) => startOfDay(new Date(installment.dueDate)).getTime() <= today)
+    .at(-1)
+
+  return dueOrPast ?? sorted[0]
+}
+
 export function FinanceiroContent({ viewMode, viewToggle }: FinanceiroContentProps) {
   const [searchTerm, setSearchTerm] = useUrlQueryState("q")
   const [tabFilter, setTabFilter] = useState("all")
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
+  const queryClient = useQueryClient()
 
   const FINANCE_COLORS = ["#22C55E", "#F59E0B", "#EF4444"]
 
-  // Get all installments with contract info
-  const allInstallments = useMemo(() => {
-    return contracts.flatMap(contract => 
-      contract.installments.map(installment => ({
-        ...installment,
-        contractId: contract.id,
-        contractNumber: contract.contractNumber,
-        clientId: contract.clientId,
-        client: getClientById(contract.clientId),
-      }))
-    )
-  }, [])
+  const financialQuery = useQuery({
+    queryKey: ["analytics", "financial"],
+    queryFn: getFinancialAnalytics,
+  })
+
+  const installmentStatusMutation = useMutation({
+    mutationFn: ({ installment, status }: { installment: FinancialInstallmentRecord; status: InstallmentStatusAction }) =>
+      updateInstallment(installment.contractId, installment.id, {
+        status,
+        paidDate: status === "paid" ? new Date().toISOString() : undefined,
+        paidValue: status === "paid" ? installment.value : undefined,
+      }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["analytics"] }),
+        queryClient.invalidateQueries({ queryKey: ["contracts"] }),
+      ])
+    },
+  })
+
+  const setInstallmentStatus = (installment: FinancialInstallmentRecord, status: InstallmentStatusAction) => {
+    installmentStatusMutation.mutate({ installment, status })
+  }
+
+  const allInstallments = financialQuery.data?.data.installments ?? []
+  const summary = financialQuery.data?.data.summary ?? {
+    totalPaid: 0,
+    totalPending: 0,
+    totalOverdue: 0,
+    paidCount: 0,
+    pendingCount: 0,
+    overdueCount: 0,
+    totalCount: 0,
+    adherenceRate: 0,
+  }
+  const monthlyRevenueData = financialQuery.data?.data.monthlyRevenueData ?? []
+  const financeHealthData = financialQuery.data?.data.financeHealthData ?? [
+    { name: "Pagas", value: 0 },
+    { name: "Pendentes", value: 0 },
+    { name: "Vencidas", value: 0 },
+  ]
+
+  const currentInstallmentsByClient = useMemo(() => {
+    const grouped = new Map<string, FinancialInstallmentRecord[]>()
+
+    allInstallments.forEach((installment) => {
+      const existing = grouped.get(installment.clientId) ?? []
+      existing.push(installment)
+      grouped.set(installment.clientId, existing)
+    })
+
+    return Array.from(grouped.values())
+      .map(selectCurrentInstallment)
+      .filter((installment): installment is FinancialInstallmentRecord => Boolean(installment))
+  }, [allInstallments])
 
   const filteredInstallments = useMemo(() => {
-    return allInstallments.filter(installment => {
-      const companyName = installment.client?.companyName ?? ""
+    return currentInstallmentsByClient.filter(installment => {
+      const companyName = installment.clientCompanyName ?? ""
       const matchesSearch = 
         installment.contractNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
         companyName.toLowerCase().includes(searchTerm.toLowerCase())
       const matchesTab = tabFilter === "all" || installment.status === tabFilter
       return matchesSearch && matchesTab
-    }).sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime())
-  }, [allInstallments, searchTerm, tabFilter])
+    }).sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
+  }, [currentInstallmentsByClient, searchTerm, tabFilter])
 
-  const totalPages = Math.ceil(filteredInstallments.length / pageSize)
+  const totalPages = Math.max(1, Math.ceil(filteredInstallments.length / pageSize))
   const paginatedInstallments = useMemo(() => {
     const start = (currentPage - 1) * pageSize
     return filteredInstallments.slice(start, start + pageSize)
   }, [filteredInstallments, currentPage, pageSize])
-
-  // Calculate summary stats
-  const paidInstallments = allInstallments.filter(i => i.status === "paid")
-  const pendingInstallments = allInstallments.filter(i => i.status === "pending")
-  const overdueInstallments = allInstallments.filter(i => i.status === "overdue")
-
-  const totalPaid = paidInstallments.reduce((acc, i) => acc + (i.paidValue || i.value), 0)
-  const totalPending = pendingInstallments.reduce((acc, i) => acc + i.value, 0)
-  const totalOverdue = overdueInstallments.reduce((acc, i) => acc + i.value, 0)
-
-  const financeHealthData = useMemo(() => {
-    const total = allInstallments.length || 1
-    const paid = Math.round((paidInstallments.length / total) * 100)
-    const pending = Math.round((pendingInstallments.length / total) * 100)
-    const overdue = Math.max(0, 100 - paid - pending)
-    return [
-      { name: "Pagas", value: paid },
-      { name: "Pendentes", value: pending },
-      { name: "Vencidas", value: overdue },
-    ]
-  }, [allInstallments.length, paidInstallments.length, pendingInstallments.length])
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -133,6 +170,8 @@ export function FinanceiroContent({ viewMode, viewToggle }: FinanceiroContentPro
         return <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">Pendente</Badge>
       case "overdue":
         return <Badge className="bg-red-100 text-red-700 hover:bg-red-100">Vencida</Badge>
+      case "cancelled":
+        return <Badge variant="secondary">Cancelada</Badge>
       default:
         return <Badge variant="secondary">{status}</Badge>
     }
@@ -149,7 +188,7 @@ export function FinanceiroContent({ viewMode, viewToggle }: FinanceiroContentPro
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Total Recebido</p>
-              <p className="text-xl font-bold text-green-600">{formatCurrency(totalPaid)}</p>
+              <p className="text-xl font-bold text-green-600">{formatCurrency(summary.totalPaid)}</p>
             </div>
           </div>
         </Card>
@@ -160,7 +199,7 @@ export function FinanceiroContent({ viewMode, viewToggle }: FinanceiroContentPro
             </div>
             <div>
               <p className="text-sm text-muted-foreground">A Receber</p>
-              <p className="text-xl font-bold text-amber-600">{formatCurrency(totalPending)}</p>
+              <p className="text-xl font-bold text-amber-600">{formatCurrency(summary.totalPending)}</p>
             </div>
           </div>
         </Card>
@@ -171,7 +210,7 @@ export function FinanceiroContent({ viewMode, viewToggle }: FinanceiroContentPro
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Vencidas</p>
-              <p className="text-xl font-bold text-red-600">{formatCurrency(totalOverdue)}</p>
+              <p className="text-xl font-bold text-red-600">{formatCurrency(summary.totalOverdue)}</p>
             </div>
           </div>
         </Card>
@@ -182,7 +221,7 @@ export function FinanceiroContent({ viewMode, viewToggle }: FinanceiroContentPro
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Taxa de Adimplência</p>
-              <p className="text-xl font-bold">{Math.round((paidInstallments.length / allInstallments.length) * 100)}%</p>
+              <p className="text-xl font-bold">{summary.adherenceRate}%</p>
             </div>
           </div>
         </Card>
@@ -256,7 +295,7 @@ export function FinanceiroContent({ viewMode, viewToggle }: FinanceiroContentPro
                 </PieChart>
               </ResponsiveContainer>
               <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-3xl font-bold text-foreground">{Math.round((paidInstallments.length / allInstallments.length) * 100)}%</span>
+                <span className="text-3xl font-bold text-foreground">{summary.adherenceRate}%</span>
                 <span className="text-xs text-muted-foreground mt-1">Adimplência</span>
               </div>
             </div>
@@ -329,7 +368,7 @@ export function FinanceiroContent({ viewMode, viewToggle }: FinanceiroContentPro
                       <TableRow key={installment.id}>
                         <TableCell>
                           <Link href={`/clientes/${installment.clientId}`} className="hover:text-primary">
-                            <p className="font-medium truncate max-w-[140px] sm:max-w-[280px]">{installment.client?.companyName}</p>
+                            <p className="font-medium truncate max-w-[140px] sm:max-w-[280px]">{installment.clientCompanyName}</p>
                           </Link>
                         </TableCell>
                         <TableCell className="hidden md:table-cell text-muted-foreground">
@@ -360,15 +399,14 @@ export function FinanceiroContent({ viewMode, viewToggle }: FinanceiroContentPro
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              {installment.status !== "paid" && (
-                                <DropdownMenuItem>
-                                  <CheckCircle className="w-4 h-4 mr-2" />
-                                  Marcar como Paga
-                                </DropdownMenuItem>
-                              )}
-                              <DropdownMenuItem>
-                                <Receipt className="w-4 h-4 mr-2" />
-                                Gerar Boleto
+                              <DropdownMenuItem onClick={() => setInstallmentStatus(installment, "paid")}>
+                                Marcar como paga
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => setInstallmentStatus(installment, "overdue")}>
+                                Marcar como atrasada
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => setInstallmentStatus(installment, "pending")}>
+                                Marcar como pendente
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
@@ -390,7 +428,7 @@ export function FinanceiroContent({ viewMode, viewToggle }: FinanceiroContentPro
                       </div>
                       {getStatusBadge(installment.status)}
                     </div>
-                    <h3 className="font-semibold mb-1 truncate">{installment.client?.companyName}</h3>
+                    <h3 className="font-semibold mb-1 truncate">{installment.clientCompanyName}</h3>
                     <p className="text-sm text-muted-foreground mb-3">{installment.contractNumber} - Parcela {installment.number}</p>
                     <div className="space-y-2 text-sm">
                       <div className="flex items-center justify-between">
@@ -402,17 +440,26 @@ export function FinanceiroContent({ viewMode, viewToggle }: FinanceiroContentPro
                         <span>{formatDate(installment.dueDate)}</span>
                       </div>
                     </div>
-                    <div className="flex gap-2 mt-4 pt-4 border-t">
-                      {installment.status !== "paid" && (
-                        <Button variant="outline" size="sm" className="flex-1">
-                          <CheckCircle className="w-4 h-4 mr-1" />
-                          Pagar
-                        </Button>
-                      )}
-                      <Button size="sm" className={`${installment.status === "paid" ? "flex-1" : ""} bg-primary hover:bg-primary/90 text-primary-foreground`}>
-                        <Receipt className="w-4 h-4 mr-1" />
-                        Boleto
-                      </Button>
+                    <div className="mt-4 pt-4 border-t">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline" size="sm" className="w-full">
+                            <MoreHorizontal className="w-4 h-4 mr-1" />
+                            Alterar status
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => setInstallmentStatus(installment, "paid")}>
+                            Marcar como paga
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setInstallmentStatus(installment, "overdue")}>
+                            Marcar como atrasada
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setInstallmentStatus(installment, "pending")}>
+                            Marcar como pendente
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </CardContent>
                 </Card>

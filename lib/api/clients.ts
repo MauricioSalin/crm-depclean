@@ -98,18 +98,28 @@ export type ClientPayload = {
   }>
 }
 
+const legacyClientIds: Record<string, string> = {
+  client1: "client-condominio-eduardo-prado",
+  client2: "client-residencial-solar",
+  client3: "client-predio-comercial-centro",
+}
+
+export function resolveClientId(id: string) {
+  return legacyClientIds[id] ?? id
+}
+
 export async function listClients(search = "") {
   const response = await api.get<{ success: true; data: ClientRecord[] }>("/clients", { params: { search } })
   return response.data
 }
 
 export async function getClientById(id: string) {
-  const response = await api.get<{ success: true; data: ClientRecord }>(`/clients/${id}`)
+  const response = await api.get<{ success: true; data: ClientRecord }>(`/clients/${resolveClientId(id)}`)
   return response.data
 }
 
 export async function getClientAttachments(id: string) {
-  const response = await api.get<{ success: true; data: ClientAttachmentRecord[] }>(`/clients/${id}/attachments`)
+  const response = await api.get<{ success: true; data: ClientAttachmentRecord[] }>(`/clients/${resolveClientId(id)}/attachments`)
   return response.data
 }
 
@@ -119,6 +129,6 @@ export async function createClient(payload: ClientPayload) {
 }
 
 export async function updateClient(id: string, payload: Partial<ClientPayload>) {
-  const response = await api.patch<{ success: true; data: ClientRecord }>(`/clients/${id}`, payload)
+  const response = await api.patch<{ success: true; data: ClientRecord }>(`/clients/${resolveClientId(id)}`, payload)
   return response.data
 }

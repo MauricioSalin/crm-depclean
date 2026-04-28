@@ -4,19 +4,20 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { MapPin, Clock, ArrowRight } from "lucide-react"
-import { scheduledServices, clients, serviceTypes, getClientById, getServiceTypeById } from "@/lib/mock-data"
+import { useQuery } from "@tanstack/react-query"
+import { getDashboardAnalytics } from "@/lib/api/analytics"
 import Link from "next/link"
 
-export function UpcomingServices() {
-  const today = new Date()
-  const upcomingServices = scheduledServices
-    .filter(s => s.status === "scheduled" || s.status === "in_progress")
-    .sort((a, b) => a.scheduledDate.getTime() - b.scheduledDate.getTime())
-    .slice(0, 3)
+export function UpcomingServices({ days = 30 }: { days?: number }) {
+  const dashboardQuery = useQuery({
+    queryKey: ["analytics", "dashboard", days],
+    queryFn: () => getDashboardAnalytics({ days }),
+  })
+  const upcomingServices = dashboardQuery.data?.data.upcomingServices ?? []
 
   return (
     <Card
-      className="p-4 transition-all duration-500 hover:shadow-xl"
+      className="h-full p-4 transition-all duration-500 hover:shadow-xl"
     >
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold text-foreground">Próximos Serviços</h2>
@@ -28,11 +29,7 @@ export function UpcomingServices() {
         </Link>
       </div>
       <div className="space-y-3">
-        {upcomingServices.map((service, index) => {
-          const client = getClientById(service.clientId)
-          const serviceType = getServiceTypeById(service.serviceTypeId)
-          const isToday = service.scheduledDate.toDateString() === today.toDateString()
-          
+        {upcomingServices.map((service) => {
           return (
             <div 
               key={service.id}
@@ -40,8 +37,8 @@ export function UpcomingServices() {
             >
               <div className="flex items-start justify-between gap-2 mb-2">
                 <div className="flex-1 min-w-0">
-                  <h3 className="font-medium text-sm truncate">{serviceType?.name}</h3>
-                  <p className="text-xs text-muted-foreground truncate">{client?.companyName}</p>
+                  <h3 className="font-medium text-sm truncate">{service.serviceTypeName}</h3>
+                  <p className="text-xs text-muted-foreground truncate">{service.clientName}</p>
                 </div>
                 <Badge 
                   className={`text-[10px] flex-shrink-0 ${
@@ -56,11 +53,11 @@ export function UpcomingServices() {
               <div className="flex items-center gap-3 text-xs text-muted-foreground">
                 <div className="flex items-center gap-1">
                   <Clock className="w-3 h-3" />
-                  <span>{service.scheduledTime || "08:00"}</span>
+                  <span>{service.time || "08:00"}</span>
                 </div>
                 <div className="flex items-center gap-1 flex-1 min-w-0">
                   <MapPin className="w-3 h-3 flex-shrink-0" />
-                  <span className="truncate">{client?.units[0]?.address.neighborhood}</span>
+                  <span className="truncate">{service.neighborhood}</span>
                 </div>
               </div>
             </div>
@@ -70,6 +67,3 @@ export function UpcomingServices() {
     </Card>
   )
 }
-
-// Keeping original name for backward compatibility
-export { UpcomingServices as Reminders }

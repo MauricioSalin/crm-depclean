@@ -6,6 +6,7 @@ import { Analytics } from "@vercel/analytics/next"
 import { QueryProvider } from "@/components/providers/query-provider"
 import { ThemeProvider } from "@/components/theme-provider"
 import { AuthGate } from "@/components/auth/auth-gate"
+import { SidebarCollapseProvider } from "@/components/dashboard/sidebar-collapse-context"
 import { FirstAccessDialog } from "@/components/auth/first-access-dialog"
 import { Toaster } from "@/components/ui/sonner"
 import "@eigenpal/docx-js-editor/styles.css"
@@ -46,10 +47,12 @@ export default function RootLayout({
       <body className="font-sans antialiased">
         <ThemeProvider defaultTheme="light" storageKey="tasko-theme">
           <QueryProvider>
-            <AuthGate>
-              {children}
-              <FirstAccessDialog />
-            </AuthGate>
+            <SidebarCollapseProvider>
+              <AuthGate>
+                {children}
+                <FirstAccessDialog />
+              </AuthGate>
+            </SidebarCollapseProvider>
             <Toaster richColors position="top-right" />
           </QueryProvider>
         </ThemeProvider>

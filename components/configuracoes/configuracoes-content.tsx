@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState, type FormEvent } from "react"
-import { Bell, Building, Copy, Edit, Eye, EyeOff, Mail, MessageCircle, Plus, RefreshCcw, Search, Shield, Trash2, Users } from "lucide-react"
+import { Bell, Building, Copy, Edit, Eye, EyeOff, Mail, MessageCircle, Plus, RefreshCcw, Save, Search, Shield, Trash2, Users } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -21,7 +21,7 @@ import { MultiSelect } from "@/components/ui/multi-select"
 import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
-import { formatCPF, formatPhone } from "@/lib/masks"
+import { formatCNPJ, formatCPF, formatPhone } from "@/lib/masks"
 import { listEmployees, type EmployeeRecord } from "@/lib/api/employees"
 import {
   createClientType,
@@ -32,26 +32,31 @@ import {
   deleteNotificationRule,
   deletePermissionProfile,
   deleteUser,
+  getOrganizationSettings,
   getSettings,
   resetUserPassword,
   updateClientType,
   updateNotificationRule,
+  updateOrganizationSettings,
   updatePermissionProfile,
   updateUser,
   type ClientTypeRecord,
   type NotificationRuleRecord,
+  type OrganizationSettingsRecord,
   type PermissionProfileRecord,
   type UserRecord,
 } from "@/lib/api/settings"
 import { listTeams, type TeamRecord } from "@/lib/api/teams"
+import { getStoredUser } from "@/lib/auth/session"
 
-type SettingsSection = "tipos-cliente" | "permissoes" | "usuarios" | "notificacoes"
+type SettingsSection = "empresa" | "tipos-cliente" | "permissoes" | "usuarios" | "notificacoes"
 
 const SETTINGS_CARDS = [
+  { id: "empresa" as SettingsSection, label: "Empresa", icon: Building, description: "Configure os dados da Depclean nos documentos", adminOnly: true },
   { id: "tipos-cliente" as SettingsSection, label: "Tipos de Cliente", icon: Building, description: "Categorize seus clientes por tipo" },
   { id: "permissoes" as SettingsSection, label: "Perfis de Permissões", icon: Shield, description: "Configure níveis de acesso ao sistema" },
   { id: "usuarios" as SettingsSection, label: "Usuários do Sistema", icon: Users, description: "Gerencie usuários e seus acessos" },
-  { id: "notificacoes" as SettingsSection, label: "Configuração de Notificações", icon: Bell, description: "Defina quem recebe cada tipo de notificação" },
+  { id: "notificacoes" as SettingsSection, label: "Notificações", icon: Bell, description: "Defina quem recebe cada tipo de notificação" },
 ]
 
 const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
@@ -72,6 +77,31 @@ const CHANNELS = [
 ] as const
 
 const DEFAULT_COLOR = "#84CC16"
+const EMPTY_ORGANIZATION_ADDRESS = {
+  street: "",
+  number: "",
+  complement: "",
+  neighborhood: "",
+  city: "",
+  state: "",
+  zipCode: "",
+}
+
+function normalizeOrganizationAddress(address?: OrganizationSettingsRecord["address"] | string | null) {
+  if (typeof address === "string") {
+    return { ...EMPTY_ORGANIZATION_ADDRESS, street: address }
+  }
+
+  return {
+    street: address?.street ?? "",
+    number: address?.number ?? "",
+    complement: address?.complement ?? "",
+    neighborhood: address?.neighborhood ?? "",
+    city: address?.city ?? "",
+    state: address?.state ?? "",
+    zipCode: address?.zipCode ?? "",
+  }
+}
 
 function generatePassword(length = 12) {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789@#$%"
@@ -95,6 +125,7 @@ const PERMISSION_MODULES: PermissionModule[] = [
   { key: "agenda", title: "Agenda", description: "Acesso aos agendamentos e à operação diária" },
   { key: "financial", title: "Financeiro", description: "Acesso ao financeiro e às parcelas" },
   { key: "reports", title: "Relatórios", description: "Acesso à consulta e exportação de relatórios" },
+  { key: "certificates", title: "Certificados", description: "Acesso à emissão e envio de certificados" },
   { key: "settings", title: "Configurações", description: "Acesso à administração do sistema" },
   { key: "templates", title: "Templates", description: "Acesso aos modelos de contratos" },
   { key: "logs", title: "Logs", description: "Acesso ao histórico de ações" },
@@ -112,7 +143,16 @@ export function ConfiguracoesContent() {
   const [activeSection, setActiveSection] = useUrlQueryState("section", "tipos-cliente")
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
 
+  const [organizationSettings, setOrganizationSettings] = useState<OrganizationSettingsRecord | null>(null)
+  const [organizationForm, setOrganizationForm] = useState({
+    legalName: "",
+    cnpj: "",
+    address: { ...EMPTY_ORGANIZATION_ADDRESS },
+    phone: "",
+    email: "",
+  })
   const [clientTypes, setClientTypes] = useState<ClientTypeRecord[]>([])
   const [permissionProfiles, setPermissionProfiles] = useState<PermissionProfileRecord[]>([])
   const [users, setUsers] = useState<UserRecord[]>([])
@@ -183,12 +223,26 @@ export function ConfiguracoesContent() {
   const refreshSettings = async () => {
     setLoading(true)
     try {
+      const storedUser = getStoredUser()
+      const adminUser = storedUser?.permissionProfileId === "profile-admin"
+      setIsAdmin(adminUser)
       const [settingsResponse, teamsResponse, employeesResponse] = await Promise.all([
         getSettings(),
         listTeams(),
         listEmployees(),
       ])
+      const organizationResponse = adminUser ? await getOrganizationSettings() : null
       const response = settingsResponse
+      if (organizationResponse) {
+        setOrganizationSettings(organizationResponse.data)
+        setOrganizationForm({
+          legalName: organizationResponse.data.legalName,
+          cnpj: formatCNPJ(organizationResponse.data.cnpj),
+          address: normalizeOrganizationAddress(organizationResponse.data.address),
+          phone: formatPhone(organizationResponse.data.phone),
+          email: organizationResponse.data.email,
+        })
+      }
       setClientTypes(response.data.clientTypes)
       setPermissionProfiles(response.data.permissionProfiles)
       setUsers(response.data.users)
@@ -254,6 +308,17 @@ export function ConfiguracoesContent() {
     name: employee.name,
     subtitle: `${employee.role || "Sem cargo"} • ${formatPhone(employee.phone)}`,
   })), [employees])
+
+  const settingsCards = useMemo(
+    () => SETTINGS_CARDS.filter((card) => !card.adminOnly || isAdmin),
+    [isAdmin],
+  )
+
+  useEffect(() => {
+    if (!isAdmin && activeSection === "empresa") {
+      setActiveSection("tipos-cliente")
+    }
+  }, [activeSection, isAdmin, setActiveSection])
 
   const paginatedTypes = useMemo(() => filteredTypes.slice((typePage - 1) * typePageSize, typePage * typePageSize), [filteredTypes, typePage, typePageSize])
   const paginatedProfiles = useMemo(() => filteredProfiles.slice((profilePage - 1) * profilePageSize, profilePage * profilePageSize), [filteredProfiles, profilePage, profilePageSize])
@@ -340,6 +405,27 @@ export function ConfiguracoesContent() {
       })
     }
     setIsRuleDialogOpen(true)
+  }
+
+  const handleOrganizationSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setSaving(true)
+    try {
+      const response = await updateOrganizationSettings(organizationForm)
+      setOrganizationSettings(response.data)
+      setOrganizationForm({
+        legalName: response.data.legalName,
+        cnpj: formatCNPJ(response.data.cnpj),
+        address: normalizeOrganizationAddress(response.data.address),
+        phone: formatPhone(response.data.phone),
+        email: response.data.email,
+      })
+      toast.success("Dados da empresa atualizados.")
+    } catch {
+      toast.error("Não foi possível salvar os dados da empresa.")
+    } finally {
+      setSaving(false)
+    }
   }
 
   const handleTypeSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -667,7 +753,7 @@ export function ConfiguracoesContent() {
   return (
     <div className="space-y-6">
       <div className="flex gap-2 overflow-x-auto pb-2 sm:hidden">
-        {SETTINGS_CARDS.map((card) => (
+        {settingsCards.map((card) => (
           <button
             key={card.id}
             className={cn(
@@ -682,27 +768,158 @@ export function ConfiguracoesContent() {
         ))}
       </div>
 
-      <div className="hidden gap-4 sm:grid sm:grid-cols-2 lg:grid-cols-4">
-        {SETTINGS_CARDS.map((card) => (
+      <div className="hidden gap-4 sm:grid sm:grid-cols-2 lg:grid-cols-5">
+        {settingsCards.map((card) => (
           <Card
             key={card.id}
-            className={cn("cursor-pointer transition-all hover:shadow-md", activeSection === card.id && "ring-2 ring-primary bg-primary/5")}
+            className={cn("min-h-[132px] cursor-pointer gap-2 py-4 transition-all hover:shadow-md", activeSection === card.id && "ring-2 ring-primary bg-primary/5")}
             onClick={() => setActiveSection(card.id)}
           >
-            <CardHeader className="pb-2">
+            <CardHeader className="px-4 pb-1">
               <div className="flex items-center gap-3">
                 <div className={cn("rounded-lg p-2", activeSection === card.id ? "bg-primary/20" : "bg-primary/10")}>
-                  <card.icon className="h-6 w-6 text-primary" />
+                  <card.icon className="h-5 w-5 text-primary" />
                 </div>
                 <CardTitle className="text-base">{card.label}</CardTitle>
               </div>
             </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">{card.description}</p>
+            <CardContent className="px-4">
+              <p className="text-xs leading-relaxed text-muted-foreground">{card.description}</p>
             </CardContent>
           </Card>
         ))}
       </div>
+
+      {activeSection === "empresa" && isAdmin && (
+        <form autoComplete="off" onSubmit={handleOrganizationSubmit} className="space-y-4">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <div className="rounded-lg bg-primary/10 p-2 text-primary">
+                  <Building className="h-5 w-5" />
+                </div>
+                <div>
+                  <CardTitle className="text-base">Dados da empresa</CardTitle>
+                  <CardDescription>
+                    Configure os dados da Depclean usados nos contratos e documentos.
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="organization-legal-name">Razão social</Label>
+                  <Input
+                    id="organization-legal-name"
+                    value={organizationForm.legalName}
+                    onChange={(event) => setOrganizationForm((current) => ({ ...current, legalName: event.target.value }))}
+                    placeholder="Razão social da empresa"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="organization-cnpj">CNPJ</Label>
+                  <Input
+                    id="organization-cnpj"
+                    value={organizationForm.cnpj}
+                    onChange={(event) => setOrganizationForm((current) => ({ ...current, cnpj: formatCNPJ(event.target.value) }))}
+                    placeholder="00.000.000/0000-00"
+                  />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="organization-street">Rua</Label>
+                  <Input
+                    id="organization-street"
+                    value={organizationForm.address.street}
+                    onChange={(event) => setOrganizationForm((current) => ({ ...current, address: { ...current.address, street: event.target.value } }))}
+                    placeholder="Rua"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="organization-number">Número</Label>
+                  <Input
+                    id="organization-number"
+                    value={organizationForm.address.number}
+                    onChange={(event) => setOrganizationForm((current) => ({ ...current, address: { ...current.address, number: event.target.value } }))}
+                    placeholder="Número"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="organization-complement">Complemento</Label>
+                  <Input
+                    id="organization-complement"
+                    value={organizationForm.address.complement}
+                    onChange={(event) => setOrganizationForm((current) => ({ ...current, address: { ...current.address, complement: event.target.value } }))}
+                    placeholder="Sala, andar, bloco..."
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="organization-neighborhood">Bairro</Label>
+                  <Input
+                    id="organization-neighborhood"
+                    value={organizationForm.address.neighborhood}
+                    onChange={(event) => setOrganizationForm((current) => ({ ...current, address: { ...current.address, neighborhood: event.target.value } }))}
+                    placeholder="Bairro"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="organization-city">Cidade</Label>
+                  <Input
+                    id="organization-city"
+                    value={organizationForm.address.city}
+                    onChange={(event) => setOrganizationForm((current) => ({ ...current, address: { ...current.address, city: event.target.value } }))}
+                    placeholder="Cidade"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="organization-state">UF</Label>
+                  <Input
+                    id="organization-state"
+                    value={organizationForm.address.state}
+                    onChange={(event) => setOrganizationForm((current) => ({ ...current, address: { ...current.address, state: event.target.value.toUpperCase().slice(0, 2) } }))}
+                    placeholder="UF"
+                    maxLength={2}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="organization-zip-code">CEP</Label>
+                  <Input
+                    id="organization-zip-code"
+                    value={organizationForm.address.zipCode}
+                    onChange={(event) => setOrganizationForm((current) => ({ ...current, address: { ...current.address, zipCode: event.target.value } }))}
+                    placeholder="00000-000"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="organization-phone">Telefone</Label>
+                  <Input
+                    id="organization-phone"
+                    value={organizationForm.phone}
+                    onChange={(event) => setOrganizationForm((current) => ({ ...current, phone: formatPhone(event.target.value) }))}
+                    placeholder="(00) 00000-0000"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="organization-email">E-mail</Label>
+                  <Input
+                    id="organization-email"
+                    type="email"
+                    value={organizationForm.email}
+                    onChange={(event) => setOrganizationForm((current) => ({ ...current, email: event.target.value }))}
+                    placeholder="contato@empresa.com.br"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <Button type="submit" disabled={saving} className="gap-2">
+                  <Save className="h-4 w-4" />
+                  Salvar
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </form>
+      )}
 
       {activeSection === "tipos-cliente" && (
         <div className="space-y-4">

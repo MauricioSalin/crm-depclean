@@ -16,12 +16,11 @@ import {
 } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { Plus, Trash2, Building2, MapPin, Save, Loader2, Users } from "lucide-react"
-import { clientTypes, clients } from "@/lib/mock-data"
-import type { Client, ClientUnit } from "@/lib/types"
 import { useRouter } from "next/navigation"
 import { formatCNPJ, formatPhone } from "@/lib/masks"
 import { toast } from "@/components/ui/use-toast"
 import { createClient, getClientById, updateClient, type ClientPayload } from "@/lib/api/clients"
+import { listClientTypes } from "@/lib/api/settings"
 
 interface ClientFormProps {
   clientId?: string
@@ -54,7 +53,13 @@ export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
     enabled: Boolean(clientId),
   })
 
-  const client = clientQuery.data?.data ?? (clientId ? clients.find(c => c.id === clientId) : undefined)
+  const clientTypesQuery = useQuery({
+    queryKey: ["client-types", "client-form"],
+    queryFn: () => listClientTypes(""),
+  })
+
+  const client = clientQuery.data?.data
+  const clientTypes = clientTypesQuery.data?.data.items ?? []
   
   const [formData, setFormData] = useState({
     companyName: client?.companyName || "",

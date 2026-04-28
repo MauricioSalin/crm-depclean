@@ -25,7 +25,7 @@ export function MobileNav() {
         <SheetContent side="left" className="p-0 w-60">
           <SheetTitle className="sr-only">Menu de navegação</SheetTitle>
           <SheetDescription className="sr-only">Navegação principal do sistema</SheetDescription>
-          <Sidebar onNavigate={() => setOpen(false)} />
+          <Sidebar onNavigate={() => setOpen(false)} forceExpanded />
         </SheetContent>
       </Sheet>
     </div>

@@ -33,7 +33,6 @@ import {
 } from "@/lib/api/schedules"
 import { listServices } from "@/lib/api/services"
 import { listTeams } from "@/lib/api/teams"
-import { addClientAttachment } from "@/lib/client-attachments-store"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -91,6 +90,12 @@ function formatFileSize(size?: number) {
   if (!size) return ""
   if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`
   return `${(size / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function getScheduleIconTone(schedule: Pick<ScheduleRecord, "isEmergency">) {
+  return schedule.isEmergency
+    ? { wrapper: "bg-red-50", icon: "text-red-600" }
+    : { wrapper: "bg-primary/10", icon: "text-primary" }
 }
 
 export function AgendamentosContent({ viewMode, openDialog, onDialogChange, viewToggle }: AgendamentosContentProps) {
@@ -228,26 +233,6 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
     },
     onSuccess: async ({ data }) => {
       await invalidateSchedules()
-      if (completionFile) {
-        addClientAttachment({
-          clientId: data.clientId,
-          scheduledServiceId: data.id,
-          type: "service_na",
-          title: `NA - ${data.serviceTypeName}`,
-          fileName: completionFile.name,
-          mimeType: completionFile.type || "application/octet-stream",
-          fileSize: completionFile.size,
-          source: "agenda",
-          description: "Nota de atendimento vinculada à visita concluída.",
-          metadata: {
-            serviceTypeName: data.serviceTypeName,
-            scheduledDate: data.date,
-            startTime: completionStartTime,
-            endTime: completionEndTime,
-          },
-        })
-      }
-
       setCompletionTarget(null)
       setCompletionStartTime("")
       setCompletionEndTime("")
@@ -303,6 +288,14 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
       formData,
       scheduleId: isEditing ? editingSchedule?.id : undefined,
     })
+  }
+
+  const openEditSchedule = (schedule: ScheduleRecord) => {
+    setSelectedSchedule(null)
+    setCancelTarget(null)
+    setCompletionTarget(null)
+    setEditingSchedule(schedule)
+    window.setTimeout(() => setIsDialogOpen(true), 0)
   }
 
   const openSchedule = (schedule: ScheduleRecord) => {
@@ -587,8 +580,8 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                     >
                       <TableCell>
                         <div className="flex items-center gap-3">
-                          <div className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 sm:flex">
-                            <Calendar className="h-5 w-5 text-primary" />
+                          <div className={`hidden h-10 w-10 shrink-0 items-center justify-center rounded-lg sm:flex ${getScheduleIconTone(schedule).wrapper}`}>
+                            <Calendar className={`h-5 w-5 ${getScheduleIconTone(schedule).icon}`} />
                           </div>
                           <div>
                             <p className="font-medium">{schedule.clientName}</p>
@@ -636,18 +629,20 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                       <TableCell>{getStatusBadge(schedule.status)}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              setCompletionTarget(schedule)
-                              setCompletionStartTime(schedule.completionStartTime || schedule.time || "")
-                              setCompletionEndTime(schedule.completionEndTime || "")
-                            }}
-                          >
-                            <Check className="h-4 w-4 text-green-600" />
-                          </Button>
+                          {schedule.status === "in_progress" && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                setCompletionTarget(schedule)
+                                setCompletionStartTime(schedule.completionStartTime || schedule.time || "")
+                                setCompletionEndTime(schedule.completionEndTime || "")
+                              }}
+                            >
+                              <Check className="h-4 w-4 text-green-600" />
+                            </Button>
+                          )}
                           <Button
                             variant="ghost"
                             size="icon"
@@ -670,8 +665,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                               <DropdownMenuItem
                                 onClick={(event) => {
                                   event.stopPropagation()
-                                  setEditingSchedule(schedule)
-                                  setIsDialogOpen(true)
+                                  openEditSchedule(schedule)
                                 }}
                               >
                                 <Edit className="mr-2 h-4 w-4" />
@@ -700,12 +694,12 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {paginatedSchedules.map((schedule) => (
-              <Card key={schedule.id} className="cursor-pointer" onClick={() => openSchedule(schedule)}>
-                <CardContent className="pt-6">
+              <Card key={schedule.id} className="h-full cursor-pointer" onClick={() => openSchedule(schedule)}>
+                <CardContent className="flex flex-1 flex-col">
                   <div className="mb-2 flex items-start justify-between">
                     <div className="flex items-center gap-2">
-                      <div className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 sm:flex">
-                        <Calendar className="h-5 w-5 text-primary" />
+                      <div className={`hidden h-10 w-10 shrink-0 items-center justify-center rounded-lg sm:flex ${getScheduleIconTone(schedule).wrapper}`}>
+                        <Calendar className={`h-5 w-5 ${getScheduleIconTone(schedule).icon}`} />
                       </div>
                       <div>
                         <h4 className="text-sm font-medium">{schedule.clientName}</h4>
@@ -744,31 +738,32 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                       ))}
                     </div>
                   ) : null}
-                  <div className="mt-3 flex gap-1" onClick={(event) => event.stopPropagation()}>
+                  <div className="mt-auto flex gap-1 pt-3" onClick={(event) => event.stopPropagation()}>
                     <Button
                       variant="outline"
                       size="sm"
                       className="h-7 flex-1 text-xs"
                       onClick={() => {
-                        setEditingSchedule(schedule)
-                        setIsDialogOpen(true)
+                        openEditSchedule(schedule)
                       }}
                     >
                       <Edit className="mr-1 h-3 w-3" />
                       Editar
                     </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 text-xs"
-                      onClick={() => {
-                        setCompletionTarget(schedule)
-                        setCompletionStartTime(schedule.completionStartTime || schedule.time || "")
-                        setCompletionEndTime(schedule.completionEndTime || "")
-                      }}
-                    >
-                      <Check className="h-3 w-3" />
-                    </Button>
+                    {schedule.status === "in_progress" && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => {
+                          setCompletionTarget(schedule)
+                          setCompletionStartTime(schedule.completionStartTime || schedule.time || "")
+                          setCompletionEndTime(schedule.completionEndTime || "")
+                        }}
+                      >
+                        <Check className="h-3 w-3" />
+                      </Button>
+                    )}
                     <Button
                       variant="outline"
                       size="sm"

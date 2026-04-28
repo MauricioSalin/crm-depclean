@@ -34,7 +34,6 @@ export function PerfilContent() {
   const [passwordDialog, setPasswordDialog] = useState(false)
   const [passwordData, setPasswordData] = useState(emptyPasswordForm)
   const [passwordError, setPasswordError] = useState("")
-  const [saved, setSaved] = useState(false)
 
   const profileInitials = useMemo(() => {
     const name = profile?.name ?? "Usuario"
@@ -109,9 +108,7 @@ export function PerfilContent() {
       }
 
       setProfile(updatedUser)
-      setSaved(true)
       toast.success("Perfil atualizado com sucesso.")
-      window.setTimeout(() => setSaved(false), 1800)
     } catch {
       toast.error("Nao foi possivel salvar suas alteracoes.")
     } finally {
@@ -302,7 +299,7 @@ export function PerfilContent() {
               </Button>
               <Button type="submit" className="h-9 gap-2 bg-primary text-primary-foreground hover:bg-primary/90" disabled={saving}>
                 <Save className="h-4 w-4" />
-                {saved ? "Salvo!" : "Salvar Alteracoes"}
+                Salvar
               </Button>
             </div>
           </form>

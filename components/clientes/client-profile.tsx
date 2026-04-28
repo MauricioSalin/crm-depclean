@@ -112,23 +112,26 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
     queryFn: () => listClientTypes(""),
   })
 
+  const client = clientQuery.data?.data
+  const resolvedClientId = client?.id ?? clientId
+
   const attachmentsQuery = useQuery({
-    queryKey: ["client-attachments", clientId],
-    queryFn: () => getClientAttachments(clientId),
+    queryKey: ["client-attachments", resolvedClientId],
+    queryFn: () => getClientAttachments(resolvedClientId),
+    enabled: Boolean(client?.id),
   })
 
   const [installmentOverrides, setInstallmentOverrides] = useState<
     Record<string, { status: ContractInstallmentRecord["status"]; paidDate?: string; paidValue?: number }>
   >({})
 
-  const client = clientQuery.data?.data
   const clientContracts = useMemo(
-    () => (contractsQuery.data?.data ?? []).filter((contract) => contract.clientId === clientId),
-    [contractsQuery.data?.data, clientId],
+    () => (contractsQuery.data?.data ?? []).filter((contract) => contract.clientId === resolvedClientId),
+    [contractsQuery.data?.data, resolvedClientId],
   )
   const clientServices = useMemo(
-    () => (schedulesQuery.data?.data ?? []).filter((service) => service.clientId === clientId),
-    [schedulesQuery.data?.data, clientId],
+    () => (schedulesQuery.data?.data ?? []).filter((service) => service.clientId === resolvedClientId),
+    [schedulesQuery.data?.data, resolvedClientId],
   )
   const clientAttachments = attachmentsQuery.data?.data ?? []
   const serviceTypeMap = useMemo(
@@ -244,7 +247,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
   return (
     <div className="space-y-6">
       <Card className="overflow-hidden">
-        <CardContent className="p-4">
+        <CardContent className="px-4 py-3">
           <div className="mb-3 flex items-center gap-3">
             <div
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
@@ -252,24 +255,24 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
             >
               <Building2 className="h-5 w-5" style={{ color: clientTypeColor }} />
             </div>
-            <div className="min-w-0">
-              <h3 className="truncate text-sm font-semibold">{client.companyName}</h3>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-start justify-between gap-x-2 gap-y-1">
+                <h3 className="min-w-0 flex-1 break-words text-sm font-semibold">{client.companyName}</h3>
+                <Badge
+                  style={{ backgroundColor: clientTypeColor }}
+                  className="shrink-0 border-0 text-xs text-white hover:opacity-90"
+                >
+                  {clientType?.name ?? "Cliente"}
+                </Badge>
+              </div>
               <p className="font-mono text-xs text-muted-foreground">{formatCNPJ(client.cnpj)}</p>
             </div>
           </div>
 
           <div className="space-y-2 text-sm">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex min-w-0 items-center gap-2 text-muted-foreground">
-                <Phone className="h-4 w-4 shrink-0" />
-                <span>{client.phone}</span>
-              </div>
-              <Badge
-                style={{ backgroundColor: clientTypeColor }}
-                className="shrink-0 border-0 text-xs text-white hover:opacity-90"
-              >
-                {clientType?.name ?? "Cliente"}
-              </Badge>
+            <div className="flex min-w-0 items-center gap-2 text-muted-foreground">
+              <Phone className="h-4 w-4 shrink-0" />
+              <span>{client.phone}</span>
             </div>
 
             <div className="flex items-center gap-2 text-muted-foreground">
