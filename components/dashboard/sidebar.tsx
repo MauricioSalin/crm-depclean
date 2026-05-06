@@ -24,6 +24,7 @@ import { usePathname } from "next/navigation"
 import Image from "next/image"
 import { getStoredUser } from "@/lib/auth/session"
 import { listCertificates } from "@/lib/api/certificates"
+import { listNotifications } from "@/lib/api/notifications"
 import { listSchedules } from "@/lib/api/schedules"
 import { listTeams } from "@/lib/api/teams"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -41,7 +42,7 @@ const menuItems = [
   { icon: DollarSign, label: "Financeiro", href: "/financeiro" },
   { icon: BarChart3, label: "Relatórios", href: "/relatorios" },
   { icon: Award, label: "Certificados", href: "/certificados", permission: "certificates_view" },
-  { icon: Bell, label: "Notificações", badge: "2", href: "/notificacoes" },
+  { icon: Bell, label: "Notificações", href: "/notificacoes" },
 ]
 
 const generalItems = [
@@ -49,8 +50,6 @@ const generalItems = [
   { icon: Settings, label: "Configurações", href: "/configuracoes" },
   { icon: HelpCircle, label: "Ajuda", href: "/ajuda" },
 ]
-
-const SIDEBAR_TRANSITION_MS = 320
 
 interface SidebarProps {
   onNavigate?: () => void
@@ -61,24 +60,8 @@ export function Sidebar({ onNavigate, forceExpanded = false }: SidebarProps) {
   const pathname = usePathname()
   const { collapsed: storedCollapsed } = useSidebarCollapse()
   const collapsed = forceExpanded ? false : storedCollapsed
-  const [showExpandedLogo, setShowExpandedLogo] = useState(!collapsed)
-  const [showExpandedBadges, setShowExpandedBadges] = useState(!collapsed)
-  const showFullLogo = !collapsed && showExpandedLogo
+  const showFullLogo = !collapsed
   const [currentUser, setCurrentUser] = useState<ReturnType<typeof getStoredUser>>(null)
-
-  useEffect(() => {
-    if (collapsed) {
-      setShowExpandedLogo(false)
-      setShowExpandedBadges(false)
-      return
-    }
-
-    const timeout = window.setTimeout(() => {
-      setShowExpandedLogo(true)
-      setShowExpandedBadges(true)
-    }, SIDEBAR_TRANSITION_MS)
-    return () => window.clearTimeout(timeout)
-  }, [collapsed])
 
   useEffect(() => {
     const sync = () => setCurrentUser(getStoredUser())
@@ -119,6 +102,15 @@ export function Sidebar({ onNavigate, forceExpanded = false }: SidebarProps) {
     enabled: Boolean(currentUser && canAccessPermission("certificates_view")),
   })
 
+  const notificationsQuery = useQuery({
+    queryKey: ["notifications"],
+    queryFn: listNotifications,
+    enabled: Boolean(currentUser),
+    refetchInterval: 10_000,
+    refetchIntervalInBackground: true,
+    refetchOnWindowFocus: true,
+  })
+
   const agendaBadge = useMemo(() => {
     const employeeId = currentUser?.employeeId
     if (!employeeId) return null
@@ -146,6 +138,11 @@ export function Sidebar({ onNavigate, forceExpanded = false }: SidebarProps) {
     return pendingCount > 0 ? String(pendingCount) : null
   }, [certificatesQuery.data?.data])
 
+  const notificationsBadge = useMemo(() => {
+    const notificationsCount = notificationsQuery.data?.data.length ?? 0
+    return notificationsCount > 0 ? String(notificationsCount) : null
+  }, [notificationsQuery.data?.data.length])
+
   const renderNavItem = (item: (typeof menuItems)[number] | (typeof generalItems)[number], badge?: string | null) => {
     const isActive = item.href === "/" ? pathname === "/" : (pathname === item.href || pathname.startsWith(item.href + "/"))
     const itemContent = (
@@ -155,8 +152,8 @@ export function Sidebar({ onNavigate, forceExpanded = false }: SidebarProps) {
         </span>
         <span
           className={cn(
-            "min-w-0 whitespace-nowrap text-sm transition-[opacity,max-width,transform] duration-200 ease-out",
-            collapsed ? "max-w-0 translate-x-1 overflow-hidden opacity-0" : "max-w-36 translate-x-0 opacity-100",
+            "min-w-0 whitespace-nowrap text-sm",
+            collapsed ? "max-w-0 overflow-hidden opacity-0" : "max-w-36 opacity-100",
           )}
         >
           {item.label}
@@ -164,9 +161,8 @@ export function Sidebar({ onNavigate, forceExpanded = false }: SidebarProps) {
         {badge && (
           <span
             className={cn(
-              "z-20 flex shrink-0 items-center justify-center rounded-full text-[10px] font-bold leading-none shadow-sm transition-all duration-200",
+              "z-20 flex shrink-0 items-center justify-center rounded-full text-[10px] font-bold leading-none shadow-sm",
               collapsed ? "absolute right-[-5px] top-[-5px] h-4 min-w-4 px-1" : "ml-auto mr-0.5 h-5 min-w-5 px-1.5",
-              !collapsed && (showExpandedBadges ? "scale-100 opacity-100" : "pointer-events-none scale-75 opacity-0"),
               isActive
                 ? "bg-primary-foreground text-primary"
                 : "bg-primary text-primary-foreground",
@@ -185,7 +181,7 @@ export function Sidebar({ onNavigate, forceExpanded = false }: SidebarProps) {
         onClick={onNavigate}
         aria-label={item.label}
         className={cn(
-          "relative flex h-9 items-center rounded-lg text-sm font-medium transition-[width,background-color,color,box-shadow] duration-300 ease-out",
+          "relative flex h-9 items-center rounded-lg text-sm font-medium transition-colors duration-200",
           collapsed ? "w-9" : "w-full pr-2",
           isActive
             ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20"
@@ -217,7 +213,7 @@ export function Sidebar({ onNavigate, forceExpanded = false }: SidebarProps) {
   return (
     <aside
       className={cn(
-        "fixed left-0 top-0 z-[70] flex h-screen flex-col border-r border-border bg-card transition-[width] duration-300 ease-[cubic-bezier(.2,.8,.2,1)]",
+        "fixed left-0 top-0 z-[70] flex h-screen flex-col border-r border-border bg-card",
         collapsed ? "w-[72px]" : "w-60",
       )}
     >
@@ -249,7 +245,7 @@ export function Sidebar({ onNavigate, forceExpanded = false }: SidebarProps) {
         <div>
           <p
             className={cn(
-              "mb-2 h-4 text-[10px] font-medium uppercase tracking-wider text-muted-foreground transition-opacity duration-200",
+              "mb-2 h-4 text-[10px] font-medium uppercase tracking-wider text-muted-foreground",
               collapsed ? "opacity-0" : "opacity-100",
             )}
           >
@@ -258,7 +254,14 @@ export function Sidebar({ onNavigate, forceExpanded = false }: SidebarProps) {
           <nav className="space-y-0.5">
             {menuItems.map((item) => {
               if (!canAccessPermission(item.permission)) return null
-              const badge = item.label === "Agenda" ? agendaBadge : item.label === "Certificados" ? certificatesBadge : item.badge
+              const badge =
+                item.label === "Agenda"
+                  ? agendaBadge
+                  : item.label === "Certificados"
+                    ? certificatesBadge
+                    : item.label === "Notificações"
+                      ? notificationsBadge
+                      : null
               return renderNavItem(item, badge)
             })}
           </nav>
@@ -267,7 +270,7 @@ export function Sidebar({ onNavigate, forceExpanded = false }: SidebarProps) {
         <div className="mt-6">
           <p
             className={cn(
-              "mb-2 h-4 text-[10px] font-medium uppercase tracking-wider text-muted-foreground transition-opacity duration-200",
+              "mb-2 h-4 text-[10px] font-medium uppercase tracking-wider text-muted-foreground",
               collapsed ? "opacity-0" : "opacity-100",
             )}
           >

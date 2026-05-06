@@ -154,7 +154,7 @@ export function ClientsContent({ viewMode, viewToggle }: ClientsContentProps) {
                   const clientType = getClientTypeById(client.clientTypeId)
                   const clientTypeColor = resolveColor(clientType?.color)
                   const clientContracts = contracts.filter(c => c.clientId === client.id)
-                  const activeContracts = clientContracts.filter(c => ["signed", "active"].includes(c.status)).length
+                  const totalContracts = clientContracts.length
 
                   return (
                     <TableRow key={client.id}>
@@ -192,7 +192,7 @@ export function ClientsContent({ viewMode, viewToggle }: ClientsContentProps) {
                       <TableCell className="hidden lg:table-cell">
                         <div className="flex items-center gap-2">
                           <FileText className="w-4 h-4 text-muted-foreground" />
-                          <span>{activeContracts} ativo(s)</span>
+                          <span>{totalContracts} contrato(s)</span>
                         </div>
                       </TableCell>
                       <TableCell className="text-right">
@@ -231,7 +231,7 @@ export function ClientsContent({ viewMode, viewToggle }: ClientsContentProps) {
           </Table>
         </div>
       ) : (
-        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
           {clientsQuery.isLoading ? (
             <Card>
               <CardContent className="p-4 text-sm text-muted-foreground">Carregando clientes...</CardContent>
@@ -244,7 +244,7 @@ export function ClientsContent({ viewMode, viewToggle }: ClientsContentProps) {
             const clientType = getClientTypeById(client.clientTypeId)
             const clientTypeColor = resolveColor(clientType?.color)
             const clientContracts = contracts.filter(c => c.clientId === client.id)
-            const activeContracts = clientContracts.filter(c => ["signed", "active"].includes(c.status)).length
+            const totalContracts = clientContracts.length
 
             return (
               <Card key={client.id} className="h-full overflow-hidden">
@@ -281,7 +281,7 @@ export function ClientsContent({ viewMode, viewToggle }: ClientsContentProps) {
                       </div>
                       <div className="flex items-center gap-2 text-muted-foreground">
                         <FileText className="w-4 h-4 shrink-0" />
-                        <span>{activeContracts} contrato(s) ativo(s)</span>
+                        <span>{totalContracts} contrato(s)</span>
                       </div>
                     </div>
                   </Link>

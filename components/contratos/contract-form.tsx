@@ -9,7 +9,8 @@ import { CurrencyInput } from "@/components/ui/currency-input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
-import { ContractRichEditor } from "@/components/contratos/contract-rich-editor"
+import { DocxTemplateEditor, type DocxTemplateEditorRef } from "@/components/templates/docx-template-editor"
+import { ServiceClausesDialog } from "@/components/servicos/service-clauses-dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   AlertDialog,
@@ -68,6 +69,7 @@ import {
   X,
   ArrowLeft,
   CheckCircle2,
+  Eye,
   Upload,
   Download,
   RefreshCw
@@ -81,14 +83,17 @@ import {
   createContract,
   getContractById,
   previewContract,
+  sendContractToClicksign,
   updateContract,
+  uploadContractDocument,
   type ContractPayload,
 } from "@/lib/api/contracts"
+import { getApiErrorMessage } from "@/lib/api/errors"
 import { listServices } from "@/lib/api/services"
 import { listTemplates } from "@/lib/api/templates"
 import { listTeams } from "@/lib/api/teams"
 import { listEmployees } from "@/lib/api/employees"
-import { listClientTypes } from "@/lib/api/settings"
+import { getOrganizationSettings, listClientTypes } from "@/lib/api/settings"
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value)
@@ -96,6 +101,49 @@ const formatCurrency = (value: number) =>
 const formatDate = (value: Date | string) =>
   new Intl.DateTimeFormat("pt-BR").format(typeof value === "string" ? new Date(value) : value)
 import { formatCNPJ } from "@/lib/masks"
+
+const formatMaybeDate = (value?: Date | string) => {
+  if (!value) return ""
+  const date = typeof value === "string" ? new Date(value) : value
+  if (Number.isNaN(date.getTime())) return ""
+  return new Intl.DateTimeFormat("pt-BR").format(date)
+}
+
+const formatLongDate = (value: Date | string = new Date()) => {
+  const date = typeof value === "string" ? new Date(value) : value
+  if (Number.isNaN(date.getTime())) return ""
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  }).format(date)
+}
+
+const formatAddress = (address?: {
+  street?: string
+  number?: string
+  complement?: string
+  neighborhood?: string
+  city?: string
+  state?: string
+  zipCode?: string
+}) => {
+  if (!address) return ""
+  return [
+    [address.street, address.number].filter(Boolean).join(", "),
+    address.complement,
+    address.neighborhood,
+    [address.city, address.state].filter(Boolean).join("/"),
+    address.zipCode ? `CEP ${address.zipCode}` : "",
+  ].filter(Boolean).join(" - ")
+}
+
+const escapeHtml = (value: string) =>
+  value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
 
 interface ContractFormProps {
   contractId?: string
@@ -141,6 +189,10 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
     queryKey: ["client-types", "contract-form"],
     queryFn: () => listClientTypes(""),
   })
+  const organizationSettingsQuery = useQuery({
+    queryKey: ["organization-settings", "contract-form"],
+    queryFn: () => getOrganizationSettings(),
+  })
   const contractQuery = useQuery({
     queryKey: ["contract", contractId],
     queryFn: () => getContractById(contractId!),
@@ -154,6 +206,7 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
   const teams = teamsQuery.data?.data ?? []
   const employees = employeesQuery.data?.data ?? []
   const clientTypes = clientTypesQuery.data?.data.items ?? []
+  const organizationSettings = organizationSettingsQuery.data?.data ?? null
   const getClientTypeById = (id: string) => clientTypes.find((type) => type.id === id)
   const contract = contractQuery.data?.data
   const client = contract ? clients.find((c) => c.id === contract.clientId) : undefined
@@ -162,19 +215,24 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
 
   const [step, setStep] = useState<CreateStep>("form")
   const [confirmCreateOpen, setConfirmCreateOpen] = useState(false)
+  const [isFinalizingCreate, setIsFinalizingCreate] = useState(false)
+  const finalizeCreateInFlightRef = useRef(false)
   const [draftMeta, setDraftMeta] = useState<{ contractNumber: string; createdAt: Date } | null>(null)
+  const [draftPreview, setDraftPreview] = useState<{
+    contractNumber: string
+    endDate: string
+    firstDueDate: string
+    renderedHtml: string
+    totalValue: number
+    recurrence: string
+  } | null>(null)
   const [createdContractId, setCreatedContractId] = useState<string | null>(null)
-  const [draftInitialHtml, setDraftInitialHtml] = useState("")
-  const previewIframeRef = useRef<HTMLIFrameElement | null>(null)
+  const [createdContractSendError, setCreatedContractSendError] = useState("")
+  const docxEditorRef = useRef<DocxTemplateEditorRef | null>(null)
   const importInputRef = useRef<HTMLInputElement | null>(null)
 
-  const [editorView, setEditorView] = useState<"edit" | "preview" | "pdf">("edit")
-  const [draftHtml, setDraftHtml] = useState("")
-  const [previewBusy, setPreviewBusy] = useState(false)
-  const [previewPages, setPreviewPages] = useState<number | null>(null)
-  const [previewError, setPreviewError] = useState<string | null>(null)
-  const [previewDocHeight, setPreviewDocHeight] = useState<number>(0)
-  const [importedPdfUrl, setImportedPdfUrl] = useState<string | null>(null)
+  const [editorView, setEditorView] = useState<"editor" | "preview">("editor")
+  const [importedDocxFile, setImportedDocxFile] = useState<File | null>(null)
   const [importNoticeOpen, setImportNoticeOpen] = useState(false)
   const [importNoticeText, setImportNoticeText] = useState<string>("")
 
@@ -228,18 +286,24 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
   // Service edit dialog
   const [editServiceDialogOpen, setEditServiceDialogOpen] = useState(false)
   const [editingServiceId, setEditingServiceId] = useState<string | null>(null)
+  const [selectedServiceDetailsId, setSelectedServiceDetailsId] = useState<string | null>(null)
   const [teamsPopoverOpen, setTeamsPopoverOpen] = useState(false)
   const [employeesPopoverOpen, setEmployeesPopoverOpen] = useState(false)
   const [teamSearchTerm, setTeamSearchTerm] = useState("")
   const [employeeSearchTerm, setEmployeeSearchTerm] = useState("")
 
   const selectedClient = clients.find(c => c.id === selectedClientId)
+  const selectedTemplate = templates.find((template) => template.id === selectedTemplateId)
+  const selectedTemplateSigner = employees.find((employee) => employee.id === selectedTemplate?.signerId)
   const totalValue = contractValue / 100
   const activeInformativeTemplates = useMemo(
     () => informativeTemplates.filter((template) => template.isActive && template.format === "docx"),
     [informativeTemplates],
   )
   const editingService = services.find(s => s.id === editingServiceId)
+  const selectedServiceDetails = selectedServiceDetailsId
+    ? serviceTypes.find((serviceType) => serviceType.id === selectedServiceDetailsId) ?? null
+    : null
 
   useEffect(() => {
     if (!contract) return
@@ -279,8 +343,6 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
           ],
     )
     setContractRecurrence(contract.recurrence || "semiannual")
-    setDraftHtml(contract.renderedHtml || "")
-    setDraftInitialHtml(contract.renderedHtml || "")
   }, [contract])
 
   useEffect(() => {
@@ -357,6 +419,47 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
     return labels[recurrence] || recurrence
   }
 
+  const buildRecurrenceConditionLabel = (
+    clientTypeName: string,
+    rule: { type: "range" | "above"; minUnits: number; maxUnits: number },
+    previousMaxUnits?: number,
+  ) => {
+    if (rule.type === "above") {
+      return `${clientTypeName} acima de ${rule.minUnits} unidades`
+    }
+
+    if (rule.minUnits <= 1) {
+      return `${clientTypeName} com até ${rule.maxUnits} unidades`
+    }
+
+    const startUnits = previousMaxUnits && previousMaxUnits > 0 ? previousMaxUnits : rule.minUnits
+    return `${clientTypeName} de ${startUnits} a ${rule.maxUnits} unidades`
+  }
+
+  const buildRecurrenceTableHtml = () => {
+    const clientTypeName = getClientTypeById(selectedClient?.clientTypeId ?? "")?.name ?? "Cliente"
+    const sortedRules = [...contractRecurrenceRules].sort((current, next) => {
+      if (current.minUnits !== next.minUnits) return current.minUnits - next.minUnits
+      return current.maxUnits - next.maxUnits
+    })
+    let previousRangeMax = 0
+
+    const rows = sortedRules.map((rule) => {
+      const normalizedRule = {
+        type: rule.type,
+        minUnits: Number(rule.minUnits),
+        maxUnits: Number.isFinite(rule.maxUnits) ? Number(rule.maxUnits) : Number.MAX_SAFE_INTEGER,
+      }
+      const condition = buildRecurrenceConditionLabel(clientTypeName, normalizedRule, previousRangeMax)
+      if (rule.type === "range") previousRangeMax = normalizedRule.maxUnits
+      const visitLabel = `Visita ${getRecurrenceLabel(rule.recurrence).toLocaleLowerCase("pt-BR")}`
+
+      return `<tr><td style="border:1px solid #000;padding:4px 8px;font-weight:700;">${escapeHtml(condition)}</td><td style="border:1px solid #000;padding:4px 8px;font-weight:700;">${escapeHtml(visitLabel)}</td></tr>`
+    }).join("")
+
+    return `<table style="border-collapse:collapse;width:100%;max-width:520px;"><tbody>${rows}</tbody></table>`
+  }
+
   const updateContractRule = (ruleIndex: number, field: keyof RecurrenceRule, value: number | string) => {
     setContractRecurrenceRules(prev => {
       const rules = [...prev]
@@ -383,9 +486,13 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
     return `DEP-${year}-${seq}`
   }
 
-  const buildContractPayload = (renderedHtml?: string): ContractPayload => ({
+  const buildContractPayload = (
+    renderedHtml?: string,
+    options?: { contractNumber?: string },
+  ): ContractPayload => ({
     clientId: selectedClientId,
     templateId: selectedTemplateId,
+    contractNumber: options?.contractNumber,
     automationCreateSchedules: createAutomatedSchedules,
     automationCreateInformatives: createAutomatedInformatives,
     automationInformativeTemplateId: createAutomatedInformatives ? selectedInformativeTemplateId : "",
@@ -422,6 +529,112 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
     renderedHtml,
   })
 
+  const docxPreviewVariables = useMemo(() => {
+    if (!selectedClient || !draftMeta || !draftPreview) return null
+
+    const selectedUnit = selectedClient.units.find((unit) => selectedUnitIds.includes(unit.id)) ??
+      selectedClient.units.find((unit) => unit.isPrimary) ??
+      selectedClient.units[0]
+    const selectedServiceTypes = services
+      .filter((service) => service.serviceTypeId)
+      .map((service) => serviceTypes.find((item) => item.id === service.serviceTypeId))
+      .filter(Boolean)
+    const serviceNames = selectedServiceTypes.map((service) => service?.name).filter(Boolean).join(", ")
+    const serviceSectionsText = services
+      .filter((service) => service.serviceTypeId)
+      .map((service, serviceIndex) => {
+        const serviceType = serviceTypes.find((item) => item.id === service.serviceTypeId)
+        const clauses = serviceType?.clauses?.length
+          ? serviceType.clauses.map((clause, clauseIndex) => `${serviceIndex + 1}.${clauseIndex + 1}. ${clause}`).join("\n")
+          : `${serviceIndex + 1}.1. Cláusulas específicas não informadas para este serviço.`
+
+        return `${serviceIndex + 1}. ${serviceType?.name ?? "Serviço"}\n${clauses}`
+      })
+      .join("\n\n")
+    const installmentValue = installmentsCount > 0 ? totalValue / installmentsCount : totalValue
+
+    return {
+      client: {
+        address: formatAddress(selectedUnit?.address),
+        cnpj: formatCNPJ(selectedClient.cnpj),
+        companyName: selectedClient.companyName,
+        email: selectedClient.email,
+        phone: selectedClient.phone,
+        responsibleName: selectedClient.responsibleName,
+      },
+      contractor: {
+        address: formatAddress(organizationSettings?.address),
+        cnpj: formatCNPJ(organizationSettings?.cnpj ?? ""),
+        email: organizationSettings?.email ?? "",
+        legalName: organizationSettings?.legalName ?? "",
+        phone: organizationSettings?.phone ?? "",
+        signerName: selectedTemplateSigner?.name ?? "",
+        signerRole: selectedTemplateSigner?.role ?? "",
+      },
+      document: {
+        generatedDate: formatMaybeDate(draftMeta.createdAt),
+        generatedDateLong: formatLongDate(draftMeta.createdAt),
+      },
+      contract: {
+        createdAt: formatMaybeDate(draftMeta.createdAt),
+        durationMonths: String(installmentsCount),
+        endDate: formatMaybeDate(draftPreview.endDate || endDate),
+        firstDueDate: formatMaybeDate(draftPreview.firstDueDate),
+        installmentValue: formatCurrency(installmentValue),
+        installmentsCount: String(installmentsCount),
+        number: draftPreview.contractNumber,
+        paymentDay: String(dueDay).padStart(2, "0"),
+        recurrence: getRecurrenceLabel(contractRecurrence),
+        recurrenceTable: buildRecurrenceTableHtml(),
+        startDate: formatMaybeDate(startDate),
+        totalValue: formatCurrency(totalValue),
+      },
+      service: {
+        name: serviceNames,
+        description: selectedServiceTypes.map((service) => service?.description).filter(Boolean).join("\n"),
+      },
+      services: {
+        names: serviceNames,
+        sectionsHtml: serviceSectionsText,
+        sectionsText: serviceSectionsText,
+        summary: serviceNames.toLowerCase(),
+      },
+      unit: {
+        address: {
+          city: selectedUnit?.address.city ?? "",
+          cityState: selectedUnit ? `${selectedUnit.address.city}/${selectedUnit.address.state}` : "",
+          full: formatAddress(selectedUnit?.address),
+          neighborhood: selectedUnit?.address.neighborhood ?? "",
+          number: selectedUnit?.address.number ?? "",
+          state: selectedUnit?.address.state ?? "",
+          street: selectedUnit?.address.street ?? "",
+          zipCode: selectedUnit?.address.zipCode ?? "",
+        },
+        name: selectedUnit?.name ?? "",
+        reservoirProfile: {
+          observations: selectedUnit?.reservoirProfile?.observations ?? "",
+          validityMonths: String(selectedUnit?.reservoirProfile?.validityMonths ?? 6),
+        },
+      },
+    }
+  }, [
+    contractRecurrence,
+    contractRecurrenceRules,
+    draftMeta,
+    draftPreview,
+    dueDay,
+    endDate,
+    installmentsCount,
+    organizationSettings,
+    selectedClient,
+    selectedTemplateSigner,
+    selectedUnitIds,
+    serviceTypes,
+    services,
+    startDate,
+    totalValue,
+  ])
+
   const previewMutation = useMutation({
     mutationFn: previewContract,
   })
@@ -442,14 +655,6 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
       await queryClient.invalidateQueries({ queryKey: ["contracts", "list"] })
     },
   })
-
-  const buildDraftHtml = (_contractNumber: string, _createdAt: Date) => ""
-
-  useEffect(() => {
-    return () => {
-      if (importedPdfUrl) URL.revokeObjectURL(importedPdfUrl)
-    }
-  }, [importedPdfUrl])
 
   useEffect(() => {
     if (step !== "editor") return
@@ -486,226 +691,23 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
 
   const openImport = () => importInputRef.current?.click()
 
-  const downloadPdf = () => {
-    const html = (draftHtml || draftInitialHtml || "").trim()
-    if (!html) return
-
-    const iframe = document.createElement("iframe")
-    iframe.style.position = "fixed"
-    iframe.style.right = "0"
-    iframe.style.bottom = "0"
-    iframe.style.width = "0"
-    iframe.style.height = "0"
-    iframe.style.border = "0"
-    document.body.appendChild(iframe)
-
-    const doc = iframe.contentDocument
-    if (!doc) return
-
-    const css = `
-      @page { size: A4; margin: 18mm 16mm; }
-      html, body { background: #fff; }
-      body { font-family: "Times New Roman", Times, serif; font-size: 12pt; line-height: 1.6; color: #000; }
-      p { margin: 0 0 10px 0; text-align: justify; min-height: 1em; }
-      p:empty { min-height: 1.6em; }
-      h1 { margin: 0 0 14px 0; text-align: center; text-transform: uppercase; font-weight: 700; font-style: italic; text-decoration: underline; font-size: 12pt; }
-      .clause-title { text-align: left; font-weight: 700; font-style: italic; margin: 18px 0 10px 0; }
-      hr { border: 0; border-top: 1px solid rgba(0,0,0,.25); margin: 14px 0; }
-      hr.page-break { border-top: 0; margin: 16px 0; break-after: page; }
-      strong { font-weight: 700; }
-    `
-
-    doc.open()
-    doc.write(
-      `<!doctype html><html><head><meta charset="utf-8"/><title>Contrato</title><style>${css}</style></head><body>${html}</body></html>`
-    )
-    doc.close()
-
-    const w = iframe.contentWindow
-    if (!w) return
-
-    setTimeout(() => {
-      w.focus()
-      // No browser, baixar PDF = abrir o diálogo "Salvar como PDF".
-      // Aqui o conteúdo é isolado (somente o contrato), sem a página inteira.
-      w.print()
-      setTimeout(() => iframe.remove(), 250)
-    }, 50)
-  }
-
   const handleImportFile = async (file: File) => {
     const name = file.name.toLowerCase()
-
-    if (name.endsWith(".pdf") || file.type === "application/pdf") {
-      setImportedPdfUrl((prev) => {
-        if (prev) URL.revokeObjectURL(prev)
-        return URL.createObjectURL(file)
-      })
-      setImportNoticeText("PDF importado como referência. Para editar mantendo formatação, o ideal é importar um DOCX.")
-      setImportNoticeOpen(true)
-      setEditorView("edit")
-      return
-    }
 
     if (
       name.endsWith(".docx") ||
       file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     ) {
-      try {
-        const mammoth = await import("mammoth")
-        const arrayBuffer = await file.arrayBuffer()
-        const result = await (mammoth as any).convertToHtml({ arrayBuffer })
-        const html = (result?.value as string) || ""
-        if (!html.trim()) {
-          setImportNoticeText("Não foi possível extrair conteúdo do DOCX.")
-          setImportNoticeOpen(true)
-          return
-        }
-        setDraftInitialHtml(html)
-        setDraftHtml(html)
-        setImportedPdfUrl((prev) => {
-          if (prev) URL.revokeObjectURL(prev)
-          return null
-        })
-        setEditorView("edit")
-      } catch {
-        setImportNoticeText("Falha ao importar DOCX. Tente novamente.")
-        setImportNoticeOpen(true)
-      }
+      setImportedDocxFile(file)
+      setImportNoticeText("DOCX importado. O editor foi atualizado com o arquivo selecionado.")
+      setImportNoticeOpen(true)
+      setEditorView("editor")
       return
     }
 
-    setImportNoticeText("Formato não suportado. Importação aceita: PDF ou DOCX.")
+    setImportNoticeText("Formato não suportado. Importe um arquivo DOCX.")
     setImportNoticeOpen(true)
   }
-
-  useEffect(() => {
-    if (step !== "editor") return
-    setDraftHtml((prev) => (prev.trim().length > 0 ? prev : draftInitialHtml))
-  }, [draftInitialHtml, step])
-
-  useEffect(() => {
-    if (step !== "editor" || editorView !== "preview") return
-
-    const iframe = previewIframeRef.current
-    if (!iframe) return
-
-    const html = ((draftHtml || draftInitialHtml || "") as string).trim()
-      ? (draftHtml || draftInitialHtml)
-      : ""
-
-    setPreviewBusy(true)
-    setPreviewPages(null)
-    setPreviewError(null)
-    setPreviewDocHeight(0)
-
-    let cancelled = false
-    const onMessage = (event: MessageEvent) => {
-      if (cancelled) return
-      if (!event.data || event.data?.type !== "paged-preview") return
-      if (event.source !== iframe.contentWindow) return
-      if (typeof event.data.total === "number") setPreviewPages(event.data.total)
-      if (typeof event.data.error === "string" && event.data.error.trim().length > 0) {
-        setPreviewError(event.data.error)
-      }
-      setPreviewBusy(false)
-
-      // Scroll no topo dentro do iframe
-      try {
-        iframe.contentWindow?.scrollTo?.(0, 0)
-      } catch {
-        // noop
-      }
-
-      // Ajusta a altura do iframe para o conteúdo (scroll no container pai)
-      try {
-        const h = iframe.contentDocument?.documentElement?.scrollHeight ?? 0
-        if (h > 0) setPreviewDocHeight(h)
-      } catch {
-        // noop
-      }
-    }
-    window.addEventListener("message", onMessage)
-
-    const doc = iframe.contentDocument
-    if (!doc) return
-
-    const payloadHtml = JSON.stringify(html)
-    const pageCss = `
-      @page { size: A4; margin: 18mm 16mm; }
-      html, body { background: transparent; }
-      body { font-family: "Times New Roman", Times, serif; font-size: 12pt; line-height: 1.6; color: #000; }
-      p { margin: 0 0 10px 0; text-align: justify; min-height: 1em; }
-      p:empty { min-height: 1.6em; }
-      h1 { margin: 0 0 14px 0; text-align: center; text-transform: uppercase; font-weight: 700; font-style: italic; text-decoration: underline; font-size: 12pt; }
-      .clause-title { text-align: left; font-weight: 700; font-style: italic; margin: 18px 0 10px 0; }
-      hr { border: 0; border-top: 1px solid rgba(0,0,0,.25); margin: 14px 0; }
-      hr.page-break { border-top: 0; margin: 16px 0; break-after: page; }
-      strong { font-weight: 700; }
-      .pagedjs_pages { width: 100%; }
-      .pagedjs_page { background: white; margin: 0 auto 14px; box-shadow: 0 8px 28px rgba(0,0,0,.10); border-radius: 10px; overflow: hidden; }
-      .pagedjs_pagebox { padding: 0; }
-    `
-
-    doc.open()
-    doc.write(`<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Prévia do contrato</title>
-    <style>${pageCss}</style>
-  </head>
-  <body>
-    <script src="https://cdn.jsdelivr.net/npm/pagedjs@0.4.3/dist/paged.js"></script>
-    <script>
-      (async function () {
-        try {
-          const html = ${payloadHtml};
-          const source = document.createElement("div");
-          source.innerHTML = html;
-          // Alguns casos precisam do source no DOM para medir layout corretamente
-          source.style.position = "absolute";
-          source.style.left = "-99999px";
-          source.style.top = "0";
-          source.style.width = "210mm";
-          source.style.visibility = "hidden";
-          document.body.appendChild(source);
-          const Previewer = (window.Paged && window.Paged.Previewer) ? window.Paged.Previewer : null;
-          if (!Previewer) throw new Error("Paged.js não carregou");
-          const previewer = new Previewer();
-          const flow = await previewer.preview(source, [], document.body);
-          try { source.remove(); } catch (e) {}
-          window.parent && window.parent.postMessage({ type: "paged-preview", total: flow && flow.total ? flow.total : null, error: "" }, "*");
-        } catch (e) {
-          try {
-            // fallback: mostra o HTML sem paginação
-            document.body.innerHTML = ${payloadHtml};
-          } catch (e2) {}
-          const msg = (e && e.message) ? e.message : "Falha ao gerar prévia";
-          window.parent && window.parent.postMessage({ type: "paged-preview", total: null, error: msg }, "*");
-        }
-      })();
-    </script>
-  </body>
-</html>`)
-    doc.close()
-
-    // fallback: mede altura depois de carregar
-    setTimeout(() => {
-      try {
-        const h = iframe.contentDocument?.documentElement?.scrollHeight ?? 0
-        if (h > 0) setPreviewDocHeight(h)
-      } catch {
-        // noop
-      }
-    }, 400)
-
-    return () => {
-      cancelled = true
-      window.removeEventListener("message", onMessage)
-    }
-  }, [draftHtml, draftInitialHtml, editorView, step])
 
   const addService = () => {
     setServices([
@@ -741,6 +743,11 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
   const openEditServiceDialog = (serviceId: string) => {
     setEditingServiceId(serviceId)
     setEditServiceDialogOpen(true)
+  }
+
+  const openServiceDetailsDialog = (serviceTypeId: string) => {
+    if (!serviceTypeId) return
+    setSelectedServiceDetailsId(serviceTypeId)
   }
 
   const toggleTeamForService = (teamId: string) => {
@@ -813,7 +820,7 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
         toast.success("Contrato atualizado com sucesso.")
         router.push("/contratos")
       } catch (error) {
-        toast.error("Não foi possível atualizar o contrato.")
+        toast.error(getApiErrorMessage(error, "Não foi possível atualizar o contrato."))
       }
       return
     }
@@ -822,25 +829,70 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
       const preview = await previewMutation.mutateAsync(payload)
       const createdAt = new Date()
       setDraftMeta({ contractNumber: preview.data.contractNumber, createdAt })
-      setDraftInitialHtml(preview.data.renderedHtml || buildDraftHtml(preview.data.contractNumber, createdAt))
-      setDraftHtml(preview.data.renderedHtml || buildDraftHtml(preview.data.contractNumber, createdAt))
+      setDraftPreview(preview.data)
+      setCreatedContractSendError("")
+      setImportedDocxFile(null)
+      setEditorView("editor")
       setStep("editor")
     } catch (error) {
-      toast.error("Não foi possível gerar a prévia do contrato.")
+      toast.error(getApiErrorMessage(error, "Não foi possível gerar a prévia do contrato."))
     }
   }
 
   const finalizeCreate = async () => {
+    if (finalizeCreateInFlightRef.current || createMutation.isPending || isFinalizingCreate) return
+
+    finalizeCreateInFlightRef.current = true
+    setIsFinalizingCreate(true)
+    const loadingToast = toast.loading("Criando contrato e enviando para assinatura...")
+
     try {
-      const response = await createMutation.mutateAsync(buildContractPayload(draftHtml || draftInitialHtml))
+      const editedDocxFile = await docxEditorRef.current?.saveToFile()
+      if (!editedDocxFile) {
+        throw new Error("O editor DOCX ainda não carregou o documento para salvar.")
+      }
+
+      const response = await createMutation.mutateAsync(
+        {
+          ...buildContractPayload(draftPreview?.renderedHtml || "", { contractNumber: draftMeta?.contractNumber }),
+          status: "draft",
+        },
+      )
+      await uploadContractDocument(response.data.id, editedDocxFile)
       setCreatedContractId(response.data.id)
       setDraftMeta((current) =>
         current ?? { contractNumber: response.data.contractNumber, createdAt: new Date(response.data.createdAt) }
       )
+
+      try {
+        await sendContractToClicksign(response.data.id)
+        setCreatedContractSendError("")
+      } catch (sendError) {
+        const message = getApiErrorMessage(sendError, "Não foi possível enviar para assinatura.")
+        setCreatedContractSendError(message)
+        toast.dismiss(loadingToast)
+        toast.error(`Contrato criado, mas o envio ao ClickSign falhou: ${message}`)
+        await queryClient.invalidateQueries({ queryKey: ["contract", response.data.id] })
+        await queryClient.invalidateQueries({ queryKey: ["contracts"] })
+        await queryClient.invalidateQueries({ queryKey: ["contracts", "list"] })
+        setConfirmCreateOpen(false)
+        setStep("done")
+        return
+      }
+
+      await queryClient.invalidateQueries({ queryKey: ["contract", response.data.id] })
+      await queryClient.invalidateQueries({ queryKey: ["contracts"] })
+      await queryClient.invalidateQueries({ queryKey: ["contracts", "list"] })
       setConfirmCreateOpen(false)
       setStep("done")
+      toast.dismiss(loadingToast)
+      toast.success("Contrato criado com sucesso.")
     } catch (error) {
-      toast.error("Não foi possível criar o contrato.")
+      toast.dismiss(loadingToast)
+      toast.error(getApiErrorMessage(error, "Não foi possível criar o contrato."))
+    } finally {
+      finalizeCreateInFlightRef.current = false
+      setIsFinalizingCreate(false)
     }
   }
 
@@ -851,7 +903,7 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
         <input
           ref={importInputRef}
           type="file"
-          accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
           className="hidden"
           onChange={(e) => {
             const file = e.target.files?.[0]
@@ -863,9 +915,8 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
         <Tabs value={editorView} onValueChange={(v) => setEditorView(v as typeof editorView)} className="w-full">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <TabsList className="bg-muted/50">
-              <TabsTrigger value="edit">Editar</TabsTrigger>
+              <TabsTrigger value="editor">Editar</TabsTrigger>
               <TabsTrigger value="preview">Prévia</TabsTrigger>
-              {importedPdfUrl ? <TabsTrigger value="pdf">PDF importado</TabsTrigger> : null}
             </TabsList>
 
             <div className="flex flex-wrap items-center justify-end gap-2">
@@ -881,44 +932,37 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
                 type="button"
                 className="bg-primary hover:bg-primary/90"
                 onClick={() => setConfirmCreateOpen(true)}
+                disabled={isFinalizingCreate || createMutation.isPending}
               >
                 <Save className="w-4 h-4 mr-2" />
-                Concluir e criar contrato
+                {isFinalizingCreate || createMutation.isPending ? "Criando contrato..." : "Concluir e criar contrato"}
               </Button>
             </div>
           </div>
 
-          <TabsContent value="edit" className="mt-4">
-            <ContractRichEditor valueHtml={draftHtml || draftInitialHtml} onChangeHtml={setDraftHtml} />
-          </TabsContent>
-
-          <TabsContent value="preview" className="mt-4" forceMount style={{ display: editorView === "preview" ? undefined : "none" }}>
-            {previewError ? (
-              <div className="mb-2 rounded-md border bg-destructive/5 text-destructive px-3 py-2 text-xs">
-                Não foi possível paginar automaticamente. Mostrando o conteúdo sem paginação. ({previewError})
-              </div>
-            ) : null}
-            <div className="rounded-lg border bg-muted/20 h-[76vh] overflow-auto p-4">
-              <iframe
-                ref={previewIframeRef}
-                title="Prévia paginada do contrato"
-                className="w-full bg-white rounded-md"
-                style={{ height: previewDocHeight > 0 ? `${previewDocHeight}px` : "100%" }}
-              />
-            </div>
-          </TabsContent>
-
-          {importedPdfUrl ? (
-            <TabsContent value="pdf" className="mt-4">
-              <div className="rounded-lg border bg-muted/20 overflow-hidden max-h-[76vh]">
-                <iframe
-                  src={importedPdfUrl ?? undefined}
-                  title="PDF importado"
-                  className="w-full h-[76vh] bg-white"
-                />
-              </div>
-            </TabsContent>
-          ) : null}
+          <div className="mt-4 h-[calc(100dvh-235px)] min-h-[680px]">
+            <DocxTemplateEditor
+              ref={docxEditorRef}
+              activeTab={editorView}
+              applyVariablesToEditor
+              baseFileName={selectedTemplate?.baseFileName}
+              kind="contract"
+              previewDataKey={[
+                draftPreview?.contractNumber ?? "",
+                selectedClientId,
+                selectedTemplateId,
+                selectedUnitIds.join(","),
+                totalValue,
+                installmentsCount,
+                dueDay,
+              ].join("|")}
+              previewVariables={docxPreviewVariables}
+              sourceFile={importedDocxFile}
+              templateFormat={selectedTemplate?.format ?? "docx"}
+              templateId={selectedTemplate?.id}
+              templateName={draftPreview?.contractNumber || selectedTemplate?.name || "Contrato"}
+            />
+          </div>
         </Tabs>
 
         <AlertDialog open={importNoticeOpen} onOpenChange={setImportNoticeOpen}>
@@ -935,7 +979,13 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
           </AlertDialogContent>
         </AlertDialog>
 
-        <AlertDialog open={confirmCreateOpen} onOpenChange={setConfirmCreateOpen}>
+        <AlertDialog
+          open={confirmCreateOpen}
+          onOpenChange={(open) => {
+            if (isFinalizingCreate || createMutation.isPending) return
+            setConfirmCreateOpen(open)
+          }}
+        >
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Tem certeza que deseja criar este contrato?</AlertDialogTitle>
@@ -945,9 +995,16 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Voltar e revisar</AlertDialogCancel>
-              <AlertDialogAction onClick={finalizeCreate} className="bg-primary hover:bg-primary/90">
-                Criar e enviar para assinatura
+              <AlertDialogCancel disabled={isFinalizingCreate || createMutation.isPending}>Voltar e revisar</AlertDialogCancel>
+              <AlertDialogAction
+                disabled={isFinalizingCreate || createMutation.isPending}
+                onClick={(event) => {
+                  event.preventDefault()
+                  finalizeCreate()
+                }}
+                className="bg-primary hover:bg-primary/90"
+              >
+                {isFinalizingCreate || createMutation.isPending ? "Criando..." : "Criar e enviar para assinatura"}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -966,7 +1023,15 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
           </div>
           <h3 className="text-lg font-semibold mt-4">Contrato criado</h3>
           <p className="text-sm text-muted-foreground mt-1">
-            O contrato <span className="font-medium text-foreground">{contractNumber}</span> foi gerado e seguirá para assinatura no ClickSign.
+            {createdContractSendError ? (
+              <>
+                O contrato <span className="font-medium text-foreground">{contractNumber}</span> foi gerado, mas o envio ao ClickSign falhou: {createdContractSendError}
+              </>
+            ) : (
+              <>
+                O contrato <span className="font-medium text-foreground">{contractNumber}</span> foi gerado e seguirá para assinatura no ClickSign.
+              </>
+            )}
           </p>
           <div className="flex flex-col sm:flex-row gap-2 mt-6 w-full justify-center">
             <Button variant="outline" onClick={() => router.push("/contratos")} className="w-full sm:w-auto">
@@ -1172,7 +1237,7 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
           })()}
         </div>
 
-        <div className="mt-6 flex max-w-[520px] flex-col gap-4">
+        <div className="mt-6 flex max-w-[520px] flex-col gap-5">
           <div className="flex flex-col gap-3">
             <label className={cn(
               "flex min-h-[66px] cursor-pointer items-start gap-3 rounded-2xl border px-4 py-3 transition-colors",
@@ -1525,6 +1590,16 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
                             type="button"
                             variant="ghost"
                             size="icon"
+                            onClick={() => openServiceDetailsDialog(service.serviceTypeId)}
+                            disabled={!service.serviceTypeId}
+                            title="Ver detalhes do serviço"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
                             onClick={() => openEditServiceDialog(service.id)}
                             title="Editar equipes e funcionários"
                           >
@@ -1565,6 +1640,17 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
           {isEditing ? "Salvar Alterações" : "Criar Contrato"}
         </Button>
       </div>
+
+      <ServiceClausesDialog
+        open={Boolean(selectedServiceDetails)}
+        title={selectedServiceDetails?.name ?? "Cláusulas do serviço"}
+        description={selectedServiceDetails?.description || "Sem descrição cadastrada."}
+        clauses={selectedServiceDetails?.clauses ?? []}
+        clausePrefix="1"
+        onOpenChange={(open) => {
+          if (!open) setSelectedServiceDetailsId(null)
+        }}
+      />
 
       {/* Edit Service Dialog - Teams and Employees */}
       <Dialog open={editServiceDialogOpen} onOpenChange={setEditServiceDialogOpen}>

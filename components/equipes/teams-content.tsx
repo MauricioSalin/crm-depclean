@@ -17,6 +17,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { DataPagination } from "@/components/ui/data-pagination"
 import { toast } from "@/components/ui/use-toast"
 import { listEmployees, type EmployeeRecord } from "@/lib/api/employees"
+import { getApiErrorMessage } from "@/lib/api/errors"
 import { createTeam, deleteTeam, listTeams, updateTeam, type TeamRecord } from "@/lib/api/teams"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 import { cn } from "@/lib/utils"
@@ -102,6 +103,12 @@ export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle 
       queryClient.invalidateQueries({ queryKey: ["teams"] })
       resetForm()
     },
+    onError: (error) => {
+      toast({
+        title: getApiErrorMessage(error, "Não foi possível criar a equipe."),
+        variant: "destructive",
+      })
+    },
   })
 
   const updateMutation = useMutation({
@@ -111,6 +118,12 @@ export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle 
       queryClient.invalidateQueries({ queryKey: ["teams"] })
       resetForm()
     },
+    onError: (error) => {
+      toast({
+        title: getApiErrorMessage(error, "Não foi possível atualizar a equipe."),
+        variant: "destructive",
+      })
+    },
   })
 
   const deleteMutation = useMutation({
@@ -119,6 +132,12 @@ export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle 
       toast({ title: "Equipe excluída", description: "A equipe foi removida com sucesso." })
       queryClient.invalidateQueries({ queryKey: ["teams"] })
       setPendingDelete(null)
+    },
+    onError: (error) => {
+      toast({
+        title: getApiErrorMessage(error, "Não foi possível excluir a equipe."),
+        variant: "destructive",
+      })
     },
   })
 
@@ -325,7 +344,7 @@ export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle 
         </div>
 
         {viewMode === "grid" ? (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {paginatedTeams.map((team) => (
               <Card key={team.id} className="overflow-hidden transition-shadow hover:shadow-lg">
                 <CardHeader className="pb-2">

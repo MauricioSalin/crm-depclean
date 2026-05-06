@@ -102,7 +102,7 @@ export const TEMPLATE_VARIABLE_GROUPS: TemplateVariableGroup[] = [
   },
   {
     id: "contractor",
-    label: "Depclean",
+    label: "Contratada",
     variables: [
       { path: "contractor.legalName", label: "Razão social" },
       { path: "contractor.cnpj", label: "CNPJ" },

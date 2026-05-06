@@ -25,7 +25,9 @@ type DocxEditorHandleLike = {
   focus?: () => void
   getDocument?: () => unknown | null
   getEditorRef?: () => PagedEditorRefLike | null
+  getZoom?: () => number
   save?: (options?: { selective?: boolean }) => Promise<ArrayBuffer | Blob | null>
+  setZoom?: (zoom: number) => void
   destroy?: () => void
 }
 
@@ -66,12 +68,21 @@ type ProseMirrorViewLike = {
   dispatch?: (transaction: ProseMirrorTransactionLike) => void
   focus?: () => void
   state?: {
+    doc?: ProseMirrorDocumentNodeLike
     schema?: {
       marks?: Record<string, ProseMirrorMarkTypeLike | undefined>
     }
     selection?: ProseMirrorSelectionLike
     storedMarks?: ProseMirrorMarkLike[] | null
     tr?: ProseMirrorTransactionLike
+  }
+}
+
+type ProseMirrorDocumentNodeLike = {
+  attrs?: Record<string, unknown>
+  descendants?: (callback: (node: ProseMirrorDocumentNodeLike, pos: number) => boolean | void) => void
+  type?: {
+    name?: string
   }
 }
 
@@ -88,7 +99,7 @@ type ProseMirrorSelectionSnapshot = {
 }
 
 export type DocxTemplateEditorRef = {
-  generatePreviewPdf: (options?: { download?: boolean }) => Promise<File>
+  generatePreviewPdf: (options?: { download?: boolean; previewWatermark?: boolean }) => Promise<File>
   insertVariable: (path: string) => void
   saveToFile: () => Promise<File>
   refreshPreview: () => Promise<void>
@@ -116,6 +127,7 @@ interface DocxTemplateEditorProps {
   applyVariablesToEditor?: boolean
   previewDataKey?: string
   previewVariables?: Record<string, unknown> | null
+  sourceFile?: File | null
   templateFormat?: TemplateFormat
   templateId?: string
   templateName: string
@@ -153,11 +165,48 @@ const TEMPLATE_LABELS: Record<TemplateKind, string> = {
 
 const REACT_STYLE_PROPERTY_WARNING =
   "Removing a style property during rerender (borderColor) when a conflicting property is set (border)"
+const DOCX_EDITOR_DEFAULT_PAGE_WIDTH_PX = 794
+const DOCX_EDITOR_FIT_PADDING_PX = 56
+const DOCX_EDITOR_MIN_FIT_ZOOM = 0.45
+const DOCX_EDITOR_MAX_FIT_ZOOM = 1
 
 let preloadedDocxEditorFonts: Promise<void> | null = null
 
 function cloneBuffer(buffer: ArrayBuffer) {
   return buffer.slice(0)
+}
+
+function clampDocxFitZoom(zoom: number) {
+  if (!Number.isFinite(zoom)) return DOCX_EDITOR_MAX_FIT_ZOOM
+  return Math.max(DOCX_EDITOR_MIN_FIT_ZOOM, Math.min(DOCX_EDITOR_MAX_FIT_ZOOM, zoom))
+}
+
+function calculateDocxFitZoom(host: HTMLElement | null, pageWidth = DOCX_EDITOR_DEFAULT_PAGE_WIDTH_PX) {
+  if (!host) return DOCX_EDITOR_MAX_FIT_ZOOM
+
+  const availableWidth = Math.max(0, host.clientWidth - DOCX_EDITOR_FIT_PADDING_PX)
+  if (availableWidth <= 0 || pageWidth <= 0) return DOCX_EDITOR_MAX_FIT_ZOOM
+
+  return clampDocxFitZoom(Number((availableWidth / pageWidth).toFixed(2)))
+}
+
+function fitDocxEditorToHost(host: HTMLElement | null, handle: DocxEditorHandleLike | null) {
+  if (!host || !handle?.setZoom) return
+
+  const currentZoom = handle.getZoom?.() ?? DOCX_EDITOR_MAX_FIT_ZOOM
+  const firstPage = host.querySelector<HTMLElement>(".layout-page")
+  const pageRect = firstPage?.getBoundingClientRect()
+  const renderedPageWidth = pageRect?.width && pageRect.width > 0 ? pageRect.width : DOCX_EDITOR_DEFAULT_PAGE_WIDTH_PX
+  const unscaledPageWidth = currentZoom > 0 ? renderedPageWidth / currentZoom : renderedPageWidth
+  const nextZoom = calculateDocxFitZoom(host, unscaledPageWidth)
+
+  if (Math.abs(currentZoom - nextZoom) > 0.01) {
+    handle.setZoom(nextZoom)
+  }
+
+  window.requestAnimationFrame(() => {
+    handle.getEditorRef?.()?.relayout?.()
+  })
 }
 
 async function toArrayBuffer(value: ArrayBuffer | Blob | null | undefined) {
@@ -203,6 +252,93 @@ function normalizeDocxXmlFontNames(xml: string) {
 
     return `${prefix}${escapeXmlAttribute(normalizedValue)}${suffix}`
   })
+}
+
+type DocxLineSpacing = {
+  line: string
+  lineRule: string
+}
+
+function getDocxLineSpacing(spacingXml: string): DocxLineSpacing | null {
+  const line = spacingXml.match(/\sw:line="([^"]*)"/)?.[1]
+  if (!line) return null
+
+  return {
+    line,
+    lineRule: spacingXml.match(/\sw:lineRule="([^"]*)"/)?.[1] ?? "auto",
+  }
+}
+
+function buildDocxParagraphSpacingXml(lineSpacing?: DocxLineSpacing | null) {
+  const lineAttributes = lineSpacing ? ` w:line="${lineSpacing.line}" w:lineRule="${lineSpacing.lineRule}"` : ""
+
+  return `<w:spacing w:before="0" w:after="0"${lineAttributes}/>`
+}
+
+function normalizeDocxSpacingElement(spacingXml: string) {
+  const lineSpacing = getDocxLineSpacing(spacingXml)
+
+  return buildDocxParagraphSpacingXml(lineSpacing)
+}
+
+function normalizeDocxParagraphSpacing(xml: string) {
+  return xml
+    .replace(/(<w:pPr\b[^>]*>)([\s\S]*?)(<\/w:pPr>)/g, (_match, openTag, content, closeTag) => {
+      const normalizedContent = /<w:spacing\b[^>]*(?:\/>|><\/w:spacing>)/.test(content)
+        ? content.replace(/<w:spacing\b[^>]*(?:\/>|><\/w:spacing>)/g, normalizeDocxSpacingElement)
+        : `${buildDocxParagraphSpacingXml()}${content}`
+
+      return `${openTag}${normalizedContent}${closeTag}`
+    })
+    .replace(
+      /<w:p(?!Pr)([^>]*)>(?!\s*<w:pPr\b)/g,
+      `<w:p$1><w:pPr>${buildDocxParagraphSpacingXml()}</w:pPr>`,
+    )
+}
+
+function normalizeDocxLayoutXml(xml: string) {
+  return normalizeDocxParagraphSpacing(normalizeDocxXmlFontNames(xml))
+}
+
+function getLiveEditorParagraphLineSpacing(view: ProseMirrorViewLike | null | undefined) {
+  const patches: Array<DocxLineSpacing | null> = []
+  const doc = view?.state?.doc
+  if (!doc?.descendants) return patches
+
+  doc.descendants((node) => {
+    if (node.type?.name !== "paragraph") return
+
+    const rawLineSpacing = node.attrs?.lineSpacing
+    const lineSpacing = typeof rawLineSpacing === "number" ? rawLineSpacing : Number(rawLineSpacing)
+    if (!Number.isFinite(lineSpacing) || lineSpacing <= 0) {
+      patches.push(null)
+      return
+    }
+
+    const rawLineRule = node.attrs?.lineSpacingRule
+    patches.push({
+      line: String(Math.round(lineSpacing)),
+      lineRule: typeof rawLineRule === "string" && rawLineRule ? rawLineRule : "auto",
+    })
+  })
+
+  return patches
+}
+
+function applyDocxParagraphLineSpacing(paragraphXml: string, lineSpacing: DocxLineSpacing) {
+  const spacingXml = buildDocxParagraphSpacingXml(lineSpacing)
+
+  if (/<w:pPr\b/.test(paragraphXml)) {
+    return paragraphXml.replace(/(<w:pPr\b[^>]*>)([\s\S]*?)(<\/w:pPr>)/, (_match, openTag, content, closeTag) => {
+      const nextContent = /<w:spacing\b[^>]*(?:\/>|><\/w:spacing>)/.test(content)
+        ? content.replace(/<w:spacing\b[^>]*(?:\/>|><\/w:spacing>)/g, spacingXml)
+        : `${spacingXml}${content}`
+
+      return `${openTag}${nextContent}${closeTag}`
+    })
+  }
+
+  return paragraphXml.replace(/(<w:p\b[^>]*>)/, `$1<w:pPr>${spacingXml}</w:pPr>`)
 }
 
 function getKnownToolbarFontName(value: string | null | undefined) {
@@ -341,7 +477,9 @@ async function renderDocxEditor(
         focus: () => editorRef.current?.focus?.(),
         getDocument: () => editorRef.current?.getDocument?.() ?? null,
         getEditorRef: () => editorRef.current?.getEditorRef?.() ?? null,
+        getZoom: () => editorRef.current?.getZoom?.() ?? 1,
         save: (saveOptions) => editorRef.current?.save?.(saveOptions) ?? Promise.resolve(null),
+        setZoom: (zoom) => editorRef.current?.setZoom?.(zoom),
       })
     }
 
@@ -441,6 +579,44 @@ function downloadGeneratedFile(file: File) {
   link.click()
   link.remove()
   window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+function addPreviewPdfWatermark(page: HTMLElement, enabled: boolean) {
+  if (!enabled) return () => undefined
+
+  const previousPosition = page.style.position
+  const computedPosition = window.getComputedStyle(page).position
+  if (computedPosition === "static") {
+    page.style.position = "relative"
+  }
+
+  const watermark = document.createElement("div")
+  watermark.setAttribute("aria-hidden", "true")
+  watermark.textContent = "PRÉVIA"
+  watermark.style.alignItems = "center"
+  watermark.style.color = "rgba(0, 0, 0, 0.4)"
+  watermark.style.display = "flex"
+  watermark.style.fontFamily = "Arial, sans-serif"
+  watermark.style.fontSize = `${Math.max(72, Math.min(page.offsetWidth * 0.18, 150))}px`
+  watermark.style.fontWeight = "800"
+  watermark.style.inset = "0"
+  watermark.style.justifyContent = "center"
+  watermark.style.letterSpacing = "0.08em"
+  watermark.style.lineHeight = "1"
+  watermark.style.pointerEvents = "none"
+  watermark.style.position = "absolute"
+  watermark.style.textTransform = "uppercase"
+  watermark.style.transform = "rotate(-35deg)"
+  watermark.style.transformOrigin = "center"
+  watermark.style.userSelect = "none"
+  watermark.style.zIndex = "9999"
+
+  page.appendChild(watermark)
+
+  return () => {
+    watermark.remove()
+    page.style.position = previousPosition
+  }
 }
 
 function escapeRegExp(value: string) {
@@ -549,15 +725,25 @@ async function normalizeDocxTemplateBuffer(buffer: ArrayBuffer) {
   const zip = await JSZip.loadAsync(buffer)
   const stylesFile = zip.file("word/styles.xml")
   const xmlFiles = Object.keys(zip.files).filter((fileName) => /^word\/.*\.xml$/i.test(fileName))
+  const xmlEntries = await Promise.all(
+    xmlFiles.map(async (fileName) => {
+      const file = zip.file(fileName)
+      if (!file) return null
+
+      return {
+        fileName,
+        xml: await file.async("text"),
+      }
+    }),
+  )
   let hasChanges = false
 
   await Promise.all(
-    xmlFiles.map(async (fileName) => {
-      const file = zip.file(fileName)
-      if (!file) return
+    xmlEntries.map(async (entry) => {
+      if (!entry) return
 
-      const xml = await file.async("text")
-      const normalizedXml = normalizeDocxXmlFontNames(xml)
+      const { fileName, xml } = entry
+      const normalizedXml = normalizeDocxLayoutXml(xml)
 
       if (normalizedXml !== xml) {
         zip.file(fileName, normalizedXml)
@@ -570,7 +756,7 @@ async function normalizeDocxTemplateBuffer(buffer: ArrayBuffer) {
     const stylesXml = await stylesFile.async("text")
     const normalizedStylesXml = DOCX_STYLE_IDS_FOR_BLACK_TEXT.reduce(
       (xml, styleId) => forceStyleTextColor(xml, styleId),
-      normalizeDocxXmlFontNames(stylesXml),
+      normalizeDocxLayoutXml(stylesXml),
     )
 
     if (normalizedStylesXml !== stylesXml) {
@@ -618,7 +804,7 @@ async function replaceDocxTemplateVariables(buffer: ArrayBuffer, variables: Reco
       }
 
       if (changed) {
-        zip.file(fileName, xml)
+        zip.file(fileName, normalizeDocxLayoutXml(xml))
       }
     }),
   )
@@ -628,6 +814,35 @@ async function replaceDocxTemplateVariables(buffer: ArrayBuffer, variables: Reco
 
 async function processDocxPreviewBuffer(buffer: ArrayBuffer, variables: Record<string, unknown>) {
   return replaceDocxTemplateVariables(buffer, flattenPreviewVariables(variables))
+}
+
+async function applyLiveParagraphLineSpacingToDocxBuffer(
+  buffer: ArrayBuffer,
+  paragraphLineSpacing: Array<DocxLineSpacing | null>,
+) {
+  if (!paragraphLineSpacing.some(Boolean)) return buffer
+
+  const JSZip = (await import("jszip")).default
+  const zip = await JSZip.loadAsync(buffer)
+  const documentFile = zip.file("word/document.xml")
+  if (!documentFile) return buffer
+
+  const xml = await documentFile.async("text")
+  let index = 0
+  let changed = false
+  const nextXml = xml.replace(/<w:p\b[\s\S]*?<\/w:p>/g, (paragraphXml) => {
+    const lineSpacing = paragraphLineSpacing[index++]
+    if (!lineSpacing) return paragraphXml
+
+    const nextParagraphXml = applyDocxParagraphLineSpacing(paragraphXml, lineSpacing)
+    if (nextParagraphXml !== paragraphXml) changed = true
+    return nextParagraphXml
+  })
+
+  if (!changed) return buffer
+
+  zip.file("word/document.xml", nextXml)
+  return zip.generateAsync({ type: "arraybuffer", compression: "DEFLATE" })
 }
 
 function sanitizeDocxFileName(value: string, fallback: string) {
@@ -653,6 +868,7 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
       applyVariablesToEditor = false,
       previewDataKey,
       previewVariables,
+      sourceFile,
       templateFormat,
       templateId,
       templateName,
@@ -693,7 +909,8 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
     const [nativeTooltip, setNativeTooltip] = useState<NativeTooltipState | null>(null)
 
     const defaultFileUrl = DEFAULT_DOCX_FILES[kind]
-    const loadKey = `${kind}:${templateId || "new"}${applyVariablesToEditor ? `:${previewDataKey || ""}` : ""}`
+    const sourceFileKey = sourceFile ? `${sourceFile.name}:${sourceFile.size}:${sourceFile.lastModified}` : ""
+    const loadKey = sourceFileKey || `${kind}:${templateId || "new"}${applyVariablesToEditor ? `:${previewDataKey || ""}` : ""}`
     const editorInitialVariables = applyVariablesToEditor ? previewVariables : null
     const documentLabel = useMemo(() => {
       const fallback = `Template de ${TEMPLATE_LABELS[kind].toLowerCase()}`
@@ -861,6 +1078,46 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
         document.removeEventListener("focusout", hideTooltip, true)
       }
     }, [activeTab])
+
+    useEffect(() => {
+      const host = editorHostRef.current
+      if (!host) return
+
+      let frame = 0
+      const fit = () => {
+        window.cancelAnimationFrame(frame)
+        frame = window.requestAnimationFrame(() => fitDocxEditorToHost(host, editorHandleRef.current))
+      }
+      const observer = new ResizeObserver(fit)
+
+      observer.observe(host)
+      fit()
+
+      return () => {
+        window.cancelAnimationFrame(frame)
+        observer.disconnect()
+      }
+    }, [activeTab, editorRenderKey, sourceBuffer])
+
+    useEffect(() => {
+      const host = previewHostRef.current
+      if (!host) return
+
+      let frame = 0
+      const fit = () => {
+        window.cancelAnimationFrame(frame)
+        frame = window.requestAnimationFrame(() => fitDocxEditorToHost(host, previewHandleRef.current))
+      }
+      const observer = new ResizeObserver(fit)
+
+      observer.observe(host)
+      fit()
+
+      return () => {
+        window.cancelAnimationFrame(frame)
+        observer.disconnect()
+      }
+    }, [activeTab, previewRender?.key])
 
     const getActiveEditorRef = useCallback(() => editorHandleRef.current?.getEditorRef?.() ?? null, [])
 
@@ -1051,6 +1308,16 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
         setErrorMessage(null)
 
         try {
+          if (sourceFile) {
+            const buffer = await sourceFile.arrayBuffer()
+
+            if (!cancelled) {
+              await applyDocumentBuffer(buffer, sourceFile.name, editorInitialVariables)
+            }
+
+            return
+          }
+
           if (templateId && templateFormat === "docx" && baseFileName) {
             const buffer = await fetchTemplateBaseBinary(templateId)
 
@@ -1088,7 +1355,7 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
       return () => {
         cancelled = true
       }
-    }, [applyDocumentBuffer, editorInitialVariables, loadKey])
+    }, [applyDocumentBuffer, editorInitialVariables, loadKey, sourceFile])
 
     useEffect(() => {
       const host = editorHostRef.current
@@ -1119,7 +1386,7 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
             author: "Depclean",
             documentName: documentLabelRef.current,
             documentNameEditable: false,
-            initialZoom: 1,
+            initialZoom: calculateDocxFitZoom(host),
             i18n: DOCX_EDITOR_PT_BR,
             mode: "editing",
             onChange: (document: unknown) => {
@@ -1133,6 +1400,7 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
             onFontsLoaded: () => {
               window.requestAnimationFrame(() => {
                 editorHandleRef.current?.getEditorRef?.()?.relayout?.()
+                fitDocxEditorToHost(host, editorHandleRef.current)
               })
             },
             onSave: (savedBuffer: ArrayBuffer) => {
@@ -1167,6 +1435,7 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
           }
 
           editorHandleRef.current = handle
+          fitDocxEditorToHost(host, handle)
         } catch (error) {
           if (!cancelled) {
             setErrorMessage(getErrorMessage(error))
@@ -1216,12 +1485,13 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
           const handle = await renderDocxEditor(buffer, mount, {
             documentName: `${documentLabelRef.current} - Prévia`,
             documentNameEditable: false,
-            initialZoom: 1,
+            initialZoom: calculateDocxFitZoom(host),
             i18n: DOCX_EDITOR_PT_BR,
             mode: "viewing",
             onFontsLoaded: () => {
               window.requestAnimationFrame(() => {
                 previewHandleRef.current?.getEditorRef?.()?.relayout?.()
+                fitDocxEditorToHost(host, previewHandleRef.current)
               })
             },
             readOnly: true,
@@ -1246,6 +1516,7 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
           }
 
           previewHandleRef.current = handle
+          fitDocxEditorToHost(host, handle)
         } catch (error) {
           if (!cancelled) {
             setErrorMessage(getErrorMessage(error))
@@ -1280,6 +1551,32 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
         setPreviewBuffer(cloneBuffer(buffer))
       }
 
+      const paragraphLineSpacing = getLiveEditorParagraphLineSpacing(editorViewRef.current)
+      let savedBuffer: ArrayBuffer | null = null
+
+      try {
+        const saved = await editorHandleRef.current?.save?.({ selective: false })
+        savedBuffer = await toArrayBuffer(saved)
+      } catch {
+        savedBuffer = null
+      }
+
+      if (!savedBuffer) {
+        try {
+          const saved = await editorHandleRef.current?.save?.()
+          savedBuffer = await toArrayBuffer(saved)
+        } catch {
+          savedBuffer = null
+        }
+      }
+
+      if (savedBuffer) {
+        const patchedBuffer = await applyLiveParagraphLineSpacingToDocxBuffer(savedBuffer, paragraphLineSpacing)
+        const nextBuffer = await normalizeDocxTemplateBuffer(patchedBuffer)
+        commitSavedBuffer(nextBuffer)
+        return cloneBuffer(nextBuffer)
+      }
+
       const liveDocument = editorHandleRef.current?.getDocument?.() ?? latestDocumentRef.current
       let modelBuffer: ArrayBuffer | null = null
 
@@ -1290,22 +1587,8 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
       }
 
       if (modelBuffer) {
-        const nextBuffer = await normalizeDocxTemplateBuffer(modelBuffer)
-        commitSavedBuffer(nextBuffer)
-        return cloneBuffer(nextBuffer)
-      }
-
-      let savedBuffer: ArrayBuffer | null = null
-
-      try {
-        const saved = await editorHandleRef.current?.save?.({ selective: false })
-        savedBuffer = await toArrayBuffer(saved)
-      } catch {
-        savedBuffer = null
-      }
-
-      if (savedBuffer) {
-        const nextBuffer = await normalizeDocxTemplateBuffer(savedBuffer)
+        const patchedBuffer = await applyLiveParagraphLineSpacingToDocxBuffer(modelBuffer, paragraphLineSpacing)
+        const nextBuffer = await normalizeDocxTemplateBuffer(patchedBuffer)
         commitSavedBuffer(nextBuffer)
         return cloneBuffer(nextBuffer)
       }
@@ -1393,7 +1676,7 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
       [captureEditorSelection],
     )
 
-    const generatePreviewPdf = useCallback(async (options?: { download?: boolean }) => {
+    const generatePreviewPdf = useCallback(async (options?: { download?: boolean; previewWatermark?: boolean }) => {
       setErrorMessage(null)
       await refreshPreview()
       const targetPreviewKey = previewRenderKeyRef.current
@@ -1412,12 +1695,20 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
       const pdfHeight = pdf.internal.pageSize.getHeight()
 
       for (const [index, page] of pages.entries()) {
-        const canvas = await html2canvas(page, {
-          backgroundColor: "#ffffff",
-          logging: false,
-          scale: 2,
-          useCORS: true,
-        })
+        const removePreviewWatermark = addPreviewPdfWatermark(page, Boolean(options?.previewWatermark))
+        let canvas: HTMLCanvasElement
+
+        try {
+          canvas = await html2canvas(page, {
+            backgroundColor: "#ffffff",
+            logging: false,
+            scale: 2,
+            useCORS: true,
+          })
+        } finally {
+          removePreviewWatermark()
+        }
+
         const imageData = canvas.toDataURL("image/jpeg", 0.98)
 
         if (index > 0) {

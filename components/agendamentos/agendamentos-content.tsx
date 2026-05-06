@@ -20,6 +20,7 @@ import {
 
 import { listClients } from "@/lib/api/clients"
 import { listEmployees } from "@/lib/api/employees"
+import { getApiErrorMessage } from "@/lib/api/errors"
 import {
   cancelSchedule,
   completeSchedule,
@@ -33,6 +34,8 @@ import {
 } from "@/lib/api/schedules"
 import { listServices } from "@/lib/api/services"
 import { listTeams } from "@/lib/api/teams"
+import { getStoredUser } from "@/lib/auth/session"
+import type { AuthenticatedUser } from "@/lib/auth/types"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -98,6 +101,10 @@ function getScheduleIconTone(schedule: Pick<ScheduleRecord, "isEmergency">) {
     : { wrapper: "bg-primary/10", icon: "text-primary" }
 }
 
+function canCancelSchedule(schedule: Pick<ScheduleRecord, "status">) {
+  return !["in_progress", "completed"].includes(schedule.status)
+}
+
 export function AgendamentosContent({ viewMode, openDialog, onDialogChange, viewToggle }: AgendamentosContentProps) {
   const queryClient = useQueryClient()
   const [searchTerm, setSearchTerm] = useUrlQueryState("q")
@@ -112,10 +119,13 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
   const [cancelReason, setCancelReason] = useState("")
   const [cancelStep, setCancelStep] = useState<"reason" | "confirm">("reason")
   const [completionTarget, setCompletionTarget] = useState<ScheduleRecord | null>(null)
+  const [completionStartDate, setCompletionStartDate] = useState("")
   const [completionStartTime, setCompletionStartTime] = useState("")
+  const [completionEndDate, setCompletionEndDate] = useState("")
   const [completionEndTime, setCompletionEndTime] = useState("")
   const [completionFile, setCompletionFile] = useState<File | null>(null)
   const [pendingDelete, setPendingDelete] = useState<ScheduleRecord | null>(null)
+  const [currentUser, setCurrentUser] = useState<AuthenticatedUser | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
 
@@ -145,6 +155,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
   const services = servicesQuery.data?.data ?? []
   const teams = teamsQuery.data?.data ?? []
   const employees = employeesQuery.data?.data ?? []
+  const isAdminUser = currentUser?.permissionProfileId === "profile-admin" || currentUser?.permissions.includes("settings_manage")
 
   useEffect(() => {
     if (openDialog) {
@@ -153,8 +164,20 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
     }
   }, [openDialog, onDialogChange])
 
+  useEffect(() => {
+    const syncUser = () => setCurrentUser(getStoredUser())
+    syncUser()
+    window.addEventListener("storage", syncUser)
+    window.addEventListener("depclean:session", syncUser)
+    return () => {
+      window.removeEventListener("storage", syncUser)
+      window.removeEventListener("depclean:session", syncUser)
+    }
+  }, [])
+
   const invalidateSchedules = async () => {
     await queryClient.invalidateQueries({ queryKey: ["schedules"] })
+    await queryClient.invalidateQueries({ queryKey: ["notifications"] })
   }
 
   const saveMutation = useMutation({
@@ -184,17 +207,22 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
 
       return createSchedule(payload)
     },
-    onSuccess: async ({ data }, variables) => {
+    onMutate: (variables) => {
+      const toastId = toast.loading(variables.scheduleId ? "Salvando agendamento..." : "Criando atendimento...")
+      return { toastId }
+    },
+    onSuccess: async ({ data }, variables, context) => {
       await invalidateSchedules()
       setEditingSchedule(null)
       setIsDialogOpen(false)
       toast.success(variables.scheduleId ? "Agendamento atualizado." : "Agendamento criado.", {
+        id: context?.toastId,
         description: `${data.clientName} • ${data.serviceTypeName}`,
       })
     },
-    onError: (error: any) => {
-      toast.error("Não foi possível salvar o agendamento.", {
-        description: error?.response?.data?.message ?? error?.message ?? "Tente novamente.",
+    onError: (error: any, _variables, context) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível salvar o agendamento."), {
+        id: context?.toastId,
       })
     },
   })
@@ -207,6 +235,9 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
       toast.success("Atendimento iniciado.", {
         description: "O agendamento foi movido para em andamento.",
       })
+    },
+    onError: (error) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível iniciar o atendimento."))
     },
   })
 
@@ -221,11 +252,14 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
         description: "O motivo foi salvo no histórico.",
       })
     },
+    onError: (error) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível cancelar o agendamento."))
+    },
   })
 
   const completeMutation = useMutation({
-    mutationFn: async ({ schedule, startTime, endTime, file }: { schedule: ScheduleRecord; startTime: string; endTime: string; file: File | null }) => {
-      const completed = await completeSchedule(schedule.id, { startTime, endTime })
+    mutationFn: async ({ schedule, startDate, startTime, endDate, endTime, file }: { schedule: ScheduleRecord; startDate: string; startTime: string; endDate: string; endTime: string; file: File | null }) => {
+      const completed = await completeSchedule(schedule.id, { startDate, startTime, endDate, endTime })
       if (file) {
         await uploadScheduleNa(schedule.id, file)
       }
@@ -234,7 +268,9 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
     onSuccess: async ({ data }) => {
       await invalidateSchedules()
       setCompletionTarget(null)
+      setCompletionStartDate("")
       setCompletionStartTime("")
+      setCompletionEndDate("")
       setCompletionEndTime("")
       setCompletionFile(null)
       toast.success("Atendimento concluído.", {
@@ -242,9 +278,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
       })
     },
     onError: (error: any) => {
-      toast.error("Não foi possível concluir o atendimento.", {
-        description: error?.response?.data?.message ?? error?.message ?? "Tente novamente.",
-      })
+      toast.error(getApiErrorMessage(error, "Não foi possível concluir o atendimento."))
     },
   })
 
@@ -256,6 +290,9 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
       toast.success("Agendamento excluído.", {
         description: "O item foi removido com sucesso.",
       })
+    },
+    onError: (error) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível excluir o agendamento."))
     },
   })
 
@@ -298,16 +335,28 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
     window.setTimeout(() => setIsDialogOpen(true), 0)
   }
 
+  const openCompletionDialog = (schedule: ScheduleRecord) => {
+    const defaultDate = schedule.date || new Date().toISOString().split("T")[0]
+    setCompletionTarget(schedule)
+    setCompletionStartDate(schedule.completionStartDate || defaultDate)
+    setCompletionStartTime(schedule.completionStartTime || schedule.time || "")
+    setCompletionEndDate(schedule.completionEndDate || schedule.completionStartDate || defaultDate)
+    setCompletionEndTime(schedule.completionEndTime || "")
+    setCompletionFile(null)
+  }
+
   const openSchedule = (schedule: ScheduleRecord) => {
     if (schedule.status === "in_progress") {
-      setCompletionTarget(schedule)
-      setCompletionStartTime(schedule.completionStartTime || schedule.time || "")
-      setCompletionEndTime(schedule.completionEndTime || "")
-      setCompletionFile(null)
+      openCompletionDialog(schedule)
       return
     }
 
     setSelectedSchedule(schedule)
+  }
+
+  const canDeleteSchedule = (schedule: ScheduleRecord) => {
+    if (schedule.status === "in_progress") return false
+    return schedule.status !== "completed" || Boolean(isAdminUser)
   }
 
   return (
@@ -414,7 +463,9 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
         onOpenChange={(open) => {
           if (!open) {
             setCompletionTarget(null)
+            setCompletionStartDate("")
             setCompletionStartTime("")
+            setCompletionEndDate("")
             setCompletionEndTime("")
             setCompletionFile(null)
           }
@@ -429,12 +480,30 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
           </DialogHeader>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
+              <Label htmlFor="completion-start-date">Data de início *</Label>
+              <Input
+                id="completion-start-date"
+                type="date"
+                value={completionStartDate}
+                onChange={(event) => setCompletionStartDate(event.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="completion-start">Horário de início *</Label>
               <Input
                 id="completion-start"
                 type="time"
                 value={completionStartTime}
                 onChange={(event) => setCompletionStartTime(event.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="completion-end-date">Data de fim *</Label>
+              <Input
+                id="completion-end-date"
+                type="date"
+                value={completionEndDate}
+                onChange={(event) => setCompletionEndDate(event.target.value)}
               />
             </div>
             <div className="space-y-2">
@@ -490,12 +559,14 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
             </Button>
             <Button
               type="button"
-              disabled={!completionTarget || !completionStartTime || !completionEndTime || completeMutation.isPending}
+              disabled={!completionTarget || !completionStartDate || !completionStartTime || !completionEndDate || !completionEndTime || completeMutation.isPending}
               onClick={() =>
                 completionTarget &&
                 completeMutation.mutate({
                   schedule: completionTarget,
+                  startDate: completionStartDate,
                   startTime: completionStartTime,
+                  endDate: completionEndDate,
                   endTime: completionEndTime,
                   file: completionFile,
                 })
@@ -635,54 +706,59 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                               size="icon"
                               onClick={(event) => {
                                 event.stopPropagation()
-                                setCompletionTarget(schedule)
-                                setCompletionStartTime(schedule.completionStartTime || schedule.time || "")
-                                setCompletionEndTime(schedule.completionEndTime || "")
+                                openCompletionDialog(schedule)
                               }}
                             >
                               <Check className="h-4 w-4 text-green-600" />
                             </Button>
                           )}
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              setCancelTarget(schedule)
-                              setCancelReason(schedule.cancellationReason || "")
-                              setCancelStep("reason")
-                            }}
-                          >
-                            <X className="h-4 w-4 text-destructive" />
-                          </Button>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" onClick={(event) => event.stopPropagation()}>
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem
-                                onClick={(event) => {
-                                  event.stopPropagation()
-                                  openEditSchedule(schedule)
-                                }}
-                              >
-                                <Edit className="mr-2 h-4 w-4" />
-                                Editar
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                className="text-destructive"
-                                onClick={(event) => {
-                                  event.stopPropagation()
-                                  setPendingDelete(schedule)
-                                }}
-                              >
-                                <Trash2 className="mr-2 h-4 w-4" />
-                                Excluir
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                          {canCancelSchedule(schedule) && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                setCancelTarget(schedule)
+                                setCancelReason(schedule.cancellationReason || "")
+                                setCancelStep("reason")
+                              }}
+                            >
+                              <X className="h-4 w-4 text-destructive" />
+                            </Button>
+                          )}
+                          {schedule.status === "in_progress" ? (
+                            <span className="size-9 shrink-0" aria-hidden="true" />
+                          ) : (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" onClick={(event) => event.stopPropagation()}>
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                  onClick={(event) => {
+                                    event.stopPropagation()
+                                    openEditSchedule(schedule)
+                                  }}
+                                >
+                                  <Edit className="mr-2 h-4 w-4" />
+                                  Editar
+                                </DropdownMenuItem>
+                                {canDeleteSchedule(schedule) && (
+                                  <DropdownMenuItem
+                                    onClick={(event) => {
+                                      event.stopPropagation()
+                                      setPendingDelete(schedule)
+                                    }}
+                                  >
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                    Excluir
+                                  </DropdownMenuItem>
+                                )}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -692,7 +768,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
             </Table>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {paginatedSchedules.map((schedule) => (
               <Card key={schedule.id} className="h-full cursor-pointer" onClick={() => openSchedule(schedule)}>
                 <CardContent className="flex flex-1 flex-col">
@@ -739,43 +815,45 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                     </div>
                   ) : null}
                   <div className="mt-auto flex gap-1 pt-3" onClick={(event) => event.stopPropagation()}>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 flex-1 text-xs"
-                      onClick={() => {
-                        openEditSchedule(schedule)
-                      }}
-                    >
-                      <Edit className="mr-1 h-3 w-3" />
-                      Editar
-                    </Button>
+                    {schedule.status !== "in_progress" && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 flex-1 text-xs"
+                        onClick={() => {
+                          openEditSchedule(schedule)
+                        }}
+                      >
+                        <Edit className="mr-1 h-3 w-3" />
+                        Editar
+                      </Button>
+                    )}
                     {schedule.status === "in_progress" && (
                       <Button
                         variant="outline"
                         size="sm"
                         className="h-7 text-xs"
                         onClick={() => {
-                          setCompletionTarget(schedule)
-                          setCompletionStartTime(schedule.completionStartTime || schedule.time || "")
-                          setCompletionEndTime(schedule.completionEndTime || "")
+                          openCompletionDialog(schedule)
                         }}
                       >
                         <Check className="h-3 w-3" />
                       </Button>
                     )}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 text-xs"
-                      onClick={() => {
-                        setCancelTarget(schedule)
-                        setCancelReason(schedule.cancellationReason || "")
-                        setCancelStep("reason")
-                      }}
-                    >
-                      <X className="h-3 w-3" />
-                    </Button>
+                    {canCancelSchedule(schedule) && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => {
+                          setCancelTarget(schedule)
+                          setCancelReason(schedule.cancellationReason || "")
+                          setCancelStep("reason")
+                        }}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    )}
                   </div>
                 </CardContent>
               </Card>

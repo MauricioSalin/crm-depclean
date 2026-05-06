@@ -23,6 +23,7 @@ export interface MultiSelectOption {
   id: string
   name: string
   subtitle?: string
+  color?: string
 }
 
 interface MultiSelectProps {
@@ -121,25 +122,36 @@ export function MultiSelect({
       </Popover>
 
       {selectedOptions.length > 0 && (
-        <div className="flex flex-wrap gap-2 mt-2">
-          {selectedOptions.map((option) => (
-            <Badge
-              key={option.id}
-              variant="secondary"
-              className="pl-2 pr-1 py-1 flex items-center gap-1"
-            >
-              <span>{option.name}</span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-4 w-4 p-0 hover:bg-transparent"
-                onClick={() => removeOption(option.id)}
+        <div className="mt-2 flex flex-wrap gap-2">
+          {selectedOptions.map((option) => {
+            const hasColor = Boolean(option.color)
+
+            return (
+              <Badge
+                key={option.id}
+                variant={hasColor ? "secondary" : "outline"}
+                className="flex items-center gap-2 px-3 py-1 text-foreground/80"
+                style={hasColor ? { backgroundColor: `${option.color}1A` } : undefined}
               >
-                <X className="h-3 w-3" />
-              </Button>
-            </Badge>
-          ))}
+                {hasColor ? (
+                  <span
+                    className="h-2.5 w-2.5 shrink-0 rounded-full"
+                    style={{ backgroundColor: option.color }}
+                  />
+                ) : null}
+                <span>{option.name}</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-3.5 w-3.5 p-0 hover:bg-transparent"
+                  onClick={() => removeOption(option.id)}
+                >
+                  <X className="h-2.5 w-2.5" />
+                </Button>
+              </Badge>
+            )
+          })}
         </div>
       )}
     </div>

@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState, type FormEvent } from "react"
-import { Bell, Building, Copy, Edit, Eye, EyeOff, Mail, MessageCircle, Plus, RefreshCcw, Save, Search, Shield, Trash2, Users } from "lucide-react"
+import { Bell, Building, Copy, Edit, Eye, EyeOff, MessageCircle, Plus, RefreshCcw, Save, Search, Shield, Trash2, Users } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -19,6 +19,7 @@ import { DataPagination } from "@/components/ui/data-pagination"
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
 import { MultiSelect } from "@/components/ui/multi-select"
 import { Switch } from "@/components/ui/switch"
+import { getApiErrorMessage } from "@/lib/api/errors"
 import { cn } from "@/lib/utils"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 import { formatCNPJ, formatCPF, formatPhone } from "@/lib/masks"
@@ -49,14 +50,14 @@ import {
 import { listTeams, type TeamRecord } from "@/lib/api/teams"
 import { getStoredUser } from "@/lib/auth/session"
 
-type SettingsSection = "empresa" | "tipos-cliente" | "permissoes" | "usuarios" | "notificacoes"
+type SettingsSection = "empresa" | "tipos-cliente" | "permissoes" | "usuarios" | "notificações"
 
 const SETTINGS_CARDS = [
   { id: "empresa" as SettingsSection, label: "Empresa", icon: Building, description: "Configure os dados da Depclean nos documentos", adminOnly: true },
   { id: "tipos-cliente" as SettingsSection, label: "Tipos de Cliente", icon: Building, description: "Categorize seus clientes por tipo" },
   { id: "permissoes" as SettingsSection, label: "Perfis de Permissões", icon: Shield, description: "Configure níveis de acesso ao sistema" },
   { id: "usuarios" as SettingsSection, label: "Usuários do Sistema", icon: Users, description: "Gerencie usuários e seus acessos" },
-  { id: "notificacoes" as SettingsSection, label: "Notificações", icon: Bell, description: "Defina quem recebe cada tipo de notificação" },
+  { id: "notificações" as SettingsSection, label: "Notificações", icon: Bell, description: "Defina quem recebe cada tipo de notificação" },
 ]
 
 const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
@@ -65,6 +66,9 @@ const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
   schedule_cancel: "Cancelamento",
   emergency: "Emergência",
   daily_services: "Serviços do Dia",
+  contract_signature: "Assinatura de Contrato",
+  informative: "Informativo ao Cliente",
+  certificate: "Certificado ao Cliente",
   payment_due: "Parcela Vencendo",
   payment_overdue: "Parcela Vencida",
   contract_expiring: "Contrato Vencendo",
@@ -73,7 +77,6 @@ const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
 const CHANNELS = [
   { value: "system", label: "Sistema", icon: Bell },
   { value: "whatsapp", label: "WhatsApp", icon: MessageCircle },
-  { value: "email", label: "E-mail", icon: Mail },
 ] as const
 
 const DEFAULT_COLOR = "#84CC16"
@@ -204,6 +207,7 @@ export function ConfiguracoesContent() {
   const [editingRule, setEditingRule] = useState<NotificationRuleRecord | null>(null)
   const [ruleForm, setRuleForm] = useState({
     name: "",
+    description: "",
     type: "new_schedule",
     daysBefore: 1,
     time: "08:00",
@@ -259,8 +263,8 @@ export function ConfiguracoesContent() {
       setPermissionCatalog(response.data.permissions)
       setTeams(teamsResponse.data.filter((team) => team.isActive))
       setEmployees(employeesResponse.data.filter((employee) => employee.status === "active"))
-    } catch {
-      toast.error("Não foi possível carregar as configurações.")
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Não foi possível carregar as configurações."))
     } finally {
       setLoading(false)
     }
@@ -288,6 +292,7 @@ export function ConfiguracoesContent() {
 
     return [
       item.name,
+      item.description,
       item.type,
       item.channels.join(" "),
       item.targetTeamIds.join(" "),
@@ -301,6 +306,7 @@ export function ConfiguracoesContent() {
     id: team.id,
     name: team.name,
     subtitle: team.description,
+    color: team.color,
   })), [teams])
 
   const employeeOptions = useMemo(() => employees.map((employee) => ({
@@ -346,7 +352,7 @@ export function ConfiguracoesContent() {
 
   const resetRuleForm = () => {
     setEditingRule(null)
-    setRuleForm({ name: "", type: "new_schedule", daysBefore: 1, time: "08:00", channels: [], targetTeamIds: [], targetEmployeeIds: [], isActive: true })
+    setRuleForm({ name: "", description: "", type: "new_schedule", daysBefore: 1, time: "08:00", channels: [], targetTeamIds: [], targetEmployeeIds: [], isActive: true })
     setIsRuleDialogOpen(false)
   }
 
@@ -395,6 +401,7 @@ export function ConfiguracoesContent() {
       setEditingRule(record)
       setRuleForm({
         name: record.name,
+        description: record.description ?? "",
         type: record.type,
         daysBefore: record.daysBefore,
         time: record.time,
@@ -421,8 +428,8 @@ export function ConfiguracoesContent() {
         email: response.data.email,
       })
       toast.success("Dados da empresa atualizados.")
-    } catch {
-      toast.error("Não foi possível salvar os dados da empresa.")
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Não foi possível salvar os dados da empresa."))
     } finally {
       setSaving(false)
     }
@@ -442,8 +449,8 @@ export function ConfiguracoesContent() {
         toast.success("Tipo de cliente criado.")
       }
       resetTypeForm()
-    } catch {
-      toast.error("Não foi possível salvar o tipo de cliente.")
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Não foi possível salvar o tipo de cliente."))
     } finally {
       setSaving(false)
     }
@@ -464,8 +471,8 @@ export function ConfiguracoesContent() {
         toast.success("Perfil criado.")
       }
       resetProfileForm()
-    } catch {
-      toast.error("Não foi possível salvar o perfil.")
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Não foi possível salvar o perfil."))
     } finally {
       setSaving(false)
     }
@@ -474,7 +481,7 @@ export function ConfiguracoesContent() {
   const handleUserSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!userForm.permissionProfileId) {
-      toast.error("Selecione um perfil de permissao.")
+      toast.error("Selecione um perfil de permissão.")
       return
     }
     if (!editingUser && !userForm.password.trim()) {
@@ -524,8 +531,8 @@ export function ConfiguracoesContent() {
         toast.success("Usuário criado.")
       }
       resetUserForm()
-    } catch {
-      toast.error("Não foi possível salvar o usuário.")
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Não foi possível salvar o usuário."))
     } finally {
       setSaving(false)
     }
@@ -535,28 +542,37 @@ export function ConfiguracoesContent() {
     event.preventDefault()
     setSaving(true)
     try {
-      const payload = {
-        name: ruleForm.name,
-        type: ruleForm.type,
-        daysBefore: ruleForm.daysBefore,
-        time: ruleForm.time,
-        channels: ruleForm.channels,
-        targetTeamIds: ruleForm.targetTeamIds,
-        targetEmployeeIds: ruleForm.targetEmployeeIds,
-        isActive: ruleForm.isActive,
+      const payload = editingRule?.isDefault
+        ? {
+            description: ruleForm.description,
+            daysBefore: ruleForm.daysBefore,
+            time: ruleForm.time,
+            channels: ruleForm.channels,
+            isActive: ruleForm.isActive,
+          }
+        : {
+            name: ruleForm.name,
+            description: ruleForm.description,
+            type: ruleForm.type,
+            daysBefore: ruleForm.daysBefore,
+            time: ruleForm.time,
+            channels: ruleForm.channels,
+            targetTeamIds: ruleForm.targetTeamIds,
+            targetEmployeeIds: ruleForm.targetEmployeeIds,
+            isActive: ruleForm.isActive,
       }
       if (editingRule) {
         const response = await updateNotificationRule(editingRule.id, payload)
         upsertNotificationRule(response.data)
         toast.success("Regra atualizada.")
       } else {
-        const response = await createNotificationRule(payload)
+        const response = await createNotificationRule(payload as Parameters<typeof createNotificationRule>[0])
         upsertNotificationRule(response.data)
         toast.success("Regra criada.")
       }
       resetRuleForm()
-    } catch {
-      toast.error("Não foi possível salvar a regra.")
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Não foi possível salvar a regra."))
     } finally {
       setSaving(false)
     }
@@ -568,8 +584,8 @@ export function ConfiguracoesContent() {
       await deleteClientType(id)
       setClientTypes((current) => current.filter((item) => item.id !== id))
       toast.success("Tipo de cliente removido.")
-    } catch {
-      toast.error("Não foi possível excluir o tipo.")
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Não foi possível excluir o tipo."))
     } finally {
       setSaving(false)
     }
@@ -581,8 +597,8 @@ export function ConfiguracoesContent() {
       await deletePermissionProfile(id)
       setPermissionProfiles((current) => current.filter((item) => item.id !== id))
       toast.success("Perfil removido.")
-    } catch {
-      toast.error("Não foi possível excluir o perfil.")
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Não foi possível excluir o perfil."))
     } finally {
       setSaving(false)
     }
@@ -594,8 +610,8 @@ export function ConfiguracoesContent() {
       await deleteUser(id)
       setUsers((current) => current.filter((item) => item.id !== id))
       toast.success("Usuário removido.")
-    } catch {
-      toast.error("Não foi possível excluir o usuário.")
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Não foi possível excluir o usuário."))
     } finally {
       setSaving(false)
     }
@@ -607,8 +623,8 @@ export function ConfiguracoesContent() {
       await deleteNotificationRule(id)
       setNotificationRules((current) => current.filter((item) => item.id !== id))
       toast.success("Regra removida.")
-    } catch {
-      toast.error("Não foi possível excluir a regra.")
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Não foi possível excluir a regra."))
     } finally {
       setSaving(false)
     }
@@ -664,8 +680,8 @@ export function ConfiguracoesContent() {
       }))
       setShowTemporaryPassword(false)
       toast.success("Senha redefinida.")
-    } catch {
-      toast.error("Não foi possível redefinir a senha.")
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Não foi possível redefinir a senha."))
     } finally {
       setSaving(false)
     }
@@ -934,7 +950,7 @@ export function ConfiguracoesContent() {
             </Button>
           </div>
 
-          <div className="rounded-md border">
+          <div className="overflow-x-auto rounded-md">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -1016,7 +1032,7 @@ export function ConfiguracoesContent() {
             </Button>
           </div>
 
-          <div className="rounded-md border">
+          <div className="overflow-x-auto rounded-md">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -1039,7 +1055,7 @@ export function ConfiguracoesContent() {
                       <TableCell>
                         <div className="flex flex-wrap gap-1">
                           <Badge variant="secondary">{item.permissions.length} permissões</Badge>
-                          {item.id === "profile-admin" && <Badge className="bg-primary/10 text-primary hover:bg-primary/10">Padrao</Badge>}
+                          {item.id === "profile-admin" && <Badge className="bg-primary/10 text-primary hover:bg-primary/10">Padrão</Badge>}
                         </div>
                       </TableCell>
                       <TableCell className="text-right">
@@ -1067,7 +1083,7 @@ export function ConfiguracoesContent() {
           <Dialog open={isProfileDialogOpen} onOpenChange={(open) => (open ? setIsProfileDialogOpen(true) : resetProfileForm())}>
             <DialogContent className="max-h-[90vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>{editingProfile ? "Editar Perfil" : "Novo Perfil de Permissao"}</DialogTitle>
+                <DialogTitle>{editingProfile ? "Editar Permissão" : "Nova Permissão"}</DialogTitle>
               </DialogHeader>
               <form autoComplete="off" onSubmit={handleProfileSubmit} className="space-y-4">
                 <div className="space-y-2">
@@ -1093,16 +1109,17 @@ export function ConfiguracoesContent() {
                               checked={moduleState.allSelected ? true : moduleState.partialSelected ? "indeterminate" : false}
                               onCheckedChange={() => toggleModulePermissions(module.key)}
                             />
-                            <AccordionTrigger className="flex-1 py-0 no-underline hover:no-underline">
-                              <div className="flex w-full items-center justify-between gap-4 text-left">
-                                <div className="space-y-1">
-                                  <div className="font-medium">{module.title}</div>
-                                  <div className="text-xs text-muted-foreground">{module.description}</div>
-                                </div>
-                                <Badge variant="secondary" className="shrink-0">
-                                  {moduleState.modulePermissions.filter((permission) => profileForm.permissions.includes(permission.key)).length}/{moduleState.modulePermissions.length}
-                                </Badge>
+                            <AccordionTrigger
+                              headerClassName="min-w-0 flex-1"
+                              className="grid w-full grid-cols-[minmax(0,1fr)_3rem_1rem] items-center gap-3 py-0 no-underline hover:no-underline [&>svg]:col-start-3 [&>svg]:self-center [&>svg]:justify-self-center [&>svg]:translate-y-0"
+                            >
+                              <div className="min-w-0 space-y-1 text-left">
+                                <div className="truncate font-medium">{module.title}</div>
+                                <div className="truncate text-xs text-muted-foreground">{module.description}</div>
                               </div>
+                              <Badge variant="secondary" className="w-10 justify-center justify-self-center self-center px-0">
+                                {moduleState.modulePermissions.filter((permission) => profileForm.permissions.includes(permission.key)).length}/{moduleState.modulePermissions.length}
+                              </Badge>
                             </AccordionTrigger>
                           </div>
                           <AccordionContent>
@@ -1149,7 +1166,7 @@ export function ConfiguracoesContent() {
             </Button>
           </div>
 
-          <div className="rounded-md border">
+          <div className="overflow-x-auto rounded-md">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -1281,7 +1298,7 @@ export function ConfiguracoesContent() {
                   </div>
                 )}
                 <div className="space-y-2">
-                  <Label>Perfil de permissao</Label>
+                  <Label>Perfil de permissão</Label>
                   <Select value={userForm.permissionProfileId} onValueChange={(value) => setUserForm({ ...userForm, permissionProfileId: value })}>
                     <SelectTrigger className="w-full">
                       <SelectValue placeholder="Selecione um perfil" />
@@ -1325,7 +1342,7 @@ export function ConfiguracoesContent() {
         </div>
       )}
 
-      {activeSection === "notificacoes" && (
+      {activeSection === "notificações" && (
         <div className="space-y-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <div className="relative w-full sm:max-w-md">
@@ -1338,14 +1355,14 @@ export function ConfiguracoesContent() {
             </Button>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-2">
             {paginatedRules.length === 0 ? (
-              <Card className="md:col-span-2 xl:col-span-3">
+              <Card className="md:col-span-2">
                 <CardContent className="p-6 text-center text-sm text-muted-foreground">Nenhuma regra encontrada.</CardContent>
               </Card>
             ) : (
               paginatedRules.map((item) => (
-                <Card key={item.id} className={cn(!item.isActive && "opacity-60")}>
+                <Card key={item.id} className={cn("flex h-full flex-col", !item.isActive && "opacity-60")}>
                   <CardHeader className="pb-2">
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex min-w-0 items-start gap-3">
@@ -1353,13 +1370,14 @@ export function ConfiguracoesContent() {
                           <Bell className="h-4.5 w-4.5" />
                         </div>
                         <div className="min-w-0">
-                          <CardTitle className="text-base">{item.name}</CardTitle>
+                          <CardTitle className="min-w-0 break-words text-base leading-tight">{item.name}</CardTitle>
                           <CardDescription className="mt-1 text-sm">
                             {NOTIFICATION_TYPE_LABELS[item.type] ?? item.type}
                           </CardDescription>
                         </div>
                       </div>
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-2">
+                        {item.isDefault ? <Badge variant="secondary" className="shrink-0 whitespace-nowrap">Padrão</Badge> : null}
                         <Switch
                           checked={item.isActive}
                           onCheckedChange={async () => {
@@ -1367,64 +1385,71 @@ export function ConfiguracoesContent() {
                             try {
                               const response = await updateNotificationRule(item.id, { isActive: !item.isActive })
                               upsertNotificationRule(response.data)
-                            } catch {
-                              toast.error("Não foi possível atualizar a regra.")
+                            } catch (error) {
+                              toast.error(getApiErrorMessage(error, "Não foi possível atualizar a regra."))
                             } finally {
                               setSaving(false)
                             }
                           }}
                         />
                         <Button variant="ghost" size="icon" onClick={() => openRuleDialog(item)}><Edit className="h-4 w-4" /></Button>
-                        <Button variant="ghost" size="icon" onClick={() => setPendingDelete({ kind: "rule", id: item.id, label: item.name })}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                        {!item.isDefault ? (
+                          <Button variant="ghost" size="icon" onClick={() => setPendingDelete({ kind: "rule", id: item.id, label: item.name })}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                        ) : null}
                       </div>
                     </div>
                   </CardHeader>
-                  <CardContent className="space-y-3 text-sm">
+                  <CardContent className="flex flex-1 flex-col gap-3 text-sm">
+                    {item.description ? <p className="text-sm text-muted-foreground">{item.description}</p> : null}
                     <div className="text-sm text-muted-foreground">
                       <span>{item.daysBefore === 0 ? "No dia" : `${item.daysBefore} dia(s) antes`}</span>
                       <span className="mx-1">•</span>
                       <span>às {item.time}</span>
                     </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {item.channels.map((channel) => {
-                        const channelLabel = CHANNELS.find((entry) => entry.value === channel)?.label ?? channel
-                        return <Badge key={channel} variant="outline">{channelLabel}</Badge>
-                      })}
-                    </div>
-                    {(item.targetTeamIds.length > 0 || item.targetEmployeeIds.length > 0) ? (
+                    <div className="mt-auto space-y-3 pt-1">
                       <div className="flex flex-wrap gap-1.5">
-                        {item.targetTeamIds.map((teamId) => {
-                          const team = teams.find((entry) => entry.id === teamId)
-                          const teamName = team?.name ?? teamId
-                          return (
-                            <Badge
-                              key={teamId}
-                              variant="secondary"
-                              className="px-3 py-1 flex items-center gap-2 text-xs text-foreground/80"
-                              style={team?.color ? { backgroundColor: `${team.color}1A` } : undefined}
-                            >
-                              {team?.color ? (
-                                <span
-                                  className="h-2.5 w-2.5 shrink-0 rounded-full"
-                                  style={{ backgroundColor: team.color }}
-                                />
-                              ) : null}
-                              {teamName}
-                            </Badge>
-                          )
-                        })}
-                        {item.targetEmployeeIds.map((employeeId) => {
-                          const employeeName = employees.find((employee) => employee.id === employeeId)?.name ?? employeeId
-                          return (
-                            <Badge key={employeeId} variant="outline" className="px-3 py-1 text-xs">
-                              {employeeName}
-                            </Badge>
-                          )
+                        {item.channels.map((channel) => {
+                          const channelLabel = CHANNELS.find((entry) => entry.value === channel)?.label ?? channel
+                          return <Badge key={channel} variant="outline">{channelLabel}</Badge>
                         })}
                       </div>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">Nenhum destinatário vinculado.</span>
-                    )}
+                      {item.isDefault ? (
+                        <span className="text-xs text-muted-foreground">Destinatários automáticos conforme o evento.</span>
+                      ) : (item.targetTeamIds.length > 0 || item.targetEmployeeIds.length > 0) ? (
+                        <div className="flex flex-wrap gap-1.5">
+                          {item.targetTeamIds.map((teamId) => {
+                            const team = teams.find((entry) => entry.id === teamId)
+                            const teamName = team?.name ?? teamId
+                            return (
+                              <Badge
+                                key={teamId}
+                                variant="secondary"
+                                className="px-3 py-1 flex items-center gap-2 text-xs text-foreground/80"
+                                style={team?.color ? { backgroundColor: `${team.color}1A` } : undefined}
+                              >
+                                {team?.color ? (
+                                  <span
+                                    className="h-2.5 w-2.5 shrink-0 rounded-full"
+                                    style={{ backgroundColor: team.color }}
+                                  />
+                                ) : null}
+                                {teamName}
+                              </Badge>
+                            )
+                          })}
+                          {item.targetEmployeeIds.map((employeeId) => {
+                            const employeeName = employees.find((employee) => employee.id === employeeId)?.name ?? employeeId
+                            return (
+                              <Badge key={employeeId} variant="outline" className="px-3 py-1 text-xs">
+                                {employeeName}
+                              </Badge>
+                            )
+                          })}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Nenhum destinatário vinculado.</span>
+                      )}
+                    </div>
                   </CardContent>
                 </Card>
               ))
@@ -1443,17 +1468,21 @@ export function ConfiguracoesContent() {
           <Dialog open={isRuleDialogOpen} onOpenChange={(open) => (open ? setIsRuleDialogOpen(true) : resetRuleForm())}>
             <DialogContent className="max-h-[90vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>{editingRule ? "Editar Regra de Notificação" : "Nova Regra de Notificação"}</DialogTitle>
+                <DialogTitle>{editingRule?.isDefault ? "Editar Notificação Padrão" : editingRule ? "Editar Regra de Notificação" : "Nova Regra de Notificação"}</DialogTitle>
               </DialogHeader>
               <form autoComplete="off" onSubmit={handleRuleSubmit} className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="rule-name">Nome</Label>
-                  <Input id="rule-name" value={ruleForm.name} onChange={(event) => setRuleForm({ ...ruleForm, name: event.target.value })} required />
+                  <Input id="rule-name" value={ruleForm.name} onChange={(event) => setRuleForm({ ...ruleForm, name: event.target.value })} disabled={Boolean(editingRule?.isDefault)} required />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="rule-description">Descrição</Label>
+                  <Textarea id="rule-description" value={ruleForm.description} onChange={(event) => setRuleForm({ ...ruleForm, description: event.target.value })} rows={3} />
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Tipo</Label>
-                    <Select value={ruleForm.type} onValueChange={(value) => setRuleForm({ ...ruleForm, type: value })}>
+                    <Select value={ruleForm.type} onValueChange={(value) => setRuleForm({ ...ruleForm, type: value })} disabled={Boolean(editingRule?.isDefault)}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
                         {Object.entries(NOTIFICATION_TYPE_LABELS).map(([value, label]) => (
@@ -1493,31 +1522,37 @@ export function ConfiguracoesContent() {
                     })}
                   </div>
                 </div>
-                <div className="grid gap-4 lg:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label>Equipes destinatárias</Label>
-                    <MultiSelect
-                      options={teamOptions}
-                      selected={ruleForm.targetTeamIds}
-                      onChange={(selected) => setRuleForm({ ...ruleForm, targetTeamIds: selected })}
-                      placeholder="Buscar e adicionar equipes..."
-                      searchPlaceholder="Buscar equipe..."
-                      emptyMessage="Nenhuma equipe encontrada."
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Funcionários avulsos</Label>
-                    <MultiSelect
-                      options={employeeOptions}
-                      selected={ruleForm.targetEmployeeIds}
-                      onChange={(selected) => setRuleForm({ ...ruleForm, targetEmployeeIds: selected })}
-                      placeholder="Buscar e adicionar funcionários..."
-                      searchPlaceholder="Buscar funcionário..."
-                      emptyMessage="Nenhum funcionário encontrado."
-                    />
-                  </div>
-                </div>
-                <p className="text-xs text-muted-foreground">Selecione equipes, funcionários avulsos ou ambos para definir quem recebe a notificação.</p>
+                {editingRule?.isDefault ? (
+                  <p className="text-xs text-muted-foreground">Esta regra usa destinatários automáticos: equipes e funcionários do agendamento, ou cliente nos envios externos.</p>
+                ) : (
+                  <>
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label>Equipes</Label>
+                        <MultiSelect
+                          options={teamOptions}
+                          selected={ruleForm.targetTeamIds}
+                          onChange={(selected) => setRuleForm({ ...ruleForm, targetTeamIds: selected })}
+                          placeholder="Buscar e adicionar equipes..."
+                          searchPlaceholder="Buscar equipe..."
+                          emptyMessage="Nenhuma equipe encontrada."
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Funcionários Avulsos</Label>
+                        <MultiSelect
+                          options={employeeOptions}
+                          selected={ruleForm.targetEmployeeIds}
+                          onChange={(selected) => setRuleForm({ ...ruleForm, targetEmployeeIds: selected })}
+                          placeholder="Buscar e adicionar funcionários..."
+                          searchPlaceholder="Buscar funcionário..."
+                          emptyMessage="Nenhum funcionário encontrado."
+                        />
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Selecione equipes, funcionários avulsos ou ambos para definir quem recebe a notificação.</p>
+                  </>
+                )}
                 <div className="flex items-center gap-2">
                   <Switch checked={ruleForm.isActive} onCheckedChange={(checked) => setRuleForm({ ...ruleForm, isActive: checked })} />
                   <Label>Regra ativa</Label>

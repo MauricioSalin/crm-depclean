@@ -29,22 +29,25 @@ export function DataPagination({
   onPageSizeChange,
   pageSizeOptions = [10, 15, 20, 50],
 }: DataPaginationProps) {
-  const startItem = (currentPage - 1) * pageSize + 1
-  const endItem = Math.min(currentPage * pageSize, totalItems)
+  const safePageSize = Number.isFinite(pageSize) && pageSize > 0 ? pageSize : (pageSizeOptions[0] ?? 10)
+  const safeTotalPages = Math.max(1, totalPages || 1)
+  const normalizedPageSizeOptions = Array.from(new Set([...pageSizeOptions, safePageSize])).sort((a, b) => a - b)
+  const startItem = totalItems === 0 ? 0 : (currentPage - 1) * safePageSize + 1
+  const endItem = Math.min(currentPage * safePageSize, totalItems)
 
   return (
     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between pt-5">
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <span>Exibindo</span>
         <Select
-          value={pageSize.toString()}
+          value={safePageSize.toString()}
           onValueChange={(value) => onPageSizeChange(Number(value))}
         >
           <SelectTrigger className="h-8 w-[70px]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {pageSizeOptions.map((size) => (
+            {normalizedPageSizeOptions.map((size) => (
               <SelectItem key={size} value={size.toString()}>
                 {size}
               </SelectItem>
@@ -80,14 +83,14 @@ export function DataPagination({
             <ChevronLeft className="h-4 w-4" />
           </Button>
           <span className="text-sm px-2">
-            {currentPage} / {totalPages || 1}
+            {currentPage} / {safeTotalPages}
           </span>
           <Button
             variant="outline"
             size="icon"
             className="h-8 w-8"
             onClick={() => onPageChange(currentPage + 1)}
-            disabled={currentPage >= totalPages}
+            disabled={currentPage >= safeTotalPages}
           >
             <ChevronRight className="h-4 w-4" />
           </Button>
@@ -95,8 +98,8 @@ export function DataPagination({
             variant="outline"
             size="icon"
             className="h-8 w-8"
-            onClick={() => onPageChange(totalPages)}
-            disabled={currentPage >= totalPages}
+            onClick={() => onPageChange(safeTotalPages)}
+            disabled={currentPage >= safeTotalPages}
           >
             <ChevronsRight className="h-4 w-4" />
           </Button>

@@ -35,7 +35,9 @@ import { DataPagination } from "@/components/ui/data-pagination"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 import { getFinancialAnalytics, type FinancialInstallmentRecord } from "@/lib/api/analytics"
 import { updateInstallment } from "@/lib/api/contracts"
+import { getApiErrorMessage } from "@/lib/api/errors"
 import Link from "next/link"
+import { toast } from "sonner"
 import {
   BarChart,
   Bar,
@@ -106,6 +108,10 @@ export function FinanceiroContent({ viewMode, viewToggle }: FinanceiroContentPro
         queryClient.invalidateQueries({ queryKey: ["analytics"] }),
         queryClient.invalidateQueries({ queryKey: ["contracts"] }),
       ])
+      toast.success("Parcela atualizada.")
+    },
+    onError: (error) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível atualizar a parcela."))
     },
   })
 
@@ -418,7 +424,7 @@ export function FinanceiroContent({ viewMode, viewToggle }: FinanceiroContentPro
               </Table>
             </div>
           ) : (
-            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
               {paginatedInstallments.map((installment) => (
                 <Card key={installment.id} className="overflow-hidden">
                   <CardContent className="p-4">

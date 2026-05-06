@@ -1,7 +1,6 @@
 "use client"
 
 import { useMutation } from "@tanstack/react-query"
-import { AxiosError } from "axios"
 import { type FormEvent, useEffect, useId, useRef, useState } from "react"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
@@ -19,6 +18,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { login, requestPasswordReset } from "@/lib/api/auth"
+import { getApiErrorMessage } from "@/lib/api/errors"
 import { isAuthenticated, persistSession } from "@/lib/auth/session"
 
 export default function LoginPage() {
@@ -55,9 +55,7 @@ export default function LoginPage() {
       router.refresh()
     },
     onError: (error) => {
-      const axiosError = error as AxiosError<{ message?: string }>
-      const message = axiosError.response?.data?.message ?? "Nao foi possivel entrar."
-      toast.error(message)
+      toast.error(getApiErrorMessage(error, "Não foi possível entrar."))
     },
   })
 
@@ -104,8 +102,8 @@ export default function LoginPage() {
       await requestPasswordReset({ email: resetEmail || email })
       toast.success("Se o e-mail estiver cadastrado, você receberá um link para redefinir a senha.")
       setForgotPasswordOpen(false)
-    } catch {
-      toast.error("Não foi possível solicitar a redefinição de senha.")
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Não foi possível solicitar a redefinição de senha."))
     } finally {
       setResetSubmitting(false)
     }

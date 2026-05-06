@@ -58,6 +58,8 @@ const emptyReports: ReportsAnalyticsRecord = {
     scheduledServicesChange: 0,
     completedServices: 0,
     completedServicesChange: 0,
+    emergencyServices: 0,
+    completionRate: 0,
     overdueInstallments: 0,
     overdueInstallmentsValue: 0,
     teamProductivity: [],
@@ -206,6 +208,8 @@ export function RelatoriosContent() {
         ...data.servicesByTeamData.map((item) => ["Servicos por equipe", item.team, "", "", item.services]),
         ["Resumo", "Servicos concluidos", data.dashboardStats.completedServices, "", ""],
         ["Resumo", "Servicos agendados", "", data.dashboardStats.scheduledServices, ""],
+        ["Resumo", "Emergencias", data.dashboardStats.emergencyServices, "", ""],
+        ["Resumo", "Taxa de conclusao", `${data.dashboardStats.completionRate}%`, "", ""],
       ]
     }
 
@@ -419,11 +423,11 @@ export function RelatoriosContent() {
                   <div className="text-sm text-muted-foreground">Serviços Agendados</div>
                 </div>
                 <div className="text-center p-4 bg-yellow-50 rounded-lg border border-yellow-100">
-                  <div className="text-3xl font-bold text-yellow-600">2</div>
+                  <div className="text-3xl font-bold text-yellow-600">{dashboardStats.emergencyServices}</div>
                   <div className="text-sm text-muted-foreground">Emergências</div>
                 </div>
                 <div className="text-center p-4 bg-green-50 rounded-lg border border-green-100">
-                  <div className="text-3xl font-bold text-green-600">98%</div>
+                  <div className="text-3xl font-bold text-green-600">{dashboardStats.completionRate}%</div>
                   <div className="text-sm text-muted-foreground">Taxa de Conclusão</div>
                 </div>
               </div>

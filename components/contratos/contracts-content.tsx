@@ -2,20 +2,21 @@
 
 import { useMemo, useState } from "react"
 import Link from "next/link"
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   Building2,
   Calendar,
   CalendarCheck,
-  Download,
   Edit,
   ExternalLink,
   Eye,
   FileText,
   MoreHorizontal,
   Search,
+  Trash2,
 } from "lucide-react"
 
+import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Badge } from "@/components/ui/badge"
@@ -26,12 +27,14 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { buildApiFileUrl } from "@/lib/api/client"
-import { listContracts } from "@/lib/api/contracts"
+import { deleteContract, listContracts } from "@/lib/api/contracts"
+import { getApiErrorMessage } from "@/lib/api/errors"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
+import { toast } from "sonner"
 
 interface ContractsContentProps {
   viewMode: "table" | "cards"
@@ -50,14 +53,28 @@ function formatDate(value: string) {
 }
 
 export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps) {
+  const queryClient = useQueryClient()
   const [searchTerm, setSearchTerm] = useUrlQueryState("q")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; label: string } | null>(null)
 
   const contractsQuery = useQuery({
     queryKey: ["contracts", searchTerm],
     queryFn: () => listContracts(searchTerm),
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => deleteContract(id),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["contracts"] })
+      toast.success("Contrato removido.")
+      setPendingDelete(null)
+    },
+    onError: (error) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível remover o contrato."))
+    },
   })
 
   const contracts = contractsQuery.data?.data ?? []
@@ -217,14 +234,6 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
                                 Editar
                               </Link>
                             </DropdownMenuItem>
-                            {contract.documentUrl ? (
-                              <DropdownMenuItem asChild>
-                                <a href={buildApiFileUrl(contract.documentUrl)} target="_blank" rel="noreferrer">
-                                  <Download className="mr-2 h-4 w-4" />
-                                  Baixar DOCX
-                                </a>
-                              </DropdownMenuItem>
-                            ) : null}
                             {contract.signatureUrl ? (
                               <DropdownMenuItem asChild>
                                 <a href={contract.signatureUrl} target="_blank" rel="noreferrer">
@@ -233,6 +242,14 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
                                 </a>
                               </DropdownMenuItem>
                             ) : null}
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="text-destructive focus:text-destructive"
+                              onSelect={() => setPendingDelete({ id: contract.id, label: contract.contractNumber })}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Remover
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
@@ -244,7 +261,7 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
           </Table>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {paginatedContracts.map((contract) => {
             const paidInstallments = contract.installments.filter((item) => item.status === "paid").length
             const progress = contract.installmentsCount > 0 ? (paidInstallments / contract.installmentsCount) * 100 : 0
@@ -320,6 +337,21 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
         onPageSizeChange={(size) => {
           setPageSize(size)
           setCurrentPage(1)
+        }}
+      />
+
+      <ConfirmActionDialog
+        open={Boolean(pendingDelete)}
+        title="Remover contrato"
+        description={`Tem certeza que deseja remover o contrato ${pendingDelete?.label ?? ""}? Esta ação não pode ser desfeita.`}
+        confirmLabel="Remover"
+        busy={deleteMutation.isPending}
+        onOpenChange={(open) => {
+          if (!open) setPendingDelete(null)
+        }}
+        onConfirm={() => {
+          if (!pendingDelete) return
+          deleteMutation.mutate(pendingDelete.id)
         }}
       />
     </div>

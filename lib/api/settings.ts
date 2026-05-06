@@ -43,6 +43,7 @@ export type UserRecord = {
 export type NotificationRuleRecord = {
   id: string
   name: string
+  description: string
   type: string
   daysBefore: number
   time: string
@@ -50,6 +51,7 @@ export type NotificationRuleRecord = {
   targetTeamIds: string[]
   targetEmployeeIds: string[]
   isActive: boolean
+  isDefault: boolean
   createdAt: string
   updatedAt: string
 }

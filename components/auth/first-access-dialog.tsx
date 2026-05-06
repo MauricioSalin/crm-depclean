@@ -5,6 +5,7 @@ import { Lock } from "lucide-react"
 import { toast } from "sonner"
 
 import { changePassword } from "@/lib/api/profile"
+import { getApiErrorMessage } from "@/lib/api/errors"
 import { getStoredAccessToken, getStoredRefreshToken, getStoredUser, isPersistentSession, persistSession } from "@/lib/auth/session"
 import type { AuthenticatedUser } from "@/lib/auth/types"
 import { Button } from "@/components/ui/button"
@@ -83,15 +84,23 @@ export function FirstAccessDialog() {
       })
       toast.success("Senha alterada com sucesso.")
     } catch (error) {
-      toast.error("Não foi possível alterar a senha.")
+      toast.error(getApiErrorMessage(error, "Não foi possível alterar a senha."))
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <Dialog open={open}>
-      <DialogContent className="max-w-md" onInteractOutside={(e) => e.preventDefault()}>
+    <Dialog open={open} onOpenChange={(nextOpen) => {
+      if (!nextOpen && user?.mustChangePassword) return
+    }}>
+      <DialogContent
+        className="max-w-md"
+        showCloseButton={false}
+        onEscapeKeyDown={(event) => event.preventDefault()}
+        onInteractOutside={(event) => event.preventDefault()}
+        onPointerDownOutside={(event) => event.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Lock className="h-4 w-4" />

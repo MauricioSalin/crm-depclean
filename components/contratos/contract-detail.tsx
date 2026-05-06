@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react"
 import Link from "next/link"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   Building2,
@@ -9,19 +10,20 @@ import {
   CheckCircle,
   Clock,
   DollarSign,
-  Download,
   ExternalLink,
   FileText,
   Eye,
   MapPin,
   MoreHorizontal,
   RefreshCw,
+  Trash2,
   Users,
 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,10 +35,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "@/components/ui/use-toast"
 import { ServiceClausesDialog } from "@/components/servicos/service-clauses-dialog"
-import { buildApiFileUrl } from "@/lib/api/client"
 import { getClientById } from "@/lib/api/clients"
-import { getContractById, sendContractToClicksign, syncContractClicksign, updateInstallment } from "@/lib/api/contracts"
+import { deleteContract, getContractById, sendContractToClicksign, syncContractClicksign, updateInstallment } from "@/lib/api/contracts"
 import { listEmployees } from "@/lib/api/employees"
+import { getApiErrorMessage } from "@/lib/api/errors"
 import { listSchedules } from "@/lib/api/schedules"
 import { listServices, type ServiceRecurrenceRuleRecord } from "@/lib/api/services"
 import { listTeams } from "@/lib/api/teams"
@@ -45,6 +47,36 @@ import { cn } from "@/lib/utils"
 interface ContractDetailProps {
   contractId: string
 }
+
+const contractDetailTabs = ["services", "installments", "units", "schedule"] as const
+
+type ContractDetailTab = (typeof contractDetailTabs)[number]
+
+const defaultContractDetailTab: ContractDetailTab = "services"
+
+const contractDetailTabByUrlValue: Record<string, ContractDetailTab> = {
+  services: "services",
+  servicos: "services",
+  installments: "installments",
+  parcelas: "installments",
+  units: "units",
+  filiais: "units",
+  schedule: "schedule",
+  agenda: "schedule",
+}
+
+const contractDetailTabUrlValue: Record<ContractDetailTab, string> = {
+  services: "servicos",
+  installments: "parcelas",
+  units: "filiais",
+  schedule: "agenda",
+}
+
+const getContractDetailTabFromUrl = (value: string | null): ContractDetailTab =>
+  value ? contractDetailTabByUrlValue[value] ?? defaultContractDetailTab : defaultContractDetailTab
+
+const isContractDetailTab = (value: string): value is ContractDetailTab =>
+  contractDetailTabs.includes(value as ContractDetailTab)
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value)
@@ -127,24 +159,82 @@ const getScheduleStatusBadge = (status: string) => {
 
 const getClicksignStatusLabel = (status?: string) => {
   switch (status) {
+    case "pending":
+      return "Pendente"
+    case "pending_signature":
+      return "Aguardando assinatura"
     case "running":
       return "Em assinatura"
     case "closed":
+    case "signed":
+    case "finished":
+    case "completed":
+    case "done":
       return "Assinado"
     case "send_failed":
       return "Falha no envio"
     case "cancelled":
+    case "canceled":
       return "Cancelado"
     case "refused":
       return "Recusado"
+    case "expired":
+      return "Expirado"
+    case "deadline_expired":
+      return "Prazo expirado"
     default:
       return status || "Não enviado"
   }
 }
 
+const getClicksignSignerStatusBadge = (status?: string) => {
+  const normalizedStatus = status?.toLowerCase() || "pending"
+
+  switch (normalizedStatus) {
+    case "signed":
+    case "closed":
+    case "finished":
+    case "completed":
+    case "done":
+      return <Badge className="bg-green-100 text-green-700 hover:bg-green-100">Assinado</Badge>
+    case "pending":
+    case "pending_signature":
+    case "running":
+    case "waiting":
+    case "waiting_signature":
+    case "awaiting_signature":
+      return <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">Pendente</Badge>
+    case "send_failed":
+      return <Badge className="bg-red-100 text-red-700 hover:bg-red-100">Falha no envio</Badge>
+    case "cancelled":
+    case "canceled":
+      return <Badge className="bg-red-100 text-red-700 hover:bg-red-100">Cancelado</Badge>
+    case "refused":
+      return <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100">Recusado</Badge>
+    case "expired":
+      return <Badge className="bg-gray-100 text-gray-700 hover:bg-gray-100">Expirado</Badge>
+    case "deadline_expired":
+      return <Badge className="bg-purple-100 text-purple-700 hover:bg-purple-100">Prazo expirado</Badge>
+    default:
+      return <Badge variant="secondary">{getClicksignStatusLabel(status)}</Badge>
+  }
+}
+
 export function ContractDetail({ contractId }: ContractDetailProps) {
   const queryClient = useQueryClient()
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const activeTab = getContractDetailTabFromUrl(searchParams.get("tab"))
+
+  const handleTabChange = (value: string) => {
+    if (!isContractDetailTab(value)) return
+    const params = new URLSearchParams(searchParams.toString())
+    params.set("tab", contractDetailTabUrlValue[value])
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false })
+  }
 
   const contractQuery = useQuery({
     queryKey: ["contract", contractId],
@@ -264,16 +354,18 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
         description: "O status da parcela foi atualizado com sucesso.",
       })
     },
+    onError: (error) => {
+      toast({
+        title: getApiErrorMessage(error, "Não foi possível atualizar a parcela."),
+        variant: "destructive",
+      })
+    },
   })
 
   const clicksignErrorToast = (error: unknown) => {
-    const message =
-      (error as any)?.response?.data?.message ??
-      (error as Error)?.message ??
-      "Não foi possível concluir a ação no ClickSign."
     toast({
       title: "ClickSign",
-      description: Array.isArray(message) ? message.join(", ") : message,
+      description: getApiErrorMessage(error, "Não foi possível concluir a ação no ClickSign."),
       variant: "destructive",
     })
   }
@@ -305,6 +397,27 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
       })
     },
     onError: clicksignErrorToast,
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteContract(resolvedContractId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["contract", contractId] })
+      await queryClient.invalidateQueries({ queryKey: ["contract", resolvedContractId] })
+      await queryClient.invalidateQueries({ queryKey: ["contracts"] })
+      await queryClient.invalidateQueries({ queryKey: ["schedules", "contract-detail", resolvedContractId] })
+      toast({
+        title: "Contrato removido",
+        description: "O contrato foi removido com sucesso.",
+      })
+      router.push("/contratos")
+    },
+    onError: (error) => {
+      toast({
+        title: getApiErrorMessage(error, "Não foi possível remover o contrato."),
+        variant: "destructive",
+      })
+    },
   })
 
   if (contractQuery.isLoading) {
@@ -370,14 +483,6 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
 
           <div className="space-y-4 lg:min-w-[260px]">
             <div className="flex flex-wrap gap-2">
-              {contract.documentUrl ? (
-                <Button variant="outline" size="sm" asChild>
-                  <a href={buildApiFileUrl(contract.documentUrl)} target="_blank" rel="noreferrer">
-                    <Download className="mr-2 h-4 w-4" />
-                    Baixar DOCX
-                  </a>
-                </Button>
-              ) : null}
               {contract.signatureUrl ? (
                 <Button variant="outline" size="sm" asChild>
                   <a href={contract.signatureUrl} target="_blank" rel="noreferrer">
@@ -407,6 +512,16 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                   Enviar ClickSign
                 </Button>
               )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                onClick={() => setDeleteDialogOpen(true)}
+                disabled={deleteMutation.isPending}
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Remover
+              </Button>
             </div>
 
             <div>
@@ -441,13 +556,12 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
           </div>
         </div>
         {contract.clicksign?.signers?.length ? (
-          <div className="mt-4 overflow-x-auto rounded-md border">
+          <div className="mt-4 overflow-hidden rounded-md">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Signatário</TableHead>
                   <TableHead>E-mail</TableHead>
-                  <TableHead>Papel</TableHead>
                   <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>
@@ -456,8 +570,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                   <TableRow key={`${signer.signerId}-${signer.email}`}>
                     <TableCell className="font-medium">{signer.name}</TableCell>
                     <TableCell>{signer.email}</TableCell>
-                    <TableCell>{signer.role || "-"}</TableCell>
-                    <TableCell>{getClicksignStatusLabel(signer.status)}</TableCell>
+                    <TableCell>{getClicksignSignerStatusBadge(signer.status)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -562,7 +675,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
         </div>
       </Card>
 
-      <Tabs defaultValue="services" className="w-full">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
         <TabsList className="grid w-full grid-cols-2 gap-2 bg-transparent p-0 sm:grid-cols-4">
           <TabsTrigger
             onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
@@ -864,6 +977,16 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
         }
         clausePrefix={selectedService ? String(contract.services.findIndex((service) => service.id === selectedService.id) + 1) : undefined}
         onOpenChange={(open) => !open && setSelectedServiceId(null)}
+      />
+
+      <ConfirmActionDialog
+        open={deleteDialogOpen}
+        title="Remover contrato"
+        description={`Tem certeza que deseja remover o contrato ${contract.contractNumber}? Esta ação não pode ser desfeita.`}
+        confirmLabel="Remover"
+        busy={deleteMutation.isPending}
+        onOpenChange={setDeleteDialogOpen}
+        onConfirm={() => deleteMutation.mutate()}
       />
     </div>
   )

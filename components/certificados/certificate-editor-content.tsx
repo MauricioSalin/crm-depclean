@@ -16,6 +16,7 @@ import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { getCertificateContext, sendCertificate } from "@/lib/api/certificates"
 import { buildApiFileUrl } from "@/lib/api/client"
+import { getApiErrorMessage } from "@/lib/api/errors"
 import { listTemplates, type TemplateRecord } from "@/lib/api/templates"
 import { getStoredUser } from "@/lib/auth/session"
 
@@ -30,6 +31,24 @@ function formatDate(value: string) {
 function getTemplateImageUrl(template?: TemplateRecord | null) {
   if (!template?.watermarkFileUrl) return undefined
   return buildApiFileUrl(template.watermarkFileUrl)
+}
+
+function formatValidityText(value?: number | null) {
+  const months = Math.max(1, Math.trunc(Number(value ?? 6) || 6))
+  return `${String(months).padStart(2, "0")} ${months === 1 ? "mês" : "meses"}`
+}
+
+function applyTemplateCertificateValidity(
+  variables: Record<string, unknown>,
+  template?: TemplateRecord | null,
+) {
+  return {
+    ...variables,
+    certificate: {
+      ...((variables.certificate as Record<string, unknown> | undefined) ?? {}),
+      validityText: formatValidityText(template?.certificateValidityMonths),
+    },
+  }
 }
 
 function formatFileSize(size?: number) {
@@ -86,6 +105,10 @@ export function CertificateEditorContent({ scheduleId }: { scheduleId: string })
   )
   const selectedTemplate = templates.find((template) => template.id === selectedTemplateId) ?? null
   const context = contextQuery.data?.data
+  const previewVariables = useMemo(
+    () => (context ? applyTemplateCertificateValidity(context.variables, selectedTemplate) : null),
+    [context, selectedTemplate],
+  )
 
   const sendMutation = useMutation({
     mutationFn: async () => {
@@ -110,7 +133,7 @@ export function CertificateEditorContent({ scheduleId }: { scheduleId: string })
       router.push("/certificados")
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Não foi possível enviar o certificado.")
+      toast.error(getApiErrorMessage(error, "Não foi possível enviar o certificado."))
     },
   })
 
@@ -179,8 +202,8 @@ export function CertificateEditorContent({ scheduleId }: { scheduleId: string })
           applyVariablesToEditor
           baseFileName={selectedTemplate?.baseFileName}
           kind="certificate"
-          previewDataKey={`${scheduleId}:${selectedTemplateId}:${JSON.stringify(context.variables)}`}
-          previewVariables={context.variables}
+          previewDataKey={`${scheduleId}:${selectedTemplateId}:${JSON.stringify(previewVariables)}`}
+          previewVariables={previewVariables}
           templateFormat={selectedTemplate?.format ?? "docx"}
           templateId={selectedTemplate?.id}
           templateName={selectedTemplate?.name || "Certificado"}

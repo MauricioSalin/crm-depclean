@@ -18,6 +18,8 @@ const emptyStats: DashboardStatsRecord = {
   scheduledServicesChange: 0,
   completedServices: 0,
   completedServicesChange: 0,
+  emergencyServices: 0,
+  completionRate: 0,
   overdueInstallments: 0,
   overdueInstallmentsValue: 0,
   teamProductivity: [],
@@ -101,19 +103,19 @@ export function StatsCards({ days = 30 }: DashboardPeriodProps) {
             key={stat.title}
             onMouseEnter={() => setHoveredCard(index)}
             onMouseLeave={() => setHoveredCard(null)}
-            className={`${stat.bgColor} ${stat.textColor} p-4 transition-all duration-500 ease-out cursor-pointer ${hoveredCard === index ? "scale-105 shadow-2xl" : "shadow-lg"
+            className={`${stat.bgColor} ${stat.textColor} p-3 transition-all duration-500 ease-out cursor-pointer ${hoveredCard === index ? "scale-105 shadow-2xl" : "shadow-lg"
               }`}
           >
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between mb-2">
               <h3 className="text-xs font-medium opacity-90">{stat.title}</h3>
               <div
-                className={`w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center transition-transform duration-300 ${hoveredCard === index ? "scale-110" : ""
+                className={`w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center transition-transform duration-300 ${hoveredCard === index ? "scale-110" : ""
                   }`}
               >
-                <Icon className="w-4 h-4 text-primary" />
+                <Icon className="w-3.5 h-3.5 text-primary" />
               </div>
             </div>
-            <p className="text-2xl font-bold mb-2">{stat.value}</p>
+            <p className="text-2xl font-bold mb-1">{stat.value}</p>
             <div className="flex items-center gap-1.5 text-xs opacity-80">
               {stat.change && (
                 <>

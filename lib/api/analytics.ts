@@ -26,6 +26,8 @@ export type DashboardStatsRecord = {
   scheduledServicesChange: number
   completedServices: number
   completedServicesChange: number
+  emergencyServices: number
+  completionRate: number
   overdueInstallments: number
   overdueInstallmentsValue: number
   teamProductivity: Array<{

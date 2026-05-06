@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, type KeyboardEvent, type ReactNode } from "react"
 import Link from "next/link"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Search, Edit, Trash2, Clock, ClipboardList } from "lucide-react"
@@ -11,6 +11,8 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
 import { DataPagination } from "@/components/ui/data-pagination"
+import { ServiceClausesDialog } from "@/components/servicos/service-clauses-dialog"
+import { toast } from "@/components/ui/use-toast"
 import {
   Table,
   TableBody,
@@ -20,6 +22,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
+import { getApiErrorMessage } from "@/lib/api/errors"
 import { deleteService, listServices, type ServiceRecord } from "@/lib/api/services"
 import { listTeams } from "@/lib/api/teams"
 
@@ -27,7 +30,7 @@ type ServiceTypeRow = ServiceRecord
 
 interface ServicesContentProps {
   viewMode: "table" | "cards"
-  viewToggle?: React.ReactNode
+  viewToggle?: ReactNode
 }
 
 function formatDuration(type: ServiceTypeRow) {
@@ -44,6 +47,7 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(10)
   const [pendingDelete, setPendingDelete] = useState<{ id: string; label: string } | null>(null)
+  const [selectedService, setSelectedService] = useState<ServiceTypeRow | null>(null)
 
   const servicesQuery = useQuery({
     queryKey: ["services", "content"],
@@ -61,7 +65,14 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
     mutationFn: (id: string) => deleteService(id),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["services"] })
+      toast({ title: "Serviço excluído", description: "O serviço foi removido com sucesso." })
       setPendingDelete(null)
+    },
+    onError: (error) => {
+      toast({
+        title: getApiErrorMessage(error, "Não foi possível excluir o serviço."),
+        variant: "destructive",
+      })
     },
   })
 
@@ -75,6 +86,16 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
   const confirmDeleteType = () => {
     if (!pendingDelete) return
     deleteMutation.mutate(pendingDelete.id)
+  }
+
+  const openServiceDetails = (type: ServiceTypeRow) => {
+    setSelectedService(type)
+  }
+
+  const handleServiceKeyDown = (event: KeyboardEvent<HTMLElement>, type: ServiceTypeRow) => {
+    if (event.key !== "Enter" && event.key !== " ") return
+    event.preventDefault()
+    openServiceDetails(type)
   }
 
   const filteredTypes = serviceTypes.filter((st) => st.name.toLowerCase().includes(searchTerm.toLowerCase()))
@@ -114,7 +135,7 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
                 <TableHead>Serviço</TableHead>
                 <TableHead className="hidden sm:table-cell">Descrição</TableHead>
                 <TableHead className="hidden md:table-cell">Equipe / Funcionários</TableHead>
-                <TableHead>Duração</TableHead>
+                <TableHead className="min-w-[110px]">Duração</TableHead>
                 <TableHead className="text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
@@ -133,7 +154,14 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
                 </TableRow>
               ) : (
                 paginatedTypes.map((type) => (
-                  <TableRow key={type.id}>
+                  <TableRow
+                    key={type.id}
+                    role="button"
+                    tabIndex={0}
+                    className="cursor-pointer"
+                    onClick={() => openServiceDetails(type)}
+                    onKeyDown={(event) => handleServiceKeyDown(event, type)}
+                  >
                     <TableCell>
                       <div className="flex items-center gap-3">
                         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
@@ -168,20 +196,27 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
                         )}
                       </div>
                     </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        <Clock className="h-4 w-4 text-muted-foreground" />
-                        <span>{formatDuration(type)}</span>
+                    <TableCell className="min-w-[110px]">
+                      <div className="flex items-center gap-1.5 whitespace-nowrap">
+                        <Clock className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        <span className="whitespace-nowrap">{formatDuration(type)}</span>
                       </div>
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
-                        <Link href={`/servicos/${type.id}/editar`}>
+                        <Link href={`/servicos/${type.id}/editar`} onClick={(event) => event.stopPropagation()}>
                           <Button variant="ghost" size="icon">
                             <Edit className="h-4 w-4" />
                           </Button>
                         </Link>
-                        <Button variant="ghost" size="icon" onClick={() => handleDeleteType(type.id)}>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            handleDeleteType(type.id)
+                          }}
+                        >
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </div>
@@ -193,9 +228,16 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
           </Table>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {paginatedTypes.map((type) => (
-            <Card key={type.id} className="overflow-hidden py-4 transition-shadow hover:shadow-lg">
+            <Card
+              key={type.id}
+              role="button"
+              tabIndex={0}
+              className="cursor-pointer overflow-hidden py-4 transition-shadow hover:shadow-lg"
+              onClick={() => openServiceDetails(type)}
+              onKeyDown={(event) => handleServiceKeyDown(event, type)}
+            >
               <CardContent className="px-4">
                 <div className="mb-2 flex items-start justify-between">
                   <div className="flex min-w-0 items-center gap-3">
@@ -210,12 +252,20 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
                     </div>
                   </div>
                   <div className="flex shrink-0 gap-0.5">
-                    <Link href={`/servicos/${type.id}/editar`}>
+                    <Link href={`/servicos/${type.id}/editar`} onClick={(event) => event.stopPropagation()}>
                       <Button variant="ghost" size="icon" className="h-8 w-8">
                         <Edit className="h-3.5 w-3.5" />
                       </Button>
                     </Link>
-                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDeleteType(type.id)}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        handleDeleteType(type.id)
+                      }}
+                    >
                       <Trash2 className="h-3.5 w-3.5 text-destructive" />
                     </Button>
                   </div>
@@ -272,6 +322,17 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
           if (!open) setPendingDelete(null)
         }}
         onConfirm={confirmDeleteType}
+      />
+
+      <ServiceClausesDialog
+        open={Boolean(selectedService)}
+        title={selectedService?.name ?? "Cláusulas do serviço"}
+        description={selectedService?.description || "Sem descrição cadastrada."}
+        clauses={selectedService?.clauses ?? []}
+        clausePrefix="1"
+        onOpenChange={(open) => {
+          if (!open) setSelectedService(null)
+        }}
       />
     </div>
   )

@@ -27,7 +27,7 @@ import { listContracts, type ContractRecord } from "@/lib/api/contracts"
 import { listEmployees } from "@/lib/api/employees"
 import { listSchedules, type ScheduleRecord } from "@/lib/api/schedules"
 import { listServices, type ServiceRecord } from "@/lib/api/services"
-import { listClientTypes, type ClientTypeRecord } from "@/lib/api/settings"
+import { getOrganizationSettings, listClientTypes, type ClientTypeRecord, type OrganizationSettingsRecord } from "@/lib/api/settings"
 import {
   createTemplate,
   deleteTemplate,
@@ -41,6 +41,7 @@ import {
   uploadTemplateWatermarkFile,
 } from "@/lib/api/templates"
 import { buildApiFileUrl } from "@/lib/api/client"
+import { getApiErrorMessage } from "@/lib/api/errors"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 
 export type ContractTemplate = TemplateRecord
@@ -51,7 +52,7 @@ const TEMPLATE_CONFIG = {
     pluralLabel: "contratos",
     searchKey: "q",
     requiresSigner: true,
-    signerLabel: "Assinante (Contratada)",
+    signerLabel: "Assinante",
   },
   informative: {
     label: "Informativo",
@@ -78,6 +79,9 @@ const TEMPLATE_CONFIG = {
   }
 >
 
+const FORM_SELECT_TRIGGER_CLASS_NAME = "w-full max-w-full min-w-0 [&>span]:min-w-0 [&>span]:truncate"
+const FORM_SELECT_CONTENT_CLASS_NAME = "max-w-[var(--radix-select-trigger-width)]"
+
 export interface EditorState {
   isOpen: boolean
   isEditing: boolean
@@ -99,7 +103,7 @@ type TemplateFormState = {
   watermarkFileName: string
   watermarkFileUrl: string
   informativeSendDaysBefore: number
-  certificateSendDaysAfter: number
+  certificateValidityMonths: number
 }
 
 type TemplateEditorTab = "editor" | "preview"
@@ -116,7 +120,7 @@ interface TemplatesContentProps {
 }
 
 function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "Não foi possível concluir a operação."
+  return getApiErrorMessage(error, "Não foi possível concluir a operação.")
 }
 
 function notify({
@@ -151,6 +155,11 @@ function formatLongDate(value = new Date()) {
   }).format(value)
 }
 
+function formatValidityText(value?: number | null) {
+  const months = Math.max(1, Math.trunc(Number(value ?? 6) || 6))
+  return `${String(months).padStart(2, "0")} ${months === 1 ? "mês" : "meses"}`
+}
+
 function formatCurrency(value?: number | null) {
   return new Intl.NumberFormat("pt-BR", {
     currency: "BRL",
@@ -179,6 +188,22 @@ function getUnitAddressFull(unit?: ClientUnitRecord | null) {
 
   const { street, number, neighborhood, city, state } = unit.address
   return `${street}, ${number}, Bairro ${neighborhood}, ${city}/${state}`
+}
+
+function getOrganizationAddress(settings?: OrganizationSettingsRecord | null) {
+  const address = settings?.address
+  if (!address) return ""
+
+  const streetLine = [address.street, address.number].filter(Boolean).join(", ")
+  return [
+    streetLine,
+    address.complement,
+    address.neighborhood ? `Bairro ${address.neighborhood}` : "",
+    [address.city, address.state].filter(Boolean).join("/"),
+    address.zipCode ? `CEP ${address.zipCode}` : "",
+  ]
+    .filter(Boolean)
+    .join(" - ")
 }
 
 function getPrimaryUnit(client?: ClientRecord | null, unitIds: string[] = []) {
@@ -291,11 +316,14 @@ function buildPreviewVariables(params: {
   clientTypes: ClientTypeRecord[]
   contract?: ContractRecord
   employeeName?: string
+  employeeRole?: string
   kind: TemplateKind
+  organizationSettings?: OrganizationSettingsRecord | null
+  certificateValidityMonths?: number
   schedule?: ScheduleRecord
   services: ServiceRecord[]
 }) {
-  const { client, clientTypes, contract, employeeName, kind, schedule, services } = params
+  const { client, clientTypes, contract, employeeName, employeeRole, kind, organizationSettings, certificateValidityMonths, schedule, services } = params
   if (!client) return null
 
   const unit = contract
@@ -305,7 +333,8 @@ function buildPreviewVariables(params: {
   const scheduleDate = formatDate(schedule?.date)
   const scheduleTime = (schedule?.time || "08:00").replace(":00", "h")
   const reservoirRows = buildReservoirRows(unit)
-  const validityMonths = Number(unit?.reservoirProfile?.validityMonths ?? 6) || 6
+  const unitValidityMonths = Math.max(1, Math.trunc(Number(unit?.reservoirProfile?.validityMonths ?? 6) || 6))
+  const templateValidityMonths = Math.max(1, Math.trunc(Number(certificateValidityMonths ?? 6) || 6))
   const installmentValue =
     contract && contract.installmentsCount > 0 ? contract.totalValue / contract.installmentsCount : contract?.totalValue ?? 0
   const contractServiceNames =
@@ -326,13 +355,13 @@ function buildPreviewVariables(params: {
       responsibleName: client.responsibleName,
     },
     contractor: {
-      address: "",
-      cnpj: "",
-      email: "",
-      legalName: "",
-      phone: "",
+      address: getOrganizationAddress(organizationSettings),
+      cnpj: formatCnpj(organizationSettings?.cnpj),
+      email: organizationSettings?.email ?? "",
+      legalName: organizationSettings?.legalName ?? "",
+      phone: organizationSettings?.phone ?? "",
       signerName: employeeName || "",
-      signerRole: "",
+      signerRole: employeeRole || "",
     },
     document: {
       generatedDate: formatDate(new Date()),
@@ -345,7 +374,7 @@ function buildPreviewVariables(params: {
     unit: {
       address: {
         city: unit?.address.city ?? "",
-        cityState: unit ? `${unit.address.city.toUpperCase()} /${unit.address.state}` : "",
+        cityState: unit ? `${unit.address.city}/${unit.address.state}` : "",
         full: getUnitAddressFull(unit),
         neighborhood: unit?.address.neighborhood ?? "",
         number: unit?.address.number ?? "",
@@ -356,7 +385,7 @@ function buildPreviewVariables(params: {
       name: unit?.name ?? "",
       reservoirProfile: {
         observations: unit?.reservoirProfile?.observations ?? "",
-        validityMonths: String(validityMonths),
+        validityMonths: String(unitValidityMonths),
       },
     },
   }
@@ -402,7 +431,7 @@ function buildPreviewVariables(params: {
       reservoirRow4Label: reservoirRows[3]?.label ?? "",
       reservoirRow5Capacity: reservoirRows[4]?.capacityLiters ?? "",
       reservoirRow5Label: reservoirRows[4]?.label ?? "",
-      validityText: `${String(validityMonths).padStart(2, "0")} ${validityMonths === 1 ? "mês" : "meses"}`,
+      validityText: formatValidityText(templateValidityMonths),
     },
     schedule: {
       date: scheduleDate,
@@ -448,7 +477,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
     watermarkFileName: "",
     watermarkFileUrl: "",
     informativeSendDaysBefore: 1,
-    certificateSendDaysAfter: 0,
+    certificateValidityMonths: 6,
   })
 
   const templatesQuery = useQuery({
@@ -491,6 +520,12 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
     queryFn: () => listClientTypes(""),
   })
 
+  const organizationSettingsQuery = useQuery({
+    enabled: isEditorOpen,
+    queryKey: ["organization-settings", "templates-preview"],
+    queryFn: () => getOrganizationSettings(),
+  })
+
   const templates = templatesQuery.data?.data ?? []
   const totalPages = Math.max(1, Math.ceil(templates.length / pageSize))
   const paginatedTemplates = useMemo(() => {
@@ -512,6 +547,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
   const schedules = schedulesQuery.data?.data ?? []
   const services = servicesQuery.data?.data ?? []
   const clientTypes = clientTypesQuery.data?.data.items ?? []
+  const organizationSettings = organizationSettingsQuery.data?.data ?? null
   const variableGroups = useMemo(() => getTemplateVariableGroups(kind), [kind])
   const watermarkImageUrl = selectedWatermarkPreviewUrl || (formData.watermarkFileUrl ? buildApiFileUrl(formData.watermarkFileUrl) : "")
 
@@ -520,26 +556,32 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
   const previewSchedules = schedules.filter((schedule) => schedule.clientId === previewClientId)
   const selectedPreviewContract = contracts.find((contract) => contract.id === previewDocumentId)
   const selectedPreviewSchedule = schedules.find((schedule) => schedule.id === previewDocumentId)
+  const templateSigner = employees.find((employee) => employee.id === formData.signerId)
   const previewVariables = useMemo(
     () =>
       buildPreviewVariables({
         client: previewClient,
         clientTypes,
         contract: kind === "contract" ? selectedPreviewContract : undefined,
-        employeeName: employees.find((employee) => employee.id === formData.signerId)?.name,
+        employeeName: templateSigner?.name,
+        employeeRole: templateSigner?.role,
         kind,
+        organizationSettings,
+        certificateValidityMonths: formData.certificateValidityMonths,
         schedule: kind === "contract" ? undefined : selectedPreviewSchedule,
         services,
       }),
-    [clientTypes, employees, formData.signerId, kind, previewClient, selectedPreviewContract, selectedPreviewSchedule, services],
+    [clientTypes, formData.certificateValidityMonths, kind, organizationSettings, previewClient, selectedPreviewContract, selectedPreviewSchedule, services, templateSigner],
   )
   const previewDataKey = [
     kind,
     previewClientId,
     previewDocumentId,
+    formData.certificateValidityMonths,
     clientsQuery.dataUpdatedAt,
     contractsQuery.dataUpdatedAt,
     clientTypesQuery.dataUpdatedAt,
+    organizationSettingsQuery.dataUpdatedAt,
     schedulesQuery.dataUpdatedAt,
     servicesQuery.dataUpdatedAt,
   ].join(":")
@@ -591,7 +633,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
       watermarkFileName: "",
       watermarkFileUrl: "",
       informativeSendDaysBefore: 1,
-      certificateSendDaysAfter: 0,
+      certificateValidityMonths: 6,
     })
   }, [kind])
 
@@ -649,7 +691,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
       watermarkFileName: "",
       watermarkFileUrl: "",
       informativeSendDaysBefore: 1,
-      certificateSendDaysAfter: 0,
+      certificateValidityMonths: 6,
     })
   }
 
@@ -685,7 +727,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
         isActive: formData.isActive,
         watermarkFileName: formData.watermarkFileName,
         informativeSendDaysBefore: kind === "informative" ? formData.informativeSendDaysBefore : 0,
-        certificateSendDaysAfter: kind === "certificate" ? formData.certificateSendDaysAfter : 0,
+        certificateValidityMonths: kind === "certificate" ? formData.certificateValidityMonths : 6,
       }
 
       let template = editingTemplate
@@ -717,6 +759,8 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
         isActive: savedTemplate.isActive,
         watermarkFileName: savedTemplate.watermarkFileName || "",
         watermarkFileUrl: savedTemplate.watermarkFileUrl || "",
+        informativeSendDaysBefore: savedTemplate.informativeSendDaysBefore ?? current.informativeSendDaysBefore,
+        certificateValidityMonths: savedTemplate.certificateValidityMonths ?? current.certificateValidityMonths,
       }))
       setSelectedWatermarkFile(null)
       setSelectedWatermarkPreviewUrl("")
@@ -745,12 +789,26 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
       queryClient.invalidateQueries({ queryKey: ["templates"] })
       setPendingDelete(null)
     },
+    onError: (error) => {
+      notify({
+        title: "Não foi possível excluir o template",
+        description: getErrorMessage(error),
+        variant: "destructive",
+      })
+    },
   })
 
   const toggleActiveMutation = useMutation({
     mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) => updateTemplate(id, { isActive }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["templates"] })
+    },
+    onError: (error) => {
+      notify({
+        title: "Não foi possível atualizar o status",
+        description: getErrorMessage(error),
+        variant: "destructive",
+      })
     },
   })
 
@@ -782,7 +840,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
       watermarkFileName: template.watermarkFileName || "",
       watermarkFileUrl: template.watermarkFileUrl || "",
       informativeSendDaysBefore: template.informativeSendDaysBefore ?? 1,
-      certificateSendDaysAfter: template.certificateSendDaysAfter ?? 0,
+      certificateValidityMonths: template.certificateValidityMonths ?? 6,
     })
     setEditorTab(nextTab)
     setPreviewClientId("")
@@ -806,7 +864,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
       watermarkFileName: "",
       watermarkFileUrl: "",
       informativeSendDaysBefore: 1,
-      certificateSendDaysAfter: 0,
+      certificateValidityMonths: 6,
     })
     setEditorTab(nextTab)
     setPreviewClientId("")
@@ -954,7 +1012,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
   async function handleGeneratePreviewPdf() {
     try {
       setIsGeneratingPdf(true)
-      const file = await docxEditorRef.current?.generatePreviewPdf()
+      const file = await docxEditorRef.current?.generatePreviewPdf({ previewWatermark: true })
 
       notify({
         title: "PDF gerado para teste",
@@ -979,7 +1037,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
         <Tabs
           value={editorTab}
           onValueChange={(value) => handleEditorTabChange(value as TemplateEditorTab)}
-          className="flex h-[calc(100dvh-170px)] min-h-[760px] min-w-0 flex-col"
+          className="flex h-[calc(100dvh-140px)] min-h-[820px] min-w-0 flex-col"
         >
           <TabsList className="mb-3 shrink-0">
             <TabsTrigger value="editor" className="gap-1.5">
@@ -1015,11 +1073,11 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
 
         </Tabs>
 
-        <Card className="h-[calc(100dvh-170px)] min-h-[760px] overflow-hidden xl:sticky xl:top-4 xl:mt-[55px]">
-          <CardContent className="flex h-full min-h-0 flex-col gap-4 overflow-hidden px-0 pt-4">
+        <Card className="h-[calc(100dvh-140px)] min-h-[820px] min-w-0 overflow-hidden xl:sticky xl:top-4 xl:mt-[55px]">
+          <CardContent className="flex h-full min-h-0 min-w-0 flex-col gap-4 overflow-hidden px-0 pt-4">
             {editorTab === "preview" ? (
               <>
-                <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 pr-8 pb-1">
+                <div className="min-h-0 min-w-0 flex-1 space-y-5 overflow-y-auto px-6 pr-8 pb-3">
                 <div>
                   <h3 className="text-base font-semibold">Dados da prévia</h3>
                   <p className="text-sm text-muted-foreground">
@@ -1028,7 +1086,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
                   </p>
                 </div>
 
-                <div className="space-y-2">
+                <div className="min-w-0 space-y-2">
                   <Label htmlFor="preview-client">Cliente</Label>
                   <Select
                     value={previewClientId}
@@ -1037,13 +1095,13 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
                       setPreviewDocumentId("")
                     }}
                   >
-                    <SelectTrigger id="preview-client">
+                    <SelectTrigger id="preview-client" className={FORM_SELECT_TRIGGER_CLASS_NAME}>
                       <SelectValue placeholder="Selecione o cliente" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className={FORM_SELECT_CONTENT_CLASS_NAME}>
                       {clients.map((client) => (
-                        <SelectItem key={client.id} value={client.id}>
-                          {client.companyName}
+                        <SelectItem key={client.id} value={client.id} textValue={client.companyName} className="max-w-full">
+                          <span className="block min-w-0 truncate">{client.companyName}</span>
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -1051,7 +1109,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
                 </div>
 
                 {previewClientId ? (
-                  <div className="space-y-2">
+                  <div className="min-w-0 space-y-2">
                     <Label htmlFor="preview-document">
                       {kind === "contract" ? "Contrato" : config.label}
                     </Label>
@@ -1060,7 +1118,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
                       onValueChange={setPreviewDocumentId}
                       disabled={kind === "contract" ? previewContracts.length === 0 : previewSchedules.length === 0}
                     >
-                      <SelectTrigger id="preview-document">
+                      <SelectTrigger id="preview-document" className={FORM_SELECT_TRIGGER_CLASS_NAME}>
                         <SelectValue
                           placeholder={
                             kind === "contract"
@@ -1069,18 +1127,24 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
                           }
                         />
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className={FORM_SELECT_CONTENT_CLASS_NAME}>
                         {kind === "contract"
-                          ? previewContracts.map((contract) => (
-                              <SelectItem key={contract.id} value={contract.id}>
-                                {contract.contractNumber} - {contract.templateName || contract.status}
-                              </SelectItem>
-                            ))
-                          : previewSchedules.map((schedule) => (
-                              <SelectItem key={schedule.id} value={schedule.id}>
-                                {formatDate(schedule.date)} - {schedule.serviceTypeName} - {schedule.unitName}
-                              </SelectItem>
-                            ))}
+                          ? previewContracts.map((contract) => {
+                              const label = `${contract.contractNumber} - ${contract.templateName || contract.status}`
+                              return (
+                                <SelectItem key={contract.id} value={contract.id} textValue={label} className="max-w-full">
+                                  <span className="block min-w-0 truncate">{label}</span>
+                                </SelectItem>
+                              )
+                            })
+                          : previewSchedules.map((schedule) => {
+                              const label = `${formatDate(schedule.date)} - ${schedule.serviceTypeName} - ${schedule.unitName}`
+                              return (
+                                <SelectItem key={schedule.id} value={schedule.id} textValue={label} className="max-w-full">
+                                  <span className="block min-w-0 truncate">{label}</span>
+                                </SelectItem>
+                              )
+                            })}
                       </SelectContent>
                     </Select>
                     {(kind === "contract" ? previewContracts.length === 0 : previewSchedules.length === 0) ? (
@@ -1109,14 +1173,14 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
                   disabled={isGeneratingPdf}
                 >
                   <Download className="h-4 w-4" />
-                  {isGeneratingPdf ? "Gerando PDF..." : "Gerar PDF de teste"}
+                  {isGeneratingPdf ? "Gerando PDF..." : "Testar PDF"}
                 </Button>
                 </div>
               </>
             ) : (
               <>
-              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 pr-8 pb-1">
-              <div className="space-y-2">
+              <div className="min-h-0 min-w-0 flex-1 space-y-5 overflow-y-auto px-6 pr-8 pb-3">
+              <div className="min-w-0 space-y-2">
                 <Label htmlFor="tpl-watermark" className="flex items-center gap-1.5">
                   <ImageIcon className="h-3.5 w-3.5 text-muted-foreground" />
                   Marca d'água
@@ -1203,8 +1267,26 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
                 </div>
               ) : null}
 
-              {config.requiresSigner ? (
+              {kind === "certificate" ? (
                 <div className="space-y-2">
+                  <Label htmlFor="tpl-certificate-validity">Validade do certificado (meses)</Label>
+                  <Input
+                    id="tpl-certificate-validity"
+                    type="number"
+                    min={1}
+                    value={formData.certificateValidityMonths}
+                    onChange={(event) =>
+                      setFormData((current) => ({
+                        ...current,
+                        certificateValidityMonths: Math.max(1, Number.parseInt(event.target.value, 10) || 1),
+                      }))
+                    }
+                  />
+                </div>
+              ) : null}
+
+              {config.requiresSigner ? (
+                <div className="min-w-0 space-y-2">
                   <Label htmlFor="tpl-signer" className="flex items-center gap-1.5">
                     <PenTool className="h-3.5 w-3.5 text-muted-foreground" />
                     {config.signerLabel}
@@ -1213,15 +1295,15 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
                     value={formData.signerId}
                     onValueChange={(value) => setFormData((current) => ({ ...current, signerId: value }))}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className={FORM_SELECT_TRIGGER_CLASS_NAME}>
                       <SelectValue placeholder="Selecione" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className={FORM_SELECT_CONTENT_CLASS_NAME}>
                       {employees
                         .filter((employee) => employee.status === "active")
                         .map((employee) => (
-                          <SelectItem key={employee.id} value={employee.id}>
-                            {employee.name}
+                          <SelectItem key={employee.id} value={employee.id} textValue={employee.name} className="max-w-full">
+                            <span className="block min-w-0 truncate">{employee.name}</span>
                           </SelectItem>
                         ))}
                     </SelectContent>
@@ -1229,16 +1311,16 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
                 </div>
               ) : null}
 
-              <div className="space-y-2">
+              <div className="min-w-0 space-y-2">
                 <Label htmlFor="tpl-status">Status</Label>
                 <Select
                   value={formData.isActive ? "active" : "inactive"}
                   onValueChange={(value) => setFormData((current) => ({ ...current, isActive: value === "active" }))}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className={FORM_SELECT_TRIGGER_CLASS_NAME}>
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className={FORM_SELECT_CONTENT_CLASS_NAME}>
                     <SelectItem value="active">Ativo</SelectItem>
                     <SelectItem value="inactive">Inativo</SelectItem>
                   </SelectContent>
@@ -1250,10 +1332,10 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
                   <Braces className="h-4 w-4 text-primary" />
                   Variáveis do template
                 </Label>
-                <Accordion type="single" collapsible className="rounded-xl border bg-background px-2">
+                <Accordion type="single" collapsible className="rounded-xl border bg-background px-3">
                   {variableGroups.map((group) => (
                     <AccordionItem key={group.id} value={group.id}>
-                      <AccordionTrigger className="items-center py-3 hover:no-underline">
+                      <AccordionTrigger className="items-center px-1 py-3 hover:no-underline">
                         <span className="flex min-w-0 flex-1 items-center gap-3">
                           <span className="truncate">{group.label}</span>
                           <span className="ml-auto min-w-7 rounded-full bg-muted px-2 py-0.5 text-center text-xs text-muted-foreground">
@@ -1302,7 +1384,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
             </DialogTitle>
           </DialogHeader>
 
-          <form autoComplete="off" onSubmit={handleImportSubmit} className="space-y-4">
+          <form autoComplete="off" onSubmit={handleImportSubmit} className="space-y-5">
             <div className="space-y-2">
               <Label htmlFor="import-watermark" className="flex items-center gap-1.5">
                 <ImageIcon className="h-3.5 w-3.5 text-muted-foreground" />
@@ -1387,6 +1469,24 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
               </div>
             ) : null}
 
+            {kind === "certificate" ? (
+              <div className="space-y-2">
+                <Label htmlFor="import-certificate-validity">Validade do certificado (meses)</Label>
+                <Input
+                  id="import-certificate-validity"
+                  type="number"
+                  min={1}
+                  value={formData.certificateValidityMonths}
+                  onChange={(event) =>
+                    setFormData((current) => ({
+                      ...current,
+                      certificateValidityMonths: Math.max(1, Number.parseInt(event.target.value, 10) || 1),
+                    }))
+                  }
+                />
+              </div>
+            ) : null}
+
             {config.requiresSigner ? (
               <div className="space-y-2">
                 <Label htmlFor="import-signer" className="flex items-center gap-1.5">
@@ -1397,15 +1497,15 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
                   value={formData.signerId}
                   onValueChange={(value) => setFormData((current) => ({ ...current, signerId: value }))}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className={FORM_SELECT_TRIGGER_CLASS_NAME}>
                     <SelectValue placeholder="Selecione o funcionário" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className={FORM_SELECT_CONTENT_CLASS_NAME}>
                     {employees
                       .filter((employee) => employee.status === "active")
                       .map((employee) => (
-                        <SelectItem key={employee.id} value={employee.id}>
-                          {employee.name}
+                        <SelectItem key={employee.id} value={employee.id} textValue={employee.name} className="max-w-full">
+                          <span className="block min-w-0 truncate">{employee.name}</span>
                         </SelectItem>
                       ))}
                   </SelectContent>

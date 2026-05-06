@@ -1,30 +1,62 @@
 "use client"
 
-import { useMemo, useState } from "react"
-import { Sidebar } from "@/components/dashboard/sidebar"
-import { Header } from "@/components/dashboard/header"
-import { NotificacoesContent } from "@/components/notificacoes/notificacoes-content"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
+import { useMemo } from "react"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { CheckCheck } from "lucide-react"
-import { notifications } from "@/lib/mock-data"
-import type { Notification } from "@/lib/types"
+import { toast } from "sonner"
+
+import { Header } from "@/components/dashboard/header"
+import { Sidebar } from "@/components/dashboard/sidebar"
+import { NotificacoesContent } from "@/components/notificacoes/notificacoes-content"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import {
+  deleteNotification,
+  listNotifications,
+  markAllNotificationsAsRead,
+  markNotificationAsRead,
+} from "@/lib/api/notifications"
+import { getApiErrorMessage } from "@/lib/api/errors"
 
 export default function NotificacoesPage() {
-  const [notificationsList, setNotificationsList] = useState<Notification[]>(notifications)
+  const queryClient = useQueryClient()
+  const notificationsQuery = useQuery({
+    queryKey: ["notifications"],
+    queryFn: listNotifications,
+    refetchInterval: 60_000,
+  })
 
+  const notificationsList = notificationsQuery.data?.data ?? []
   const unreadCount = useMemo(
-    () => notificationsList.filter(n => !n.isRead).length,
-    [notificationsList]
+    () => notificationsList.filter((notification) => !notification.isRead).length,
+    [notificationsList],
   )
 
-  const markAllAsRead = () => {
-    setNotificationsList(notificationsList.map(n => ({
-      ...n,
-      isRead: true,
-      readAt: n.readAt || new Date()
-    })))
-  }
+  const invalidateNotifications = () => queryClient.invalidateQueries({ queryKey: ["notifications"] })
+
+  const markAsReadMutation = useMutation({
+    mutationFn: markNotificationAsRead,
+    onSuccess: invalidateNotifications,
+    onError: (error) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível marcar a notificação como lida."))
+    },
+  })
+
+  const markAllMutation = useMutation({
+    mutationFn: markAllNotificationsAsRead,
+    onSuccess: invalidateNotifications,
+    onError: (error) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível marcar as notificações como lidas."))
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteNotification,
+    onSuccess: invalidateNotifications,
+    onError: (error) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível excluir a notificação."))
+    },
+  })
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -45,7 +77,7 @@ export default function NotificacoesPage() {
           }
           headerActions={
             unreadCount > 0 ? (
-              <Button variant="outline" size="sm" onClick={markAllAsRead} className="bg-white">
+              <Button variant="outline" size="sm" onClick={() => markAllMutation.mutate()} className="bg-white">
                 <CheckCheck className="h-4 w-4 mr-2" />
                 Marcar todas como lidas
               </Button>
@@ -56,7 +88,9 @@ export default function NotificacoesPage() {
         <div className="mt-4 md:mt-5">
           <NotificacoesContent
             notificationsList={notificationsList}
-            setNotificationsList={setNotificationsList}
+            isLoading={notificationsQuery.isLoading}
+            onMarkAsRead={(id) => markAsReadMutation.mutate(id)}
+            onDelete={(id) => deleteMutation.mutate(id)}
           />
         </div>
       </main>

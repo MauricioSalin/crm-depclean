@@ -57,6 +57,7 @@ export type ClientAttachmentRecord = {
   uploadedAt: string
   description?: string
   metadata?: {
+    templateId?: string
     serviceTypeName?: string
     scheduledDate?: string
     scheduledSendAt?: string
@@ -120,6 +121,27 @@ export async function getClientById(id: string) {
 
 export async function getClientAttachments(id: string) {
   const response = await api.get<{ success: true; data: ClientAttachmentRecord[] }>(`/clients/${resolveClientId(id)}/attachments`)
+  return response.data
+}
+
+export async function uploadClientAttachment(id: string, file: File, title?: string, type = "other") {
+  const formData = new FormData()
+  formData.append("file", file)
+  formData.append("title", title?.trim() || file.name)
+  formData.append("type", type)
+
+  const response = await api.post<{ success: true; data: ClientAttachmentRecord }>(
+    `/clients/${resolveClientId(id)}/attachments`,
+    formData,
+    { headers: { "Content-Type": "multipart/form-data" } },
+  )
+  return response.data
+}
+
+export async function deleteClientAttachment(clientId: string, attachmentId: string) {
+  const response = await api.delete<{ success: true; data: null }>(
+    `/clients/${resolveClientId(clientId)}/attachments/${attachmentId}`,
+  )
   return response.data
 }
 

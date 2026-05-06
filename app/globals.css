@@ -27,14 +27,6 @@ html .width-before-scroll-bar {
 }
 
 @media (min-width: 1024px) {
-  .lg\:ml-60 {
-    transition: margin-left 300ms cubic-bezier(.2, .8, .2, 1);
-  }
-
-  .lg\:left-60 {
-    transition: left 300ms cubic-bezier(.2, .8, .2, 1);
-  }
-
   html[data-depclean-sidebar="collapsed"] .lg\:ml-60 {
     margin-left: 4.5rem;
   }

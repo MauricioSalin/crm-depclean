@@ -312,7 +312,8 @@ export function ContractRichEditor({
   )
 
   const editor = useEditor({
-    extensions,
+    // TipTap dependencies currently resolve with two @tiptap/pm patch versions; runtime extensions are valid.
+    extensions: extensions as any,
     content: valueHtml,
     parseOptions: {
       preserveWhitespace: "full",

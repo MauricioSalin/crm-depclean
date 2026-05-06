@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState, type FormEvent } from "react"
-import { Edit, Mail, Phone, Search, Shield, Trash2, User, UserCog } from "lucide-react"
+import { Copy, Edit, Eye, EyeOff, Mail, Phone, Search, Shield, Trash2, User, UserCog } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -16,6 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
+import { getApiErrorMessage } from "@/lib/api/errors"
 import { getStoredUser } from "@/lib/auth/session"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 import { formatCPF, formatPhone } from "@/lib/masks"
@@ -77,6 +78,8 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
     password: "",
     permissionProfileId: "",
   })
+  const [createSystemUser, setCreateSystemUser] = useState(false)
+  const [showTemporaryPassword, setShowTemporaryPassword] = useState(false)
 
   const refreshEmployees = async () => {
     setLoading(true)
@@ -90,8 +93,8 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
       } else {
         setPermissionProfiles([])
       }
-    } catch {
-      toast.error("Nao foi possivel carregar os funcionarios.")
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Não foi possível carregar os funcionários."))
     } finally {
       setLoading(false)
     }
@@ -107,6 +110,7 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
       if (openDialog) {
         setEditingEmployee(null)
         setFormData({ name: "", email: "", phone: "", cpf: "", role: "", status: "active" })
+        resetSystemUserForm()
       }
     }
   }, [openDialog])
@@ -117,6 +121,7 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
     if (!open) {
       setEditingEmployee(null)
       setFormData({ name: "", email: "", phone: "", cpf: "", role: "", status: "active" })
+      resetSystemUserForm()
     }
   }
 
@@ -140,6 +145,41 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
       : [...current, record])
   }
 
+  const resetSystemUserForm = () => {
+    setCreateSystemUser(false)
+    setShowTemporaryPassword(false)
+    setSystemUserForm({ password: "", permissionProfileId: permissionProfiles[0]?.id ?? "" })
+  }
+
+  const prepareSystemUserForm = () => {
+    setSystemUserForm((current) => ({
+      password: current.password || generatePassword(),
+      permissionProfileId: current.permissionProfileId || permissionProfiles[0]?.id || "",
+    }))
+    setShowTemporaryPassword(false)
+  }
+
+  const generateSystemUserPassword = () => {
+    setSystemUserForm((current) => ({ ...current, password: generatePassword() }))
+    setShowTemporaryPassword(true)
+  }
+
+  const copySystemUserPassword = async () => {
+    if (!systemUserForm.password) return
+    await navigator.clipboard.writeText(systemUserForm.password)
+    toast.success("Senha copiada.")
+  }
+
+  const handleCreateSystemUserChange = (checked: boolean | "indeterminate") => {
+    const nextChecked = checked === true
+    setCreateSystemUser(nextChecked)
+    if (nextChecked) {
+      prepareSystemUserForm()
+    } else {
+      resetSystemUserForm()
+    }
+  }
+
   const confirmPendingAction = async () => {
     if (!pendingAction) return
     const target = pendingAction
@@ -155,20 +195,52 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+
+    if (!editingEmployee && createSystemUser) {
+      if (permissionProfiles.length === 0) {
+        toast.error("Não há perfis de permissão disponíveis para vincular.")
+        return
+      }
+      if (!systemUserForm.permissionProfileId) {
+        toast.error("Selecione um perfil de permissão.")
+        return
+      }
+      if (!systemUserForm.password.trim()) {
+        toast.error("Informe uma senha ou gere uma nova senha.")
+        return
+      }
+    }
+
     setSaving(true)
     try {
       if (editingEmployee) {
         const response = await updateEmployee(editingEmployee.id, formData)
         upsertEmployee(response.data)
-        toast.success("Funcionario atualizado.")
+        toast.success("Funcionário atualizado.")
       } else {
         const response = await createEmployee(formData)
-        upsertEmployee(response.data)
-        toast.success("Funcionario criado.")
+        if (createSystemUser) {
+          try {
+            const systemUserResponse = await makeEmployeeSystemUser(response.data.id, {
+              password: systemUserForm.password.trim(),
+              permissionProfileId: systemUserForm.permissionProfileId,
+            })
+            upsertEmployee(systemUserResponse.data)
+            toast.success("Funcionário e usuário do sistema criados.")
+          } catch (systemUserError) {
+            upsertEmployee(response.data)
+            handleDialogChange(false)
+            toast.error(getApiErrorMessage(systemUserError, "Funcionário criado, mas não foi possível criar o usuário do sistema."))
+            return
+          }
+        } else {
+          upsertEmployee(response.data)
+          toast.success("Funcionário criado.")
+        }
       }
       handleDialogChange(false)
-    } catch {
-      toast.error("Nao foi possivel salvar o funcionario.")
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Não foi possível salvar o funcionário."))
     } finally {
       setSaving(false)
     }
@@ -176,15 +248,16 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
 
   const handleEdit = (employee: EmployeeRecord) => {
     setEditingEmployee(employee)
+    resetSystemUserForm()
     setFormData({
       name: employee.name,
       email: employee.email,
-      phone: employee.phone,
-      cpf: employee.cpf,
+      phone: formatPhone(employee.phone),
+      cpf: formatCPF(employee.cpf),
       role: employee.role,
       status: employee.status,
     })
-    handleDialogChange(true)
+    setIsDialogOpen(true)
   }
 
   const handleDeactivate = async (id: string) => {
@@ -192,9 +265,9 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
     try {
       await deactivateEmployee(id)
       setEmployees((current) => current.map((item) => item.id === id ? { ...item, status: "inactive", isSystemUser: item.isSystemUser } : item))
-      toast.success("Funcionario inativado.")
-    } catch {
-      toast.error("Nao foi possivel inativar o funcionario.")
+      toast.success("Funcionário inativado.")
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Não foi possível inativar o funcionário."))
     } finally {
       setSaving(false)
     }
@@ -202,28 +275,41 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
 
   const handleMakeSystemUser = (employee: EmployeeRecord) => {
     if (permissionProfiles.length === 0) {
-      toast.error("Nao ha perfis de permissao disponiveis para vincular.")
+      toast.error("Não há perfis de permissão disponíveis para vincular.")
       return
     }
     setSystemUserEmployee(employee)
     setSystemUserForm({ password: generatePassword(), permissionProfileId: permissionProfiles[0]?.id ?? "" })
+    setShowTemporaryPassword(false)
+  }
+
+  const closeSystemUserDialog = () => {
+    setSystemUserEmployee(null)
+    resetSystemUserForm()
   }
 
   const submitSystemUser = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!systemUserEmployee) return
     if (!systemUserForm.permissionProfileId) {
-      toast.error("Selecione um perfil de permissao.")
+      toast.error("Selecione um perfil de permissão.")
+      return
+    }
+    if (!systemUserForm.password.trim()) {
+      toast.error("Informe uma senha ou gere uma nova senha.")
       return
     }
     setSaving(true)
     try {
-      const response = await makeEmployeeSystemUser(systemUserEmployee.id, systemUserForm)
+      const response = await makeEmployeeSystemUser(systemUserEmployee.id, {
+        password: systemUserForm.password.trim(),
+        permissionProfileId: systemUserForm.permissionProfileId,
+      })
       upsertEmployee(response.data)
-      toast.success("Funcionario promovido a usuario do sistema.")
-      setSystemUserEmployee(null)
-    } catch {
-      toast.error("Nao foi possivel transformar em usuario.")
+      toast.success("Funcionário promovido a usuário do sistema.")
+      closeSystemUserDialog()
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Não foi possível transformar em usuário."))
     } finally {
       setSaving(false)
     }
@@ -235,8 +321,8 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
       const response = await revokeEmployeeSystemUser(id)
       upsertEmployee(response.data)
       toast.success("Acesso removido.")
-    } catch {
-      toast.error("Nao foi possivel remover o acesso.")
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Não foi possível remover o acesso."))
     } finally {
       setSaving(false)
     }
@@ -250,8 +336,53 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
     return <Badge className="bg-gray-100 text-gray-700 hover:bg-gray-100">Inativo</Badge>
   }
 
+  const renderSystemUserFields = (passwordInputId: string) => (
+    <>
+      <div className="space-y-2">
+        <Label htmlFor={passwordInputId}>Senha temporária</Label>
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Input
+              id={passwordInputId}
+              type={showTemporaryPassword ? "text" : "password"}
+              value={systemUserForm.password}
+              onChange={(event) => setSystemUserForm({ ...systemUserForm, password: event.target.value })}
+              placeholder="Senha temporária"
+              className="pr-20"
+              required
+            />
+            <div className="absolute inset-y-0 right-2 flex items-center gap-1">
+              <Button type="button" variant="ghost" size="icon" onClick={() => setShowTemporaryPassword((value) => !value)} className="h-8 w-8">
+                {showTemporaryPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </Button>
+              <Button type="button" variant="ghost" size="icon" onClick={copySystemUserPassword} className="h-8 w-8">
+                <Copy className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+          <Button type="button" variant="outline" onClick={generateSystemUserPassword}>
+            Gerar senha
+          </Button>
+        </div>
+      </div>
+      <div className="space-y-2">
+        <Label>Perfil de permissão</Label>
+        <Select value={systemUserForm.permissionProfileId} onValueChange={(value) => setSystemUserForm({ ...systemUserForm, permissionProfileId: value })}>
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder="Selecione um perfil" />
+          </SelectTrigger>
+          <SelectContent>
+            {permissionProfiles.map((profile) => (
+              <SelectItem key={profile.id} value={profile.id}>{profile.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    </>
+  )
+
   if (loading) {
-    return <div className="rounded-xl border bg-card p-6 text-sm text-muted-foreground">Carregando funcionarios...</div>
+    return <div className="rounded-xl border bg-card p-6 text-sm text-muted-foreground">Carregando funcionários...</div>
   }
 
   return (
@@ -265,7 +396,13 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="sm:col-span-2 space-y-2">
                 <Label htmlFor="employee-name">Nome Completo</Label>
-                <Input id="employee-name" value={formData.name} onChange={(event) => setFormData({ ...formData, name: event.target.value })} required />
+                <Input
+                  id="employee-name"
+                  value={formData.name}
+                  onChange={(event) => setFormData({ ...formData, name: event.target.value })}
+                  placeholder="Ex: Maurício Salin"
+                  required
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="employee-cpf">CPF</Label>
@@ -290,7 +427,15 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
               </div>
               <div className="sm:col-span-2 space-y-2">
                 <Label htmlFor="employee-email">E-mail</Label>
-                <Input id="employee-email" type="email" autoComplete="off" value={formData.email} onChange={(event) => setFormData({ ...formData, email: event.target.value })} required />
+                <Input
+                  id="employee-email"
+                  type="email"
+                  autoComplete="off"
+                  value={formData.email}
+                  onChange={(event) => setFormData({ ...formData, email: event.target.value })}
+                  placeholder="Ex: mauricio@depclean.com"
+                  required
+                />
               </div>
               <div className="sm:col-span-2 space-y-2">
                 <Label htmlFor="employee-role">Cargo</Label>
@@ -308,6 +453,21 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
                   </SelectContent>
                 </Select>
               </div>
+              {!editingEmployee && permissionProfiles.length > 0 && (
+                <div className="sm:col-span-2 space-y-4">
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="employee-create-system-user"
+                      checked={createSystemUser}
+                      onCheckedChange={handleCreateSystemUserChange}
+                    />
+                    <Label htmlFor="employee-create-system-user" className="cursor-pointer">
+                      Criar usuário do sistema
+                    </Label>
+                  </div>
+                  {createSystemUser && renderSystemUserFields("employee-system-user-password")}
+                </div>
+              )}
             </div>
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <Button type="button" variant="outline" onClick={() => handleDialogChange(false)}>Cancelar</Button>
@@ -319,45 +479,24 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
         </DialogContent>
       </Dialog>
 
-      <Dialog open={Boolean(systemUserEmployee)} onOpenChange={(open) => !open && setSystemUserEmployee(null)}>
+      <Dialog open={Boolean(systemUserEmployee)} onOpenChange={(open) => !open && closeSystemUserDialog()}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Transformar em usuario do sistema</DialogTitle>
+            <DialogTitle>Transformar em usuário do sistema</DialogTitle>
           </DialogHeader>
           <form autoComplete="off" onSubmit={submitSystemUser} className="space-y-4">
             <div className="space-y-2">
-              <Label>Funcionario</Label>
+              <Label>Funcionário</Label>
               <Input value={systemUserEmployee?.name ?? ""} disabled />
             </div>
             <div className="space-y-2">
               <Label>CPF</Label>
               <Input value={systemUserEmployee?.cpf ? formatCPF(systemUserEmployee.cpf) : ""} disabled />
             </div>
-            <div className="space-y-2">
-              <Label>Senha temporaria</Label>
-              <div className="flex gap-2">
-                <Input value={systemUserForm.password} onChange={(event) => setSystemUserForm({ ...systemUserForm, password: event.target.value })} required />
-                <Button type="button" variant="outline" onClick={() => setSystemUserForm((current) => ({ ...current, password: generatePassword() }))}>
-                  Gerar
-                </Button>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Perfil de permissao</Label>
-              <Select value={systemUserForm.permissionProfileId} onValueChange={(value) => setSystemUserForm({ ...systemUserForm, permissionProfileId: value })}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione um perfil" />
-                </SelectTrigger>
-                <SelectContent>
-                  {permissionProfiles.map((profile) => (
-                    <SelectItem key={profile.id} value={profile.id}>{profile.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {renderSystemUserFields("existing-employee-system-user-password")}
             <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => setSystemUserEmployee(null)}>Cancelar</Button>
-              <Button type="submit" disabled={saving}>Criar usuario</Button>
+              <Button type="button" variant="outline" onClick={closeSystemUserDialog}>Cancelar</Button>
+              <Button type="submit" disabled={saving}>Criar usuário</Button>
             </div>
           </form>
         </DialogContent>
@@ -400,19 +539,19 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="min-w-[180px]">Funcionario</TableHead>
+                  <TableHead className="min-w-[180px]">Funcionário</TableHead>
                   <TableHead className="hidden min-w-[150px] md:table-cell">CPF</TableHead>
                   <TableHead className="hidden sm:table-cell">Cargo</TableHead>
                   <TableHead className="hidden lg:table-cell">Contato</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Sistema</TableHead>
-                  <TableHead className="text-right">Acoes</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {paginatedEmployees.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="h-24 text-center">Nenhum funcionario encontrado.</TableCell>
+                    <TableCell colSpan={7} className="h-24 text-center">Nenhum funcionário encontrado.</TableCell>
                   </TableRow>
                 ) : (
                   paginatedEmployees.map((employee) => (
@@ -445,15 +584,15 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
                       <TableCell>{getStatusBadge(employee.status)}</TableCell>
                       <TableCell>
                         {employee.isSystemUser ? (
-                          <Badge className="bg-primary/10 text-primary hover:bg-primary/10">Usuario do sistema</Badge>
+                          <Badge className="bg-primary/10 text-primary hover:bg-primary/10">Usuário do sistema</Badge>
                         ) : (
-                          <Badge variant="outline">Somente funcionario</Badge>
+                          <Badge variant="outline">Somente funcionário</Badge>
                         )}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
                           {!employee.isSystemUser ? (
-                            <Button variant="ghost" size="icon" onClick={() => handleMakeSystemUser(employee)} title="Tornar usuario do sistema">
+                            <Button variant="ghost" size="icon" onClick={() => handleMakeSystemUser(employee)} title="Tornar usuário do sistema">
                               <UserCog className="h-4 w-4" />
                             </Button>
                           ) : (
@@ -476,7 +615,7 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
             </Table>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {paginatedEmployees.map((employee) => (
               <Card key={employee.id} className="overflow-hidden">
                 <CardContent className="p-4">
@@ -510,9 +649,9 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
 
                   <div className="mt-4 flex flex-wrap gap-2">
                     {employee.isSystemUser ? (
-                      <Badge className="bg-primary/10 text-primary hover:bg-primary/10">Usuario do sistema</Badge>
+                      <Badge className="bg-primary/10 text-primary hover:bg-primary/10">Usuário do sistema</Badge>
                     ) : (
-                      <Badge variant="outline">Somente funcionario</Badge>
+                      <Badge variant="outline">Somente funcionário</Badge>
                     )}
                   </div>
 
@@ -520,7 +659,7 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
                     {!employee.isSystemUser ? (
                       <Button variant="outline" size="sm" className="flex-1" onClick={() => handleMakeSystemUser(employee)}>
                         <UserCog className="mr-1 h-4 w-4" />
-                        Tornar usuario
+                        Tornar usuário
                       </Button>
                     ) : (
                       <Button variant="outline" size="sm" className="flex-1" onClick={() => setPendingAction({ kind: "revoke", id: employee.id, label: employee.name })}>

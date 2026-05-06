@@ -17,6 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/use-toast"
 import { listEmployees } from "@/lib/api/employees"
+import { getApiErrorMessage } from "@/lib/api/errors"
 import { createService, getServiceById, updateService } from "@/lib/api/services"
 import { listTeams } from "@/lib/api/teams"
 import { cn } from "@/lib/utils"
@@ -116,6 +117,12 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
       })
       queryClient.invalidateQueries({ queryKey: ["services"] })
       router.push("/servicos")
+    },
+    onError: (error) => {
+      toast({
+        title: getApiErrorMessage(error, "Não foi possível salvar o serviço."),
+        variant: "destructive",
+      })
     },
   })
 

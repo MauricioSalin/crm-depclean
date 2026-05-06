@@ -12,10 +12,10 @@ import {
   DollarSign,
   FileText,
   Trash2,
-  Mail,
   MessageCircle,
 } from "lucide-react"
-import type { Notification, NotificationType, NotificationChannel } from "@/lib/types"
+import type { NotificationType, NotificationChannel } from "@/lib/types"
+import type { NotificationRecord } from "@/lib/api/notifications"
 
 const NOTIFICATION_TYPES: { value: NotificationType; label: string; icon: typeof Bell }[] = [
   { value: "new_schedule", label: "Novo Agendamento", icon: Calendar },
@@ -23,6 +23,9 @@ const NOTIFICATION_TYPES: { value: NotificationType; label: string; icon: typeof
   { value: "schedule_cancel", label: "Cancelamento", icon: AlertTriangle },
   { value: "emergency", label: "Emergência", icon: AlertTriangle },
   { value: "daily_services", label: "Serviços do Dia", icon: Calendar },
+  { value: "contract_signature", label: "Assinatura de Contrato", icon: FileText },
+  { value: "informative", label: "Informativo", icon: FileText },
+  { value: "certificate", label: "Certificado", icon: FileText },
   { value: "payment_due", label: "Parcela Vencendo", icon: DollarSign },
   { value: "payment_overdue", label: "Parcela Vencida", icon: DollarSign },
   { value: "contract_expiring", label: "Contrato Vencendo", icon: FileText },
@@ -31,26 +34,19 @@ const NOTIFICATION_TYPES: { value: NotificationType; label: string; icon: typeof
 const CHANNELS: { value: NotificationChannel; label: string; icon: typeof Bell }[] = [
   { value: "system", label: "Sistema", icon: Bell },
   { value: "whatsapp", label: "WhatsApp", icon: MessageCircle },
-  { value: "email", label: "E-mail", icon: Mail },
 ]
 
 export function NotificacoesContent({
   notificationsList,
-  setNotificationsList,
+  onMarkAsRead,
+  onDelete,
+  isLoading = false,
 }: {
-  notificationsList: Notification[]
-  setNotificationsList: (next: Notification[]) => void
+  notificationsList: NotificationRecord[]
+  onMarkAsRead: (id: string) => void
+  onDelete: (id: string) => void
+  isLoading?: boolean
 }) {
-
-  const markAsRead = (id: string) => {
-    setNotificationsList(notificationsList.map(n =>
-      n.id === id ? { ...n, isRead: true, readAt: new Date() } : n
-    ))
-  }
-
-  const deleteNotification = (id: string) => {
-    setNotificationsList(notificationsList.filter(n => n.id !== id))
-  }
 
   const getNotificationIcon = (type: NotificationType) => {
     const typeConfig = NOTIFICATION_TYPES.find(t => t.value === type)
@@ -69,6 +65,10 @@ export function NotificacoesContent({
       case "new_schedule":
       case "daily_services":
         return "text-blue-500 bg-blue-50"
+      case "contract_signature":
+      case "informative":
+      case "certificate":
+        return "text-emerald-600 bg-emerald-50"
       case "contract_expiring":
         return "text-purple-500 bg-purple-50"
       default:
@@ -79,9 +79,14 @@ export function NotificacoesContent({
   return (
     <div className="space-y-6">
       {/* Notifications List */}
-      {notificationsList.length > 0 ? (
+      {isLoading ? (
+        <Card className="p-8 text-center">
+          <Bell className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+          <h3 className="text-lg font-medium">Carregando notificações...</h3>
+        </Card>
+      ) : notificationsList.length > 0 ? (
         <div className="space-y-4">
-          {notificationsList
+          {[...notificationsList]
             .sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime())
             .map((notification) => (
               <Card
@@ -108,7 +113,7 @@ export function NotificacoesContent({
                             <Button
                               variant="ghost"
                               size="icon"
-                              onClick={() => markAsRead(notification.id)}
+                              onClick={() => onMarkAsRead(notification.id)}
                               title="Marcar como lida"
                             >
                               <Check className="h-4 w-4" />
@@ -117,7 +122,7 @@ export function NotificacoesContent({
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => deleteNotification(notification.id)}
+                            onClick={() => onDelete(notification.id)}
                             title="Excluir"
                           >
                             <Trash2 className="h-4 w-4 text-destructive" />

@@ -19,6 +19,7 @@ import {
 } from "lucide-react"
 
 import { listClients } from "@/lib/api/clients"
+import { getApiErrorMessage } from "@/lib/api/errors"
 import { listSchedules, createSchedule, updateSchedule, startSchedule, completeSchedule, cancelSchedule, uploadScheduleNa, type ScheduleRecord } from "@/lib/api/schedules"
 import { listServices } from "@/lib/api/services"
 import { listTeams } from "@/lib/api/teams"
@@ -141,6 +142,10 @@ function getScheduleIconTone(schedule: Pick<ScheduleRecord, "isEmergency">) {
     : { wrapper: "bg-primary/10", icon: "text-primary" }
 }
 
+function canCancelSchedule(schedule: Pick<ScheduleRecord, "status">) {
+  return !["in_progress", "completed"].includes(schedule.status)
+}
+
 export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps) {
   const queryClient = useQueryClient()
   const [currentDate, setCurrentDate] = useState(new Date())
@@ -155,7 +160,9 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   const [cancelReason, setCancelReason] = useState("")
   const [cancelStep, setCancelStep] = useState<"reason" | "confirm">("reason")
   const [completionTarget, setCompletionTarget] = useState<AgendaScheduledServiceRow | null>(null)
+  const [completionStartDate, setCompletionStartDate] = useState("")
   const [completionStartTime, setCompletionStartTime] = useState("")
+  const [completionEndDate, setCompletionEndDate] = useState("")
   const [completionEndTime, setCompletionEndTime] = useState("")
   const [completionFile, setCompletionFile] = useState<File | null>(null)
   const [formData, setFormData] = useState<AgendaFormData>(DEFAULT_FORM_DATA)
@@ -197,6 +204,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
     await queryClient.invalidateQueries({ queryKey: ["schedules"] })
     await queryClient.invalidateQueries({ queryKey: ["schedules", "agenda"] })
     await queryClient.invalidateQueries({ queryKey: ["agendamentos"] })
+    await queryClient.invalidateQueries({ queryKey: ["notifications"] })
   }
 
   const resetForm = () => {
@@ -245,16 +253,21 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
 
       return createSchedule(payload)
     },
-    onSuccess: async (response) => {
+    onMutate: () => {
+      const toastId = toast.loading(editingService ? "Salvando agendamento..." : "Criando atendimento...")
+      return { toastId }
+    },
+    onSuccess: async (response, _variables, context) => {
       await invalidateSchedules()
       resetForm()
       toast.success(editingService ? "Agendamento atualizado." : "Agendamento criado.", {
+        id: context?.toastId,
         description: `${response.data.clientName} • ${response.data.serviceTypeName}`,
       })
     },
-    onError: (error: any) => {
-      toast.error("Não foi possível salvar o agendamento.", {
-        description: error?.response?.data?.message ?? error?.message ?? "Tente novamente.",
+    onError: (error: any, _variables, context) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível salvar o agendamento."), {
+        id: context?.toastId,
       })
     },
   })
@@ -267,6 +280,9 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       toast.success("Atendimento iniciado.", {
         description: "O agendamento foi movido para em andamento.",
       })
+    },
+    onError: (error) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível iniciar o atendimento."))
     },
   })
 
@@ -283,25 +299,27 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       })
     },
     onError: (error: any) => {
-      toast.error("Não foi possível cancelar o agendamento.", {
-        description: error?.response?.data?.message ?? error?.message ?? "Tente novamente.",
-      })
+      toast.error(getApiErrorMessage(error, "Não foi possível cancelar o agendamento."))
     },
   })
 
   const completeMutation = useMutation({
     mutationFn: async ({
       schedule,
+      startDate,
       startTime,
+      endDate,
       endTime,
       file,
     }: {
       schedule: AgendaScheduledServiceRow
+      startDate: string
       startTime: string
+      endDate: string
       endTime: string
       file: File | null
     }) => {
-      const completed = await completeSchedule(schedule.id, { startTime, endTime })
+      const completed = await completeSchedule(schedule.id, { startDate, startTime, endDate, endTime })
       if (file) {
         await uploadScheduleNa(schedule.id, file)
       }
@@ -310,7 +328,9 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
     onSuccess: async ({ data }) => {
       await invalidateSchedules()
       setCompletionTarget(null)
+      setCompletionStartDate("")
       setCompletionStartTime("")
+      setCompletionEndDate("")
       setCompletionEndTime("")
       setCompletionFile(null)
       toast.success("Atendimento concluído.", {
@@ -318,9 +338,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       })
     },
     onError: (error: any) => {
-      toast.error("Não foi possível concluir o atendimento.", {
-        description: error?.response?.data?.message ?? error?.message ?? "Tente novamente.",
-      })
+      toast.error(getApiErrorMessage(error, "Não foi possível concluir o atendimento."))
     },
   })
 
@@ -404,12 +422,19 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
     window.setTimeout(() => setIsDialogOpen(true), 0)
   }
 
+  const openCompletionDialog = (schedule: AgendaScheduledServiceRow) => {
+    const defaultDate = schedule.date || new Date().toISOString().split("T")[0]
+    setCompletionTarget(schedule)
+    setCompletionStartDate(schedule.completionStartDate || defaultDate)
+    setCompletionStartTime(schedule.completionStartTime || schedule.time || "")
+    setCompletionEndDate(schedule.completionEndDate || schedule.completionStartDate || defaultDate)
+    setCompletionEndTime(schedule.completionEndTime || "")
+    setCompletionFile(null)
+  }
+
   const openSchedule = (schedule: AgendaScheduledServiceRow) => {
     if (schedule.status === "in_progress") {
-      setCompletionTarget(schedule)
-      setCompletionStartTime(schedule.completionStartTime || schedule.time || "")
-      setCompletionEndTime(schedule.completionEndTime || "")
-      setCompletionFile(null)
+      openCompletionDialog(schedule)
       return
     }
 
@@ -755,7 +780,9 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
         onOpenChange={(open) => {
           if (!open) {
             setCompletionTarget(null)
+            setCompletionStartDate("")
             setCompletionStartTime("")
+            setCompletionEndDate("")
             setCompletionEndTime("")
             setCompletionFile(null)
           }
@@ -771,12 +798,30 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
+              <Label htmlFor="agenda-completion-start-date">Data de início *</Label>
+              <Input
+                id="agenda-completion-start-date"
+                type="date"
+                value={completionStartDate}
+                onChange={(event) => setCompletionStartDate(event.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="agenda-completion-start">Horário de início *</Label>
               <Input
                 id="agenda-completion-start"
                 type="time"
                 value={completionStartTime}
                 onChange={(event) => setCompletionStartTime(event.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="agenda-completion-end-date">Data de fim *</Label>
+              <Input
+                id="agenda-completion-end-date"
+                type="date"
+                value={completionEndDate}
+                onChange={(event) => setCompletionEndDate(event.target.value)}
               />
             </div>
             <div className="space-y-2">
@@ -834,12 +879,14 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
             </Button>
             <Button
               type="button"
-              disabled={!completionTarget || !completionStartTime || !completionEndTime || completeMutation.isPending}
+              disabled={!completionTarget || !completionStartDate || !completionStartTime || !completionEndDate || !completionEndTime || completeMutation.isPending}
               onClick={() => {
                 if (completionTarget) {
                   completeMutation.mutate({
                     schedule: completionTarget,
+                    startDate: completionStartDate,
                     startTime: completionStartTime,
+                    endDate: completionEndDate,
                     endTime: completionEndTime,
                     file: completionFile,
                   })
@@ -903,7 +950,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
 
       {viewMode === "month" ? (
         <div className="grid gap-4 lg:flex-1 lg:grid-cols-5 lg:overflow-hidden">
-          <Card className="flex flex-col lg:col-span-3 lg:overflow-hidden xl:col-span-3">
+          <Card className="flex h-full min-h-[420px] flex-col lg:col-span-3 lg:overflow-hidden xl:col-span-3">
             <CardHeader className="shrink-0 px-4 py-2">
               <div className="flex items-center justify-between">
                 <Button variant="ghost" size="icon" className="h-10 w-10" onClick={() => navigateMonth(-1)}>
@@ -921,7 +968,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
             </CardHeader>
 
             <CardContent className="flex min-h-0 flex-1 flex-col px-4 pb-3 pt-0">
-              <div className="grid shrink-0 grid-cols-7 gap-1">
+              <div className="grid w-full shrink-0 grid-cols-7 gap-1">
                 {DAYS_OF_WEEK.map((day) => (
                   <div key={day.value} className="py-1 text-center text-xs font-medium text-muted-foreground">
                     {day.label}
@@ -929,7 +976,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                 ))}
               </div>
 
-              <div className="grid auto-rows-fr flex-1 grid-cols-7 gap-1">
+              <div className="grid min-h-0 w-full flex-1 auto-rows-fr grid-cols-7 gap-1">
                 {daysInMonth.map((date, index) => {
                   if (!date) {
                     return <div key={`empty-${index}`} />
@@ -942,7 +989,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                     <button
                       key={date.toISOString()}
                       onClick={() => handleDateClick(date)}
-                      className={`rounded-lg border p-1 text-sm transition-all duration-200 hover:bg-muted ${
+                      className={`h-full min-h-12 w-full rounded-lg border p-1 text-sm transition-all duration-200 hover:bg-muted ${
                         isToday(date) ? "border-primary bg-primary/10" : "border-transparent"
                       } ${isSelected ? "ring-2 ring-primary ring-offset-2" : ""}`}
                     >
@@ -1049,42 +1096,43 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                             ) : null}
 
                             <div className="mt-2 flex gap-1" onClick={(event) => event.stopPropagation()}>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-7 flex-1 text-xs"
-                                onClick={() => handleEditService(service)}
-                              >
-                                <Edit className="mr-1 h-3 w-3" />
-                                Editar
-                              </Button>
+                              {service.status !== "in_progress" && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 flex-1 text-xs"
+                                  onClick={() => handleEditService(service)}
+                                >
+                                  <Edit className="mr-1 h-3 w-3" />
+                                  Editar
+                                </Button>
+                              )}
                               {service.status === "in_progress" && (
                                 <Button
                                   variant="outline"
                                   size="sm"
                                   className="h-7 text-xs"
                                   onClick={() => {
-                                    setCompletionTarget(service)
-                                    setCompletionStartTime(service.completionStartTime || service.time || "")
-                                    setCompletionEndTime(service.completionEndTime || "")
-                                    setCompletionFile(null)
+                                    openCompletionDialog(service)
                                   }}
                                 >
                                   <Check className="h-3 w-3" />
                                 </Button>
                               )}
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-7 text-xs"
-                                onClick={() => {
-                                  setCancelTarget(service)
-                                  setCancelReason(service.cancellationReason || "")
-                                  setCancelStep("reason")
-                                }}
-                              >
-                                <X className="h-3 w-3" />
-                              </Button>
+                              {canCancelSchedule(service) && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-xs"
+                                  onClick={() => {
+                                    setCancelTarget(service)
+                                    setCancelReason(service.cancellationReason || "")
+                                    setCancelStep("reason")
+                                  }}
+                                >
+                                  <X className="h-3 w-3" />
+                                </Button>
+                              )}
                             </div>
                           </CardContent>
                         </Card>
@@ -1214,42 +1262,43 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                             ) : null}
 
                             <div className="mt-2 flex gap-1" onClick={(event) => event.stopPropagation()}>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-7 flex-1 text-xs"
-                                onClick={() => handleEditService(service)}
-                              >
-                                <Edit className="mr-1 h-3 w-3" />
-                                Editar
-                              </Button>
+                              {service.status !== "in_progress" && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 flex-1 text-xs"
+                                  onClick={() => handleEditService(service)}
+                                >
+                                  <Edit className="mr-1 h-3 w-3" />
+                                  Editar
+                                </Button>
+                              )}
                               {service.status === "in_progress" && (
                                 <Button
                                   variant="outline"
                                   size="sm"
                                   className="h-7 text-xs"
                                   onClick={() => {
-                                    setCompletionTarget(service)
-                                    setCompletionStartTime(service.completionStartTime || service.time || "")
-                                    setCompletionEndTime(service.completionEndTime || "")
-                                    setCompletionFile(null)
+                                    openCompletionDialog(service)
                                   }}
                                 >
                                   <Check className="h-3 w-3" />
                                 </Button>
                               )}
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-7 text-xs"
-                                onClick={() => {
-                                  setCancelTarget(service)
-                                  setCancelReason(service.cancellationReason || "")
-                                  setCancelStep("reason")
-                                }}
-                              >
-                                <X className="h-3 w-3" />
-                              </Button>
+                              {canCancelSchedule(service) && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-xs"
+                                  onClick={() => {
+                                    setCancelTarget(service)
+                                    setCancelReason(service.cancellationReason || "")
+                                    setCancelStep("reason")
+                                  }}
+                                >
+                                  <X className="h-3 w-3" />
+                                </Button>
+                              )}
                             </div>
                           </CardContent>
                         </Card>

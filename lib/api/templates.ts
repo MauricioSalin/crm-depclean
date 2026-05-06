@@ -17,7 +17,7 @@ export type TemplateRecord = {
   watermarkFileName?: string
   watermarkFileUrl?: string | null
   informativeSendDaysBefore: number
-  certificateSendDaysAfter: number
+  certificateValidityMonths: number
   placeholders: string[]
   isActive: boolean
   createdAt: string
@@ -34,7 +34,7 @@ export type TemplatePayload = {
   baseFileName?: string
   watermarkFileName?: string
   informativeSendDaysBefore?: number
-  certificateSendDaysAfter?: number
+  certificateValidityMonths?: number
   isActive?: boolean
 }
 

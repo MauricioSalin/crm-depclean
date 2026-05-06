@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { changePassword, getProfileMe, updateProfile, type ChangePasswordPayload } from "@/lib/api/profile"
+import { getApiErrorMessage } from "@/lib/api/errors"
 import { getSettings, type PermissionProfileRecord } from "@/lib/api/settings"
 import { getStoredAccessToken, getStoredRefreshToken, getStoredUser, isPersistentSession, persistSession } from "@/lib/auth/session"
 import { formatCPF, formatPhone } from "@/lib/masks"
@@ -61,8 +62,8 @@ export function PerfilContent() {
       } else {
         setPermissionProfiles([])
       }
-    } catch {
-      toast.error("Nao foi possivel carregar seu perfil.")
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Não foi possível carregar seu perfil."))
     } finally {
       setLoading(false)
     }
@@ -109,8 +110,8 @@ export function PerfilContent() {
 
       setProfile(updatedUser)
       toast.success("Perfil atualizado com sucesso.")
-    } catch {
-      toast.error("Nao foi possivel salvar suas alteracoes.")
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Não foi possível salvar suas alterações."))
     } finally {
       setSaving(false)
     }
@@ -126,7 +127,7 @@ export function PerfilContent() {
     }
 
     if (passwordData.newPassword !== passwordData.confirmPassword) {
-      setPasswordError("As senhas nao coincidem.")
+      setPasswordError("As senhas não coincidem.")
       return
     }
 
@@ -147,8 +148,8 @@ export function PerfilContent() {
       setPasswordDialog(false)
       setPasswordData(emptyPasswordForm)
       toast.success("Senha alterada com sucesso.")
-    } catch {
-      toast.error("Nao foi possivel alterar a senha.")
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Não foi possível alterar a senha."))
     } finally {
       setSaving(false)
     }
@@ -248,7 +249,7 @@ export function PerfilContent() {
               <div className="space-y-2">
                 <Label htmlFor="permissionProfile" className="flex items-center gap-1.5">
                   <Shield className="h-3.5 w-3.5 text-muted-foreground" />
-                  Perfil de Permissao
+                  Perfil de Permissão
                 </Label>
                 <Select
                   value={formData.permissionProfileId}
@@ -267,7 +268,7 @@ export function PerfilContent() {
                   </SelectContent>
                 </Select>
                 {!canEditPermission && (
-                  <p className="text-[10px] text-muted-foreground">Somente administradores podem alterar o perfil de permissao.</p>
+                  <p className="text-[10px] text-muted-foreground">Somente administradores podem alterar o perfil de permissão.</p>
                 )}
               </div>
 

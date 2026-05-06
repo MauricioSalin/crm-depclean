@@ -156,6 +156,18 @@ export async function updateContract(id: string, payload: Partial<ContractPayloa
   return response.data
 }
 
+export async function uploadContractDocument(id: string, file: File) {
+  const formData = new FormData()
+  formData.append("file", file)
+
+  const response = await api.post<{ success: true; data: ContractRecord }>(
+    `/contracts/${resolveContractId(id)}/document`,
+    formData,
+    { headers: { "Content-Type": "multipart/form-data" } },
+  )
+  return response.data
+}
+
 export async function sendContractToClicksign(id: string) {
   const response = await api.post<{ success: true; data: unknown }>(`/clicksign/contracts/${resolveContractId(id)}/send`)
   return response.data

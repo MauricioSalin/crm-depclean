@@ -24,7 +24,9 @@ export type ScheduleRecord = {
   notes: string
   isEmergency: boolean
   cancellationReason?: string
+  completionStartDate?: string
   completionStartTime?: string
+  completionEndDate?: string
   completionEndTime?: string
   serviceReport?: string
   naFileName?: string
@@ -75,7 +77,7 @@ export async function startSchedule(id: string, payload?: { startTime?: string }
 
 export async function completeSchedule(
   id: string,
-  payload: { startTime: string; endTime: string; serviceReport?: string },
+  payload: { startDate?: string; startTime: string; endDate?: string; endTime: string; serviceReport?: string },
 ) {
   const response = await api.patch<{ success: true; data: ScheduleRecord }>(`/schedules/${id}/complete`, payload)
   return response.data

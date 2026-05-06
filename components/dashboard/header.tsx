@@ -1,7 +1,9 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Search, Bell, User, FileText, LogOut, ChevronDown, PanelLeftClose, PanelLeftOpen } from "lucide-react"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -15,12 +17,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { notifications as initialNotifications } from "@/lib/mock-data"
 import { SwipeableNotification } from "./swipeable-notification"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import type { ReactNode } from "react"
-import { clearSession, getStoredUser } from "@/lib/auth/session"
+import { listNotifications, markNotificationAsRead } from "@/lib/api/notifications"
+import { getApiErrorMessage } from "@/lib/api/errors"
+import { clearSession, getStoredAccessToken, getStoredUser } from "@/lib/auth/session"
 import { useSidebarCollapse } from "./sidebar-collapse-context"
 
 interface HeaderProps {
@@ -45,23 +48,46 @@ const getNotificationDotColor = (type: string) => {
     schedule_change: "bg-blue-500",
     schedule_cancel: "bg-gray-500",
     daily_services: "bg-blue-500",
+    contract_signature: "bg-emerald-500",
+    informative: "bg-emerald-500",
+    certificate: "bg-emerald-500",
   }
   return colorMap[type] || "bg-primary"
 }
 
 export function Header({ title, description, titleAddon, headerActions, actions, viewToggle, filters, hasFilters = false, showDivider = false }: HeaderProps) {
   const router = useRouter()
+  const queryClient = useQueryClient()
   const { collapsed, toggleCollapsed } = useSidebarCollapse()
-  const [notifs, setNotifs] = useState(initialNotifications)
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
   const [currentUser, setCurrentUser] = useState<ReturnType<typeof getStoredUser>>(null)
+  const [hasSession, setHasSession] = useState(false)
   const [mounted, setMounted] = useState(false)
+  const notificationsQuery = useQuery({
+    queryKey: ["notifications"],
+    queryFn: listNotifications,
+    enabled: mounted && hasSession,
+    refetchInterval: 10_000,
+    refetchIntervalInBackground: true,
+    refetchOnWindowFocus: true,
+  })
+  const notifs = notificationsQuery.data?.data ?? []
   const unreadNotifications = notifs.filter((n) => !n.isRead)
   const effectiveHeaderActions = headerActions ?? actions
+  const markAsReadMutation = useMutation({
+    mutationFn: markNotificationAsRead,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notifications"] }),
+    onError: (error) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível marcar a notificação como lida."))
+    },
+  })
 
   useEffect(() => {
     setMounted(true)
-    const sync = () => setCurrentUser(getStoredUser())
+    const sync = () => {
+      setCurrentUser(getStoredUser())
+      setHasSession(Boolean(getStoredAccessToken()))
+    }
     sync()
     window.addEventListener("storage", sync)
     window.addEventListener("depclean:session", sync)
@@ -72,13 +98,13 @@ export function Header({ title, description, titleAddon, headerActions, actions,
   }, [])
 
   const markAsRead = (id: string) => {
-    setNotifs((prev) => prev.map((n) => (n.id === id ? { ...n, isRead: true, readAt: new Date() } : n)))
+    markAsReadMutation.mutate(id)
   }
 
   return (
     <>
       <div className="h-[68px] shrink-0" aria-hidden="true" />
-      <div className={`fixed inset-x-0 top-0 z-[80] border-b border-transparent bg-background/95 px-3 pb-4 pt-4 backdrop-blur-sm transition-[left] duration-300 ease-[cubic-bezier(.2,.8,.2,1)] md:px-4 lg:left-60 lg:px-5 ${showDivider ? "[&:not(:first-child)]:border-border/50" : ""}`}>
+      <div className={`fixed inset-x-0 top-0 z-[80] border-b border-transparent bg-background/95 px-3 pb-4 pt-4 backdrop-blur-sm md:px-4 lg:left-60 lg:px-5 ${showDivider ? "[&:not(:first-child)]:border-border/50" : ""}`}>
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 flex-1">
             {mounted ? <MobileNav /> : <div className="h-9 w-9 shrink-0" aria-hidden="true" />}
@@ -106,7 +132,9 @@ export function Header({ title, description, titleAddon, headerActions, actions,
           <div className="flex items-center gap-1.5 md:gap-2">
             {mounted ? (
               <>
-                <DropdownMenu>
+                <DropdownMenu onOpenChange={(open) => {
+                  if (open) void notificationsQuery.refetch()
+                }}>
                   <DropdownMenuTrigger asChild>
                     <Button
                       variant="ghost"

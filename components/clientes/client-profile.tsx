@@ -1,8 +1,10 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
-import { useQuery } from "@tanstack/react-query"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
 import {
   AlertTriangle,
   Building2,
@@ -19,6 +21,8 @@ import {
   MoreHorizontal,
   Paperclip,
   Phone,
+  Trash2,
+  Upload,
 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -32,23 +36,101 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { DocxTemplateEditor, type DocxTemplateEditorRef } from "@/components/templates/docx-template-editor"
 import { buildApiFileUrl } from "@/lib/api/client"
-import { getClientAttachments, getClientById, type ClientAttachmentRecord } from "@/lib/api/clients"
+import {
+  deleteClientAttachment,
+  getClientAttachments,
+  getClientById,
+  uploadClientAttachment,
+  type ClientAttachmentRecord,
+} from "@/lib/api/clients"
 import { listContracts, type ContractInstallmentRecord } from "@/lib/api/contracts"
-import { listSchedules } from "@/lib/api/schedules"
+import { getApiErrorMessage } from "@/lib/api/errors"
+import { listSchedules, type ScheduleRecord } from "@/lib/api/schedules"
 import { listServices } from "@/lib/api/services"
 import { listClientTypes } from "@/lib/api/settings"
 import { listTeams } from "@/lib/api/teams"
+import { listTemplates, type TemplateRecord } from "@/lib/api/templates"
 
 interface ClientProfileProps {
   clientId: string
 }
 
+const clientProfileTabs = ["dados", "contratos", "parcelas", "servicos", "agenda", "anexos"] as const
+
+type ClientProfileTab = (typeof clientProfileTabs)[number]
+
+const defaultClientProfileTab: ClientProfileTab = "dados"
+
+const clientProfileTabByUrlValue: Record<string, ClientProfileTab> = {
+  dados: "dados",
+  data: "dados",
+  contratos: "contratos",
+  contracts: "contratos",
+  parcelas: "parcelas",
+  installments: "parcelas",
+  servicos: "servicos",
+  services: "servicos",
+  agenda: "agenda",
+  schedule: "agenda",
+  anexos: "anexos",
+  attachments: "anexos",
+}
+
+const clientProfileTabUrlValue: Record<ClientProfileTab, string> = {
+  dados: "dados",
+  contratos: "contratos",
+  parcelas: "parcelas",
+  servicos: "servicos",
+  agenda: "agenda",
+  anexos: "anexos",
+}
+
+const clientProfileTabTriggerClassName =
+  "w-full cursor-pointer rounded-full bg-muted px-4 py-2 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+
+const getClientProfileTabFromUrl = (value: string | null): ClientProfileTab =>
+  value ? clientProfileTabByUrlValue[value] ?? defaultClientProfileTab : defaultClientProfileTab
+
+const isClientProfileTab = (value: string): value is ClientProfileTab =>
+  clientProfileTabs.includes(value as ClientProfileTab)
+
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value)
 
+const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
 const formatDate = (value?: string) =>
   value ? new Intl.DateTimeFormat("pt-BR").format(new Date(value)) : "-"
+
+const informativePdfFileName = (fileName: string) => {
+  const cleanName = fileName.trim() || "informativo.pdf"
+  if (/\.pdf$/i.test(cleanName)) return cleanName
+  if (/\.docx$/i.test(cleanName)) return cleanName.replace(/\.docx$/i, ".pdf")
+  return `${cleanName.replace(/\.[^.]+$/i, "") || "informativo"}.pdf`
+}
+
+const docxFileName = (fileName: string) => {
+  const cleanName = fileName.trim() || "informativo.docx"
+  return /\.docx$/i.test(cleanName) ? cleanName : `${cleanName.replace(/\.[^.]+$/i, "") || "informativo"}.docx`
+}
+
+const downloadBrowserFile = (file: File, fileName: string) => {
+  const url = URL.createObjectURL(file)
+  const anchor = document.createElement("a")
+  anchor.href = url
+  anchor.download = fileName
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 500)
+}
+
+const wait = (delay: number) => new Promise((resolve) => window.setTimeout(resolve, delay))
+
+const templateWatermarkUrl = (template?: TemplateRecord | null) =>
+  template?.watermarkFileUrl ? buildApiFileUrl(template.watermarkFileUrl) : undefined
 
 const formatCNPJ = (value: string) => {
   const digits = value.replace(/\D/g, "")
@@ -62,26 +144,38 @@ const resolveColor = (color?: string) => {
   return "#84CC16"
 }
 
-const getScheduleStatusLabel = (status: string) => {
+const getScheduleStatusBadge = (status: ScheduleRecord["status"]) => {
   switch (status) {
     case "draft":
-      return "Rascunho"
+      return <Badge className="bg-slate-100 text-slate-700">Rascunho</Badge>
     case "scheduled":
-      return "Agendado"
+      return <Badge className="bg-blue-100 text-blue-800">Agendado</Badge>
     case "in_progress":
-      return "Em andamento"
+      return <Badge className="bg-yellow-100 text-yellow-800">Em andamento</Badge>
     case "completed":
-      return "Concluído"
+      return <Badge className="bg-green-100 text-green-800">Concluído</Badge>
     case "cancelled":
-      return "Cancelado"
+      return <Badge className="bg-red-100 text-red-800">Cancelado</Badge>
     case "rescheduled":
-      return "Reagendado"
-    default:
-      return status
+      return <Badge className="bg-purple-100 text-purple-800">Reagendado</Badge>
   }
 }
 
 export function ClientProfile({ clientId }: ClientProfileProps) {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const queryClient = useQueryClient()
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const informativePdfEditorRef = useRef<DocxTemplateEditorRef | null>(null)
+  const [informativePdfJob, setInformativePdfJob] = useState<{
+    id: string
+    attachment: ClientAttachmentRecord
+    sourceFile: File
+    watermarkImageUrl?: string
+    toastId: string | number
+  } | null>(null)
+  const [isGeneratingInformativePdf, setIsGeneratingInformativePdf] = useState(false)
   const clientQuery = useQuery({
     queryKey: ["client", clientId],
     queryFn: () => getClientById(clientId),
@@ -121,9 +215,47 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
     enabled: Boolean(client?.id),
   })
 
+  const uploadAttachmentMutation = useMutation({
+    mutationFn: (file: File) => uploadClientAttachment(resolvedClientId, file),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client-attachments", resolvedClientId] })
+      toast.success("Anexo salvo no cliente.")
+    },
+    onError: (error) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível salvar o anexo."))
+    },
+  })
+
+  const deleteAttachmentMutation = useMutation({
+    mutationFn: (attachmentId: string) => deleteClientAttachment(resolvedClientId, attachmentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client-attachments", resolvedClientId] })
+      toast.success("Anexo removido.")
+    },
+    onError: (error) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível remover o anexo."))
+    },
+  })
+
   const [installmentOverrides, setInstallmentOverrides] = useState<
     Record<string, { status: ContractInstallmentRecord["status"]; paidDate?: string; paidValue?: number }>
   >({})
+  const activeTab = getClientProfileTabFromUrl(searchParams.get("tab"))
+
+  const handleTabChange = (value: string) => {
+    if (!isClientProfileTab(value)) return
+    const params = new URLSearchParams(searchParams.toString())
+    params.set("tab", clientProfileTabUrlValue[value])
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false })
+  }
+
+  const handleManualAttachmentSelected = (file?: File) => {
+    if (!file) return
+    uploadAttachmentMutation.mutate(file)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""
+    }
+  }
 
   const clientContracts = useMemo(
     () => (contractsQuery.data?.data ?? []).filter((contract) => contract.clientId === resolvedClientId),
@@ -134,9 +266,20 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
     [schedulesQuery.data?.data, resolvedClientId],
   )
   const clientAttachments = attachmentsQuery.data?.data ?? []
+  const hasInformativeAttachments = clientAttachments.some((attachment) => attachment.type === "informative")
+  const informativeTemplatesQuery = useQuery({
+    queryKey: ["templates", "client-profile", "informative"],
+    queryFn: () => listTemplates("", "informative"),
+    enabled: hasInformativeAttachments,
+  })
+  const informativeTemplates = informativeTemplatesQuery.data?.data ?? []
   const serviceTypeMap = useMemo(
     () => new Map((servicesQuery.data?.data ?? []).map((service) => [service.id, service] as const)),
     [servicesQuery.data?.data],
+  )
+  const informativeTemplateMap = useMemo(
+    () => new Map(informativeTemplates.map((template) => [template.id, template] as const)),
+    [informativeTemplates],
   )
   const teamMap = useMemo(
     () => new Map((teamsQuery.data?.data ?? []).map((team) => [team.id, team] as const)),
@@ -145,6 +288,118 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
   const clientType = (clientTypesQuery.data?.data.items ?? []).find((item) => item.id === client?.clientTypeId)
   const clientTypeColor = resolveColor(clientType?.color)
   const activeContracts = clientContracts.filter((contract) => ["signed", "active"].includes(contract.status)).length
+
+  const findInformativeTemplate = useCallback(
+    async (attachment: ClientAttachmentRecord) => {
+      const templateId = attachment.metadata?.templateId
+      if (!templateId) return null
+
+      const cachedTemplate = informativeTemplateMap.get(templateId)
+      if (cachedTemplate) return cachedTemplate
+
+      const refreshed = await informativeTemplatesQuery.refetch()
+      return refreshed.data?.data.find((template) => template.id === templateId) ?? null
+    },
+    [informativeTemplateMap, informativeTemplatesQuery],
+  )
+
+  const handleAttachmentDownload = useCallback(
+    async (attachment: ClientAttachmentRecord) => {
+      if (attachment.type !== "informative") return
+
+      const toastId = toast.loading("Gerando PDF do informativo...")
+      setIsGeneratingInformativePdf(true)
+
+      try {
+        const fileUrl = buildApiFileUrl(attachment.documentUrl)
+        const isAlreadyPdf = attachment.mimeType === "application/pdf" || /\.pdf$/i.test(attachment.fileName)
+
+        if (isAlreadyPdf) {
+          const response = await fetch(fileUrl)
+          if (!response.ok) {
+            throw new Error(`Falha ao carregar o informativo (${response.status}).`)
+          }
+
+          const blob = await response.blob()
+          const file = new File([blob], informativePdfFileName(attachment.fileName), { type: "application/pdf" })
+          downloadBrowserFile(file, file.name)
+          toast.success("PDF do informativo baixado.", { id: toastId })
+          setIsGeneratingInformativePdf(false)
+          return
+        }
+
+        const [response, template] = await Promise.all([
+          fetch(fileUrl),
+          findInformativeTemplate(attachment),
+        ])
+
+        if (!response.ok) {
+          throw new Error(`Falha ao carregar o informativo (${response.status}).`)
+        }
+
+        const blob = await response.blob()
+        const sourceFile = new File([blob], docxFileName(attachment.fileName), { type: blob.type || DOCX_MIME })
+
+        setInformativePdfJob({
+          id: `${attachment.id}-${Date.now()}`,
+          attachment,
+          sourceFile,
+          watermarkImageUrl: templateWatermarkUrl(template),
+          toastId,
+        })
+      } catch (error) {
+        setIsGeneratingInformativePdf(false)
+        toast.error(getApiErrorMessage(error, "Não foi possível gerar o PDF do informativo."), { id: toastId })
+      }
+    },
+    [findInformativeTemplate],
+  )
+
+  useEffect(() => {
+    if (!informativePdfJob) return
+
+    const job = informativePdfJob
+    let cancelled = false
+
+    async function generateInformativePdf() {
+      let lastError: unknown = null
+
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        await wait(attempt === 0 ? 350 : 250)
+
+        if (cancelled) return
+
+        try {
+          const file = await informativePdfEditorRef.current?.generatePreviewPdf({ download: false })
+          if (!file) throw new Error("Editor de PDF indisponível.")
+
+          if (cancelled) return
+
+          downloadBrowserFile(file, informativePdfFileName(job.attachment.fileName))
+          toast.success("PDF do informativo gerado.", { id: job.toastId })
+          setInformativePdfJob(null)
+          setIsGeneratingInformativePdf(false)
+          return
+        } catch (error) {
+          lastError = error
+        }
+      }
+
+      if (cancelled) return
+
+      toast.error(getApiErrorMessage(lastError, "Não foi possível gerar o PDF do informativo."), {
+        id: job.toastId,
+      })
+      setInformativePdfJob(null)
+      setIsGeneratingInformativePdf(false)
+    }
+
+    void generateInformativePdf()
+
+    return () => {
+      cancelled = true
+    }
+  }, [informativePdfJob])
 
   const allInstallments = useMemo(() => {
     return clientContracts.flatMap((contract) =>
@@ -246,6 +501,33 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
 
   return (
     <div className="space-y-6">
+      {informativePdfJob ? (
+        <div
+          aria-hidden="true"
+          style={{
+            height: 1200,
+            left: -10000,
+            overflow: "hidden",
+            pointerEvents: "none",
+            position: "fixed",
+            top: 0,
+            width: 900,
+            zIndex: -1,
+          }}
+        >
+          <DocxTemplateEditor
+            key={informativePdfJob.id}
+            ref={informativePdfEditorRef}
+            activeTab="preview"
+            kind="informative"
+            sourceFile={informativePdfJob.sourceFile}
+            templateFormat="docx"
+            templateName={informativePdfJob.attachment.title || "Informativo"}
+            watermarkImageUrl={informativePdfJob.watermarkImageUrl}
+          />
+        </div>
+      ) : null}
+
       <Card className="overflow-hidden">
         <CardContent className="px-4 py-3">
           <div className="mb-3 flex items-center gap-3">
@@ -338,47 +620,47 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
         </Card>
       </div>
 
-      <Tabs defaultValue="dados" className="w-full">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
         <TabsList className="grid w-full grid-cols-2 gap-2 bg-transparent p-0 sm:grid-cols-3 lg:grid-cols-6">
           <TabsTrigger
             onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
             value="dados"
-            className="w-full rounded-full bg-muted px-4 py-2 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            className={clientProfileTabTriggerClassName}
           >
             <span className="font-semibold">Dados</span>
           </TabsTrigger>
           <TabsTrigger
             onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
             value="contratos"
-            className="w-full rounded-full bg-muted px-4 py-2 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            className={clientProfileTabTriggerClassName}
           >
             <span className="font-semibold">Contratos</span>
           </TabsTrigger>
           <TabsTrigger
             onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
             value="parcelas"
-            className="w-full rounded-full bg-muted px-4 py-2 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            className={clientProfileTabTriggerClassName}
           >
             <span className="font-semibold">Parcelas</span>
           </TabsTrigger>
           <TabsTrigger
             onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
             value="servicos"
-            className="w-full rounded-full bg-muted px-4 py-2 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            className={clientProfileTabTriggerClassName}
           >
             <span className="font-semibold">Serviços</span>
           </TabsTrigger>
           <TabsTrigger
             onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
             value="agenda"
-            className="w-full rounded-full bg-muted px-4 py-2 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            className={clientProfileTabTriggerClassName}
           >
             <span className="font-semibold">Agenda</span>
           </TabsTrigger>
           <TabsTrigger
             onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
             value="anexos"
-            className="w-full rounded-full bg-muted px-4 py-2 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            className={clientProfileTabTriggerClassName}
           >
             <span className="font-semibold">Anexos</span>
           </TabsTrigger>
@@ -576,59 +858,67 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {clientContracts.flatMap((contract) =>
-                  contract.installments.map((installment) => {
-                    const override = installmentOverrides[installment.id]
-                    const displayInstallment = override ? { ...installment, ...override } : installment
+                {allInstallments.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="h-24 text-center text-sm text-muted-foreground">
+                      Nenhuma parcela encontrada.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  clientContracts.flatMap((contract) =>
+                    contract.installments.map((installment) => {
+                      const override = installmentOverrides[installment.id]
+                      const displayInstallment = override ? { ...installment, ...override } : installment
 
-                    return (
-                      <TableRow key={installment.id}>
-                        <TableCell className="text-sm">{contract.contractNumber}</TableCell>
-                        <TableCell>
-                          {installment.number}/{contract.installmentsCount}
-                        </TableCell>
-                        <TableCell className="font-medium">{formatCurrency(installment.value)}</TableCell>
-                        <TableCell className="hidden md:table-cell text-sm">{formatDate(installment.dueDate)}</TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={
-                              displayInstallment.status === "paid"
-                                ? "default"
+                      return (
+                        <TableRow key={installment.id}>
+                          <TableCell className="text-sm">{contract.contractNumber}</TableCell>
+                          <TableCell>
+                            {installment.number}/{contract.installmentsCount}
+                          </TableCell>
+                          <TableCell className="font-medium">{formatCurrency(installment.value)}</TableCell>
+                          <TableCell className="hidden md:table-cell text-sm">{formatDate(installment.dueDate)}</TableCell>
+                          <TableCell>
+                            <Badge
+                              variant={
+                                displayInstallment.status === "paid"
+                                  ? "default"
+                                  : displayInstallment.status === "overdue"
+                                    ? "destructive"
+                                    : "secondary"
+                              }
+                            >
+                              {displayInstallment.status === "paid"
+                                ? "Paga"
                                 : displayInstallment.status === "overdue"
-                                  ? "destructive"
-                                  : "secondary"
-                            }
-                          >
-                            {displayInstallment.status === "paid"
-                              ? "Paga"
-                              : displayInstallment.status === "overdue"
-                                ? "Vencida"
-                                : "Pendente"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon">
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => setInstallmentStatus(installment.id, "paid")}>
-                                Marcar como paga
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => setInstallmentStatus(installment.id, "overdue")}>
-                                Marcar como atrasada
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => setInstallmentStatus(installment.id, "pending")}>
-                                Marcar como pendente
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </TableCell>
-                      </TableRow>
-                    )
-                  }),
+                                  ? "Vencida"
+                                  : "Pendente"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon">
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => setInstallmentStatus(installment.id, "paid")}>
+                                  Marcar como paga
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => setInstallmentStatus(installment.id, "overdue")}>
+                                  Marcar como atrasada
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => setInstallmentStatus(installment.id, "pending")}>
+                                  Marcar como pendente
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    }),
+                  )
                 )}
               </TableBody>
             </Table>
@@ -713,11 +1003,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                         <TableCell className="hidden md:table-cell">{team?.name}</TableCell>
                         <TableCell className="text-sm">{formatDate(service.date)}</TableCell>
                         <TableCell className="text-sm">{service.time || "08:00"}</TableCell>
-                        <TableCell>
-                          <Badge variant={service.status === "in_progress" ? "default" : "secondary"}>
-                            {getScheduleStatusLabel(service.status)}
-                          </Badge>
-                        </TableCell>
+                        <TableCell>{getScheduleStatusBadge(service.status)}</TableCell>
                       </TableRow>
                     )
                   })}
@@ -761,7 +1047,9 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                         <div className="min-w-0">
                           <p className="truncate font-medium">{attachment.title}</p>
                           <p className="truncate text-xs text-muted-foreground">
-                            {attachment.fileName} - {formatAttachmentSize(attachment.fileSize)}
+                            {attachment.type === "informative"
+                              ? informativePdfFileName(attachment.fileName)
+                              : `${attachment.fileName} - ${formatAttachmentSize(attachment.fileSize)}`}
                           </p>
                         </div>
                       </div>
@@ -779,11 +1067,38 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                       {new Date(attachment.uploadedAt).toLocaleDateString("pt-BR")}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button variant="ghost" size="icon" asChild>
-                        <a href={buildApiFileUrl(attachment.documentUrl)} target="_blank" rel="noreferrer">
-                          <Download className="h-4 w-4" />
-                        </a>
-                      </Button>
+                      <div className="flex items-center justify-end gap-1">
+                        {attachment.type === "informative" ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleAttachmentDownload(attachment)}
+                            disabled={isGeneratingInformativePdf}
+                            title="Baixar PDF"
+                          >
+                            <Download className="h-4 w-4" />
+                          </Button>
+                        ) : (
+                          <Button variant="ghost" size="icon" asChild>
+                            <a href={buildApiFileUrl(attachment.documentUrl)} target="_blank" rel="noreferrer">
+                              <Download className="h-4 w-4" />
+                            </a>
+                          </Button>
+                        )}
+                        {attachment.source === "manual" ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => deleteAttachmentMutation.mutate(attachment.id)}
+                            disabled={deleteAttachmentMutation.isPending}
+                            className="text-destructive hover:text-destructive"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        ) : null}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

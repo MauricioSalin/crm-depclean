@@ -20,6 +20,7 @@ import { useRouter } from "next/navigation"
 import { formatCNPJ, formatPhone } from "@/lib/masks"
 import { toast } from "@/components/ui/use-toast"
 import { createClient, getClientById, updateClient, type ClientPayload } from "@/lib/api/clients"
+import { getApiErrorMessage } from "@/lib/api/errors"
 import { listClientTypes } from "@/lib/api/settings"
 
 interface ClientFormProps {
@@ -323,8 +324,8 @@ export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
     },
     onError: (error: any) => {
       toast({
-        title: "Não foi possível salvar o cliente",
-        description: error?.response?.data?.message ?? "Verifique os dados e tente novamente.",
+        title: getApiErrorMessage(error, "Não foi possível salvar o cliente."),
+        variant: "destructive",
       })
     },
   })
@@ -442,6 +443,22 @@ export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
               />
             </div>
           </div>
+
+          {/* Linha 4: Unidades */}
+          <div className="flex flex-col md:flex-row gap-3">
+            <div className="space-y-2 md:w-[220px] shrink-0">
+              <Label htmlFor="primaryUnitCount">Unidades *</Label>
+              <Input
+                id="primaryUnitCount"
+                type="number"
+                value={units[0]?.unitCount || ""}
+                onChange={(e) => handleUnitChange(0, "unitCount", e.target.value)}
+                placeholder="Número de unidades"
+                min={1}
+                required
+              />
+            </div>
+          </div>
         </div>
       </Card>
 
@@ -487,8 +504,9 @@ export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
             </div>
           </div>
 
-          <label className="flex items-center gap-2 rounded-md border border-border/60 bg-muted/20 px-4 py-3 text-sm text-foreground/80">
+          <label className="flex w-full cursor-pointer items-center gap-2 rounded-md border border-border/60 bg-muted/20 px-4 py-3 text-sm text-foreground/80 md:w-[320px]">
             <Checkbox
+              className="cursor-pointer"
               checked={formData.copyNotificationsToOwner}
               onCheckedChange={(checked) => setFormData((prev) => ({
                 ...prev,
@@ -555,7 +573,7 @@ export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
                         type="number"
                         value={unit.unitCount || ""}
                         onChange={(e) => handleUnitChange(index, "unitCount", e.target.value)}
-                        placeholder="Nº de unidades"
+                        placeholder="Número de unidades"
                         min={1}
                         required
                       />

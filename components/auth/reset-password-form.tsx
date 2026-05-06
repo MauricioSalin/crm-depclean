@@ -10,6 +10,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { resetPassword } from "@/lib/api/auth"
+import { getApiErrorMessage } from "@/lib/api/errors"
 
 export function ResetPasswordForm() {
   const router = useRouter()
@@ -47,8 +48,8 @@ export function ResetPasswordForm() {
       })
       toast.success("Senha redefinida com sucesso. Faça login novamente.")
       router.push("/login")
-    } catch {
-      toast.error("Não foi possível redefinir a senha.")
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Não foi possível redefinir a senha."))
     } finally {
       setLoading(false)
     }

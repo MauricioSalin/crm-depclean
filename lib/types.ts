@@ -271,11 +271,14 @@ export type NotificationType =
   | "schedule_cancel" 
   | "emergency" 
   | "daily_services"
+  | "contract_signature"
+  | "informative"
+  | "certificate"
   | "payment_due"
   | "payment_overdue"
   | "contract_expiring"
 
-export type NotificationChannel = "system" | "whatsapp" | "email"
+export type NotificationChannel = "system" | "whatsapp"
 
 export interface Notification {
   id: string
@@ -291,6 +294,7 @@ export interface Notification {
   isRead: boolean
   sentAt: Date
   readAt?: Date
+  deliveryStatus?: string
   createdAt: Date
 }
 
@@ -303,7 +307,9 @@ export interface NotificationRule {
   time?: string // Horário de envio
   channels: NotificationChannel[]
   targetTeamIds: string[] // Equipes que receberão
+  targetEmployeeIds?: string[]
   isActive: boolean
+  isDefault?: boolean
   createdAt: Date
 }
 
