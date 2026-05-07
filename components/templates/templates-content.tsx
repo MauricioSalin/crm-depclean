@@ -181,6 +181,14 @@ function formatCnpj(value?: string | null) {
     .replace(/(\d{4})(\d)/, "$1-$2")
 }
 
+function formatCpf(value?: string | null) {
+  const digits = (value ?? "").replace(/\D/g, "").slice(0, 11)
+  return digits
+    .replace(/^(\d{3})(\d)/, "$1.$2")
+    .replace(/^(\d{3})\.(\d{3})(\d)/, "$1.$2.$3")
+    .replace(/\.(\d{3})(\d)/, ".$1-$2")
+}
+
 function getUnitAddress(unit?: ClientUnitRecord | null) {
   if (!unit?.address) return ""
 
@@ -334,6 +342,7 @@ function buildPreviewVariables(params: {
   client?: ClientRecord
   clientTypes: ClientTypeRecord[]
   contract?: ContractRecord
+  employeeCpf?: string
   employeeName?: string
   employeeRole?: string
   kind: TemplateKind
@@ -342,7 +351,7 @@ function buildPreviewVariables(params: {
   schedule?: ScheduleRecord
   services: ServiceRecord[]
 }) {
-  const { client, clientTypes, contract, employeeName, employeeRole, kind, organizationSettings, certificateValidityMonths, schedule, services } = params
+  const { client, clientTypes, contract, employeeCpf, employeeName, employeeRole, kind, organizationSettings, certificateValidityMonths, schedule, services } = params
   if (!client) return null
 
   const unit = contract
@@ -372,6 +381,7 @@ function buildPreviewVariables(params: {
       companyName: client.companyName,
       email: client.email,
       phone: client.phone,
+      responsibleCpf: formatCpf(client.responsibleCpf),
       responsibleName: client.responsibleName,
     },
     contractor: {
@@ -380,6 +390,7 @@ function buildPreviewVariables(params: {
       email: organizationSettings?.email ?? "",
       legalName: organizationSettings?.legalName ?? "",
       phone: organizationSettings?.phone ?? "",
+      signerCpf: formatCpf(employeeCpf),
       signerName: employeeName || "",
       signerRole: employeeRole || "",
     },
@@ -587,6 +598,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
         client: previewClient,
         clientTypes,
         contract: kind === "contract" ? selectedPreviewContract : undefined,
+        employeeCpf: templateSigner?.cpf,
         employeeName: templateSigner?.name,
         employeeRole: templateSigner?.role,
         kind,

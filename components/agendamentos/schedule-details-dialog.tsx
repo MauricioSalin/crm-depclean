@@ -1,6 +1,6 @@
 "use client"
 
-import { ArrowLeft, CalendarDays, Clock3, MapPin, Sparkles, Users } from "lucide-react"
+import { ArrowLeft, CalendarDays, Clock3, Loader2, MapPin, Sparkles, Users } from "lucide-react"
 
 import { AttendanceStartSlider } from "@/components/agendamentos/attendance-start-slider"
 import { Button } from "@/components/ui/button"
@@ -15,6 +15,7 @@ interface ScheduleDetailsDialogProps {
   onOpenChange: (open: boolean) => void
   schedule: ScheduleRecord | null
   onStartAttendance: (schedule: ScheduleRecord) => Promise<void> | void
+  isStartingAttendance?: boolean
 }
 
 function getStatusLabel(status: ScheduleRecord["status"]) {
@@ -54,6 +55,7 @@ export function ScheduleDetailsDialog({
   onOpenChange,
   schedule,
   onStartAttendance,
+  isStartingAttendance = false,
 }: ScheduleDetailsDialogProps) {
   const isMobile = useIsMobile()
 
@@ -168,10 +170,17 @@ export function ScheduleDetailsDialog({
                       type="button"
                       size="lg"
                       className="min-w-[220px]"
-                      disabled={!canStartAttendance}
+                      disabled={!canStartAttendance || isStartingAttendance}
                       onClick={() => onStartAttendance(schedule)}
                     >
-                      Iniciar atendimento
+                      {isStartingAttendance ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Iniciando...
+                        </>
+                      ) : (
+                        "Iniciar atendimento"
+                      )}
                     </Button>
                   </div>
                 </div>
@@ -182,7 +191,8 @@ export function ScheduleDetailsDialog({
           {showAttendanceAction && isMobile ? (
             <div className="bg-background p-4">
               <AttendanceStartSlider
-                disabled={!canStartAttendance}
+                disabled={!canStartAttendance || isStartingAttendance}
+                isSubmitting={isStartingAttendance}
                 onComplete={() => onStartAttendance(schedule)}
               />
             </div>

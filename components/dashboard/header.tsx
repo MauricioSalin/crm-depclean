@@ -165,8 +165,8 @@ export function Header({ title, description, titleAddon, headerActions, actions,
                       )}
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-80 max-w-[calc(100vw-2rem)]">
-                    <DropdownMenuLabel className="flex items-center justify-between">
+                  <DropdownMenuContent align="end" className="w-80 max-w-[calc(100vw-2rem)] overflow-hidden">
+                    <DropdownMenuLabel className="flex items-center justify-between px-4">
                       <span>Notificações</span>
                       <Badge variant="secondary" className="text-xs">
                         {unreadNotifications.length} novas
@@ -186,20 +186,20 @@ export function Header({ title, description, titleAddon, headerActions, actions,
                       >
                         <DropdownMenuItem
                           key={notification.id}
-                          className="flex flex-col items-start gap-1 cursor-pointer"
+                          className="flex flex-col items-start gap-1 cursor-pointer py-2.5 pl-4 pr-6"
                           onSelect={() => openNotification(notification)}
                         >
-                          <div className="flex items-center gap-2 w-full">
+                          <div className="flex w-full min-w-0 items-center gap-2 pr-1">
                             <span
                               className={`w-2 h-2 rounded-full shrink-0 ${getNotificationDotColor(notification.type)} ${
                                 notification.isRead ? "opacity-40" : "opacity-100"
                               }`}
                             />
-                            <span className={`font-medium text-sm ${notification.isRead ? "text-muted-foreground" : "text-foreground"}`}>
+                            <span className={`min-w-0 font-medium text-sm ${notification.isRead ? "text-muted-foreground" : "text-foreground"}`}>
                               {notification.title}
                             </span>
                           </div>
-                          <p className="text-xs text-muted-foreground pl-4 line-clamp-2">{notification.message}</p>
+                          <p className="pl-4 pr-2 text-xs text-muted-foreground line-clamp-2">{notification.message}</p>
                         </DropdownMenuItem>
                       </SwipeableNotification>
                     ))}

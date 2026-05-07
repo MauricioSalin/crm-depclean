@@ -79,7 +79,7 @@ export default function LoginPage() {
       <div className="absolute inset-x-0 bottom-0 h-12 bg-primary/95" />
 
       <div className="relative z-10 flex h-full items-center justify-center px-6 py-6">
-        <div className="flex w-full max-w-5xl flex-col items-center justify-center">
+        <div className="flex w-full max-w-5xl -translate-y-10 flex-col items-center justify-center sm:-translate-y-14">
           <div className="mb-12 text-center">
             <Image
               src="/logo-depclean.png"

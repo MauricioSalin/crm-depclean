@@ -93,7 +93,7 @@ import {
   type ContractPayload,
 } from "@/lib/api/contracts"
 import { getApiErrorMessage } from "@/lib/api/errors"
-import { formatCNPJ } from "@/lib/masks"
+import { formatCNPJ, formatCPF } from "@/lib/masks"
 import { listServices } from "@/lib/api/services"
 import { listTemplates } from "@/lib/api/templates"
 import { listTeams } from "@/lib/api/teams"
@@ -619,6 +619,7 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
         email: organizationSettings?.email ?? "",
         legalName: organizationSettings?.legalName ?? "",
         phone: organizationSettings?.phone ?? "",
+        signerCpf: selectedTemplateSigner?.cpf ? formatCPF(selectedTemplateSigner.cpf) : "",
         signerName: selectedTemplateSigner?.name ?? "",
         signerRole: selectedTemplateSigner?.role ?? "",
       },
@@ -1700,10 +1701,10 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
             <Table className="min-w-[860px]">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
-                  <TableHead className="w-[300px]">Servi?o</TableHead>
-                  <TableHead className="w-[140px]">Dura??o</TableHead>
-                  <TableHead>Equipes / Funcion?rios</TableHead>
-                  <TableHead className="w-[132px] text-right">A??es</TableHead>
+                  <TableHead className="w-[300px]">Serviço</TableHead>
+                  <TableHead className="w-[140px]">Duração</TableHead>
+                  <TableHead>Equipes / Funcionários</TableHead>
+                  <TableHead className="w-[132px] text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1764,7 +1765,7 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
                             size="icon"
                             onClick={() => openServiceDetailsDialog(service.serviceTypeId)}
                             disabled={!service.serviceTypeId}
-                            title="Ver detalhes do servi?o"
+                            title="Ver detalhes do serviço"
                           >
                             <Eye className="w-4 h-4" />
                           </Button>
@@ -1773,7 +1774,7 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
                             variant="ghost"
                             size="icon"
                             onClick={() => openEditServiceDialog(service.id)}
-                            title="Editar equipes e funcion?rios"
+                            title="Editar equipes e funcionários"
                           >
                             <Users className="w-4 h-4" />
                           </Button>

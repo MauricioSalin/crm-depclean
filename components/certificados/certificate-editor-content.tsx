@@ -311,7 +311,7 @@ export function CertificateEditorContent({ scheduleId }: { scheduleId: string })
             ) : null}
           </div>
 
-          <div className="flex shrink-0 justify-end gap-2 border-t px-6 py-4">
+          <div className="flex shrink-0 justify-end gap-2 px-6 py-4">
             <Button variant="outline" asChild>
               <Link href="/certificados">Voltar</Link>
             </Button>

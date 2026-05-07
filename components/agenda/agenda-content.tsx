@@ -14,6 +14,7 @@ import {
   Clock,
   Edit,
   FileUp,
+  Loader2,
   MapPin,
   Search,
   X,
@@ -107,6 +108,13 @@ const formatFileSize = (size?: number) => {
   if (!size) return ""
   if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`
   return `${(size / (1024 * 1024)).toFixed(1)} MB`
+}
+
+const currentCompletionDateTime = () => {
+  const now = new Date()
+  const date = toCivilDateKey(now)
+  const time = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`
+  return { date, time }
 }
 
 const mapSchedule = (schedule: ScheduleRecord): AgendaScheduledServiceRow => ({
@@ -204,6 +212,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
     await queryClient.invalidateQueries({ queryKey: ["schedules", "agenda"] })
     await queryClient.invalidateQueries({ queryKey: ["agendamentos"] })
     await queryClient.invalidateQueries({ queryKey: ["notifications"] })
+    await queryClient.invalidateQueries({ queryKey: ["certificates"] })
     await queryClient.invalidateQueries({ queryKey: ["analytics"] })
   }
 
@@ -445,12 +454,13 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   }
 
   const openCompletionDialog = (schedule: AgendaScheduledServiceRow) => {
-    const defaultDate = schedule.date || toCivilDateKey(new Date())
+    const now = currentCompletionDateTime()
+    const defaultDate = schedule.date || now.date
     setCompletionTarget(schedule)
     setCompletionStartDate(schedule.completionStartDate || defaultDate)
     setCompletionStartTime(schedule.completionStartTime || schedule.time || "")
-    setCompletionEndDate(schedule.completionEndDate || schedule.completionStartDate || defaultDate)
-    setCompletionEndTime(schedule.completionEndTime || "")
+    setCompletionEndDate(schedule.completionEndDate || now.date || schedule.completionStartDate || defaultDate)
+    setCompletionEndTime(schedule.completionEndTime || now.time)
     setCompletionFile(null)
   }
 
@@ -526,6 +536,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
           }
         }}
         schedule={selectedSchedule}
+        isStartingAttendance={startMutation.isPending}
         onStartAttendance={async (schedule) => {
           await startMutation.mutateAsync(schedule)
         }}
@@ -544,7 +555,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
         <DialogContent className="sm:max-w-md">
           {cancelStep === "reason" ? (
             <>
-              <DialogHeader>
+              <DialogHeader className="min-w-0 pr-6">
                 <DialogTitle>Cancelar agendamento</DialogTitle>
                 <DialogDescription>
                   Informe o motivo do cancelamento para manter o histórico claro para a equipe.
@@ -576,7 +587,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
             </>
           ) : (
             <>
-              <DialogHeader>
+              <DialogHeader className="min-w-0 pr-6">
                 <DialogTitle>Confirmar cancelamento?</DialogTitle>
                 <DialogDescription>
                   Esta ação vai marcar o agendamento de {cancelTarget?.clientName} como cancelado.
@@ -620,15 +631,15 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
           }
         }}
       >
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
+        <DialogContent className="max-h-[calc(100dvh-1rem)] min-w-0 content-start overflow-x-hidden overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+1.5rem)] sm:max-w-lg">
+          <DialogHeader className="min-w-0 pr-6">
             <DialogTitle>Concluir agendamento</DialogTitle>
             <DialogDescription>
               Registre o horário executado e anexe a NA da visita para vincular ao cliente.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid min-w-0 gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="agenda-completion-start-date">Data de início *</Label>
               <Input
@@ -667,7 +678,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
             </div>
           </div>
 
-          <div className="space-y-3 rounded-2xl border border-dashed border-primary/40 bg-primary/5 p-4">
+          <div className="min-w-0 space-y-3 overflow-hidden rounded-2xl border border-dashed border-primary/40 bg-primary/5 p-4">
             <div>
               <p className="text-sm font-semibold">Anexo da NA</p>
               <p className="text-xs text-muted-foreground">PDF, DOCX, imagem ou foto tirada pela câmera.</p>
@@ -687,30 +698,31 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
               capture="environment"
               onChange={(event) => setCompletionFile(event.target.files?.[0] ?? null)}
             />
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Button type="button" variant="outline" className="flex-1" onClick={() => fileInputRef.current?.click()}>
-                <FileUp className="mr-2 h-4 w-4" />
-                Anexar arquivo
+            <div className="flex min-w-0 flex-col gap-2 sm:flex-row">
+              <Button type="button" variant="outline" className="min-w-0 flex-1" onClick={() => fileInputRef.current?.click()}>
+                <FileUp className="mr-2 h-4 w-4 shrink-0" />
+                <span className="truncate">Anexar arquivo</span>
               </Button>
-              <Button type="button" variant="outline" className="flex-1" onClick={() => cameraInputRef.current?.click()}>
+              <Button type="button" variant="outline" className="min-w-0 flex-1" onClick={() => cameraInputRef.current?.click()}>
                 <Camera className="mr-2 h-4 w-4" />
                 Usar câmera
               </Button>
             </div>
             {completionFile ? (
-              <div className="flex items-center justify-between rounded-xl bg-card px-3 py-2 text-sm">
-                <span className="truncate">{completionFile.name}</span>
+              <div className="flex min-w-0 max-w-full items-center justify-between overflow-hidden rounded-xl bg-card px-3 py-2 text-sm">
+                <span className="min-w-0 flex-1 truncate">{completionFile.name}</span>
                 <span className="ml-3 shrink-0 text-xs text-muted-foreground">{formatFileSize(completionFile.size)}</span>
               </div>
             ) : null}
           </div>
 
           <DialogFooter className="gap-2 sm:gap-2">
-            <Button type="button" variant="outline" onClick={() => setCompletionTarget(null)}>
+            <Button type="button" variant="outline" className="w-full min-w-0 sm:w-auto" onClick={() => setCompletionTarget(null)}>
               Voltar
             </Button>
             <Button
               type="button"
+              className="w-full min-w-0 sm:w-auto"
               disabled={!completionTarget || !completionStartDate || !completionStartTime || !completionEndDate || !completionEndTime || completeMutation.isPending}
               onClick={() => {
                 if (completionTarget) {
@@ -725,7 +737,14 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                 }
               }}
             >
-              Concluir visita
+              {completeMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 shrink-0 animate-spin" />
+                  <span className="truncate">Concluindo...</span>
+                </>
+              ) : (
+                "Concluir visita"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -738,7 +757,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
         }}
       >
         <DialogContent className="sm:max-w-md">
-          <DialogHeader>
+          <DialogHeader className="min-w-0 pr-6">
             <DialogTitle>Horário indisponível</DialogTitle>
             <DialogDescription>
               Já existe um agendamento para a equipe ou funcionário nesse intervalo.
