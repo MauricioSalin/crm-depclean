@@ -28,11 +28,13 @@ export type ClientRecord = {
   companyName: string
   cnpj: string
   responsibleName: string
+  responsibleCpf: string
   email: string
   phone: string
   clientTypeId: string
   assessor: {
     name: string
+    cpf: string
     email: string
     phone: string
   }
@@ -74,10 +76,12 @@ export type ClientPayload = {
   companyName: string
   cnpj: string
   responsibleName: string
+  responsibleCpf: string
   phone?: string
   email: string
   clientTypeId: string
   assessorName?: string
+  assessorCpf?: string
   assessorEmail?: string
   assessorPhone?: string
   copyNotificationsToOwner?: boolean

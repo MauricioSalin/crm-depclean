@@ -21,6 +21,24 @@ function formatCurrency(value: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value)
 }
 
+const EMPTY_MONTHLY_REVENUE_DATA = [
+  { month: "Mês 1", value: 0 },
+  { month: "Mês 2", value: 0 },
+  { month: "Mês 3", value: 0 },
+  { month: "Mês 4", value: 0 },
+  { month: "Mês 5", value: 0 },
+  { month: "Mês 6", value: 0 },
+]
+
+const EMPTY_SERVICES_BY_PERIOD_DATA = [
+  { period: "Semana 1", completed: 0, scheduled: 0 },
+  { period: "Semana 2", completed: 0, scheduled: 0 },
+  { period: "Semana 3", completed: 0, scheduled: 0 },
+  { period: "Semana 4", completed: 0, scheduled: 0 },
+]
+
+const EMPTY_CHART_COLOR = "#DDE7D5"
+
 export function ProjectAnalytics({ days = 30 }: { days?: number }) {
   const dashboardQuery = useQuery({
     queryKey: ["analytics", "dashboard", days],
@@ -28,6 +46,10 @@ export function ProjectAnalytics({ days = 30 }: { days?: number }) {
   })
   const monthlyRevenueData = dashboardQuery.data?.data.monthlyRevenueData ?? []
   const servicesByPeriodData = dashboardQuery.data?.data.servicesByPeriodData ?? []
+  const hasMonthlyRevenueData = monthlyRevenueData.some((item) => item.value > 0)
+  const monthlyRevenueChartData = monthlyRevenueData.length > 0 ? monthlyRevenueData : EMPTY_MONTHLY_REVENUE_DATA
+  const hasServicesByPeriodData = servicesByPeriodData.some((item) => item.completed > 0 || item.scheduled > 0)
+  const servicesByPeriodChartData = servicesByPeriodData.length > 0 ? servicesByPeriodData : EMPTY_SERVICES_BY_PERIOD_DATA
 
   return (
     <Card className="h-full p-4 md:p-5">
@@ -43,7 +65,7 @@ export function ProjectAnalytics({ days = 30 }: { days?: number }) {
         <TabsContent value="faturamento" className="mt-0">
           <div className="h-[280px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={monthlyRevenueData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
+              <BarChart data={monthlyRevenueChartData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                 <XAxis 
                   dataKey="month" 
@@ -56,6 +78,7 @@ export function ProjectAnalytics({ days = 30 }: { days?: number }) {
                   className="text-muted-foreground"
                   tickFormatter={(value) => `${(value / 1000).toFixed(0)}k`}
                   axisLine={{ stroke: 'var(--border)' }}
+                  domain={[0, (dataMax: number) => Math.max(Number(dataMax) || 0, 1)]}
                 />
                 <Tooltip 
                   contentStyle={{ 
@@ -68,7 +91,8 @@ export function ProjectAnalytics({ days = 30 }: { days?: number }) {
                 />
                 <Bar 
                   dataKey="value" 
-                  fill="var(--primary)"
+                  fill={hasMonthlyRevenueData ? "var(--primary)" : EMPTY_CHART_COLOR}
+                  minPointSize={hasMonthlyRevenueData ? 0 : 3}
                   radius={[4, 4, 0, 0]}
                 />
               </BarChart>
@@ -79,7 +103,7 @@ export function ProjectAnalytics({ days = 30 }: { days?: number }) {
         <TabsContent value="servicos" className="mt-0">
           <div className="h-[280px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={servicesByPeriodData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
+              <LineChart data={servicesByPeriodChartData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                 <XAxis 
                   dataKey="period" 
@@ -91,6 +115,8 @@ export function ProjectAnalytics({ days = 30 }: { days?: number }) {
                   tick={{ fontSize: 12 }} 
                   className="text-muted-foreground"
                   axisLine={{ stroke: 'var(--border)' }}
+                  allowDecimals={false}
+                  domain={[0, (dataMax: number) => Math.max(Number(dataMax) || 0, 1)]}
                 />
                 <Tooltip 
                   contentStyle={{ 
@@ -105,17 +131,17 @@ export function ProjectAnalytics({ days = 30 }: { days?: number }) {
                   type="monotone" 
                   dataKey="completed" 
                   name="Realizados"
-                  stroke="#228B22" 
+                  stroke={hasServicesByPeriodData ? "#228B22" : EMPTY_CHART_COLOR}
                   strokeWidth={2}
-                  dot={{ fill: '#228B22' }}
+                  dot={{ fill: hasServicesByPeriodData ? '#228B22' : EMPTY_CHART_COLOR }}
                 />
                 <Line 
                   type="monotone" 
                   dataKey="scheduled" 
                   name="Agendados"
-                  stroke="#32CD32" 
+                  stroke={hasServicesByPeriodData ? "#32CD32" : "#EEF3E7"}
                   strokeWidth={2}
-                  dot={{ fill: '#32CD32' }}
+                  dot={{ fill: hasServicesByPeriodData ? '#32CD32' : "#EEF3E7" }}
                 />
               </LineChart>
             </ResponsiveContainer>

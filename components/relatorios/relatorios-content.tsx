@@ -4,18 +4,25 @@ import { useRef, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
 import { DateRangePicker } from "@/components/ui/date-range-picker"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { FinanceiroContent } from "@/components/financeiro/financeiro-content"
 import type { DateRange } from "react-day-picker"
 import {
   BarChart3,
   Users,
   DollarSign,
   Wrench,
+  List,
+  LayoutGrid,
+  CheckCircle,
+  Calendar,
+  AlertTriangle,
   TrendingUp,
 } from "lucide-react"
 import { getReportsAnalytics, type ReportsAnalyticsRecord } from "@/lib/api/analytics"
+import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 import { cn } from "@/lib/utils"
 import {
   BarChart,
@@ -25,8 +32,6 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  LineChart,
-  Line,
   PieChart,
   Pie,
   Cell,
@@ -34,12 +39,16 @@ import {
 } from "recharts"
 
 const REPORT_TYPES = [
-  { id: "services", label: "Serviços Realizados", icon: Wrench, description: "Relatório de serviços executados por período" },
   { id: "financial", label: "Financeiro", icon: DollarSign, description: "Faturamento, recebimentos e inadimplência" },
+  { id: "services", label: "Serviços Realizados", icon: Wrench, description: "Relatório de serviços executados por período" },
   { id: "teams", label: "Equipes", icon: Users, description: "Produtividade e desempenho das equipes" },
-]
+] as const
+
+const REPORT_IDS = REPORT_TYPES.map((type) => type.id)
+type ReportId = (typeof REPORT_IDS)[number]
 
 const COLORS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)"]
+const EMPTY_CHART_COLOR = "#DDE7D5"
 
 type TeamStatusSlice = {
   name: string
@@ -47,6 +56,8 @@ type TeamStatusSlice = {
   color: string
   isEmpty?: boolean
 }
+
+type ServicesByTeamChartPoint = ReportsAnalyticsRecord["servicesByTeamData"][number] & { isEmpty?: boolean }
 
 const emptyReports: ReportsAnalyticsRecord = {
   dashboardStats: {
@@ -81,6 +92,27 @@ const emptyReports: ReportsAnalyticsRecord = {
   contracts: [],
   teams: [],
 }
+
+const EMPTY_SERVICES_BY_PERIOD_DATA = [
+  { period: "Semana 1", completed: 0, scheduled: 0 },
+  { period: "Semana 2", completed: 0, scheduled: 0 },
+  { period: "Semana 3", completed: 0, scheduled: 0 },
+  { period: "Semana 4", completed: 0, scheduled: 0 },
+]
+
+const EMPTY_SERVICES_BY_TEAM_DATA: ServicesByTeamChartPoint[] = [
+  { team: "Sem dados", services: 1, isEmpty: true },
+]
+
+const EMPTY_TEAM_PRODUCTIVITY: ReportsAnalyticsRecord["dashboardStats"]["teamProductivity"] = [
+  {
+    teamId: "sem-equipe",
+    teamName: "Sem equipe",
+    completedServices: 0,
+    scheduledServices: 0,
+    cancelledServices: 0,
+  },
+]
 
 function formatDateParam(value?: Date) {
   return value ? value.toISOString().split("T")[0] : undefined
@@ -164,7 +196,12 @@ function waitForNextPaint() {
 }
 
 export function RelatoriosContent() {
-  const [selectedReport, setSelectedReport] = useState("services")
+  const [selectedReportQuery, setSelectedReportQuery] = useUrlQueryState("tab", "financial")
+  const selectedReport: ReportId = REPORT_IDS.includes(selectedReportQuery as ReportId)
+    ? selectedReportQuery as ReportId
+    : "financial"
+  const setSelectedReport = (value: string) => setSelectedReportQuery(value)
+  const [financialViewMode, setFinancialViewMode] = useState<"table" | "cards">("table")
   const [dateRange, setDateRange] = useState<DateRange | undefined>({ from: undefined, to: undefined })
   const [isExporting, setIsExporting] = useState(false)
   const reportContentRef = useRef<HTMLDivElement>(null)
@@ -179,12 +216,24 @@ export function RelatoriosContent() {
   const reports = reportsQuery.data?.data ?? emptyReports
   const {
     dashboardStats,
-    monthlyRevenueData,
     servicesByPeriodData,
     servicesByTeamData,
-    contracts,
-    financialSummary,
   } = reports
+  const hasServicesByPeriodData = servicesByPeriodData.some((item) => item.completed > 0 || item.scheduled > 0)
+  const servicesByPeriodChartData = servicesByPeriodData.length > 0 ? servicesByPeriodData : EMPTY_SERVICES_BY_PERIOD_DATA
+  const hasServicesByTeamData = servicesByTeamData.some((item) => item.services > 0)
+  const servicesByTeamChartData: ServicesByTeamChartPoint[] = hasServicesByTeamData ? servicesByTeamData : EMPTY_SERVICES_BY_TEAM_DATA
+  const servicesByTeamTotal = hasServicesByTeamData ? servicesByTeamData.reduce((acc, curr) => acc + curr.services, 0) : 0
+  const teamsForChart = dashboardStats.teamProductivity.length > 0 ? dashboardStats.teamProductivity : EMPTY_TEAM_PRODUCTIVITY
+
+  const financialViewToggle = (
+    <Tabs value={financialViewMode} onValueChange={(value) => setFinancialViewMode(value as "table" | "cards")}>
+      <TabsList>
+        <TabsTrigger value="table"><List className="h-4 w-4" /></TabsTrigger>
+        <TabsTrigger value="cards"><LayoutGrid className="h-4 w-4" /></TabsTrigger>
+      </TabsList>
+    </Tabs>
+  )
 
   const buildTeamStatusPieData = (team: (typeof dashboardStats.teamProductivity)[number]): TeamStatusSlice[] => {
     const slices: TeamStatusSlice[] = [
@@ -194,10 +243,6 @@ export function RelatoriosContent() {
     ]
     const total = slices.reduce((sum, item) => sum + item.services, 0)
     return total > 0 ? slices : [{ name: "Sem serviços", services: 1, color: "#E5E7EB", isEmpty: true }]
-  }
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value)
   }
 
   const buildReportRows = (data: ReportsAnalyticsRecord): CsvCell[][] => {
@@ -331,7 +376,55 @@ export function RelatoriosContent() {
       {/* Report Content */}
       <div ref={reportContentRef} className="space-y-4">
       {selectedReport === "services" && (
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Card className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <CheckCircle className="w-5 h-5 text-primary/80" />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Serviços Concluídos</p>
+                  <p className="text-xl font-semibold text-primary/80">{dashboardStats.completedServices}</p>
+                </div>
+              </div>
+            </Card>
+            <Card className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
+                  <Calendar className="w-5 h-5 text-blue-500" />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Serviços Agendados</p>
+                  <p className="text-xl font-semibold text-blue-600/80">{dashboardStats.scheduledServices}</p>
+                </div>
+              </div>
+            </Card>
+            <Card className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center">
+                  <AlertTriangle className="w-5 h-5 text-amber-500" />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Emergências</p>
+                  <p className="text-xl font-semibold text-amber-600/80">{dashboardStats.emergencyServices}</p>
+                </div>
+              </div>
+            </Card>
+            <Card className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center">
+                  <TrendingUp className="w-5 h-5 text-green-500" />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Taxa de Conclusão</p>
+                  <p className="text-xl font-semibold text-green-600/80">{dashboardStats.completionRate}%</p>
+                </div>
+              </div>
+            </Card>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-2">
           <Card data-report-chart="servicos-periodo">
             <CardHeader>
               <CardTitle>Serviços por Período</CardTitle>
@@ -339,10 +432,14 @@ export function RelatoriosContent() {
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={servicesByPeriodData}>
+                <BarChart data={servicesByPeriodChartData}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                   <XAxis dataKey="period" className="text-xs" />
-                  <YAxis className="text-xs" />
+                  <YAxis
+                    className="text-xs"
+                    allowDecimals={false}
+                    domain={[0, (dataMax: number) => Math.max(Number(dataMax) || 0, 1)]}
+                  />
                   <Tooltip 
                     contentStyle={{ 
                       backgroundColor: "var(--card)", 
@@ -351,8 +448,20 @@ export function RelatoriosContent() {
                     }} 
                   />
                   <Legend />
-                  <Bar dataKey="completed" fill="var(--primary)" name="Concluídos" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="scheduled" fill="#C9CCD1" name="Agendados" radius={[4, 4, 0, 0]} />
+                  <Bar
+                    dataKey="completed"
+                    fill={hasServicesByPeriodData ? "var(--primary)" : EMPTY_CHART_COLOR}
+                    minPointSize={hasServicesByPeriodData ? 0 : 3}
+                    name="Concluídos"
+                    radius={[4, 4, 0, 0]}
+                  />
+                  <Bar
+                    dataKey="scheduled"
+                    fill={hasServicesByPeriodData ? "#C9CCD1" : "#EEF3E7"}
+                    minPointSize={hasServicesByPeriodData ? 0 : 3}
+                    name="Agendados"
+                    radius={[4, 4, 0, 0]}
+                  />
                 </BarChart>
               </ResponsiveContainer>
             </CardContent>
@@ -367,7 +476,7 @@ export function RelatoriosContent() {
               <ResponsiveContainer width="100%" height={220}>
                 <PieChart>
                   <Pie
-                    data={servicesByTeamData}
+                    data={servicesByTeamChartData}
                     cx="50%"
                     cy="50%"
                     innerRadius={55}
@@ -375,8 +484,8 @@ export function RelatoriosContent() {
                     dataKey="services"
                     nameKey="team"
                   >
-                    {servicesByTeamData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    {servicesByTeamChartData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.isEmpty ? EMPTY_CHART_COLOR : COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
                   <Tooltip
@@ -385,21 +494,20 @@ export function RelatoriosContent() {
                       border: "1px solid var(--border)",
                       borderRadius: "8px"
                     }}
-                    formatter={(value: number) => [`${value} serviços`, ""]}
+                    formatter={(value: number, _name, item) => [`${item.payload.isEmpty ? 0 : value} serviços`, ""]}
                   />
                 </PieChart>
               </ResponsiveContainer>
               <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 w-full">
-                {servicesByTeamData.map((entry, index) => {
-                  const total = servicesByTeamData.reduce((acc, curr) => acc + curr.services, 0)
+                {servicesByTeamChartData.map((entry, index) => {
                   return (
                     <div key={entry.team} className="flex items-center gap-1.5 text-xs">
                       <div
                         className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                        style={{ backgroundColor: COLORS[index % COLORS.length] }}
+                        style={{ backgroundColor: entry.isEmpty ? EMPTY_CHART_COLOR : COLORS[index % COLORS.length] }}
                       />
                       <span className="text-muted-foreground whitespace-nowrap">
-                        {entry.team}: {total > 0 ? Math.round((entry.services / total) * 100) : 0}%
+                        {entry.team}: {entry.isEmpty || servicesByTeamTotal === 0 ? 0 : Math.round((entry.services / servicesByTeamTotal) * 100)}%
                       </span>
                     </div>
                   )
@@ -407,129 +515,22 @@ export function RelatoriosContent() {
               </div>
             </CardContent>
           </Card>
-
-          <Card className="lg:col-span-2">
-            <CardHeader>
-              <CardTitle>Resumo de Serviços</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <div className="text-center p-4 bg-primary/10 rounded-lg border border-primary/20">
-                  <div className="text-3xl font-bold text-primary">{dashboardStats.completedServices}</div>
-                  <div className="text-sm text-muted-foreground">Serviços Concluídos</div>
-                </div>
-                <div className="text-center p-4 bg-blue-50 rounded-lg border border-blue-100">
-                  <div className="text-3xl font-bold text-blue-600">{dashboardStats.scheduledServices}</div>
-                  <div className="text-sm text-muted-foreground">Serviços Agendados</div>
-                </div>
-                <div className="text-center p-4 bg-yellow-50 rounded-lg border border-yellow-100">
-                  <div className="text-3xl font-bold text-yellow-600">{dashboardStats.emergencyServices}</div>
-                  <div className="text-sm text-muted-foreground">Emergências</div>
-                </div>
-                <div className="text-center p-4 bg-green-50 rounded-lg border border-green-100">
-                  <div className="text-3xl font-bold text-green-600">{dashboardStats.completionRate}%</div>
-                  <div className="text-sm text-muted-foreground">Taxa de Conclusão</div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          </div>
         </div>
       )}
 
       {selectedReport === "financial" && (
-        <div className="grid gap-4 lg:grid-cols-2">
-          <Card className="lg:col-span-2" data-report-chart="faturamento-mensal">
-            <CardHeader>
-              <CardTitle>Faturamento Mensal</CardTitle>
-              <CardDescription>Evolução do faturamento nos últimos meses</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={monthlyRevenueData}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                  <XAxis dataKey="month" className="text-xs" />
-                  <YAxis tickFormatter={(value) => `R$${(value / 1000).toFixed(0)}k`} className="text-xs" />
-                  <Tooltip 
-                    formatter={(value: number) => formatCurrency(value)} 
-                    contentStyle={{ 
-                      backgroundColor: "var(--card)", 
-                      border: "1px solid var(--border)",
-                      borderRadius: "8px"
-                    }}
-                  />
-                  <Line 
-                    type="monotone" 
-                    dataKey="value" 
-                    stroke="var(--primary)" 
-                    strokeWidth={3}
-                    dot={{ fill: "var(--primary)", strokeWidth: 2, r: 4 }}
-                    activeDot={{ r: 6 }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Resumo Financeiro</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg border border-green-100">
-                  <span className="text-green-700 font-medium">Faturamento do Mês</span>
-                  <span className="font-bold text-green-700">{formatCurrency(dashboardStats.monthlyRevenue)}</span>
-                </div>
-                <div className="flex justify-between items-center p-3 bg-blue-50 rounded-lg border border-blue-100">
-                  <span className="text-blue-700 font-medium">Recebido</span>
-                  <span className="font-bold text-blue-700">{formatCurrency(financialSummary.totalPaid)}</span>
-                </div>
-                <div className="flex justify-between items-center p-3 bg-yellow-50 rounded-lg border border-yellow-100">
-                  <span className="text-yellow-700 font-medium">A Receber</span>
-                  <span className="font-bold text-yellow-700">{formatCurrency(financialSummary.totalPending)}</span>
-                </div>
-                <div className="flex justify-between items-center p-3 bg-red-50 rounded-lg border border-red-100">
-                  <span className="text-red-700 font-medium">Inadimplencia</span>
-                  <span className="font-bold text-red-700">{formatCurrency(financialSummary.totalOverdue)}</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Indicadores</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                  <span className="text-muted-foreground">Taxa de Adimplência</span>
-                  <Badge className="bg-green-100 text-green-700 hover:bg-green-100">{financialSummary.adherenceRate}%</Badge>
-                </div>
-                <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                  <span className="text-muted-foreground">Ticket Medio</span>
-                  <span className="font-medium">{formatCurrency(dashboardStats.activeClients > 0 ? dashboardStats.monthlyRevenue / dashboardStats.activeClients : 0)}</span>
-                </div>
-                <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                  <span className="text-muted-foreground">Crescimento</span>
-                  <Badge className="bg-primary/20 text-primary hover:bg-primary/20">
-                    <TrendingUp className="h-3 w-3 mr-1" />
-                    {dashboardStats.monthlyRevenueChange}%
-                  </Badge>
-                </div>
-                <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                  <span className="text-muted-foreground">Contratos Ativos</span>
-                  <span className="font-medium">{contracts.filter(c => ["signed", "active"].includes(c.status)).length}</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+        <FinanceiroContent
+          viewMode={financialViewMode}
+          viewToggle={financialViewToggle}
+          dateFrom={formatDateParam(dateRange?.from)}
+          dateTo={formatDateParam(dateRange?.to)}
+        />
       )}
 
       {selectedReport === "teams" && (
         <div className="grid gap-4 lg:grid-cols-2">
-          {dashboardStats.teamProductivity.map((team) => {
+          {teamsForChart.map((team) => {
             const statusData = buildTeamStatusPieData(team)
             const total = statusData.reduce((sum, item) => sum + (item.isEmpty ? 0 : item.services), 0)
 

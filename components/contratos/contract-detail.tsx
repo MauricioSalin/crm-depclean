@@ -5,6 +5,7 @@ import Link from "next/link"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
+  BellRing,
   Building2,
   Calendar,
   CheckCircle,
@@ -16,14 +17,12 @@ import {
   MapPin,
   MoreHorizontal,
   RefreshCw,
-  Trash2,
-  Users,
 } from "lucide-react"
 
+import { AssignmentBadges } from "@/components/ui/assignment-badges"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,17 +31,19 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Progress } from "@/components/ui/progress"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TableEmptyState } from "@/components/ui/empty-state"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "@/components/ui/use-toast"
 import { ServiceClausesDialog } from "@/components/servicos/service-clauses-dialog"
 import { getClientById } from "@/lib/api/clients"
-import { deleteContract, getContractById, sendContractToClicksign, syncContractClicksign, updateInstallment } from "@/lib/api/contracts"
+import { getContractById, remindContractSigner, sendContractToClicksign, syncContractClicksign, updateInstallment } from "@/lib/api/contracts"
 import { listEmployees } from "@/lib/api/employees"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { listSchedules } from "@/lib/api/schedules"
 import { listServices, type ServiceRecurrenceRuleRecord } from "@/lib/api/services"
 import { listTeams } from "@/lib/api/teams"
-import { cn } from "@/lib/utils"
+import { formatCivilDate } from "@/lib/date-utils"
 
 interface ContractDetailProps {
   contractId: string
@@ -82,7 +83,7 @@ const formatCurrency = (value: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value)
 
 const formatDate = (value?: string) =>
-  value ? new Intl.DateTimeFormat("pt-BR").format(new Date(value)) : "-"
+  formatCivilDate(value)
 
 const formatDuration = (duration: number, durationType: "hours" | "shift" | "days") => {
   if (durationType === "hours") return `${duration} hora${duration === 1 ? "" : "s"}`
@@ -220,13 +221,17 @@ const getClicksignSignerStatusBadge = (status?: string) => {
   }
 }
 
+const isSignerReminderAvailable = (status?: string) => {
+  const normalizedStatus = status?.toLowerCase() || "pending"
+  return !["signed", "closed", "finished", "completed", "done", "cancelled", "canceled", "refused", "expired", "deadline_expired"].includes(normalizedStatus)
+}
+
 export function ContractDetail({ contractId }: ContractDetailProps) {
   const queryClient = useQueryClient()
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null)
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const activeTab = getContractDetailTabFromUrl(searchParams.get("tab"))
 
   const handleTabChange = (value: string) => {
@@ -399,29 +404,36 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
     onError: clicksignErrorToast,
   })
 
-  const deleteMutation = useMutation({
-    mutationFn: () => deleteContract(resolvedContractId),
+  const remindSignerMutation = useMutation({
+    mutationFn: (signerId: string) => remindContractSigner(resolvedContractId, signerId),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["contract", contractId] })
       await queryClient.invalidateQueries({ queryKey: ["contract", resolvedContractId] })
-      await queryClient.invalidateQueries({ queryKey: ["contracts"] })
-      await queryClient.invalidateQueries({ queryKey: ["schedules", "contract-detail", resolvedContractId] })
       toast({
-        title: "Contrato removido",
-        description: "O contrato foi removido com sucesso.",
-      })
-      router.push("/contratos")
-    },
-    onError: (error) => {
-      toast({
-        title: getApiErrorMessage(error, "Não foi possível remover o contrato."),
-        variant: "destructive",
+        title: "Lembrete disparado",
+        description: "A ClickSign foi acionada e o WhatsApp da Depclean também foi enviado.",
       })
     },
+    onError: clicksignErrorToast,
   })
 
   if (contractQuery.isLoading) {
-    return <Card className="p-8 text-center text-sm text-muted-foreground">Carregando contrato...</Card>
+    return (
+      <Card className="p-6">
+        <div className="flex flex-col gap-5">
+          <div className="flex items-start gap-4">
+            <Skeleton className="h-12 w-12 rounded-xl" />
+            <div className="flex-1 space-y-3">
+              <Skeleton className="h-5 w-56" />
+              <Skeleton className="h-4 w-72 max-w-full" />
+              <Skeleton className="h-4 w-44" />
+            </div>
+            <Skeleton className="h-9 w-36 rounded-full" />
+          </div>
+          <Skeleton className="h-2 w-full rounded-full" />
+        </div>
+      </Card>
+    )
   }
 
   if (contractQuery.isError) {
@@ -512,16 +524,6 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                   Enviar ClickSign
                 </Button>
               )}
-              <Button
-                variant="outline"
-                size="sm"
-                className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                onClick={() => setDeleteDialogOpen(true)}
-                disabled={deleteMutation.isPending}
-              >
-                <Trash2 className="mr-2 h-4 w-4" />
-                Remover
-              </Button>
             </div>
 
             <div>
@@ -563,6 +565,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                   <TableHead>Signatário</TableHead>
                   <TableHead>E-mail</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -571,6 +574,21 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                     <TableCell className="font-medium">{signer.name}</TableCell>
                     <TableCell>{signer.email}</TableCell>
                     <TableCell>{getClicksignSignerStatusBadge(signer.status)}</TableCell>
+                    <TableCell className="text-right">
+                      {isSignerReminderAvailable(signer.status) ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="gap-2"
+                          onClick={() => remindSignerMutation.mutate(signer.signerId)}
+                          disabled={remindSignerMutation.isPending}
+                        >
+                          <BellRing className="h-4 w-4" />
+                          Lembrete
+                        </Button>
+                      ) : null}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -742,32 +760,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                         {serviceType?.description || "Sem descrição cadastrada."}
                       </TableCell>
                       <TableCell>
-                        <div className="flex flex-wrap gap-2">
-                          {serviceTeams.length > 0 || serviceEmployees.length > 0 ? (
-                            <>
-                              {serviceTeams.map((team) => (
-                                <Badge key={team.id} variant="secondary" className="gap-2 px-3 py-1">
-                                  <span
-                                    className="h-2.5 w-2.5 rounded-full"
-                                    style={{ backgroundColor: team.color }}
-                                  />
-                                  {team.name}
-                                </Badge>
-                              ))}
-                              {serviceEmployees.map((employee) => (
-                                <Badge key={employee.id} variant="outline" className="gap-2 px-3 py-1">
-                                  <Users className="h-3.5 w-3.5" />
-                                  {employee.name}
-                                </Badge>
-                              ))}
-                            </>
-                          ) : (
-                            <div className="flex items-center gap-2 text-muted-foreground">
-                              <Users className="h-4 w-4" />
-                              <span>Não definida</span>
-                            </div>
-                          )}
-                        </div>
+                        <AssignmentBadges teams={serviceTeams} employees={serviceEmployees} className="gap-2" />
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2 text-foreground">
@@ -874,11 +867,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
               </TableHeader>
               <TableBody>
                 {units.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
-                      Nenhuma filial vinculada a este contrato.
-                    </TableCell>
-                  </TableRow>
+                  <TableEmptyState colSpan={4} icon={MapPin} title="Nenhuma filial vinculada a este contrato." />
                 ) : (
                   units.map((unit) => (
                     <TableRow key={unit.id}>
@@ -914,7 +903,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                 <TableRow>
                   <TableHead>Serviço</TableHead>
                   <TableHead>Filial</TableHead>
-                  <TableHead>Equipe</TableHead>
+                  <TableHead>Equipe / Funcionários</TableHead>
                   <TableHead>Data</TableHead>
                   <TableHead>Horário</TableHead>
                   <TableHead>Status</TableHead>
@@ -922,35 +911,29 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
               </TableHeader>
               <TableBody>
                 {contractSchedules.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
-                      Nenhum agendamento vinculado a este contrato.
-                    </TableCell>
-                  </TableRow>
+                  <TableEmptyState colSpan={6} icon={Calendar} title="Nenhum agendamento vinculado a este contrato." />
                 ) : (
-                  contractSchedules.map((schedule) => (
-                    <TableRow key={schedule.id}>
-                      <TableCell className="font-medium">{schedule.serviceTypeName}</TableCell>
-                      <TableCell>{schedule.unitName}</TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-2">
-                          {schedule.teams.length > 0 ? (
-                            schedule.teams.map((team) => (
-                              <Badge key={team.id} variant="secondary" className="gap-2 px-3 py-1">
-                                <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: team.color }} />
-                                {team.name}
-                              </Badge>
-                            ))
-                          ) : (
-                            <span className="text-sm text-muted-foreground">Não definida</span>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>{formatDate(schedule.date)}</TableCell>
-                      <TableCell>{schedule.time}</TableCell>
-                      <TableCell>{getScheduleStatusBadge(schedule.status)}</TableCell>
-                    </TableRow>
-                  ))
+                  contractSchedules.map((schedule) => {
+                    const scheduleTeams =
+                      schedule.teams.length > 0
+                        ? schedule.teams
+                        : schedule.teamId && teamMap.get(schedule.teamId)
+                          ? [teamMap.get(schedule.teamId)!]
+                          : []
+
+                    return (
+                      <TableRow key={schedule.id}>
+                        <TableCell className="font-medium">{schedule.serviceTypeName}</TableCell>
+                        <TableCell>{schedule.unitName}</TableCell>
+                        <TableCell>
+                          <AssignmentBadges teams={scheduleTeams} employees={schedule.additionalEmployees} />
+                        </TableCell>
+                        <TableCell>{formatDate(schedule.date)}</TableCell>
+                        <TableCell>{schedule.time}</TableCell>
+                        <TableCell>{getScheduleStatusBadge(schedule.status)}</TableCell>
+                      </TableRow>
+                    )
+                  })
                 )}
               </TableBody>
             </Table>
@@ -979,15 +962,6 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
         onOpenChange={(open) => !open && setSelectedServiceId(null)}
       />
 
-      <ConfirmActionDialog
-        open={deleteDialogOpen}
-        title="Remover contrato"
-        description={`Tem certeza que deseja remover o contrato ${contract.contractNumber}? Esta ação não pode ser desfeita.`}
-        confirmLabel="Remover"
-        busy={deleteMutation.isPending}
-        onOpenChange={setDeleteDialogOpen}
-        onConfirm={() => deleteMutation.mutate()}
-      />
     </div>
   )
 }

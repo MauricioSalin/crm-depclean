@@ -1,8 +1,8 @@
+import { Suspense } from "react"
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { Header } from "@/components/dashboard/header"
 import { RelatoriosContent } from "@/components/relatorios/relatorios-content"
-import { Button } from "@/components/ui/button"
-import { Download, FileText } from "lucide-react"
+import { ContentLoadingSkeleton } from "@/components/ui/content-loading-skeleton"
 
 export default function RelatoriosPage() {
   return (
@@ -19,7 +19,9 @@ export default function RelatoriosPage() {
         />
 
         <div className="mt-4 md:mt-5">
-          <RelatoriosContent />
+          <Suspense fallback={<ContentLoadingSkeleton />}>
+            <RelatoriosContent />
+          </Suspense>
         </div>
       </main>
     </div>

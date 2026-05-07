@@ -4,6 +4,8 @@ import React, { useEffect, useMemo, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Input } from "@/components/ui/input"
 import { CurrencyInput } from "@/components/ui/currency-input"
 import { Label } from "@/components/ui/label"
@@ -75,12 +77,14 @@ import {
   RefreshCw
 } from "lucide-react"
 import { cn, getColorFromClass } from "@/lib/utils"
+import { formatCivilDate, formatCivilLongDate, toCivilDateKey } from "@/lib/date-utils"
 import type { RecurrenceRule, RecurrenceRuleType, RecurrenceType } from "@/lib/types"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { listClients } from "@/lib/api/clients"
 import {
   createContract,
+  deleteContract,
   getContractById,
   previewContract,
   sendContractToClicksign,
@@ -89,6 +93,7 @@ import {
   type ContractPayload,
 } from "@/lib/api/contracts"
 import { getApiErrorMessage } from "@/lib/api/errors"
+import { formatCNPJ } from "@/lib/masks"
 import { listServices } from "@/lib/api/services"
 import { listTemplates } from "@/lib/api/templates"
 import { listTeams } from "@/lib/api/teams"
@@ -99,24 +104,15 @@ const formatCurrency = (value: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value)
 
 const formatDate = (value: Date | string) =>
-  new Intl.DateTimeFormat("pt-BR").format(typeof value === "string" ? new Date(value) : value)
-import { formatCNPJ } from "@/lib/masks"
+  formatCivilDate(value)
 
 const formatMaybeDate = (value?: Date | string) => {
   if (!value) return ""
-  const date = typeof value === "string" ? new Date(value) : value
-  if (Number.isNaN(date.getTime())) return ""
-  return new Intl.DateTimeFormat("pt-BR").format(date)
+  return formatCivilDate(value, "")
 }
 
 const formatLongDate = (value: Date | string = new Date()) => {
-  const date = typeof value === "string" ? new Date(value) : value
-  if (Number.isNaN(date.getTime())) return ""
-  return new Intl.DateTimeFormat("pt-BR", {
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-  }).format(date)
+  return formatCivilLongDate(value).replace(/ de (.)/u, (_match, letter: string) => ` de ${letter.toLocaleUpperCase("pt-BR")}`)
 }
 
 const formatAddress = (address?: {
@@ -144,6 +140,25 @@ const escapeHtml = (value: string) =>
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+
+function buildServiceSectionsHtml(
+  contractServices: Array<{ serviceTypeId: string; clauses?: string[] }>,
+  serviceTypes: Array<{ id: string; name: string; clauses?: string[] }>,
+) {
+  return contractServices
+    .filter((service) => service.serviceTypeId)
+    .map((service, serviceIndex) => {
+      const serviceType = serviceTypes.find((item) => item.id === service.serviceTypeId)
+      const sourceClauses = service.clauses?.length ? service.clauses : (serviceType?.clauses ?? [])
+      const clauses = sourceClauses.length
+        ? sourceClauses.map((clause, clauseIndex) => `<p><strong>${serviceIndex + 1}.${clauseIndex + 1}.</strong> ${escapeHtml(clause)}</p>`).join("")
+        : `<p><strong>${serviceIndex + 1}.1.</strong> Cláusulas específicas não informadas para este serviço.</p>`
+
+      return `<p><strong>${serviceIndex + 1}. ${escapeHtml(serviceType?.name ?? "Serviço")}</strong></p>${clauses}`
+    })
+    .join("")
+}
 
 interface ContractFormProps {
   contractId?: string
@@ -155,6 +170,12 @@ interface ContractService {
   serviceTypeId: string
   teamIds: string[]
   employeeIds: string[]
+}
+
+const isContractSigned = (contract?: { status?: string; clicksign?: { status?: string } } | null) => {
+  if (!contract) return false
+  const clicksignStatus = contract.clicksign?.status?.toLowerCase() ?? ""
+  return ["signed", "active"].includes(contract.status ?? "") || ["closed", "finished", "completed", "done"].includes(clicksignStatus)
 }
 
 export function ContractForm({ contractId, isEditing = false }: ContractFormProps) {
@@ -235,6 +256,7 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
   const [importedDocxFile, setImportedDocxFile] = useState<File | null>(null)
   const [importNoticeOpen, setImportNoticeOpen] = useState(false)
   const [importNoticeText, setImportNoticeText] = useState<string>("")
+  const [removeDialogOpen, setRemoveDialogOpen] = useState(false)
 
   const initialUnitIds = useMemo(() => {
     const direct = (contract as unknown as { unitIds?: string[] })?.unitIds ?? []
@@ -245,28 +267,37 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
 
   const [selectedClientId, setSelectedClientId] = useState(contract?.clientId || "")
   const [selectedTemplateId, setSelectedTemplateId] = useState("")
+  const [clientPopoverOpen, setClientPopoverOpen] = useState(false)
+  const [templatePopoverOpen, setTemplatePopoverOpen] = useState(false)
   const [createAutomatedSchedules, setCreateAutomatedSchedules] = useState(false)
   const [createAutomatedInformatives, setCreateAutomatedInformatives] = useState(false)
   const [selectedInformativeTemplateId, setSelectedInformativeTemplateId] = useState("")
   const [startDate, setStartDate] = useState(
     contract?.startDate ? String(contract.startDate).split("T")[0] : ""
   )
+  const [firstVisitDate, setFirstVisitDate] = useState(
+    contract?.firstVisitDate ? String(contract.firstVisitDate).split("T")[0] : ""
+  )
+  const [firstVisitTime, setFirstVisitTime] = useState(contract?.firstVisitTime || "08:00")
   const [installmentsCount, setInstallmentsCount] = useState(contract?.installmentsCount || 1)
   const endDate = useMemo(() => {
     if (!startDate) return ""
     const start = new Date(`${startDate}T00:00:00`)
     start.setMonth(start.getMonth() + installmentsCount)
-    return start.toISOString().split("T")[0]
+    return toCivilDateKey(start)
   }, [startDate, installmentsCount])
   const [dueDay, setDueDay] = useState(((contract as any)?.dueDay ?? (contract as any)?.paymentDay ?? 10) as number)
   const [selectedUnitIds, setSelectedUnitIds] = useState<string[]>(initialUnitIds)
   const [services, setServices] = useState<ContractService[]>(
-    contract?.services.map(s => ({
-      id: s.id,
-      serviceTypeId: s.serviceTypeId,
-      teamIds: (s as any).teamIds ?? (s as any).teamId ? [(s as any).teamId] : [],
-      employeeIds: [],
-    })) || []
+    contract?.services.map((s) => {
+      const legacyTeamId = (s as any).teamId
+      return {
+        id: s.id,
+        serviceTypeId: s.serviceTypeId,
+        teamIds: (s as any).teamIds ?? (legacyTeamId ? [legacyTeamId] : []),
+        employeeIds: (s as any).additionalEmployeeIds ?? (s as any).employeeIds ?? [],
+      }
+    }) || []
   )
   const [contractValue, setContractValue] = useState(contract?.totalValue ? Math.round(contract.totalValue * 100) : 0)
 
@@ -323,6 +354,8 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
     setCreateAutomatedInformatives(contract.automationCreateInformatives ?? true)
     setSelectedInformativeTemplateId(contract.automationInformativeTemplateId ?? "")
     setStartDate(contract.startDate ? String(contract.startDate).split("T")[0] : "")
+    setFirstVisitDate(contract.firstVisitDate ? String(contract.firstVisitDate).split("T")[0] : "")
+    setFirstVisitTime(contract.firstVisitTime || "08:00")
     setInstallmentsCount(contract.installmentsCount ?? 1)
     setDueDay(contract.paymentDay ?? 10)
     setSelectedUnitIds(Array.from(new Set([...directUnitIds, ...serviceUnitIds])))
@@ -351,6 +384,12 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
       setSelectedInformativeTemplateId("")
     }
   }, [createAutomatedSchedules])
+
+  useEffect(() => {
+    if (createAutomatedSchedules && startDate && !firstVisitDate) {
+      setFirstVisitDate(startDate)
+    }
+  }, [createAutomatedSchedules, firstVisitDate, startDate])
 
   useEffect(() => {
     if (!createAutomatedInformatives) {
@@ -502,6 +541,8 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
     totalValue,
     duration: installmentsCount,
     startDate,
+    firstVisitDate: createAutomatedSchedules ? firstVisitDate : undefined,
+    firstVisitTime: createAutomatedSchedules ? firstVisitTime : undefined,
     paymentDay: dueDay,
     installmentsCount,
     recurrence: contractRecurrence,
@@ -551,6 +592,7 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
         return `${serviceIndex + 1}. ${serviceType?.name ?? "Serviço"}\n${clauses}`
       })
       .join("\n\n")
+    const serviceSectionsHtml = buildServiceSectionsHtml(services, serviceTypes)
     const installmentValue = installmentsCount > 0 ? totalValue / installmentsCount : totalValue
 
     return {
@@ -577,9 +619,15 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
       },
       contract: {
         createdAt: formatMaybeDate(draftMeta.createdAt),
+        createdAtLong: formatLongDate(draftMeta.createdAt),
         durationMonths: String(installmentsCount),
         endDate: formatMaybeDate(draftPreview.endDate || endDate),
+        endDateLong: formatLongDate(draftPreview.endDate || endDate),
+        firstVisitDate: formatMaybeDate(firstVisitDate),
+        firstVisitDateLong: firstVisitDate ? formatLongDate(firstVisitDate) : "",
+        firstVisitTime,
         firstDueDate: formatMaybeDate(draftPreview.firstDueDate),
+        firstDueDateLong: formatLongDate(draftPreview.firstDueDate),
         installmentValue: formatCurrency(installmentValue),
         installmentsCount: String(installmentsCount),
         number: draftPreview.contractNumber,
@@ -587,6 +635,7 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
         recurrence: getRecurrenceLabel(contractRecurrence),
         recurrenceTable: buildRecurrenceTableHtml(),
         startDate: formatMaybeDate(startDate),
+        startDateLong: formatLongDate(startDate),
         totalValue: formatCurrency(totalValue),
       },
       service: {
@@ -595,7 +644,7 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
       },
       services: {
         names: serviceNames,
-        sectionsHtml: serviceSectionsText,
+        sectionsHtml: serviceSectionsHtml,
         sectionsText: serviceSectionsText,
         summary: serviceNames.toLowerCase(),
       },
@@ -624,6 +673,8 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
     draftPreview,
     dueDay,
     endDate,
+    firstVisitDate,
+    firstVisitTime,
     installmentsCount,
     organizationSettings,
     selectedClient,
@@ -653,6 +704,22 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
       await queryClient.invalidateQueries({ queryKey: ["contract", response.data.id] })
       await queryClient.invalidateQueries({ queryKey: ["contracts"] })
       await queryClient.invalidateQueries({ queryKey: ["contracts", "list"] })
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => deleteContract(id),
+    onSuccess: async () => {
+      if (contractId) {
+        await queryClient.invalidateQueries({ queryKey: ["contract", contractId] })
+      }
+      await queryClient.invalidateQueries({ queryKey: ["contracts"] })
+      await queryClient.invalidateQueries({ queryKey: ["contracts", "list"] })
+      toast.success("Contrato removido.")
+      router.push("/contratos")
+    },
+    onError: (error) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível remover o contrato."))
     },
   })
 
@@ -734,6 +801,7 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
           ...s,
           [field]: value as string,
           teamIds: serviceType?.teamIds || [],
+          employeeIds: serviceType?.employeeIds || [],
         }
       }
       return { ...s, [field]: value }
@@ -786,6 +854,11 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
+    if (isEditing && isContractSigned(contract)) {
+      toast.error("Contratos assinados não podem ser editados.")
+      return
+    }
+
     if (!selectedClientId) {
       toast.error("Selecione um cliente para continuar.")
       return
@@ -803,6 +876,16 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
 
     if (!startDate) {
       toast.error("Preencha a data de início do contrato.")
+      return
+    }
+
+    if (createAutomatedSchedules && !firstVisitDate) {
+      toast.error("Preencha a data da primeira visita.")
+      return
+    }
+
+    if (createAutomatedSchedules && !firstVisitTime) {
+      toast.error("Preencha o horário inicial da primeira visita.")
       return
     }
 
@@ -1013,6 +1096,50 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
     )
   }
 
+  if (isEditing && contractQuery.isLoading) {
+    return (
+      <Card className="space-y-5 p-6">
+        <div className="grid gap-4 md:grid-cols-2">
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+        </div>
+        <Skeleton className="h-32 w-full" />
+        <div className="flex justify-end gap-2">
+          <Skeleton className="h-10 w-28 rounded-full" />
+          <Skeleton className="h-10 w-36 rounded-full" />
+        </div>
+      </Card>
+    )
+  }
+
+  if (isEditing && contractQuery.isError) {
+    return (
+      <Card className="p-8 text-center">
+        <FileText className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
+        <h2 className="text-lg font-semibold">Contrato não encontrado</h2>
+        <p className="mt-1 text-sm text-muted-foreground">Não foi possível carregar os dados deste contrato.</p>
+        <Button className="mt-4" variant="outline" onClick={() => router.push("/contratos")}>
+          Voltar para contratos
+        </Button>
+      </Card>
+    )
+  }
+
+  if (isEditing && isContractSigned(contract)) {
+    return (
+      <Card className="p-8 text-center">
+        <FileText className="mx-auto mb-3 h-8 w-8 text-primary" />
+        <h2 className="text-lg font-semibold">Contrato assinado</h2>
+        <p className="mt-1 text-sm text-muted-foreground">Contratos assinados não podem ser editados.</p>
+        <Button className="mt-4" variant="outline" onClick={() => router.push(contractId ? `/contratos/${contractId}` : "/contratos")}>
+          Voltar para o contrato
+        </Button>
+      </Card>
+    )
+  }
+
   if (!isEditing && step === "done") {
     const contractNumber = draftMeta?.contractNumber ?? createDraftContractNumber()
     return (
@@ -1060,7 +1187,7 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
         <div className="flex flex-col md:flex-row gap-5">
           <div className="space-y-2 md:w-[340px] shrink-0">
             <Label>Selecionar Cliente *</Label>
-            <Popover>
+            <Popover open={clientPopoverOpen} onOpenChange={setClientPopoverOpen}>
               <PopoverTrigger asChild>
                 <Button
                   variant="outline"
@@ -1086,7 +1213,10 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
                           <CommandItem
                             key={c.id}
                             value={c.companyName}
-                            onSelect={() => setSelectedClientId(c.id)}
+                            onSelect={() => {
+                              setSelectedClientId(c.id)
+                              setClientPopoverOpen(false)
+                            }}
                             className="cursor-pointer"
                           >
                             <Check className={cn("mr-2 h-4 w-4", selectedClientId === c.id ? "opacity-100" : "opacity-0")} />
@@ -1178,7 +1308,7 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
         <div className="flex flex-col xl:flex-row gap-5">
           <div className="space-y-2 md:w-[340px] shrink-0">
             <Label>Template do contrato *</Label>
-            <Popover>
+            <Popover open={templatePopoverOpen} onOpenChange={setTemplatePopoverOpen}>
               <PopoverTrigger asChild>
                 <Button
                   variant="outline"
@@ -1201,7 +1331,10 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
                         <CommandItem
                           key={t.id}
                           value={t.name}
-                          onSelect={() => setSelectedTemplateId(t.id)}
+                          onSelect={() => {
+                            setSelectedTemplateId(t.id)
+                            setTemplatePopoverOpen(false)
+                          }}
                           className="cursor-pointer"
                         >
                           <Check className={cn("mr-2 h-4 w-4", selectedTemplateId === t.id ? "opacity-100" : "opacity-0")} />
@@ -1347,9 +1480,36 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
             />
           </div>
         </div>
+        {createAutomatedSchedules && (
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Data da primeira visita *</Label>
+              <Input
+                type="date"
+                value={firstVisitDate}
+                onChange={(e) => setFirstVisitDate(e.target.value)}
+                min={startDate || undefined}
+                max={endDate || undefined}
+                required={createAutomatedSchedules}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Horário inicial *</Label>
+              <Input
+                type="time"
+                value={firstVisitTime}
+                onChange={(e) => setFirstVisitTime(e.target.value)}
+                required={createAutomatedSchedules}
+              />
+            </div>
+          </div>
+        )}
         {startDate && installmentsCount > 0 && (
           <div className="mt-4 flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted-foreground">
             <span>Vigência: <strong className="text-foreground">{new Date(`${startDate}T00:00:00`).toLocaleDateString("pt-BR")}</strong> até <strong className="text-foreground">{new Date(`${endDate}T00:00:00`).toLocaleDateString("pt-BR")}</strong></span>
+            {createAutomatedSchedules && firstVisitDate && (
+              <span>Primeira visita: <strong className="text-foreground">{formatDate(firstVisitDate)}</strong> às <strong className="text-foreground">{firstVisitTime}</strong></span>
+            )}
             {totalValue > 0 && installmentsCount > 1 && (
               <span>Parcelas: <strong className="text-foreground">{installmentsCount}x de {formatCurrency(totalValue / installmentsCount)}</strong></span>
             )}
@@ -1631,15 +1791,43 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
       </Card>
 
       {/* Actions */}
-      <div className="flex justify-end gap-3">
-        <Button type="button" variant="outline" onClick={() => router.push("/contratos")}>
-          Cancelar
-        </Button>
-        <Button type="submit" className="bg-primary hover:bg-primary/90">
-          <Save className="w-4 h-4 mr-2" />
-          {isEditing ? "Salvar Alterações" : "Criar Contrato"}
-        </Button>
+      <div className={cn("flex flex-col-reverse gap-3 sm:flex-row sm:items-center", isEditing ? "sm:justify-between" : "sm:justify-end")}>
+        {isEditing && contractId ? (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setRemoveDialogOpen(true)}
+            disabled={deleteMutation.isPending || updateMutation.isPending}
+          >
+            <Trash2 className="w-4 h-4 mr-2" />
+            Remover
+          </Button>
+        ) : null}
+        <div className="flex justify-end gap-3">
+          <Button type="button" variant="outline" onClick={() => router.push("/contratos")}>
+            Cancelar
+          </Button>
+          <Button type="submit" className="bg-primary hover:bg-primary/90">
+            <Save className="w-4 h-4 mr-2" />
+            {isEditing ? "Salvar Alterações" : "Criar Contrato"}
+          </Button>
+        </div>
       </div>
+
+      <ConfirmActionDialog
+        open={removeDialogOpen}
+        title="Remover contrato"
+        description={`Tem certeza que deseja remover ${
+          contract?.contractNumber ? `o contrato ${contract.contractNumber}` : "este contrato"
+        }? Esta ação não pode ser desfeita.`}
+        confirmLabel="Remover"
+        busy={deleteMutation.isPending}
+        onOpenChange={setRemoveDialogOpen}
+        onConfirm={() => {
+          if (!contractId) return
+          deleteMutation.mutate(contractId)
+        }}
+      />
 
       <ServiceClausesDialog
         open={Boolean(selectedServiceDetails)}

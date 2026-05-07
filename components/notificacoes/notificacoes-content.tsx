@@ -3,6 +3,8 @@
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { EmptyState } from "@/components/ui/empty-state"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   Bell,
   Check,
@@ -80,10 +82,30 @@ export function NotificacoesContent({
     <div className="space-y-6">
       {/* Notifications List */}
       {isLoading ? (
-        <Card className="p-8 text-center">
-          <Bell className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-          <h3 className="text-lg font-medium">Carregando notificações...</h3>
-        </Card>
+        <div className="space-y-4">
+          {Array.from({ length: 4 }, (_, index) => (
+            <Card key={index}>
+              <CardContent className="p-4">
+                <div className="flex items-start gap-4">
+                  <Skeleton className="h-10 w-10 rounded-full" />
+                  <div className="flex-1 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="w-full space-y-2">
+                        <Skeleton className="h-4 w-48" />
+                        <Skeleton className="h-3 w-full max-w-xl" />
+                      </div>
+                      <Skeleton className="h-8 w-20" />
+                    </div>
+                    <div className="flex gap-2">
+                      <Skeleton className="h-5 w-24 rounded-full" />
+                      <Skeleton className="h-5 w-20 rounded-full" />
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       ) : notificationsList.length > 0 ? (
         <div className="space-y-4">
           {[...notificationsList]
@@ -152,11 +174,11 @@ export function NotificacoesContent({
             ))}
         </div>
       ) : (
-        <Card className="p-8 text-center">
-          <Bell className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-          <h3 className="text-lg font-medium">Nenhuma notificação</h3>
-          <p className="text-muted-foreground">Você não tem notificações no momento</p>
-        </Card>
+        <EmptyState
+          icon={Bell}
+          title="Você não tem notificações no momento."
+          className="min-h-[260px]"
+        />
       )}
     </div>
   )

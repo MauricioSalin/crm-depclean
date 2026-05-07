@@ -3,6 +3,7 @@
 import { useMemo, useEffect, useRef } from "react"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { toCivilDateKey } from "@/lib/date-utils"
 
 interface TimelineEvent {
   id: string
@@ -201,7 +202,7 @@ export function WeekTimeline({
             )}
 
             {weekDays.map((day, dayIndex) => {
-              const dateStr = day.toISOString().split("T")[0]
+              const dateStr = toCivilDateKey(day)
               const dayEvents = eventsByDate[dateStr] || []
               const isSelected = selectedDate?.toDateString() === day.toDateString()
 

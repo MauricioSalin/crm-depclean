@@ -5,6 +5,7 @@ import { Sidebar } from "@/components/dashboard/sidebar"
 import { Header } from "@/components/dashboard/header"
 import { EmployeesContent } from "@/components/funcionarios/employees-content"
 import { Button } from "@/components/ui/button"
+import { ContentLoadingSkeleton } from "@/components/ui/content-loading-skeleton"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Plus, List, LayoutGrid } from "lucide-react"
 
@@ -43,7 +44,7 @@ export default function FuncionariosPage() {
             </Button>
           }
         />
-        <Suspense fallback={<div className="mt-4 md:mt-5 rounded-xl border bg-card p-6 text-sm text-muted-foreground">Carregando...</div>}>
+        <Suspense fallback={<ContentLoadingSkeleton className="mt-4 md:mt-5" />}>
           <EmployeesContent viewMode={viewMode} viewToggle={toggle} openDialog={dialogOpen} onDialogChange={setDialogOpen} />
         </Suspense>
       </main>

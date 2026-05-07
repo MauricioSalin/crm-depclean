@@ -11,6 +11,8 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { DataPagination } from "@/components/ui/data-pagination"
+import { TableEmptyState } from "@/components/ui/empty-state"
+import { TableSkeletonRows } from "@/components/ui/table-skeleton"
 import { Input } from "@/components/ui/input"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -159,17 +161,19 @@ export function CertificatesContent() {
             </TableHeader>
             <TableBody>
               {certificatesQuery.isLoading ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center text-sm text-muted-foreground">
-                    Carregando certificados...
-                  </TableCell>
-                </TableRow>
+                <TableSkeletonRows
+                  rows={5}
+                  columns={[
+                    { withIcon: true, width: "w-36" },
+                    { width: "w-40" },
+                    { width: "w-32" },
+                    { width: "w-24" },
+                    { width: "w-20" },
+                    { align: "right", width: "w-28" },
+                  ]}
+                />
               ) : paginatedRecords.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center text-sm text-muted-foreground">
-                    Nenhum agendamento com certificado pendente encontrado.
-                  </TableCell>
-                </TableRow>
+                <TableEmptyState colSpan={6} icon={Award} title="Nenhum agendamento com certificado pendente encontrado." />
               ) : (
                 paginatedRecords.map((record) => (
                   <TableRow key={record.id}>
@@ -248,14 +252,16 @@ export function CertificatesContent() {
         </Table>
       </div>
 
-      <DataPagination
-        currentPage={currentPage}
-        totalPages={totalPages}
-        pageSize={itemsPerPage}
-        totalItems={filteredRecords.length}
-        onPageChange={setCurrentPage}
-        onPageSizeChange={setItemsPerPage}
-      />
+      {!certificatesQuery.isLoading ? (
+        <DataPagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          pageSize={itemsPerPage}
+          totalItems={filteredRecords.length}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={setItemsPerPage}
+        />
+      ) : null}
     </div>
   )
 }

@@ -4,6 +4,7 @@ import { Suspense, useState } from "react"
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { Header } from "@/components/dashboard/header"
 import { Button } from "@/components/ui/button"
+import { ContentLoadingSkeleton } from "@/components/ui/content-loading-skeleton"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Plus, List, LayoutGrid } from "lucide-react"
 import { AgendamentosContent } from "@/components/agendamentos/agendamentos-content"
@@ -43,7 +44,7 @@ export default function AgendamentosPage() {
             </Button>
           }
         />
-        <Suspense fallback={<div className="mt-4 md:mt-5 rounded-xl border bg-card p-6 text-sm text-muted-foreground">Carregando...</div>}>
+        <Suspense fallback={<ContentLoadingSkeleton className="mt-4 md:mt-5" />}>
           <AgendamentosContent viewMode={viewMode} viewToggle={toggle} openDialog={dialogOpen} onDialogChange={setDialogOpen} />
         </Suspense>
       </main>

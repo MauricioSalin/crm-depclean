@@ -10,10 +10,8 @@ import {
   UsersRound, 
   Calendar,
   CalendarClock, 
-  DollarSign,
   BarChart3,
   Award,
-  Settings, 
   HelpCircle, 
   Bell,
   Bot
@@ -39,15 +37,13 @@ const menuItems = [
   { icon: Users, label: "Funcionários", href: "/funcionarios" },
   { icon: Calendar, label: "Agenda", href: "/agenda" },
   { icon: CalendarClock, label: "Agendamentos", href: "/agendamentos" },
-  { icon: DollarSign, label: "Financeiro", href: "/financeiro" },
-  { icon: BarChart3, label: "Relatórios", href: "/relatorios" },
   { icon: Award, label: "Certificados", href: "/certificados", permission: "certificates_view" },
-  { icon: Bell, label: "Notificações", href: "/notificacoes" },
+  { icon: BarChart3, label: "Relatórios", href: "/relatorios" },
 ]
 
 const generalItems = [
+  { icon: Bell, label: "Notificações", href: "/notificacoes" },
   { icon: Bot, label: "DepAI", href: "/depai" },
-  { icon: Settings, label: "Configurações", href: "/configuracoes" },
   { icon: HelpCircle, label: "Ajuda", href: "/ajuda" },
 ]
 
@@ -139,9 +135,9 @@ export function Sidebar({ onNavigate, forceExpanded = false }: SidebarProps) {
   }, [certificatesQuery.data?.data])
 
   const notificationsBadge = useMemo(() => {
-    const notificationsCount = notificationsQuery.data?.data.length ?? 0
-    return notificationsCount > 0 ? String(notificationsCount) : null
-  }, [notificationsQuery.data?.data.length])
+    const unreadCount = (notificationsQuery.data?.data ?? []).filter((notification) => !notification.isRead).length
+    return unreadCount > 0 ? String(unreadCount) : null
+  }, [notificationsQuery.data?.data])
 
   const renderNavItem = (item: (typeof menuItems)[number] | (typeof generalItems)[number], badge?: string | null) => {
     const isActive = item.href === "/" ? pathname === "/" : (pathname === item.href || pathname.startsWith(item.href + "/"))
@@ -213,12 +209,12 @@ export function Sidebar({ onNavigate, forceExpanded = false }: SidebarProps) {
   return (
     <aside
       className={cn(
-        "fixed left-0 top-0 z-[70] flex h-screen flex-col border-r border-border bg-card",
+        "fixed left-0 top-0 z-[70] flex h-screen flex-col border-r border-border bg-card transition-[width] duration-300 ease-out",
         collapsed ? "w-[72px]" : "w-60",
       )}
     >
       <div className={`flex h-[86px] shrink-0 items-center justify-start px-[14px] justify-center items-center`}>
-        <Link href="/" className={cn("flex h-12 items-center", showFullLogo ? "w-[170px]" : "w-[42px]")}>
+        <Link href="/" className={cn("flex h-12 items-center overflow-hidden transition-[width] duration-300 ease-out", showFullLogo ? "w-[170px]" : "w-[42px]")}>
           {showFullLogo ? (
             <Image
               src="/logo-depclean.png"
@@ -241,7 +237,7 @@ export function Sidebar({ onNavigate, forceExpanded = false }: SidebarProps) {
         </Link>
       </div>
 
-      <div className="flex flex-1 flex-col overflow-y-auto px-4 pb-4">
+      <div className={cn("flex flex-1 flex-col overflow-y-auto pb-4 transition-[padding] duration-300 ease-out", collapsed ? "px-[18px]" : "px-4")}>
         <div>
           <p
             className={cn(
@@ -278,7 +274,8 @@ export function Sidebar({ onNavigate, forceExpanded = false }: SidebarProps) {
           </p>
           <nav className="space-y-0.5">
             {generalItems.map((item) => {
-              return renderNavItem(item)
+              const badge = item.label === "Notificações" ? notificationsBadge : null
+              return renderNavItem(item, badge)
             })}
           </nav>
         </div>

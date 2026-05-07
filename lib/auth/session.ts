@@ -7,6 +7,11 @@ const EXPIRES_AT_KEY = "depclean.expiresAt"
 const SESSION_EVENT = "depclean:session"
 const SESSION_MAX_AGE_MS = 24 * 60 * 60 * 1000
 
+function readStoredValue(key: string) {
+  if (typeof window === "undefined") return null
+  return window.localStorage.getItem(key) ?? window.sessionStorage.getItem(key)
+}
+
 function getStorage(persistent = true) {
   if (typeof window === "undefined") return null
   return persistent ? window.localStorage : window.sessionStorage
@@ -30,6 +35,42 @@ function clearSessionStorage() {
   clearFrom(getStorage(false))
 }
 
+function getJwtExpiresAt(token: string | null) {
+  if (typeof window === "undefined" || !token) return null
+
+  try {
+    const payloadPart = token.split(".")[1]
+    if (!payloadPart) return null
+
+    const normalized = payloadPart.replace(/-/g, "+").replace(/_/g, "/")
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=")
+    const payload = JSON.parse(window.atob(padded)) as { exp?: number }
+
+    return typeof payload.exp === "number" && payload.exp > 0 ? payload.exp * 1000 : null
+  } catch {
+    return null
+  }
+}
+
+function getStoredExpiresAtValue() {
+  const raw = readStoredValue(EXPIRES_AT_KEY)
+  const expiresAt = Number(raw)
+  return Number.isFinite(expiresAt) && expiresAt > 0 ? expiresAt : null
+}
+
+function resolveSessionExpiresAt(accessToken: string | null) {
+  const values = [getStoredExpiresAtValue(), getJwtExpiresAt(accessToken)].filter(
+    (value): value is number => typeof value === "number" && Number.isFinite(value) && value > 0,
+  )
+
+  return values.length > 0 ? Math.min(...values) : null
+}
+
+function isSessionExpired(accessToken: string | null) {
+  const expiresAt = resolveSessionExpiresAt(accessToken)
+  return Boolean(expiresAt && Date.now() > expiresAt)
+}
+
 export function persistSession(input: {
   accessToken: string
   refreshToken: string
@@ -41,7 +82,7 @@ export function persistSession(input: {
   const storage = getStorage(input.persistent)
   if (!storage) return
 
-  const expiresAt = Date.now() + SESSION_MAX_AGE_MS
+  const expiresAt = getJwtExpiresAt(input.accessToken) ?? Date.now() + SESSION_MAX_AGE_MS
   storage.setItem(ACCESS_TOKEN_KEY, input.accessToken)
   storage.setItem(REFRESH_TOKEN_KEY, input.refreshToken)
   storage.setItem(USER_KEY, JSON.stringify(input.user))
@@ -56,11 +97,10 @@ export function clearSession() {
 
 export function getStoredAccessToken() {
   if (typeof window === "undefined") return null
-  const token = window.localStorage.getItem(ACCESS_TOKEN_KEY) ?? window.sessionStorage.getItem(ACCESS_TOKEN_KEY)
+  const token = readStoredValue(ACCESS_TOKEN_KEY)
   if (!token) return null
 
-  const expiresAt = Number(window.localStorage.getItem(EXPIRES_AT_KEY) ?? window.sessionStorage.getItem(EXPIRES_AT_KEY))
-  if (Number.isFinite(expiresAt) && expiresAt > 0 && Date.now() > expiresAt) {
+  if (isSessionExpired(token)) {
     clearSession()
     return null
   }
@@ -70,11 +110,10 @@ export function getStoredAccessToken() {
 
 export function getStoredRefreshToken() {
   if (typeof window === "undefined") return null
-  const token = window.localStorage.getItem(REFRESH_TOKEN_KEY) ?? window.sessionStorage.getItem(REFRESH_TOKEN_KEY)
+  const token = readStoredValue(REFRESH_TOKEN_KEY)
   if (!token) return null
 
-  const expiresAt = Number(window.localStorage.getItem(EXPIRES_AT_KEY) ?? window.sessionStorage.getItem(EXPIRES_AT_KEY))
-  if (Number.isFinite(expiresAt) && expiresAt > 0 && Date.now() > expiresAt) {
+  if (isSessionExpired(readStoredValue(ACCESS_TOKEN_KEY))) {
     clearSession()
     return null
   }
@@ -90,11 +129,10 @@ export function isPersistentSession() {
 export function getStoredUser(): AuthenticatedUser | null {
   if (typeof window === "undefined") return null
 
-  const raw = window.localStorage.getItem(USER_KEY) ?? window.sessionStorage.getItem(USER_KEY)
+  const raw = readStoredValue(USER_KEY)
   if (!raw) return null
 
-  const expiresAt = Number(window.localStorage.getItem(EXPIRES_AT_KEY) ?? window.sessionStorage.getItem(EXPIRES_AT_KEY))
-  if (Number.isFinite(expiresAt) && expiresAt > 0 && Date.now() > expiresAt) {
+  if (isSessionExpired(readStoredValue(ACCESS_TOKEN_KEY))) {
     clearSession()
     return null
   }
@@ -112,7 +150,5 @@ export function isAuthenticated() {
 
 export function getSessionExpiresAt() {
   if (typeof window === "undefined") return null
-  const raw = window.localStorage.getItem(EXPIRES_AT_KEY) ?? window.sessionStorage.getItem(EXPIRES_AT_KEY)
-  const expiresAt = Number(raw)
-  return Number.isFinite(expiresAt) && expiresAt > 0 ? expiresAt : null
+  return resolveSessionExpiresAt(readStoredValue(ACCESS_TOKEN_KEY))
 }

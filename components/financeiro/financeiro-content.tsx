@@ -32,10 +32,14 @@ import {
 } from "lucide-react"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { DataPagination } from "@/components/ui/data-pagination"
+import { EmptyState, TableEmptyState } from "@/components/ui/empty-state"
+import { CardSkeletonGrid, TableSkeletonRows } from "@/components/ui/table-skeleton"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 import { getFinancialAnalytics, type FinancialInstallmentRecord } from "@/lib/api/analytics"
 import { updateInstallment } from "@/lib/api/contracts"
+import { updateScheduleBilling } from "@/lib/api/schedules"
 import { getApiErrorMessage } from "@/lib/api/errors"
+import { formatCivilDate } from "@/lib/date-utils"
 import Link from "next/link"
 import { toast } from "sonner"
 import {
@@ -54,16 +58,30 @@ import {
 interface FinanceiroContentProps {
   viewMode: "table" | "cards"
   viewToggle?: React.ReactNode
+  dateFrom?: string
+  dateTo?: string
 }
 
 type InstallmentStatusAction = "pending" | "paid" | "overdue"
+
+const EMPTY_MONTHLY_REVENUE_DATA = [
+  { month: "Mês 1", value: 0 },
+  { month: "Mês 2", value: 0 },
+  { month: "Mês 3", value: 0 },
+  { month: "Mês 4", value: 0 },
+  { month: "Mês 5", value: 0 },
+  { month: "Mês 6", value: 0 },
+]
+
+const EMPTY_DONUT_DATA = [{ name: "Sem dados", value: 1 }]
+const EMPTY_CHART_COLOR = "#DDE7D5"
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value)
 }
 
 function formatDate(value: string) {
-  return new Intl.DateTimeFormat("pt-BR").format(new Date(value))
+  return formatCivilDate(value)
 }
 
 function startOfDay(date: Date) {
@@ -82,7 +100,7 @@ function selectCurrentInstallment(installments: FinancialInstallmentRecord[]) {
   return dueOrPast ?? sorted[0]
 }
 
-export function FinanceiroContent({ viewMode, viewToggle }: FinanceiroContentProps) {
+export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: FinanceiroContentProps) {
   const [searchTerm, setSearchTerm] = useUrlQueryState("q")
   const [tabFilter, setTabFilter] = useState("all")
   const [currentPage, setCurrentPage] = useState(1)
@@ -92,21 +110,33 @@ export function FinanceiroContent({ viewMode, viewToggle }: FinanceiroContentPro
   const FINANCE_COLORS = ["#22C55E", "#F59E0B", "#EF4444"]
 
   const financialQuery = useQuery({
-    queryKey: ["analytics", "financial"],
-    queryFn: getFinancialAnalytics,
+    queryKey: ["analytics", "financial", dateFrom, dateTo],
+    queryFn: () => getFinancialAnalytics({ dateFrom, dateTo }),
   })
 
-  const installmentStatusMutation = useMutation({
-    mutationFn: ({ installment, status }: { installment: FinancialInstallmentRecord; status: InstallmentStatusAction }) =>
-      updateInstallment(installment.contractId, installment.id, {
+  const installmentStatusMutation = useMutation<unknown, Error, { installment: FinancialInstallmentRecord; status: InstallmentStatusAction }>({
+    mutationFn: ({ installment, status }: { installment: FinancialInstallmentRecord; status: InstallmentStatusAction }) => {
+      const payload = {
         status,
         paidDate: status === "paid" ? new Date().toISOString() : undefined,
         paidValue: status === "paid" ? installment.value : undefined,
-      }),
+      }
+
+      if (installment.source === "schedule") {
+        return updateScheduleBilling(installment.scheduleId ?? installment.id.replace(/^schedule-/, ""), {
+          billingStatus: payload.status,
+          paidDate: payload.paidDate,
+          paidValue: payload.paidValue,
+        })
+      }
+
+      return updateInstallment(installment.contractId, installment.id, payload)
+    },
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["analytics"] }),
         queryClient.invalidateQueries({ queryKey: ["contracts"] }),
+        queryClient.invalidateQueries({ queryKey: ["schedules"] }),
       ])
       toast.success("Parcela atualizada.")
     },
@@ -136,6 +166,10 @@ export function FinanceiroContent({ viewMode, viewToggle }: FinanceiroContentPro
     { name: "Pendentes", value: 0 },
     { name: "Vencidas", value: 0 },
   ]
+  const hasMonthlyRevenueData = monthlyRevenueData.some((item) => item.value > 0)
+  const monthlyRevenueChartData = monthlyRevenueData.length > 0 ? monthlyRevenueData : EMPTY_MONTHLY_REVENUE_DATA
+  const hasFinanceHealthData = financeHealthData.some((item) => item.value > 0)
+  const financeHealthChartData = hasFinanceHealthData ? financeHealthData : EMPTY_DONUT_DATA
 
   const currentInstallmentsByClient = useMemo(() => {
     const grouped = new Map<string, FinancialInstallmentRecord[]>()
@@ -189,45 +223,45 @@ export function FinanceiroContent({ viewMode, viewToggle }: FinanceiroContentPro
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="p-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
-              <CheckCircle className="w-5 h-5 text-green-600" />
+            <div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center">
+              <CheckCircle className="w-5 h-5 text-green-500" />
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Total Recebido</p>
-              <p className="text-xl font-bold text-green-600">{formatCurrency(summary.totalPaid)}</p>
+              <p className="text-xl font-semibold text-green-600/80">{formatCurrency(summary.totalPaid)}</p>
             </div>
           </div>
         </Card>
         <Card className="p-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center">
-              <Clock className="w-5 h-5 text-amber-600" />
+            <div className="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center">
+              <Clock className="w-5 h-5 text-amber-500" />
             </div>
             <div>
               <p className="text-sm text-muted-foreground">A Receber</p>
-              <p className="text-xl font-bold text-amber-600">{formatCurrency(summary.totalPending)}</p>
+              <p className="text-xl font-semibold text-amber-600/80">{formatCurrency(summary.totalPending)}</p>
             </div>
           </div>
         </Card>
         <Card className="p-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-red-100 flex items-center justify-center">
-              <AlertTriangle className="w-5 h-5 text-red-600" />
+            <div className="w-10 h-10 rounded-lg bg-red-50 flex items-center justify-center">
+              <AlertTriangle className="w-5 h-5 text-red-500" />
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Vencidas</p>
-              <p className="text-xl font-bold text-red-600">{formatCurrency(summary.totalOverdue)}</p>
+              <p className="text-xl font-semibold text-red-600/80">{formatCurrency(summary.totalOverdue)}</p>
             </div>
           </div>
         </Card>
         <Card className="p-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center">
-              <TrendingUp className="w-5 h-5 text-primary" />
+            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+              <TrendingUp className="w-5 h-5 text-primary/80" />
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Taxa de Adimplência</p>
-              <p className="text-xl font-bold">{summary.adherenceRate}%</p>
+              <p className="text-xl font-semibold text-primary/80">{summary.adherenceRate}%</p>
             </div>
           </div>
         </Card>
@@ -235,11 +269,11 @@ export function FinanceiroContent({ viewMode, viewToggle }: FinanceiroContentPro
 
       {/* Revenue Chart + Financial Health */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <Card className="p-4 md:p-5 lg:col-span-2">
+        <Card className="p-4 md:p-5 lg:col-span-2" data-report-chart="faturamento-mensal">
           <h3 className="font-semibold text-base mb-4">Faturamento Mensal</h3>
-          <div className="h-[250px] w-full">
+          <div className="relative h-[250px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={monthlyRevenueData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
+              <BarChart data={monthlyRevenueChartData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                 <XAxis
                   dataKey="month"
@@ -250,6 +284,7 @@ export function FinanceiroContent({ viewMode, viewToggle }: FinanceiroContentPro
                   tick={{ fontSize: 12 }}
                   className="text-muted-foreground"
                   tickFormatter={(value) => `${(value / 1000).toFixed(0)}k`}
+                  domain={[0, (dataMax: number) => Math.max(Number(dataMax) || 0, 1)]}
                 />
                 <Tooltip
                   contentStyle={{
@@ -262,22 +297,28 @@ export function FinanceiroContent({ viewMode, viewToggle }: FinanceiroContentPro
                 />
                 <Bar
                   dataKey="value"
-                  fill="var(--primary)"
+                  fill={hasMonthlyRevenueData ? "var(--primary)" : EMPTY_CHART_COLOR}
+                  minPointSize={hasMonthlyRevenueData ? 0 : 3}
                   radius={[4, 4, 0, 0]}
                 />
               </BarChart>
             </ResponsiveContainer>
+            {!hasMonthlyRevenueData ? (
+              <div className="pointer-events-none absolute inset-x-0 bottom-1 text-center text-xs text-muted-foreground">
+                Sem faturamento no período.
+              </div>
+            ) : null}
           </div>
         </Card>
 
-        <Card className="p-4 md:p-5">
+        <Card className="p-4 md:p-5" data-report-chart="saude-financeira">
           <h3 className="font-semibold text-base mb-4">Saúde Financeira</h3>
           <div className="flex flex-col items-center">
             <div className="relative w-56 h-56 mb-4">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
-                    data={financeHealthData}
+                    data={financeHealthChartData}
                     cx="50%"
                     cy="50%"
                     innerRadius={65}
@@ -285,8 +326,11 @@ export function FinanceiroContent({ viewMode, viewToggle }: FinanceiroContentPro
                     paddingAngle={2}
                     dataKey="value"
                   >
-                    {financeHealthData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={FINANCE_COLORS[index % FINANCE_COLORS.length]} />
+                    {financeHealthChartData.map((entry, index) => (
+                      <Cell
+                        key={`cell-${index}`}
+                        fill={hasFinanceHealthData ? FINANCE_COLORS[index % FINANCE_COLORS.length] : EMPTY_CHART_COLOR}
+                      />
                     ))}
                   </Pie>
                   <Tooltip
@@ -296,7 +340,7 @@ export function FinanceiroContent({ viewMode, viewToggle }: FinanceiroContentPro
                       borderRadius: '8px',
                       fontSize: '12px'
                     }}
-                    formatter={(value: number) => [`${value}%`, '']}
+                    formatter={(value: number) => [hasFinanceHealthData ? `${value}%` : "0%", '']}
                   />
                 </PieChart>
               </ResponsiveContainer>
@@ -363,12 +407,21 @@ export function FinanceiroContent({ viewMode, viewToggle }: FinanceiroContentPro
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {paginatedInstallments.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={7} className="h-24 text-center">
-                        Nenhuma parcela encontrada.
-                      </TableCell>
-                    </TableRow>
+                  {financialQuery.isLoading ? (
+                    <TableSkeletonRows
+                      rows={5}
+                      columns={[
+                        { width: "w-40" },
+                        { className: "hidden md:table-cell", width: "w-28" },
+                        { className: "hidden sm:table-cell", width: "w-20" },
+                        { width: "w-24" },
+                        { className: "hidden sm:table-cell", width: "w-24" },
+                        { width: "w-20" },
+                        { align: "right", width: "w-10" },
+                      ]}
+                    />
+                  ) : paginatedInstallments.length === 0 ? (
+                    <TableEmptyState colSpan={7} icon={DollarSign} title="Nenhuma parcela encontrada." />
                   ) : (
                     paginatedInstallments.map((installment) => (
                       <TableRow key={installment.id}>
@@ -378,12 +431,15 @@ export function FinanceiroContent({ viewMode, viewToggle }: FinanceiroContentPro
                           </Link>
                         </TableCell>
                         <TableCell className="hidden md:table-cell text-muted-foreground">
-                          <Link href={`/contratos/${installment.contractId}`} className="hover:text-primary">
+                          <Link
+                            href={installment.source === "schedule" ? "/agendamentos" : `/contratos/${installment.contractId}`}
+                            className="hover:text-primary"
+                          >
                             {installment.contractNumber}
                           </Link>
                         </TableCell>
                         <TableCell className="hidden sm:table-cell">
-                          <span className="text-sm">{installment.number}</span>
+                          <span className="text-sm">{installment.source === "schedule" ? "Avulsa" : installment.number}</span>
                         </TableCell>
                         <TableCell className="font-medium">
                           {formatCurrency(installment.value)}
@@ -425,7 +481,11 @@ export function FinanceiroContent({ viewMode, viewToggle }: FinanceiroContentPro
             </div>
           ) : (
             <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
-              {paginatedInstallments.map((installment) => (
+              {financialQuery.isLoading ? (
+                <CardSkeletonGrid cards={4} />
+              ) : paginatedInstallments.length === 0 ? (
+                <EmptyState icon={DollarSign} title="Nenhuma parcela encontrada." className="sm:col-span-2" />
+              ) : paginatedInstallments.map((installment) => (
                 <Card key={installment.id} className="overflow-hidden">
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between mb-3">
@@ -435,7 +495,11 @@ export function FinanceiroContent({ viewMode, viewToggle }: FinanceiroContentPro
                       {getStatusBadge(installment.status)}
                     </div>
                     <h3 className="font-semibold mb-1 truncate">{installment.clientCompanyName}</h3>
-                    <p className="text-sm text-muted-foreground mb-3">{installment.contractNumber} - Parcela {installment.number}</p>
+                    <p className="text-sm text-muted-foreground mb-3">
+                      {installment.source === "schedule"
+                        ? installment.contractNumber
+                        : `${installment.contractNumber} - Parcela ${installment.number}`}
+                    </p>
                     <div className="space-y-2 text-sm">
                       <div className="flex items-center justify-between">
                         <span className="text-muted-foreground">Valor:</span>
@@ -473,14 +537,16 @@ export function FinanceiroContent({ viewMode, viewToggle }: FinanceiroContentPro
             </div>
           )}
 
-          <DataPagination
-            currentPage={currentPage}
-            totalPages={totalPages}
-            pageSize={pageSize}
-            totalItems={filteredInstallments.length}
-            onPageChange={setCurrentPage}
-            onPageSizeChange={(size) => { setPageSize(size); setCurrentPage(1) }}
-          />
+          {!financialQuery.isLoading ? (
+            <DataPagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              pageSize={pageSize}
+              totalItems={filteredInstallments.length}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={(size) => { setPageSize(size); setCurrentPage(1) }}
+            />
+          ) : null}
       </div>
     </div>
   )

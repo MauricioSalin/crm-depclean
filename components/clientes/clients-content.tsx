@@ -34,6 +34,8 @@ import {
 } from "lucide-react"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { DataPagination } from "@/components/ui/data-pagination"
+import { EmptyState, TableEmptyState } from "@/components/ui/empty-state"
+import { CardSkeletonGrid, TableSkeletonRows } from "@/components/ui/table-skeleton"
 import { listClients } from "@/lib/api/clients"
 import { listContracts } from "@/lib/api/contracts"
 import { listClientTypes } from "@/lib/api/settings"
@@ -82,6 +84,7 @@ export function ClientsContent({ viewMode, viewToggle }: ClientsContentProps) {
   const contracts = contractsQuery.data?.data ?? []
   const clientTypes = clientTypesQuery.data?.data.items ?? []
   const getClientTypeById = (id: string) => clientTypes.find((type) => type.id === id)
+  const isClientListLoading = clientsQuery.isLoading || clientTypesQuery.isLoading
 
   const filteredClients = useMemo(() => {
     return clients.filter(client => {
@@ -137,18 +140,20 @@ export function ClientsContent({ viewMode, viewToggle }: ClientsContentProps) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {clientsQuery.isLoading ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center">
-                    Carregando clientes...
-                  </TableCell>
-                </TableRow>
+              {isClientListLoading ? (
+                <TableSkeletonRows
+                  rows={5}
+                  columns={[
+                    { withIcon: true, width: "w-40" },
+                    { className: "hidden md:table-cell", width: "w-32" },
+                    { className: "hidden lg:table-cell", width: "w-36" },
+                    { className: "hidden sm:table-cell", width: "w-24" },
+                    { className: "hidden lg:table-cell", width: "w-20" },
+                    { align: "right", width: "w-8" },
+                  ]}
+                />
               ) : paginatedClients.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center">
-                    Nenhum cliente encontrado.
-                  </TableCell>
-                </TableRow>
+                <TableEmptyState colSpan={6} icon={Building2} title="Nenhum cliente encontrado." />
               ) : (
                 paginatedClients.map((client) => {
                   const clientType = getClientTypeById(client.clientTypeId)
@@ -216,7 +221,7 @@ export function ClientsContent({ viewMode, viewToggle }: ClientsContentProps) {
                               </Link>
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem className="text-destructive">
+                            <DropdownMenuItem>
                               <Trash2 className="w-4 h-4 mr-2" />
                               Excluir
                             </DropdownMenuItem>
@@ -232,14 +237,10 @@ export function ClientsContent({ viewMode, viewToggle }: ClientsContentProps) {
         </div>
       ) : (
         <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
-          {clientsQuery.isLoading ? (
-            <Card>
-              <CardContent className="p-4 text-sm text-muted-foreground">Carregando clientes...</CardContent>
-            </Card>
+          {isClientListLoading ? (
+            <CardSkeletonGrid cards={4} />
           ) : paginatedClients.length === 0 ? (
-            <Card>
-              <CardContent className="p-4 text-sm text-muted-foreground">Nenhum cliente encontrado.</CardContent>
-            </Card>
+            <EmptyState icon={Building2} title="Nenhum cliente encontrado." className="sm:col-span-2" />
           ) : paginatedClients.map((client) => {
             const clientType = getClientTypeById(client.clientTypeId)
             const clientTypeColor = resolveColor(clientType?.color)
@@ -306,14 +307,16 @@ export function ClientsContent({ viewMode, viewToggle }: ClientsContentProps) {
         </div>
       )}
 
-      <DataPagination
-        currentPage={currentPage}
-        totalPages={totalPages}
-        pageSize={pageSize}
-        totalItems={filteredClients.length}
-        onPageChange={setCurrentPage}
-        onPageSizeChange={(size) => { setPageSize(size); setCurrentPage(1) }}
-      />
+      {!isClientListLoading ? (
+        <DataPagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          pageSize={pageSize}
+          totalItems={filteredClients.length}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={(size) => { setPageSize(size); setCurrentPage(1) }}
+        />
+      ) : null}
       {/* </CardContent> */}
     </div>
   )

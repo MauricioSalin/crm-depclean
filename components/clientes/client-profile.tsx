@@ -36,6 +36,10 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TableEmptyState } from "@/components/ui/empty-state"
+import { TableSkeletonRows } from "@/components/ui/table-skeleton"
+import { Skeleton } from "@/components/ui/skeleton"
+import { AssignmentBadges } from "@/components/ui/assignment-badges"
 import { DocxTemplateEditor, type DocxTemplateEditorRef } from "@/components/templates/docx-template-editor"
 import { buildApiFileUrl } from "@/lib/api/client"
 import {
@@ -52,6 +56,7 @@ import { listServices } from "@/lib/api/services"
 import { listClientTypes } from "@/lib/api/settings"
 import { listTeams } from "@/lib/api/teams"
 import { listTemplates, type TemplateRecord } from "@/lib/api/templates"
+import { formatCivilDate } from "@/lib/date-utils"
 
 interface ClientProfileProps {
   clientId: string
@@ -102,7 +107,7 @@ const formatCurrency = (value: number) =>
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
 const formatDate = (value?: string) =>
-  value ? new Intl.DateTimeFormat("pt-BR").format(new Date(value)) : "-"
+  formatCivilDate(value)
 
 const informativePdfFileName = (fileName: string) => {
   const cleanName = fileName.trim() || "informativo.pdf"
@@ -421,7 +426,19 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
   const totalPending = pendingInstallments.reduce((accumulator, installment) => accumulator + installment.value, 0)
 
   if (clientQuery.isLoading) {
-    return <Card className="p-8 text-center text-sm text-muted-foreground">Carregando cliente...</Card>
+    return (
+      <Card className="p-6">
+        <div className="flex items-start gap-4">
+          <Skeleton className="h-12 w-12 rounded-xl" />
+          <div className="flex-1 space-y-3">
+            <Skeleton className="h-5 w-72 max-w-full" />
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="h-4 w-56" />
+            <Skeleton className="h-4 w-48" />
+          </div>
+        </div>
+      </Card>
+    )
   }
 
   if (!client) {
@@ -455,9 +472,18 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
   }
 
   const formatAttachmentSize = (size?: number) => {
-    if (!size) return "-"
+    if (!size) return ""
     if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`
     return `${(size / (1024 * 1024)).toFixed(1)} MB`
+  }
+
+  const formatAttachmentFileInfo = (attachment: ClientAttachmentRecord) => {
+    const fileName = attachment.type === "informative"
+      ? informativePdfFileName(attachment.fileName)
+      : attachment.fileName
+    const size = formatAttachmentSize(attachment.fileSize)
+
+    return [fileName, size].filter(Boolean).join(" - ")
   }
 
   const setInstallmentStatus = (installmentId: string, status: ContractInstallmentRecord["status"]) => {
@@ -530,41 +556,41 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
 
       <Card className="overflow-hidden">
         <CardContent className="px-4 py-3">
-          <div className="mb-3 flex items-center gap-3">
+          <div className="flex items-start gap-4">
             <div
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl"
               style={{ backgroundColor: `${clientTypeColor}1A` }}
             >
-              <Building2 className="h-5 w-5" style={{ color: clientTypeColor }} />
+              <Building2 className="h-6 w-6" style={{ color: clientTypeColor }} />
             </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-start justify-between gap-x-2 gap-y-1">
-                <h3 className="min-w-0 flex-1 break-words text-sm font-semibold">{client.companyName}</h3>
+            <div className="min-w-0 flex-1 space-y-3">
+              <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+                <h3 className="min-w-0 break-words text-xl font-bold">{client.companyName}</h3>
                 <Badge
                   style={{ backgroundColor: clientTypeColor }}
-                  className="shrink-0 border-0 text-xs text-white hover:opacity-90"
+                  className="shrink-0 border-0 text-white hover:opacity-90"
                 >
                   {clientType?.name ?? "Cliente"}
                 </Badge>
               </div>
               <p className="font-mono text-xs text-muted-foreground">{formatCNPJ(client.cnpj)}</p>
-            </div>
-          </div>
 
-          <div className="space-y-2 text-sm">
-            <div className="flex min-w-0 items-center gap-2 text-muted-foreground">
-              <Phone className="h-4 w-4 shrink-0" />
-              <span>{client.phone}</span>
-            </div>
+              <div className="space-y-2 text-sm">
+                <div className="flex min-w-0 items-center gap-2 text-muted-foreground">
+                  <Phone className="h-4 w-4 shrink-0" />
+                  <span>{client.phone}</span>
+                </div>
 
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Mail className="h-4 w-4 shrink-0" />
-              <span className="truncate">{client.email}</span>
-            </div>
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Mail className="h-4 w-4 shrink-0" />
+                  <span className="truncate">{client.email}</span>
+                </div>
 
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <FileText className="h-4 w-4 shrink-0" />
-              <span>{activeContracts} contrato(s) ativo(s)</span>
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <FileText className="h-4 w-4 shrink-0" />
+                  <span>{activeContracts} contrato(s) ativo(s)</span>
+                </div>
+              </div>
             </div>
           </div>
         </CardContent>
@@ -720,11 +746,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                 </TableHeader>
                 <TableBody>
                   {client.units.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
-                        Nenhuma filial cadastrada.
-                      </TableCell>
-                    </TableRow>
+                    <TableEmptyState colSpan={4} icon={MapPin} title="Nenhuma filial cadastrada." />
                   ) : (
                     client.units.map((unit) => (
                       <TableRow key={unit.id}>
@@ -832,12 +854,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                 ))}
 
                 {clientContracts.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={5} className="py-8 text-center">
-                      <FileText className="mx-auto mb-2 h-8 w-8 text-muted-foreground" />
-                      <p className="text-muted-foreground">Nenhum contrato encontrado.</p>
-                    </TableCell>
-                  </TableRow>
+                  <TableEmptyState colSpan={5} icon={FileText} title="Nenhum contrato encontrado." />
                 ) : null}
               </TableBody>
             </Table>
@@ -859,11 +876,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
               </TableHeader>
               <TableBody>
                 {allInstallments.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="h-24 text-center text-sm text-muted-foreground">
-                      Nenhuma parcela encontrada.
-                    </TableCell>
-                  </TableRow>
+                  <TableEmptyState colSpan={6} icon={DollarSign} title="Nenhuma parcela encontrada." />
                 ) : (
                   clientContracts.flatMap((contract) =>
                     contract.installments.map((installment) => {
@@ -931,7 +944,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
               <TableHeader>
                 <TableRow>
                   <TableHead>Serviço</TableHead>
-                  <TableHead className="hidden md:table-cell">Equipe</TableHead>
+                  <TableHead className="hidden md:table-cell">Equipe / Funcionários</TableHead>
                   <TableHead>Data</TableHead>
                   <TableHead>Status</TableHead>
                 </TableRow>
@@ -940,15 +953,21 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                 {clientServices
                   .filter((service) => service.status === "completed")
                   .map((service) => {
-                    const serviceType = serviceTypeMap.get(service.serviceTypeId)
-                    const team = service.teams[0] ?? (service.teamId ? teamMap.get(service.teamId) : undefined)
+                    const serviceTeams =
+                      service.teams.length > 0
+                        ? service.teams
+                        : service.teamId && teamMap.get(service.teamId)
+                          ? [teamMap.get(service.teamId)!]
+                          : []
 
                     return (
                       <TableRow key={service.id}>
                         <TableCell>
-                          <p className="font-medium">{serviceType?.name ?? service.serviceTypeName}</p>
+                          <p className="font-medium">{service.serviceTypeName}</p>
                         </TableCell>
-                        <TableCell className="hidden md:table-cell">{team?.name}</TableCell>
+                        <TableCell className="hidden md:table-cell">
+                          <AssignmentBadges teams={serviceTeams} employees={service.additionalEmployees} />
+                        </TableCell>
                         <TableCell className="text-sm">{formatDate(service.date)}</TableCell>
                         <TableCell>
                           <Badge variant="default">
@@ -961,12 +980,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                   })}
 
                 {clientServices.filter((service) => service.status === "completed").length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={4} className="py-8 text-center">
-                      <CheckCircle className="mx-auto mb-2 h-8 w-8 text-muted-foreground" />
-                      <p className="text-muted-foreground">Nenhum serviço realizado ainda.</p>
-                    </TableCell>
-                  </TableRow>
+                  <TableEmptyState colSpan={4} icon={CheckCircle} title="Nenhum serviço realizado ainda." />
                 ) : null}
               </TableBody>
             </Table>
@@ -979,7 +993,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
               <TableHeader>
                 <TableRow>
                   <TableHead>Serviço</TableHead>
-                  <TableHead className="hidden md:table-cell">Equipe</TableHead>
+                  <TableHead className="hidden md:table-cell">Equipe / Funcionários</TableHead>
                   <TableHead>Data</TableHead>
                   <TableHead>Horário</TableHead>
                   <TableHead>Status</TableHead>
@@ -989,18 +1003,24 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                 {clientServices
                   .filter((service) => ["draft", "scheduled", "in_progress", "rescheduled"].includes(service.status))
                   .map((service) => {
-                    const serviceType = serviceTypeMap.get(service.serviceTypeId)
-                    const team = service.teams[0] ?? (service.teamId ? teamMap.get(service.teamId) : undefined)
+                    const serviceTeams =
+                      service.teams.length > 0
+                        ? service.teams
+                        : service.teamId && teamMap.get(service.teamId)
+                          ? [teamMap.get(service.teamId)!]
+                          : []
 
                     return (
                       <TableRow key={service.id}>
                         <TableCell>
                           <div className="flex items-center gap-2">
-                            <p className="font-medium">{serviceType?.name ?? service.serviceTypeName}</p>
+                            <p className="font-medium">{service.serviceTypeName}</p>
                             {service.isEmergency ? <AlertTriangle className="h-4 w-4 text-destructive" /> : null}
                           </div>
                         </TableCell>
-                        <TableCell className="hidden md:table-cell">{team?.name}</TableCell>
+                        <TableCell className="hidden md:table-cell">
+                          <AssignmentBadges teams={serviceTeams} employees={service.additionalEmployees} />
+                        </TableCell>
                         <TableCell className="text-sm">{formatDate(service.date)}</TableCell>
                         <TableCell className="text-sm">{service.time || "08:00"}</TableCell>
                         <TableCell>{getScheduleStatusBadge(service.status)}</TableCell>
@@ -1009,12 +1029,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                   })}
 
                 {clientServices.filter((service) => ["draft", "scheduled", "in_progress", "rescheduled"].includes(service.status)).length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={5} className="py-8 text-center">
-                      <Calendar className="mx-auto mb-2 h-8 w-8 text-muted-foreground" />
-                      <p className="text-muted-foreground">Nenhum serviço agendado.</p>
-                    </TableCell>
-                  </TableRow>
+                  <TableEmptyState colSpan={5} icon={Calendar} title="Nenhum serviço agendado." />
                 ) : null}
               </TableBody>
             </Table>
@@ -1047,9 +1062,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                         <div className="min-w-0">
                           <p className="truncate font-medium">{attachment.title}</p>
                           <p className="truncate text-xs text-muted-foreground">
-                            {attachment.type === "informative"
-                              ? informativePdfFileName(attachment.fileName)
-                              : `${attachment.fileName} - ${formatAttachmentSize(attachment.fileSize)}`}
+                            {formatAttachmentFileInfo(attachment)}
                           </p>
                         </div>
                       </div>
@@ -1104,20 +1117,20 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                 ))}
 
                 {!attachmentsQuery.isLoading && clientAttachments.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={5} className="py-8 text-center">
-                      <Paperclip className="mx-auto mb-2 h-8 w-8 text-muted-foreground" />
-                      <p className="text-muted-foreground">Nenhum anexo vinculado a este cliente.</p>
-                    </TableCell>
-                  </TableRow>
+                  <TableEmptyState colSpan={5} icon={Paperclip} title="Nenhum anexo vinculado a este cliente." />
                 ) : null}
 
                 {attachmentsQuery.isLoading ? (
-                  <TableRow>
-                    <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
-                      Carregando anexos...
-                    </TableCell>
-                  </TableRow>
+                  <TableSkeletonRows
+                    rows={3}
+                    columns={[
+                      { width: "w-20" },
+                      { withIcon: true, width: "w-48" },
+                      { className: "hidden md:table-cell", width: "w-20" },
+                      { className: "hidden md:table-cell", width: "w-20" },
+                      { align: "right", width: "w-8" },
+                    ]}
+                  />
                 ) : null}
               </TableBody>
             </Table>

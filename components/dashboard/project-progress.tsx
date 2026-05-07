@@ -2,10 +2,12 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { useQuery } from "@tanstack/react-query"
-import { getDashboardAnalytics, getFinancialAnalytics } from "@/lib/api/analytics"
+import { getDashboardAnalytics, getFinancialAnalytics, type ServicesByTeamPoint } from "@/lib/api/analytics"
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts"
 
 const COLORS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)"]
+const EMPTY_CHART_COLOR = "#DDE7D5"
+type ServicesByTeamChartPoint = ServicesByTeamPoint & { isEmpty?: boolean }
 
 export function ServiceDistribution({ showDescription = true, days = 30 }: { showDescription?: boolean; days?: number }) {
   const dashboardQuery = useQuery({
@@ -13,7 +15,11 @@ export function ServiceDistribution({ showDescription = true, days = 30 }: { sho
     queryFn: () => getDashboardAnalytics({ days }),
   })
   const servicesByTeamData = dashboardQuery.data?.data.servicesByTeamData ?? []
-  const total = servicesByTeamData.reduce((acc, curr) => acc + curr.services, 0)
+  const hasServicesByTeamData = servicesByTeamData.some((item) => item.services > 0)
+  const chartData: ServicesByTeamChartPoint[] = hasServicesByTeamData
+    ? servicesByTeamData
+    : [{ team: "Sem dados", services: 1, isEmpty: true }]
+  const total = hasServicesByTeamData ? servicesByTeamData.reduce((acc, curr) => acc + curr.services, 0) : 0
 
   return (
     <Card className="h-full overflow-hidden hover:shadow-xl transition-all duration-500">
@@ -27,7 +33,7 @@ export function ServiceDistribution({ showDescription = true, days = 30 }: { sho
         <ResponsiveContainer width="100%" height={200}>
           <PieChart>
             <Pie
-              data={servicesByTeamData}
+              data={chartData}
               cx="50%"
               cy="50%"
               innerRadius={55}
@@ -35,8 +41,8 @@ export function ServiceDistribution({ showDescription = true, days = 30 }: { sho
               dataKey="services"
               nameKey="team"
             >
-              {servicesByTeamData.map((_, index) => (
-                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+              {chartData.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={entry.isEmpty ? EMPTY_CHART_COLOR : COLORS[index % COLORS.length]} />
               ))}
             </Pie>
             <Tooltip
@@ -45,19 +51,19 @@ export function ServiceDistribution({ showDescription = true, days = 30 }: { sho
                 border: "1px solid var(--border)",
                 borderRadius: "8px",
               }}
-              formatter={(value: number) => [`${value} serviços`, ""]}
+              formatter={(value: number, _name, item) => [`${item.payload.isEmpty ? 0 : value} serviços`, ""]}
             />
           </PieChart>
         </ResponsiveContainer>
         <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 w-full">
-          {servicesByTeamData.map((entry, index) => (
+          {chartData.map((entry, index) => (
             <div key={entry.team} className="flex items-center gap-1.5 text-xs">
               <div
                 className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                style={{ backgroundColor: COLORS[index % COLORS.length] }}
+                style={{ backgroundColor: entry.isEmpty ? EMPTY_CHART_COLOR : COLORS[index % COLORS.length] }}
               />
               <span className="text-muted-foreground whitespace-nowrap">
-                {entry.team}: {total > 0 ? Math.round((entry.services / total) * 100) : 0}%
+                {entry.team}: {entry.isEmpty || total === 0 ? 0 : Math.round((entry.services / total) * 100)}%
               </span>
             </div>
           ))}
@@ -72,7 +78,7 @@ const FINANCE_COLORS = ['#22C55E', '#F59E0B', '#EF4444']
 export function FinancialOverview() {
   const financialQuery = useQuery({
     queryKey: ["analytics", "financial"],
-    queryFn: getFinancialAnalytics,
+    queryFn: () => getFinancialAnalytics(),
   })
   const financeData = financialQuery.data?.data.financeHealthData ?? [
     { name: 'Pagas', value: 0 },
@@ -80,6 +86,8 @@ export function FinancialOverview() {
     { name: 'Vencidas', value: 0 },
   ]
   const total = financeData.reduce((acc, curr) => acc + curr.value, 0)
+  const hasFinanceData = total > 0
+  const chartData = hasFinanceData ? financeData : [{ name: "Sem dados", value: 1 }]
   const paidPercentage = total > 0 ? Math.round(((financeData[0]?.value ?? 0) / total) * 100) : 0
 
   return (
@@ -92,7 +100,7 @@ export function FinancialOverview() {
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie
-                data={financeData}
+                data={chartData}
                 cx="50%"
                 cy="50%"
                 innerRadius={50}
@@ -100,8 +108,8 @@ export function FinancialOverview() {
                 paddingAngle={2}
                 dataKey="value"
               >
-                {financeData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={FINANCE_COLORS[index % FINANCE_COLORS.length]} />
+                {chartData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={hasFinanceData ? FINANCE_COLORS[index % FINANCE_COLORS.length] : EMPTY_CHART_COLOR} />
                 ))}
               </Pie>
               <Tooltip 
@@ -111,7 +119,7 @@ export function FinancialOverview() {
                   borderRadius: '8px',
                   fontSize: '12px'
                 }}
-                formatter={(value: number) => [`${value}%`, '']}
+                formatter={(value: number) => [hasFinanceData ? `${value}%` : "0%", '']}
               />
             </PieChart>
           </ResponsiveContainer>

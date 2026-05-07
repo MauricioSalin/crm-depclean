@@ -15,6 +15,8 @@ import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { DataPagination } from "@/components/ui/data-pagination"
+import { EmptyState, TableEmptyState } from "@/components/ui/empty-state"
+import { CardSkeletonGrid, TableSkeletonRows } from "@/components/ui/table-skeleton"
 import { toast } from "@/components/ui/use-toast"
 import { listEmployees, type EmployeeRecord } from "@/lib/api/employees"
 import { getApiErrorMessage } from "@/lib/api/errors"
@@ -345,7 +347,11 @@ export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle 
 
         {viewMode === "grid" ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {paginatedTeams.map((team) => (
+            {teamsQuery.isLoading ? (
+              <CardSkeletonGrid cards={4} />
+            ) : teamsView.length === 0 ? (
+              <EmptyState icon={Users} title="Nenhuma equipe encontrada." className="sm:col-span-2" />
+            ) : paginatedTeams.map((team) => (
               <Card key={team.id} className="overflow-hidden transition-shadow hover:shadow-lg">
                 <CardHeader className="pb-2">
                   <div className="flex items-center justify-between gap-2">
@@ -405,7 +411,19 @@ export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle 
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {paginatedTeams.map((team) => (
+                {teamsQuery.isLoading ? (
+                  <TableSkeletonRows
+                    rows={5}
+                    columns={[
+                      { withIcon: true, width: "w-36" },
+                      { className: "hidden sm:table-cell", width: "w-24" },
+                      { className: "hidden md:table-cell", width: "w-44" },
+                      { align: "right", width: "w-16" },
+                    ]}
+                  />
+                ) : teamsView.length === 0 ? (
+                  <TableEmptyState colSpan={4} icon={Users} title="Nenhuma equipe encontrada." />
+                ) : paginatedTeams.map((team) => (
                   <TableRow key={team.id}>
                     <TableCell>
                       <div className="flex items-center gap-3">
@@ -454,25 +472,19 @@ export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle 
           </div>
         )}
 
-        {!teamsQuery.isLoading && teamsView.length === 0 ? (
-          <div className="py-8 text-center">
-            <Users className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
-            <h3 className="text-lg font-medium">Nenhuma equipe encontrada</h3>
-            <p className="text-muted-foreground">Crie uma nova equipe para começar.</p>
-          </div>
+        {!teamsQuery.isLoading ? (
+          <DataPagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            pageSize={pageSize}
+            totalItems={teamsView.length}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={(size) => {
+              setPageSize(size)
+              setCurrentPage(1)
+            }}
+          />
         ) : null}
-
-        <DataPagination
-          currentPage={currentPage}
-          totalPages={totalPages}
-          pageSize={pageSize}
-          totalItems={teamsView.length}
-          onPageChange={setCurrentPage}
-          onPageSizeChange={(size) => {
-            setPageSize(size)
-            setCurrentPage(1)
-          }}
-        />
       </div>
     </div>
   )

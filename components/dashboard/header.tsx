@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Search, Bell, User, FileText, LogOut, ChevronDown, PanelLeftClose, PanelLeftOpen } from "lucide-react"
+import { Search, Bell, User, FileText, LogOut, ChevronDown, PanelLeftClose, PanelLeftOpen, Settings } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -236,6 +236,12 @@ export function Header({ title, description, titleAddon, headerActions, actions,
                       <DropdownMenuItem className="cursor-pointer">
                         <FileText className="mr-2 h-4 w-4" />
                         Templates
+                      </DropdownMenuItem>
+                    </Link>
+                    <Link href="/configuracoes">
+                      <DropdownMenuItem className="cursor-pointer">
+                        <Settings className="mr-2 h-4 w-4" />
+                        Configurações
                       </DropdownMenuItem>
                     </Link>
                     <DropdownMenuSeparator />

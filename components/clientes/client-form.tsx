@@ -17,11 +17,12 @@ import {
 import { Separator } from "@/components/ui/separator"
 import { Plus, Trash2, Building2, MapPin, Save, Loader2, Users } from "lucide-react"
 import { useRouter } from "next/navigation"
-import { formatCNPJ, formatPhone } from "@/lib/masks"
+import { formatCNPJ, formatCPF, formatPhone } from "@/lib/masks"
 import { toast } from "@/components/ui/use-toast"
 import { createClient, getClientById, updateClient, type ClientPayload } from "@/lib/api/clients"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { listClientTypes } from "@/lib/api/settings"
+import { getColorFromClass } from "@/lib/utils"
 
 interface ClientFormProps {
   clientId?: string
@@ -66,14 +67,17 @@ export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
     companyName: client?.companyName || "",
     cnpj: client?.cnpj || "",
     responsibleName: client?.responsibleName || "",
+    responsibleCpf: client?.responsibleCpf || "",
     phone: client?.phone || "",
     email: client?.email || "",
     clientTypeId: client?.clientTypeId || "",
     assessorName: "",
+    assessorCpf: "",
     assessorEmail: "",
     assessorPhone: "",
     copyNotificationsToOwner: false,
   })
+  const selectedClientType = clientTypes.find((type) => type.id === formData.clientTypeId)
 
   const [units, setUnits] = useState<ClientUnitForm[]>(
     client?.units || [
@@ -150,10 +154,12 @@ export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
       companyName: loadedClient.companyName || "",
       cnpj: formatCNPJ(loadedClient.cnpj || ""),
       responsibleName: loadedClient.responsibleName || "",
+      responsibleCpf: formatCPF(loadedClient.responsibleCpf || ""),
       phone: formatPhone(loadedClient.phone || ""),
       email: loadedClient.email || "",
       clientTypeId: loadedClient.clientTypeId || "",
       assessorName: loadedClient.assessor?.name || "",
+      assessorCpf: formatCPF(loadedClient.assessor?.cpf || ""),
       assessorEmail: loadedClient.assessor?.email || "",
       assessorPhone: formatPhone(loadedClient.assessor?.phone || ""),
       copyNotificationsToOwner: Boolean(loadedClient.copyNotificationsToOwner),
@@ -280,10 +286,12 @@ export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
         companyName: formData.companyName.trim(),
         cnpj: formData.cnpj.trim(),
         responsibleName: formData.responsibleName.trim(),
+        responsibleCpf: formData.responsibleCpf.trim(),
         phone: formData.phone.trim(),
         email: formData.email.trim(),
         clientTypeId: formData.clientTypeId,
         assessorName: formData.assessorName.trim(),
+        assessorCpf: formData.assessorCpf.trim(),
         assessorEmail: formData.assessorEmail.trim(),
         assessorPhone: formData.assessorPhone.trim(),
         copyNotificationsToOwner: formData.copyNotificationsToOwner,
@@ -391,15 +399,28 @@ export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
                 onValueChange={(value) => handleInputChange("clientTypeId", value)}
               >
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Selecione o tipo" />
+                  <SelectValue placeholder="Selecione o tipo">
+                    {selectedClientType ? (
+                      <span className="flex min-w-0 items-center gap-2">
+                        <span
+                          className="h-2.5 w-2.5 shrink-0 rounded-full"
+                          style={{ backgroundColor: getColorFromClass(selectedClientType.color) }}
+                        />
+                        <span className="truncate">{selectedClientType.name}</span>
+                      </span>
+                    ) : null}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {clientTypes.map((type) => (
-                    <SelectItem key={type.id} value={type.id}>
-                      <div className="flex items-center gap-2">
-                        <div className={`w-2 h-2 rounded-full ${type.color}`} />
-                        {type.name}
-                      </div>
+                    <SelectItem key={type.id} value={type.id} textValue={type.name} className="cursor-pointer">
+                      <span className="flex min-w-0 items-center gap-2">
+                        <span
+                          className="h-2.5 w-2.5 shrink-0 rounded-full"
+                          style={{ backgroundColor: getColorFromClass(type.color) }}
+                        />
+                        <span className="truncate">{type.name}</span>
+                      </span>
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -412,6 +433,16 @@ export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
                 value={formData.responsibleName}
                 onChange={(e) => handleInputChange("responsibleName", e.target.value)}
                 placeholder="Nome do síndico ou responsável"
+                required
+              />
+            </div>
+            <div className="space-y-2 md:w-[220px] shrink-0">
+              <Label htmlFor="responsibleCpf">CPF do Responsável *</Label>
+              <Input
+                id="responsibleCpf"
+                value={formData.responsibleCpf}
+                onChange={(e) => handleInputChange("responsibleCpf", formatCPF(e.target.value))}
+                placeholder="000.000.000-00"
                 required
               />
             </div>
@@ -500,6 +531,15 @@ export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
                 value={formData.assessorPhone}
                 onChange={(e) => handleInputChange("assessorPhone", formatPhone(e.target.value))}
                 placeholder="(00) 00000-0000"
+              />
+            </div>
+            <div className="space-y-2 md:w-[320px]">
+              <Label htmlFor="assessorCpf">CPF</Label>
+              <Input
+                id="assessorCpf"
+                value={formData.assessorCpf}
+                onChange={(e) => handleInputChange("assessorCpf", formatCPF(e.target.value))}
+                placeholder="000.000.000-00"
               />
             </div>
           </div>

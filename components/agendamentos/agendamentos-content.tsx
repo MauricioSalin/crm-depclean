@@ -36,7 +36,9 @@ import { listServices } from "@/lib/api/services"
 import { listTeams } from "@/lib/api/teams"
 import { getStoredUser } from "@/lib/auth/session"
 import type { AuthenticatedUser } from "@/lib/auth/types"
+import { formatCivilDate, toCivilDateKey } from "@/lib/date-utils"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
+import { scheduleDurationToMinutes } from "@/lib/schedule-duration"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
@@ -59,6 +61,8 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { DataPagination } from "@/components/ui/data-pagination"
+import { EmptyState, TableEmptyState } from "@/components/ui/empty-state"
+import { CardSkeletonGrid, TableSkeletonRows } from "@/components/ui/table-skeleton"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { SchedulingFormDialog, type SchedulingFormData } from "./scheduling-form-dialog"
 import { ScheduleDetailsDialog } from "./schedule-details-dialog"
@@ -178,6 +182,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
   const invalidateSchedules = async () => {
     await queryClient.invalidateQueries({ queryKey: ["schedules"] })
     await queryClient.invalidateQueries({ queryKey: ["notifications"] })
+    await queryClient.invalidateQueries({ queryKey: ["analytics"] })
   }
 
   const saveMutation = useMutation({
@@ -196,8 +201,10 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
         additionalEmployeeIds: formData.employeeIds,
         scheduledDate: formData.date,
         scheduledTime: formData.time,
-        estimatedDuration: formData.duration,
+        estimatedDuration: scheduleDurationToMinutes(formData.duration, formData.durationType),
         isEmergency: formData.isEmergency,
+        billable: formData.createContract,
+        value: formData.createContract ? formData.value : 0,
         notes: formData.notes,
       }
 
@@ -336,7 +343,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
   }
 
   const openCompletionDialog = (schedule: ScheduleRecord) => {
-    const defaultDate = schedule.date || new Date().toISOString().split("T")[0]
+    const defaultDate = schedule.date || toCivilDateKey(new Date())
     setCompletionTarget(schedule)
     setCompletionStartDate(schedule.completionStartDate || defaultDate)
     setCompletionStartTime(schedule.completionStartTime || schedule.time || "")
@@ -636,12 +643,20 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {paginatedSchedules.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="h-24 text-center">
-                      Nenhum agendamento encontrado.
-                    </TableCell>
-                  </TableRow>
+                {schedulesQuery.isLoading ? (
+                  <TableSkeletonRows
+                    rows={5}
+                    columns={[
+                      { withIcon: true, width: "w-40" },
+                      { className: "hidden sm:table-cell", width: "w-44" },
+                      { className: "hidden md:table-cell", width: "w-36" },
+                      { width: "w-28" },
+                      { width: "w-24" },
+                      { align: "right", width: "w-20" },
+                    ]}
+                  />
+                ) : paginatedSchedules.length === 0 ? (
+                  <TableEmptyState colSpan={6} icon={Calendar} title="Nenhum agendamento encontrado." />
                 ) : (
                   paginatedSchedules.map((schedule) => (
                     <TableRow
@@ -690,7 +705,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                       <TableCell>
                         <div className="flex items-center gap-1 text-muted-foreground">
                           <Calendar className="h-3 w-3" />
-                          <span>{new Date(schedule.date).toLocaleDateString("pt-BR")}</span>
+                          <span>{formatCivilDate(schedule.date)}</span>
                         </div>
                         <div className="flex items-center gap-1 text-sm text-muted-foreground">
                           <Clock className="h-3 w-3" />
@@ -769,7 +784,11 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {paginatedSchedules.map((schedule) => (
+            {schedulesQuery.isLoading ? (
+              <CardSkeletonGrid cards={4} />
+            ) : paginatedSchedules.length === 0 ? (
+              <EmptyState icon={Calendar} title="Nenhum agendamento encontrado." className="sm:col-span-2" />
+            ) : paginatedSchedules.map((schedule) => (
               <Card key={schedule.id} className="h-full cursor-pointer" onClick={() => openSchedule(schedule)}>
                 <CardContent className="flex flex-1 flex-col">
                   <div className="mb-2 flex items-start justify-between">
@@ -791,7 +810,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                     </div>
                     <div className="flex items-center gap-2">
                       <Calendar className="h-3 w-3" />
-                      {new Date(schedule.date).toLocaleDateString("pt-BR")}
+                      {formatCivilDate(schedule.date)}
                     </div>
                   </div>
                   {schedule.teams.length > 0 || schedule.additionalEmployees.length > 0 ? (
@@ -861,17 +880,19 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
           </div>
         )}
 
-        <DataPagination
-          currentPage={currentPage}
-          totalPages={totalPages}
-          pageSize={itemsPerPage}
-          totalItems={totalItems}
-          onPageChange={setCurrentPage}
-          onPageSizeChange={(size) => {
-            setItemsPerPage(size)
-            setCurrentPage(1)
-          }}
-        />
+        {!schedulesQuery.isLoading ? (
+          <DataPagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            pageSize={itemsPerPage}
+            totalItems={totalItems}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={(size) => {
+              setItemsPerPage(size)
+              setCurrentPage(1)
+            }}
+          />
+        ) : null}
       </div>
 
       <ConfirmActionDialog

@@ -23,6 +23,7 @@ import { getApiErrorMessage } from "@/lib/api/errors"
 import { listSchedules, createSchedule, updateSchedule, startSchedule, completeSchedule, cancelSchedule, uploadScheduleNa, type ScheduleRecord } from "@/lib/api/schedules"
 import { listServices } from "@/lib/api/services"
 import { listTeams } from "@/lib/api/teams"
+import { toCivilDateKey } from "@/lib/date-utils"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 import type { RecurrenceType } from "@/lib/types"
 import { Badge } from "@/components/ui/badge"
@@ -41,12 +42,20 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { EmptyState } from "@/components/ui/empty-state"
 import { SearchableSelect } from "@/components/ui/searchable-select"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { WeekTimeline } from "./week-timeline"
 import { CurrencyInput } from "@/components/ui/currency-input"
 import { ScheduleDetailsDialog } from "@/components/agendamentos/schedule-details-dialog"
+import {
+  minutesToScheduleDuration,
+  SCHEDULE_DURATION_TYPE_OPTIONS,
+  scheduleDurationToMinutes,
+  type ScheduleDurationType,
+} from "@/lib/schedule-duration"
 
 type AgendaRecurrenceType = "none" | "daily" | RecurrenceType
 
@@ -102,6 +111,7 @@ type AgendaFormData = {
   teamId: string
   date: string
   time: string
+  durationType: ScheduleDurationType
   duration: number
   value: number
   createContract: boolean
@@ -114,9 +124,10 @@ const DEFAULT_FORM_DATA: AgendaFormData = {
   clientId: "",
   serviceTypeId: "",
   teamId: "",
-  date: new Date().toISOString().split("T")[0],
+  date: toCivilDateKey(new Date()),
   time: "",
-  duration: 60,
+  durationType: "hours",
+  duration: 1,
   value: 0,
   createContract: false,
   recurrence: { ...DEFAULT_RECURRENCE },
@@ -205,6 +216,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
     await queryClient.invalidateQueries({ queryKey: ["schedules", "agenda"] })
     await queryClient.invalidateQueries({ queryKey: ["agendamentos"] })
     await queryClient.invalidateQueries({ queryKey: ["notifications"] })
+    await queryClient.invalidateQueries({ queryKey: ["analytics"] })
   }
 
   const resetForm = () => {
@@ -242,8 +254,10 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
         additionalEmployeeIds: [],
         scheduledDate: formData.date,
         scheduledTime: formData.time,
-        estimatedDuration: formData.duration,
+        estimatedDuration: scheduleDurationToMinutes(formData.duration, formData.durationType),
         isEmergency: formData.isEmergency,
+        billable: formData.createContract,
+        value: formData.createContract ? formData.value : 0,
         notes: formData.notes,
       }
 
@@ -378,7 +392,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   }, [schedules, searchTerm, statusFilter])
 
   const getServicesForDate = (date: Date) => {
-    const dateStr = date.toISOString().split("T")[0]
+    const dateStr = toCivilDateKey(date)
     return filteredServices.filter((service) => service.date === dateStr)
   }
 
@@ -398,10 +412,13 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
 
   const handleDateClick = (date: Date) => {
     setSelectedDate(date)
-    setFormData((previous) => ({ ...previous, date: date.toISOString().split("T")[0] }))
+    setFormData((previous) => ({ ...previous, date: toCivilDateKey(date) }))
   }
 
   const handleEditService = (service: AgendaScheduledServiceRow) => {
+    const serviceType = serviceTypes.find((item) => item.id === service.serviceTypeId)
+    const durationFields = minutesToScheduleDuration(service.duration, serviceType)
+
     setSelectedSchedule(null)
     setCancelTarget(null)
     setCompletionTarget(null)
@@ -412,9 +429,10 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       teamId: service.teamId ?? service.teams[0]?.id ?? "",
       date: service.date,
       time: service.time ?? "",
-      duration: service.duration,
-      value: 0,
-      createContract: false,
+      durationType: durationFields.durationType,
+      duration: durationFields.duration,
+      value: service.billable ? Number(service.value ?? 0) : 0,
+      createContract: Boolean(service.billable),
       recurrence: service.recurrence || { ...DEFAULT_RECURRENCE },
       notes: service.notes || "",
       isEmergency: service.isEmergency ?? false,
@@ -423,7 +441,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   }
 
   const openCompletionDialog = (schedule: AgendaScheduledServiceRow) => {
-    const defaultDate = schedule.date || new Date().toISOString().split("T")[0]
+    const defaultDate = schedule.date || toCivilDateKey(new Date())
     setCompletionTarget(schedule)
     setCompletionStartDate(schedule.completionStartDate || defaultDate)
     setCompletionStartTime(schedule.completionStartTime || schedule.time || "")
@@ -496,7 +514,16 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                 <Label>Tipo de Serviço</Label>
                 <SearchableSelect
                   value={formData.serviceTypeId}
-                  onValueChange={(value) => setFormData((previous) => ({ ...previous, serviceTypeId: value }))}
+                  onValueChange={(value) => {
+                    const serviceType = serviceTypes.find((item) => item.id === value)
+                    setFormData((previous) => ({
+                      ...previous,
+                      serviceTypeId: value,
+                      durationType: serviceType?.durationType ?? previous.durationType,
+                      duration: serviceType?.defaultDuration ?? previous.duration,
+                      value: previous.createContract ? serviceType?.baseValue ?? previous.value : 0,
+                    }))
+                  }}
                   options={serviceTypes
                     .filter((serviceType) => serviceType.isActive)
                     .map((serviceType) => ({ value: serviceType.id, label: serviceType.name }))}
@@ -543,15 +570,34 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
               </div>
 
               <div className="space-y-2">
-                <Label>Duração (min)</Label>
+                <Label>Tipo de Duração</Label>
+                <Select
+                  value={formData.durationType}
+                  onValueChange={(value) =>
+                    setFormData((previous) => ({ ...previous, durationType: value as ScheduleDurationType }))
+                  }
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SCHEDULE_DURATION_TYPE_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Duração</Label>
                 <Input
                   type="number"
                   value={formData.duration}
                   onChange={(event) =>
                     setFormData((previous) => ({ ...previous, duration: Number(event.target.value) }))
                   }
-                  min={15}
-                  step={15}
+                  min={1}
+                  className="w-full"
                 />
               </div>
 
@@ -559,8 +605,10 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                 <div className="space-y-2">
                   <Label>Valor (R$)</Label>
                   <CurrencyInput
-                    value={Math.round(formData.value * 100)}
+                    value={formData.createContract ? Math.round(formData.value * 100) : 0}
                     onChange={(cents) => setFormData((previous) => ({ ...previous, value: cents / 100 }))}
+                    disabled={!formData.createContract}
+                    className={!formData.createContract ? "cursor-not-allowed opacity-60" : undefined}
                   />
                 </div>
               ) : null}
@@ -628,16 +676,21 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
               />
             </div>
 
-            {!editingService ? (
+            {!isEditingAutomatedSchedule ? (
               <div className="space-y-2">
                 <div className="rounded-lg bg-muted p-3">
                   <div className="flex items-center space-x-2">
                     <Checkbox
                       id="createContract"
                       checked={formData.createContract}
-                      onCheckedChange={(checked) =>
-                        setFormData((previous) => ({ ...previous, createContract: !!checked }))
-                      }
+                      onCheckedChange={(checked) => {
+                        const serviceType = serviceTypes.find((item) => item.id === formData.serviceTypeId)
+                        setFormData((previous) => ({
+                          ...previous,
+                          createContract: !!checked,
+                          value: checked ? previous.value || serviceType?.baseValue || 0 : 0,
+                        }))
+                      }}
                     />
                     <div className="flex flex-col">
                       <Label htmlFor="createContract" className="cursor-pointer text-sm font-medium">
@@ -1140,13 +1193,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                     </div>
                   </ScrollArea>
                 ) : (
-                  <div className="py-8 text-center text-muted-foreground">
-                    <CalendarIcon className="mx-auto mb-2 h-8 w-8 opacity-50" />
-                    <p className="text-sm">Nenhum serviço agendado.</p>
-                    <Button variant="link" className="mt-2 text-primary" onClick={() => handleDialogChange(true)}>
-                      Agendar serviço
-                    </Button>
-                  </div>
+                  <EmptyState icon={CalendarIcon} title="Nenhum serviço agendado." className="min-h-[320px]" />
                 )
               ) : (
                 <div className="py-8 text-center text-muted-foreground">
@@ -1306,13 +1353,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                     </div>
                   </ScrollArea>
                 ) : (
-                  <div className="py-8 text-center text-muted-foreground">
-                    <CalendarIcon className="mx-auto mb-2 h-8 w-8 opacity-50" />
-                    <p className="text-sm">Nenhum serviço agendado.</p>
-                    <Button variant="link" className="mt-2 text-primary" onClick={() => handleDialogChange(true)}>
-                      Agendar serviço
-                    </Button>
-                  </div>
+                  <EmptyState icon={CalendarIcon} title="Nenhum serviço agendado." className="min-h-[320px]" />
                 )
               ) : (
                 <div className="py-8 text-center text-muted-foreground">

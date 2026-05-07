@@ -1,6 +1,8 @@
-import axios from "axios"
+import axios, { AxiosError } from "axios"
 
-import { getStoredAccessToken } from "@/lib/auth/session"
+import { clearSession, getStoredAccessToken } from "@/lib/auth/session"
+
+let handlingUnauthorizedSession = false
 
 export const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3333/api/v1",
@@ -27,3 +29,26 @@ api.interceptors.request.use((config) => {
 
   return config
 })
+
+function isAuthRequest(url?: string) {
+  return Boolean(url && url.includes("/auth/"))
+}
+
+api.interceptors.response.use(
+  (response) => response,
+  (error: AxiosError) => {
+    const status = error.response?.status
+
+    if (typeof window !== "undefined" && status === 401 && !isAuthRequest(error.config?.url)) {
+      if (!handlingUnauthorizedSession) {
+        handlingUnauthorizedSession = true
+        clearSession()
+        window.location.replace("/login?sessionExpired=1")
+      }
+
+      return new Promise(() => undefined)
+    }
+
+    return Promise.reject(error)
+  },
+)

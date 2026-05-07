@@ -1,5 +1,7 @@
 "use client"
 
+import { useEffect } from "react"
+
 import { Button } from "@/components/ui/button"
 import {
   Select,
@@ -29,11 +31,20 @@ export function DataPagination({
   onPageSizeChange,
   pageSizeOptions = [10, 15, 20, 50],
 }: DataPaginationProps) {
-  const safePageSize = Number.isFinite(pageSize) && pageSize > 0 ? pageSize : (pageSizeOptions[0] ?? 10)
+  const normalizedPageSizeOptions = Array.from(
+    new Set(pageSizeOptions.filter((option) => Number.isFinite(option) && option > 0)),
+  ).sort((a, b) => a - b)
+  const firstPageSizeOption = normalizedPageSizeOptions[0] ?? 10
+  const safePageSize = normalizedPageSizeOptions.includes(pageSize) ? pageSize : firstPageSizeOption
   const safeTotalPages = Math.max(1, totalPages || 1)
-  const normalizedPageSizeOptions = Array.from(new Set([...pageSizeOptions, safePageSize])).sort((a, b) => a - b)
   const startItem = totalItems === 0 ? 0 : (currentPage - 1) * safePageSize + 1
   const endItem = Math.min(currentPage * safePageSize, totalItems)
+
+  useEffect(() => {
+    if (pageSize !== safePageSize) {
+      onPageSizeChange(safePageSize)
+    }
+  }, [onPageSizeChange, pageSize, safePageSize])
 
   return (
     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between pt-5">

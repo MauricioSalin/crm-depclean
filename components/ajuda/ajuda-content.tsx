@@ -48,7 +48,7 @@ const FAQ_ITEMS = [
   },
   {
     question: "Como visualizar o financeiro?",
-    answer: "A página 'Financeiro' mostra todas as parcelas dos contratos, organizadas por status (Pendentes, Pagas, Vencidas). Você pode filtrar por cliente, período e status, além de registrar pagamentos."
+    answer: "A aba 'Financeiro' em Relatórios mostra todas as parcelas dos contratos, organizadas por status (Pendentes, Pagas, Vencidas). Você pode filtrar por cliente, período e status, além de registrar pagamentos."
   },
   {
     question: "Como configurar notificações?",

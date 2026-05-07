@@ -7,6 +7,13 @@ type ApiErrorBody = {
 
 export function getApiErrorMessage(error: unknown, fallback: string) {
   const axiosError = error as AxiosError<ApiErrorBody>
+  const status = axiosError.response?.status
+  const requestUrl = axiosError.config?.url ?? ""
+
+  if (axiosError.isAxiosError && status === 401 && !requestUrl.includes("/auth/")) {
+    return "Sua sessão expirou. Entre novamente para continuar."
+  }
+
   const responseData = axiosError.response?.data
   const message = responseData?.message
 
@@ -23,7 +30,7 @@ export function getApiErrorMessage(error: unknown, fallback: string) {
   }
 
   if (axiosError.isAxiosError) {
-    switch (axiosError.response?.status) {
+    switch (status) {
       case 400:
         return "Verifique os dados enviados e tente novamente."
       case 401:

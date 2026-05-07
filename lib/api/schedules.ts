@@ -4,6 +4,7 @@ export type ScheduleRecord = {
   id: string
   contractId: string | null
   contractServiceId: string | null
+  contractServiceIds: string[]
   isManual: boolean
   clientId: string
   clientName: string
@@ -11,6 +12,7 @@ export type ScheduleRecord = {
   unitName: string
   address: string
   serviceTypeId: string
+  serviceTypeIds: string[]
   serviceTypeName: string
   teamId?: string
   teamName?: string
@@ -21,6 +23,13 @@ export type ScheduleRecord = {
   duration: number
   status: "draft" | "scheduled" | "in_progress" | "completed" | "cancelled" | "rescheduled"
   recurrence: { type: "none"; daysOfWeek: number[]; interval: number }
+  billable: boolean
+  value: number
+  billingStatus: "pending" | "paid" | "overdue" | "cancelled"
+  paidDate?: string
+  paidValue?: number
+  paymentMethod?: string
+  billingNotes?: string
   notes: string
   isEmergency: boolean
   cancellationReason?: string
@@ -45,6 +54,13 @@ export type SchedulePayload = {
   scheduledTime?: string
   estimatedDuration: number
   isEmergency?: boolean
+  billable?: boolean
+  value?: number
+  billingStatus?: "pending" | "paid" | "overdue" | "cancelled"
+  paidDate?: string
+  paidValue?: number
+  paymentMethod?: string
+  billingNotes?: string
   notes?: string
 }
 
@@ -66,6 +82,14 @@ export async function createSchedule(payload: SchedulePayload) {
 }
 
 export async function updateSchedule(id: string, payload: Partial<SchedulePayload>) {
+  const response = await api.patch<{ success: true; data: ScheduleRecord }>(`/schedules/${id}`, payload)
+  return response.data
+}
+
+export async function updateScheduleBilling(
+  id: string,
+  payload: Pick<SchedulePayload, "billingStatus" | "paidDate" | "paidValue" | "paymentMethod" | "billingNotes">,
+) {
   const response = await api.patch<{ success: true; data: ScheduleRecord }>(`/schedules/${id}`, payload)
   return response.data
 }

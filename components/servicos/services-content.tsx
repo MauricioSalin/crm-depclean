@@ -3,7 +3,7 @@
 import { useEffect, useState, type KeyboardEvent, type ReactNode } from "react"
 import Link from "next/link"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Search, Edit, Trash2, Clock, ClipboardList } from "lucide-react"
+import { Search, Edit, Trash2, Clock, ClipboardList, Users } from "lucide-react"
 
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -11,6 +11,8 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
 import { DataPagination } from "@/components/ui/data-pagination"
+import { TableEmptyState } from "@/components/ui/empty-state"
+import { CardSkeletonGrid, TableSkeletonRows } from "@/components/ui/table-skeleton"
 import { ServiceClausesDialog } from "@/components/servicos/service-clauses-dialog"
 import { toast } from "@/components/ui/use-toast"
 import {
@@ -22,6 +24,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
+import { listEmployees } from "@/lib/api/employees"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { deleteService, listServices, type ServiceRecord } from "@/lib/api/services"
 import { listTeams } from "@/lib/api/teams"
@@ -57,9 +60,15 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
     queryKey: ["teams", "services-content"],
     queryFn: () => listTeams(""),
   })
+  const employeesQuery = useQuery({
+    queryKey: ["employees", "services-content"],
+    queryFn: () => listEmployees(""),
+  })
 
   const serviceTypes = servicesQuery.data?.data ?? []
   const teams = teamsQuery.data?.data ?? []
+  const employees = employeesQuery.data?.data ?? []
+  const isLoading = servicesQuery.isLoading || teamsQuery.isLoading || employeesQuery.isLoading
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteService(id),
@@ -140,18 +149,19 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
               </TableRow>
             </TableHeader>
             <TableBody>
-              {servicesQuery.isLoading ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="h-24 text-center">
-                    Carregando tipos de serviço...
-                  </TableCell>
-                </TableRow>
+              {isLoading ? (
+                <TableSkeletonRows
+                  rows={5}
+                  columns={[
+                    { withIcon: true, width: "w-36" },
+                    { className: "hidden sm:table-cell", width: "w-48" },
+                    { className: "hidden md:table-cell", width: "w-32" },
+                    { width: "w-20" },
+                    { align: "right", width: "w-16" },
+                  ]}
+                />
               ) : filteredTypes.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="h-24 text-center">
-                    Nenhum tipo de serviço encontrado.
-                  </TableCell>
-                </TableRow>
+                <TableEmptyState colSpan={5} icon={ClipboardList} title="Nenhum tipo de serviço encontrado." />
               ) : (
                 paginatedTypes.map((type) => (
                   <TableRow
@@ -177,23 +187,34 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
                     </TableCell>
                     <TableCell className="hidden md:table-cell">
                       <div className="flex flex-wrap gap-1">
-                        {(type.teamIds || []).map((teamId: string) => {
-                          const team = teams.find((item) => item.id === teamId)
-                          return team ? (
-                            <Badge
-                              key={team.id}
-                              variant="secondary"
-                              className="flex items-center gap-1.5 px-2 py-0.5 text-xs text-foreground/80"
-                              style={{ backgroundColor: `${team.color}1A` }}
-                            >
-                              <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: team.color }} />
-                              {team.name}
-                            </Badge>
-                          ) : null
-                        })}
-                        {(!type.teamIds || type.teamIds.length === 0) && (
-                          <span className="text-sm text-muted-foreground">-</span>
-                        )}
+                        {(() => {
+                          const serviceTeams = teams.filter((item) => (type.teamIds || []).includes(item.id))
+                          const serviceEmployees = employees.filter((item) => (type.employeeIds || []).includes(item.id))
+                          if (serviceTeams.length === 0 && serviceEmployees.length === 0) {
+                            return <span className="text-sm text-muted-foreground">-</span>
+                          }
+                          return (
+                            <>
+                              {serviceTeams.map((team) => (
+                                <Badge
+                                  key={team.id}
+                                  variant="secondary"
+                                  className="flex items-center gap-1.5 px-2 py-0.5 text-xs text-foreground/80"
+                                  style={{ backgroundColor: `${team.color}1A` }}
+                                >
+                                  <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: team.color }} />
+                                  {team.name}
+                                </Badge>
+                              ))}
+                              {serviceEmployees.map((employee) => (
+                                <Badge key={employee.id} variant="outline" className="flex items-center gap-1.5 px-2 py-0.5 text-xs">
+                                  <Users className="h-3 w-3" />
+                                  {employee.name}
+                                </Badge>
+                              ))}
+                            </>
+                          )
+                        })()}
                       </div>
                     </TableCell>
                     <TableCell className="min-w-[110px]">
@@ -229,7 +250,9 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {paginatedTypes.map((type) => (
+          {isLoading ? (
+            <CardSkeletonGrid cards={4} />
+          ) : paginatedTypes.map((type) => (
             <Card
               key={type.id}
               role="button"
@@ -276,9 +299,9 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
                   <span>{formatDuration(type)}</span>
                 </div>
 
-                {type.teamIds?.length > 0 ? (
+                {(type.teamIds?.length > 0 || type.employeeIds?.length > 0) ? (
                   <div className="mt-1.5 flex flex-wrap gap-1">
-                    {type.teamIds.map((teamId: string) => {
+                    {(type.teamIds ?? []).map((teamId: string) => {
                       const team = teams.find((item) => item.id === teamId)
                       return team ? (
                         <Badge
@@ -292,6 +315,15 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
                         </Badge>
                       ) : null
                     })}
+                    {(type.employeeIds ?? []).map((employeeId: string) => {
+                      const employee = employees.find((item) => item.id === employeeId)
+                      return employee ? (
+                        <Badge key={employee.id} variant="outline" className="flex items-center gap-1.5 px-2 py-0.5 text-xs">
+                          <Users className="h-3 w-3" />
+                          {employee.name}
+                        </Badge>
+                      ) : null
+                    })}
                   </div>
                 ) : null}
               </CardContent>
@@ -300,17 +332,19 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
         </div>
       )}
 
-      <DataPagination
-        currentPage={currentPage}
-        totalPages={totalPages}
-        pageSize={itemsPerPage}
-        totalItems={totalItems}
-        onPageChange={setCurrentPage}
-        onPageSizeChange={(size) => {
-          setItemsPerPage(size)
-          setCurrentPage(1)
-        }}
-      />
+      {!isLoading ? (
+        <DataPagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          pageSize={itemsPerPage}
+          totalItems={totalItems}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={(size) => {
+            setItemsPerPage(size)
+            setCurrentPage(1)
+          }}
+        />
+      ) : null}
 
       <ConfirmActionDialog
         open={!!pendingDelete}

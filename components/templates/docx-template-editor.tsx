@@ -19,6 +19,7 @@ import {
   type TemplateFormat,
   type TemplateKind,
 } from "@/lib/api/templates"
+import { Skeleton } from "@/components/ui/skeleton"
 import { DOCX_EDITOR_PT_BR } from "@/lib/docx-editor-pt-br"
 
 type DocxEditorHandleLike = {
@@ -62,6 +63,7 @@ type ProseMirrorTransactionLike = {
   removeMark?: (from: number, to: number, markType: ProseMirrorMarkTypeLike) => ProseMirrorTransactionLike
   scrollIntoView?: () => ProseMirrorTransactionLike
   setStoredMarks?: (marks: unknown[] | null) => ProseMirrorTransactionLike
+  setNodeMarkup?: (pos: number, type?: unknown, attrs?: Record<string, unknown>) => ProseMirrorTransactionLike
 }
 
 type ProseMirrorViewLike = {
@@ -80,10 +82,21 @@ type ProseMirrorViewLike = {
 
 type ProseMirrorDocumentNodeLike = {
   attrs?: Record<string, unknown>
+  childCount?: number
   descendants?: (callback: (node: ProseMirrorDocumentNodeLike, pos: number) => boolean | void) => void
+  forEach?: (callback: (node: ProseMirrorDocumentNodeLike, offset: number, index: number) => void) => void
+  nodeAt?: (pos: number) => ProseMirrorDocumentNodeLike | null
+  nodeSize?: number
+  resolve?: (pos: number) => ProseMirrorResolvedPosLike
   type?: {
     name?: string
   }
+}
+
+type ProseMirrorResolvedPosLike = {
+  before?: (depth: number) => number
+  depth: number
+  node?: (depth: number) => ProseMirrorDocumentNodeLike
 }
 
 type PagedEditorRefLike = {
@@ -323,6 +336,188 @@ function getLiveEditorParagraphLineSpacing(view: ProseMirrorViewLike | null | un
   })
 
   return patches
+}
+
+function toPositiveNumber(value: unknown) {
+  const number = Number(value)
+  return Number.isFinite(number) && number > 0 ? number : null
+}
+
+function getColumnWidthValues(value: unknown) {
+  if (Array.isArray(value)) return value
+  if (typeof value === "string") return value.split(/[,\s]+/).filter(Boolean)
+
+  try {
+    if (value && typeof (value as Iterable<unknown>)[Symbol.iterator] === "function") {
+      return Array.from(value as Iterable<unknown>)
+    }
+  } catch {
+    return []
+  }
+
+  return []
+}
+
+function getTableWidthFromAttrs(attrs: Record<string, unknown> | undefined) {
+  const width = attrs?.width
+
+  if (width && typeof width === "object" && !Array.isArray(width)) {
+    return toPositiveNumber((width as Record<string, unknown>).value)
+  }
+
+  return toPositiveNumber(width)
+}
+
+function getTableColumnCount(tableNode: ProseMirrorDocumentNodeLike) {
+  let columnCount = 0
+
+  tableNode.forEach?.((rowNode) => {
+    if (rowNode.type?.name !== "tableRow") return
+
+    let rowColumnCount = 0
+    rowNode.forEach?.((cellNode) => {
+      const colspan =
+        toPositiveNumber(cellNode.attrs?.colspan) ??
+        toPositiveNumber(cellNode.attrs?.colSpan) ??
+        toPositiveNumber(cellNode.attrs?.gridSpan) ??
+        1
+
+      rowColumnCount += Math.max(1, Math.trunc(colspan))
+    })
+
+    columnCount = Math.max(columnCount, rowColumnCount)
+  })
+
+  return columnCount
+}
+
+function normalizeColumnWidths(value: unknown, columnCount: number, totalWidth: number) {
+  const rawWidths = getColumnWidthValues(value)
+  const rawTotal = rawWidths.reduce((sum, item) => sum + (toPositiveNumber(item) ?? 0), 0)
+  const normalizedTotal = Math.max(1, Math.round(totalWidth || rawTotal || 9360))
+  const fallbackWidth = Math.max(1, Math.floor(normalizedTotal / Math.max(1, columnCount)))
+
+  return Array.from({ length: columnCount }, (_, index) => {
+    const width = toPositiveNumber(rawWidths[index])
+    return width ? Math.round(width) : fallbackWidth
+  })
+}
+
+function hasIterableDocxTableColumnWidths(value: unknown, columnCount: number) {
+  if (!Array.isArray(value)) return false
+
+  return (
+    value.length >= columnCount &&
+    value.slice(0, columnCount).every((width) => toPositiveNumber(width) !== null)
+  )
+}
+
+function getDocxTableElement(host: HTMLElement | null | undefined, tablePos: number) {
+  return host?.querySelector<HTMLElement>(`.layout-table[data-pm-start="${tablePos}"]`) ?? null
+}
+
+function getDocxTableWidth(
+  tableNode: ProseMirrorDocumentNodeLike,
+  tableElement: Element | null | undefined,
+  currentWidths: unknown,
+) {
+  const rawWidths = getColumnWidthValues(currentWidths)
+  const rawWidthTotal = rawWidths.reduce((sum, item) => sum + (toPositiveNumber(item) ?? 0), 0)
+
+  return (
+    getTableWidthFromAttrs(tableNode.attrs) ??
+    (tableElement ? Math.round(tableElement.getBoundingClientRect().width * 15) : null) ??
+    rawWidthTotal ??
+    9360
+  )
+}
+
+function normalizeDocxTableColumnWidths(
+  view: ProseMirrorViewLike,
+  tablePos: number,
+  tableNode: ProseMirrorDocumentNodeLike,
+  tableElement?: Element | null,
+) {
+  if (!view.state?.tr?.setNodeMarkup || !view.dispatch) return false
+
+  const columnCount = getTableColumnCount(tableNode)
+  if (columnCount <= 0) return false
+
+  const currentWidths = tableNode.attrs?.columnWidths
+  if (hasIterableDocxTableColumnWidths(currentWidths, columnCount)) return false
+
+  const tableWidth = getDocxTableWidth(tableNode, tableElement, currentWidths)
+  const columnWidths = normalizeColumnWidths(currentWidths, columnCount, tableWidth)
+  const transaction = view.state.tr.setNodeMarkup(tablePos, undefined, {
+    ...tableNode.attrs,
+    columnWidths,
+  })
+
+  view.dispatch(transaction)
+  return true
+}
+
+function normalizeAllDocxTableColumnWidths(
+  view: ProseMirrorViewLike | null | undefined,
+  host?: HTMLElement | null,
+) {
+  if (!view?.state?.doc?.descendants || !view.state.tr?.setNodeMarkup || !view.dispatch) return
+
+  try {
+    let transaction = view.state.tr
+    let changed = false
+
+    view.state.doc.descendants((node, pos) => {
+      if (node.type?.name !== "table") return
+
+      const columnCount = getTableColumnCount(node)
+      if (columnCount <= 0 || hasIterableDocxTableColumnWidths(node.attrs?.columnWidths, columnCount)) return
+
+      const tableElement = getDocxTableElement(host, pos)
+      const columnWidths = normalizeColumnWidths(
+        node.attrs?.columnWidths,
+        columnCount,
+        getDocxTableWidth(node, tableElement, node.attrs?.columnWidths),
+      )
+
+      transaction = transaction.setNodeMarkup?.(pos, undefined, {
+        ...node.attrs,
+        columnWidths,
+      }) ?? transaction
+      changed = true
+    })
+
+    if (changed) {
+      view.dispatch(transaction)
+    }
+  } catch {
+    // Avoid letting malformed DOCX table metadata break editor interactions.
+  }
+}
+
+function normalizeDocxTableColumnWidthsBeforeResize(
+  view: ProseMirrorViewLike | null | undefined,
+  tablePmStart: number | null,
+  tableElement?: Element | null,
+) {
+  if (!view?.state?.doc?.resolve || !view.state.tr?.setNodeMarkup || !view.dispatch || tablePmStart === null) return
+
+  try {
+    const resolved = view.state.doc.resolve(tablePmStart + 1)
+
+    for (let depth = resolved.depth; depth >= 0; depth -= 1) {
+      const tableNode = resolved.node?.(depth)
+      if (tableNode?.type?.name !== "table") continue
+
+      const tablePos = resolved.before?.(depth)
+      if (typeof tablePos !== "number") return
+
+      normalizeDocxTableColumnWidths(view, tablePos, tableNode, tableElement)
+      return
+    }
+  } catch {
+    // Avoid letting malformed DOCX table metadata break the editor interaction.
+  }
 }
 
 function applyDocxParagraphLineSpacing(paragraphXml: string, lineSpacing: DocxLineSpacing) {
@@ -645,6 +840,127 @@ function stripHtml(value: string) {
     .trim()
 }
 
+function decodeHtmlText(value: string) {
+  return value
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+}
+
+function getDocxRunXmlAt(xml: string, offset: number) {
+  const openIndex = xml.lastIndexOf("<w:r", offset)
+  const closeIndex = xml.indexOf("</w:r>", offset)
+
+  if (openIndex === -1 || closeIndex === -1 || closeIndex < offset) {
+    return ""
+  }
+
+  return xml.slice(openIndex, closeIndex + "</w:r>".length)
+}
+
+function getDocxRunPropertiesXml(runXml: string) {
+  return runXml.match(/<w:rPr\b[\s\S]*?<\/w:rPr>/)?.[0] ?? ""
+}
+
+const DEFAULT_SERVICE_SECTIONS_RUN_PROPERTIES =
+  '<w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:eastAsia="Times New Roman" w:cs="Times New Roman"/><w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr>'
+
+function hasDocxRunFont(runPropertiesXml: string) {
+  return /<w:rFonts\b/i.test(runPropertiesXml)
+}
+
+function hasDocxRunSize(runPropertiesXml: string) {
+  return /<w:sz\b/i.test(runPropertiesXml) || /<w:szCs\b/i.test(runPropertiesXml)
+}
+
+function mergeDocxRunProperties(primaryXml: string, fallbackXml: string) {
+  if (!primaryXml || primaryXml === "<w:rPr/>") return fallbackXml
+  if (!fallbackXml) return primaryXml
+
+  const missingNodes = [
+    !hasDocxRunFont(primaryXml) ? fallbackXml.match(/<w:rFonts\b[^>]*\/>/)?.[0] : "",
+    !/<w:sz\b/i.test(primaryXml) ? fallbackXml.match(/<w:sz\b[^>]*\/>/)?.[0] : "",
+    !/<w:szCs\b/i.test(primaryXml) ? fallbackXml.match(/<w:szCs\b[^>]*\/>/)?.[0] : "",
+  ].filter(Boolean).join("")
+
+  return missingNodes ? primaryXml.replace(/<w:rPr\b([^>]*)>/, `<w:rPr$1>${missingNodes}`) : primaryXml
+}
+
+function getDocxRunPropertiesWithFont(xml: string, offset: number) {
+  const directRunProperties = getDocxRunPropertiesXml(getDocxRunXmlAt(xml, offset))
+  if (hasDocxRunFont(directRunProperties) && hasDocxRunSize(directRunProperties)) {
+    return directRunProperties
+  }
+
+  const before = xml.slice(0, offset)
+  const after = xml.slice(offset)
+  const beforeMatches = [...before.matchAll(/<w:rPr\b[\s\S]*?<\/w:rPr>/g)]
+    .map((match) => match[0])
+    .filter((runProperties) => hasDocxRunFont(runProperties) || hasDocxRunSize(runProperties))
+  const afterRunProperties = after.match(/<w:rPr\b[\s\S]*?<\/w:rPr>/)?.[0] ?? ""
+  const nearbyRunProperties = beforeMatches.at(-1) ?? afterRunProperties
+
+  if (!directRunProperties || directRunProperties === "<w:rPr/>") {
+    return nearbyRunProperties || DEFAULT_SERVICE_SECTIONS_RUN_PROPERTIES
+  }
+
+  return mergeDocxRunProperties(directRunProperties, nearbyRunProperties || DEFAULT_SERVICE_SECTIONS_RUN_PROPERTIES)
+}
+
+function ensureBoldRunPropertiesXml(runPropertiesXml: string) {
+  if (!runPropertiesXml) {
+    return "<w:rPr><w:b/></w:rPr>"
+  }
+
+  if (/<w:b\b/i.test(runPropertiesXml)) {
+    return runPropertiesXml
+  }
+
+  return runPropertiesXml.replace(/<w:rPr\b([^>]*)>/, "<w:rPr$1><w:b/>")
+}
+
+function buildDocxRunXml(text: string, bold = false, baseRunPropertiesXml = "") {
+  if (!text) return ""
+
+  const runPropertiesXml = bold ? ensureBoldRunPropertiesXml(baseRunPropertiesXml) : baseRunPropertiesXml
+
+  return `<w:r>${runPropertiesXml}<w:t xml:space="preserve">${escapeXml(text)}</w:t></w:r>`
+}
+
+function buildDocxRunsFromHtml(innerHtml: string, baseRunPropertiesXml = "") {
+  const runs: string[] = []
+  let cursor = 0
+  const strongRegex = /<strong\b[^>]*>([\s\S]*?)<\/strong>/gi
+  let match: RegExpExecArray | null
+
+  while ((match = strongRegex.exec(innerHtml)) !== null) {
+    runs.push(buildDocxRunXml(decodeHtmlText(innerHtml.slice(cursor, match.index)), false, baseRunPropertiesXml))
+    runs.push(buildDocxRunXml(decodeHtmlText(match[1] ?? ""), true, baseRunPropertiesXml))
+    cursor = match.index + match[0].length
+  }
+
+  runs.push(buildDocxRunXml(decodeHtmlText(innerHtml.slice(cursor)), false, baseRunPropertiesXml))
+  return runs.join("")
+}
+
+function buildDocxInlineHtmlXml(html: string, baseRunPropertiesXml = "") {
+  const paragraphMatches = [...html.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)]
+  const lines = paragraphMatches.length > 0
+    ? paragraphMatches.map((match) => buildDocxRunsFromHtml(match[1] ?? "", baseRunPropertiesXml)).filter(Boolean)
+    : [buildDocxRunsFromHtml(html, baseRunPropertiesXml)].filter(Boolean)
+
+  if (lines.length === 0) {
+    return escapeXml(stripHtml(html))
+  }
+
+  return `</w:t></w:r>${lines.join("<w:r><w:br/></w:r><w:r><w:br/></w:r>")}<w:r>${baseRunPropertiesXml}<w:t xml:space="preserve">`
+}
+
 function buildDocxTableXmlFromHtml(html: string) {
   const rowMatches = [...html.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)]
   const rows = rowMatches
@@ -789,13 +1105,20 @@ async function replaceDocxTemplateVariables(buffer: ArrayBuffer, variables: Reco
         if (rawValue === "") continue
 
         const isRecurrenceTable = path === "contract.recurrenceTable" && /<table\b/i.test(rawValue)
-        const replacement = isRecurrenceTable
-          ? buildDocxTableXmlFromHtml(rawValue)
-          : escapeXml(rawValue).replace(/\r?\n/g, "</w:t><w:br/><w:t>")
+        const isServiceSectionsHtml = path === "services.sectionsHtml" && /<(p|strong)\b/i.test(rawValue)
         const tokens = [`{{${path}}}`, `{{ ${path} }}`]
 
         for (const token of tokens) {
-          const nextXml = xml.replace(buildDocxTokenRegex(token), replacement)
+          const tokenRegex = buildDocxTokenRegex(token)
+          const replacement = isRecurrenceTable
+            ? buildDocxTableXmlFromHtml(rawValue)
+            : escapeXml(rawValue).replace(/\r?\n/g, "</w:t><w:br/><w:t>")
+          const nextXml = isServiceSectionsHtml
+            ? xml.replace(tokenRegex, (_match, offset: number) => {
+                const runPropertiesXml = getDocxRunPropertiesWithFont(xml, offset)
+                return buildDocxInlineHtmlXml(rawValue, runPropertiesXml)
+              })
+            : xml.replace(tokenRegex, replacement)
           if (nextXml !== xml) {
             xml = nextXml
             changed = true
@@ -898,6 +1221,7 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
     const savedBufferRef = useRef<ArrayBuffer | null>(null)
     const sourceBufferRef = useRef<ArrayBuffer | null>(null)
     const latestDocumentRef = useRef<unknown | null>(null)
+    const activeTableResizePmStartRef = useRef<number | null>(null)
 
     const [sourceBuffer, setSourceBuffer] = useState<ArrayBuffer | null>(null)
     const [previewBuffer, setPreviewBuffer] = useState<ArrayBuffer | null>(null)
@@ -1129,6 +1453,82 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
 
       return view
     }, [getActiveEditorRef])
+
+    useEffect(() => {
+      if (activeTab !== "editor") return
+
+      const host = editorHostRef.current
+      if (!host) return
+
+      const normalizeActiveTables = () => {
+        normalizeAllDocxTableColumnWidths(getActiveEditorView(), host)
+      }
+
+      let frame = window.requestAnimationFrame(normalizeActiveTables)
+
+      const scheduleNormalizeActiveTables = () => {
+        window.cancelAnimationFrame(frame)
+        frame = window.requestAnimationFrame(normalizeActiveTables)
+      }
+
+      const normalizeTableResizeTarget = (target: EventTarget | null) => {
+        if (!(target instanceof Element)) return
+
+        const handle = target.closest<HTMLElement>(".layout-table-resize-handle, .layout-table-edge-handle-right")
+        if (!handle || !host.contains(handle)) return
+
+        normalizeActiveTables()
+
+        const tablePmStartValue = handle.dataset.tablePmStart ?? handle.closest<HTMLElement>(".layout-table")?.dataset.pmStart
+        const tablePmStart = tablePmStartValue ? Number.parseInt(tablePmStartValue, 10) : Number.NaN
+        if (!Number.isFinite(tablePmStart)) {
+          return
+        }
+
+        activeTableResizePmStartRef.current = tablePmStart
+        normalizeDocxTableColumnWidthsBeforeResize(
+          getActiveEditorView(),
+          tablePmStart,
+          handle.closest(".layout-table"),
+        )
+      }
+
+      const handleResizeStart = (event: Event) => {
+        normalizeTableResizeTarget(event.target)
+      }
+
+      const handleResizeEnd = () => {
+        normalizeActiveTables()
+        normalizeDocxTableColumnWidthsBeforeResize(
+          getActiveEditorView(),
+          activeTableResizePmStartRef.current,
+          host.querySelector(".layout-table"),
+        )
+        activeTableResizePmStartRef.current = null
+      }
+
+      host.addEventListener("mousedown", handleResizeStart, true)
+      host.addEventListener("mousemove", handleResizeStart, true)
+      host.addEventListener("pointerdown", handleResizeStart, true)
+      host.addEventListener("pointerover", handleResizeStart, true)
+      host.addEventListener("focusin", scheduleNormalizeActiveTables, true)
+      document.addEventListener("mouseup", handleResizeEnd, true)
+      window.addEventListener("mouseup", handleResizeEnd, true)
+      window.addEventListener("pointerup", handleResizeEnd, true)
+
+      return () => {
+        window.cancelAnimationFrame(frame)
+        host.removeEventListener("mousedown", handleResizeStart, true)
+        host.removeEventListener("mousemove", handleResizeStart, true)
+        host.removeEventListener("pointerdown", handleResizeStart, true)
+        host.removeEventListener("pointerover", handleResizeStart, true)
+        host.removeEventListener("focusin", scheduleNormalizeActiveTables, true)
+        document.removeEventListener("mouseup", handleResizeEnd, true)
+        window.removeEventListener("mouseup", handleResizeEnd, true)
+        window.removeEventListener("pointerup", handleResizeEnd, true)
+        activeTableResizePmStartRef.current = null
+      }
+    }, [activeTab, getActiveEditorView])
 
     const rememberProseMirrorSelection = useCallback(
       (view?: ProseMirrorViewLike | null) => {
@@ -1391,10 +1791,17 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
             mode: "editing",
             onChange: (document: unknown) => {
               latestDocumentRef.current = document
+              const view = editorViewRef.current
+              if (view) {
+                window.requestAnimationFrame(() => normalizeAllDocxTableColumnWidths(view, host))
+              }
             },
             onEditorViewReady: (view: unknown) => {
-              editorViewRef.current = view as ProseMirrorViewLike
-              rememberProseMirrorSelection(view as ProseMirrorViewLike)
+              const editorView = view as ProseMirrorViewLike
+              editorViewRef.current = editorView
+              normalizeAllDocxTableColumnWidths(editorView, host)
+              window.requestAnimationFrame(() => normalizeAllDocxTableColumnWidths(editorView, host))
+              rememberProseMirrorSelection(editorView)
             },
             onError: (error: Error) => setErrorMessage(error.message),
             onFontsLoaded: () => {
@@ -1767,8 +2174,14 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
         `}</style>
 
         {isLoading ? (
-          <div className="rounded-xl border bg-background px-4 py-3 text-sm text-muted-foreground">
-            Carregando documento DOCX...
+          <div className="rounded-xl border bg-background px-4 py-3">
+            <div className="flex items-center gap-3">
+              <Skeleton className="h-8 w-8 rounded-lg" />
+              <div className="flex-1 space-y-2">
+                <Skeleton className="h-3 w-48" />
+                <Skeleton className="h-3 w-72 max-w-full" />
+              </div>
+            </div>
           </div>
         ) : null}
 

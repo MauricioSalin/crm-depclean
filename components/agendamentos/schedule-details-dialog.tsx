@@ -1,6 +1,5 @@
 "use client"
 
-import { format, parseISO } from "date-fns"
 import { ArrowLeft, CalendarDays, Clock3, MapPin, Sparkles, Users } from "lucide-react"
 
 import { AttendanceStartSlider } from "@/components/agendamentos/attendance-start-slider"
@@ -8,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useIsMobile } from "@/hooks/use-mobile"
 import type { ScheduleRecord } from "@/lib/api/schedules"
+import { formatCivilDate } from "@/lib/date-utils"
 import { cn } from "@/lib/utils"
 
 interface ScheduleDetailsDialogProps {
@@ -37,11 +37,7 @@ function getStatusLabel(status: ScheduleRecord["status"]) {
 }
 
 function formatScheduleDate(date: string) {
-  try {
-    return format(parseISO(date), "dd/MM/yyyy")
-  } catch {
-    return date
-  }
+  return formatCivilDate(date, date)
 }
 
 function formatDuration(duration: number) {

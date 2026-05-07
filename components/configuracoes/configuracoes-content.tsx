@@ -16,6 +16,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { DataPagination } from "@/components/ui/data-pagination"
+import { EmptyState, TableEmptyState } from "@/components/ui/empty-state"
+import { CardSkeletonGrid } from "@/components/ui/table-skeleton"
+import { Skeleton } from "@/components/ui/skeleton"
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
 import { MultiSelect } from "@/components/ui/multi-select"
 import { Switch } from "@/components/ui/switch"
@@ -26,11 +29,9 @@ import { formatCNPJ, formatCPF, formatPhone } from "@/lib/masks"
 import { listEmployees, type EmployeeRecord } from "@/lib/api/employees"
 import {
   createClientType,
-  createNotificationRule,
   createPermissionProfile,
   createUser,
   deleteClientType,
-  deleteNotificationRule,
   deletePermissionProfile,
   deleteUser,
   getOrganizationSettings,
@@ -177,7 +178,7 @@ export function ConfiguracoesContent() {
   const [typePageSize, setTypePageSize] = useState(10)
   const [profilePageSize, setProfilePageSize] = useState(10)
   const [userPageSize, setUserPageSize] = useState(10)
-  const [rulePageSize, setRulePageSize] = useState(6)
+  const [rulePageSize, setRulePageSize] = useState(10)
 
   const [isTypeDialogOpen, setIsTypeDialogOpen] = useState(false)
   const [editingType, setEditingType] = useState<ClientTypeRecord | null>(null)
@@ -542,6 +543,11 @@ export function ConfiguracoesContent() {
     event.preventDefault()
     setSaving(true)
     try {
+      if (!editingRule) {
+        toast.error("Apenas notificações padrão podem ser editadas.")
+        return
+      }
+
       const payload = editingRule?.isDefault
         ? {
             description: ruleForm.description,
@@ -561,15 +567,9 @@ export function ConfiguracoesContent() {
             targetEmployeeIds: ruleForm.targetEmployeeIds,
             isActive: ruleForm.isActive,
       }
-      if (editingRule) {
-        const response = await updateNotificationRule(editingRule.id, payload)
-        upsertNotificationRule(response.data)
-        toast.success("Regra atualizada.")
-      } else {
-        const response = await createNotificationRule(payload as Parameters<typeof createNotificationRule>[0])
-        upsertNotificationRule(response.data)
-        toast.success("Regra criada.")
-      }
+      const response = await updateNotificationRule(editingRule.id, payload)
+      upsertNotificationRule(response.data)
+      toast.success("Regra atualizada.")
       resetRuleForm()
     } catch (error) {
       toast.error(getApiErrorMessage(error, "Não foi possível salvar a regra."))
@@ -620,9 +620,8 @@ export function ConfiguracoesContent() {
   const handleDeleteRule = async (id: string) => {
     setSaving(true)
     try {
-      await deleteNotificationRule(id)
-      setNotificationRules((current) => current.filter((item) => item.id !== id))
-      toast.success("Regra removida.")
+      void id
+      toast.error("Regras personalizadas não estão disponíveis.")
     } catch (error) {
       toast.error(getApiErrorMessage(error, "Não foi possível excluir a regra."))
     } finally {
@@ -763,7 +762,20 @@ export function ConfiguracoesContent() {
   }
 
   if (loading) {
-    return <div className="rounded-xl border bg-card p-6 text-sm text-muted-foreground">Carregando configurações...</div>
+    return (
+      <div className="space-y-6">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+          <CardSkeletonGrid cards={5} />
+        </div>
+        <div className="flex gap-3">
+          <Skeleton className="h-10 flex-1" />
+          <Skeleton className="h-10 w-36 rounded-full" />
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <CardSkeletonGrid cards={4} />
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -962,9 +974,7 @@ export function ConfiguracoesContent() {
               </TableHeader>
               <TableBody>
                 {paginatedTypes.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={4} className="h-24 text-center">Nenhum tipo encontrado.</TableCell>
-                  </TableRow>
+                  <TableEmptyState colSpan={4} icon={Building} title="Nenhum tipo encontrado." />
                 ) : (
                   paginatedTypes.map((item) => (
                     <TableRow key={item.id}>
@@ -1044,9 +1054,7 @@ export function ConfiguracoesContent() {
               </TableHeader>
               <TableBody>
                 {paginatedProfiles.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={4} className="h-24 text-center">Nenhum perfil encontrado.</TableCell>
-                  </TableRow>
+                  <TableEmptyState colSpan={4} icon={Shield} title="Nenhum perfil encontrado." />
                 ) : (
                   paginatedProfiles.map((item) => (
                     <TableRow key={item.id}>
@@ -1180,9 +1188,7 @@ export function ConfiguracoesContent() {
               </TableHeader>
               <TableBody>
                 {paginatedUsers.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="h-24 text-center">Nenhum usuario encontrado.</TableCell>
-                  </TableRow>
+                  <TableEmptyState colSpan={6} icon={Users} title="Nenhum usuário encontrado." />
                 ) : (
                   paginatedUsers.map((item) => (
                     <TableRow key={item.id}>
@@ -1349,17 +1355,11 @@ export function ConfiguracoesContent() {
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input placeholder="Buscar regras..." value={ruleSearch} onChange={(event) => { setRuleSearch(event.target.value); setRulePage(1) }} className="pl-10" />
             </div>
-            <Button onClick={() => openRuleDialog()} className="bg-primary text-primary-foreground hover:bg-primary/90">
-              <Plus className="mr-2 h-4 w-4" />
-              Nova Regra
-            </Button>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
             {paginatedRules.length === 0 ? (
-              <Card className="md:col-span-2">
-                <CardContent className="p-6 text-center text-sm text-muted-foreground">Nenhuma regra encontrada.</CardContent>
-              </Card>
+              <EmptyState icon={Bell} title="Nenhuma regra encontrada." className="md:col-span-2" />
             ) : (
               paginatedRules.map((item) => (
                 <Card key={item.id} className={cn("flex h-full flex-col", !item.isActive && "opacity-60")}>
@@ -1468,7 +1468,7 @@ export function ConfiguracoesContent() {
           <Dialog open={isRuleDialogOpen} onOpenChange={(open) => (open ? setIsRuleDialogOpen(true) : resetRuleForm())}>
             <DialogContent className="max-h-[90vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>{editingRule?.isDefault ? "Editar Notificação Padrão" : editingRule ? "Editar Regra de Notificação" : "Nova Regra de Notificação"}</DialogTitle>
+                <DialogTitle>Editar Notificação Padrão</DialogTitle>
               </DialogHeader>
               <form autoComplete="off" onSubmit={handleRuleSubmit} className="space-y-4">
                 <div className="space-y-2">

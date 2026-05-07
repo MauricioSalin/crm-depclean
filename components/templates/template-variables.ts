@@ -49,7 +49,9 @@ export const TEMPLATE_VARIABLE_GROUPS: TemplateVariableGroup[] = [
     variables: [
       { path: "contract.number", label: "Número do contrato", kinds: ["contract"] },
       { path: "contract.startDate", label: "Data de início", kinds: ["contract"] },
+      { path: "contract.startDateLong", label: "Data de início por extenso", kinds: ["contract"] },
       { path: "contract.endDate", label: "Data de término", kinds: ["contract"] },
+      { path: "contract.endDateLong", label: "Data de término por extenso", kinds: ["contract"] },
       { path: "contract.durationMonths", label: "Duração em meses", kinds: ["contract"] },
       { path: "contract.recurrence", label: "Recorrência", kinds: ["contract"] },
       { path: "contract.recurrenceTable", label: "Tabela de recorrência das visitas", kinds: ["contract"] },
@@ -58,7 +60,9 @@ export const TEMPLATE_VARIABLE_GROUPS: TemplateVariableGroup[] = [
       { path: "contract.installmentValue", label: "Valor da parcela", kinds: ["contract"] },
       { path: "contract.paymentDay", label: "Dia de vencimento", kinds: ["contract"] },
       { path: "contract.firstDueDate", label: "Primeiro vencimento", kinds: ["contract"] },
+      { path: "contract.firstDueDateLong", label: "Primeiro vencimento por extenso", kinds: ["contract"] },
       { path: "contract.createdAt", label: "Data de criação", kinds: ["contract"] },
+      { path: "contract.createdAtLong", label: "Data de criação por extenso", kinds: ["contract"] },
     ],
   },
   {
@@ -69,6 +73,7 @@ export const TEMPLATE_VARIABLE_GROUPS: TemplateVariableGroup[] = [
       { path: "service.description", label: "Descrição do serviço" },
       { path: "services.summary", label: "Resumo dos serviços", kinds: ["contract"] },
       { path: "services.names", label: "Nomes dos serviços", kinds: ["contract"] },
+      { path: "services.sectionsHtml", label: "Cláusulas dos serviços formatadas", kinds: ["contract"] },
       { path: "services.sectionsText", label: "Cláusulas dos serviços", kinds: ["contract"] },
     ],
   },

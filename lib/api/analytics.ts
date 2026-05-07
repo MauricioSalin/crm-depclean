@@ -45,6 +45,8 @@ export type FinancialInstallmentRecord = {
   contractNumber: string
   clientId: string
   clientCompanyName: string
+  source: "contract" | "schedule"
+  scheduleId?: string
   number: number
   value: number
   dueDate: string
@@ -130,8 +132,8 @@ export type ReportsAnalyticsRecord = {
   teams: Array<{ id: string; name: string; color: string }>
 }
 
-export async function getFinancialAnalytics() {
-  const response = await api.get<{ success: true; data: FinancialAnalyticsRecord }>("/analytics/financial")
+export async function getFinancialAnalytics(params?: { dateFrom?: string; dateTo?: string }) {
+  const response = await api.get<{ success: true; data: FinancialAnalyticsRecord }>("/analytics/financial", { params })
   return response.data
 }
 

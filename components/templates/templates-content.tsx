@@ -17,6 +17,8 @@ import { Card, CardContent } from "@/components/ui/card"
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { TableEmptyState } from "@/components/ui/empty-state"
+import { TableSkeletonRows } from "@/components/ui/table-skeleton"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -147,12 +149,15 @@ function formatDate(value?: string | Date | null) {
   return new Intl.DateTimeFormat("pt-BR").format(parsed)
 }
 
-function formatLongDate(value = new Date()) {
+function formatLongDate(value: string | Date | null | undefined = new Date()) {
+  if (!value) return ""
+  const parsed = value instanceof Date ? value : new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value)
+  if (Number.isNaN(parsed.getTime())) return ""
   return new Intl.DateTimeFormat("pt-BR", {
-    day: "numeric",
+    day: "2-digit",
     month: "long",
     year: "numeric",
-  }).format(value)
+  }).format(parsed).replace(/ de ([a-zà-ú])/i, (_match, letter: string) => ` de ${letter.toLocaleUpperCase("pt-BR")}`)
 }
 
 function formatValidityText(value?: number | null) {
@@ -306,6 +311,20 @@ function buildServiceSectionsText(contract: ContractRecord, services: ServiceRec
     .join("\n\n")
 }
 
+function buildServiceSectionsHtml(contract: ContractRecord, services: ServiceRecord[]) {
+  return contract.services
+    .map((item, index) => {
+      const service = services.find((candidate) => candidate.id === item.serviceTypeId)
+      const serviceName = service?.name ?? "Serviço"
+      const clauses = item.clauses?.length
+        ? item.clauses.map((clause, clauseIndex) => `<p><strong>${index + 1}.${clauseIndex + 1}.</strong> ${escapeHtml(clause)}</p>`).join("")
+        : `<p><strong>${index + 1}.1.</strong> Cláusulas específicas não informadas para este serviço.</p>`
+
+      return `<p><strong>${index + 1}. ${escapeHtml(serviceName)}</strong></p>${clauses}`
+    })
+    .join("")
+}
+
 function buildReservoirRows(unit?: ClientUnitRecord | null) {
   const entries = unit?.reservoirProfile?.entries ?? []
   return Array.from({ length: 5 }, (_, index) => entries[index] ?? { label: "", capacityLiters: "" })
@@ -343,6 +362,7 @@ function buildPreviewVariables(params: {
       .filter(Boolean)
       .join(", ") || ""
   const serviceSectionsText = contract ? buildServiceSectionsText(contract, services) : ""
+  const serviceSectionsHtml = contract ? buildServiceSectionsHtml(contract, services) : ""
   const clientTypeName = clientTypes.find((item) => item.id === client.clientTypeId)?.name ?? "Cliente"
 
   const base = {
@@ -395,9 +415,12 @@ function buildPreviewVariables(params: {
       ...base,
       contract: {
         createdAt: formatDate(contract.createdAt),
+        createdAtLong: formatLongDate(contract.createdAt),
         durationMonths: String(contract.duration),
         endDate: formatDate(contract.endDate),
+        endDateLong: formatLongDate(contract.endDate),
         firstDueDate: formatDate(contract.installments[0]?.dueDate),
+        firstDueDateLong: formatLongDate(contract.installments[0]?.dueDate),
         installmentValue: formatCurrency(installmentValue),
         installmentsCount: String(contract.installmentsCount),
         number: contract.contractNumber,
@@ -405,11 +428,12 @@ function buildPreviewVariables(params: {
         recurrence: recurrenceLabel(contract.recurrence),
         recurrenceTable: buildRecurrenceTableHtml(clientTypeName, contract.recurrenceRules),
         startDate: formatDate(contract.startDate),
+        startDateLong: formatLongDate(contract.startDate),
         totalValue: formatCurrency(contract.totalValue),
       },
       services: {
         names: contractServiceNames,
-        sectionsHtml: serviceSectionsText,
+        sectionsHtml: serviceSectionsHtml,
         sectionsText: serviceSectionsText,
         summary: contractServiceNames.toLowerCase(),
       },
@@ -1572,12 +1596,19 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
               </TableRow>
             </TableHeader>
             <TableBody>
-              {paginatedTemplates.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={config.requiresSigner ? 5 : 4} className="h-24 text-center">
-                    Nenhum template encontrado.
-                  </TableCell>
-                </TableRow>
+              {templatesQuery.isLoading ? (
+                <TableSkeletonRows
+                  rows={5}
+                  columns={[
+                    { withIcon: true, width: "w-44" },
+                    ...(config.requiresSigner ? [{ className: "hidden md:table-cell", width: "w-32" }] : []),
+                    { className: "hidden lg:table-cell", width: "w-24" },
+                    { width: "w-20" },
+                    { align: "right", width: "w-16" },
+                  ]}
+                />
+              ) : paginatedTemplates.length === 0 ? (
+                <TableEmptyState colSpan={config.requiresSigner ? 5 : 4} icon={FileText} title="Nenhum template encontrado." />
               ) : (
                 paginatedTemplates.map((template) => (
                   <TableRow key={template.id}>
@@ -1641,17 +1672,19 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
           </Table>
         </div>
 
-        <DataPagination
-          currentPage={currentPage}
-          totalPages={totalPages}
-          pageSize={pageSize}
-          totalItems={templates.length}
-          onPageChange={setCurrentPage}
-          onPageSizeChange={(size) => {
-            setPageSize(size)
-            setCurrentPage(1)
-          }}
-        />
+        {!templatesQuery.isLoading ? (
+          <DataPagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            pageSize={pageSize}
+            totalItems={templates.length}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={(size) => {
+              setPageSize(size)
+              setCurrentPage(1)
+            }}
+          />
+        ) : null}
       </div>
     </>
   )

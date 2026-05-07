@@ -15,6 +15,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { DataPagination } from "@/components/ui/data-pagination"
+import { TableEmptyState } from "@/components/ui/empty-state"
+import { CardSkeletonGrid, TableSkeletonRows } from "@/components/ui/table-skeleton"
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { getStoredUser } from "@/lib/auth/session"
@@ -381,10 +383,6 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
     </>
   )
 
-  if (loading) {
-    return <div className="rounded-xl border bg-card p-6 text-sm text-muted-foreground">Carregando funcionários...</div>
-  }
-
   return (
     <>
       <Dialog open={isDialogOpen} onOpenChange={handleDialogChange}>
@@ -549,10 +547,21 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {paginatedEmployees.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={7} className="h-24 text-center">Nenhum funcionário encontrado.</TableCell>
-                  </TableRow>
+                {loading ? (
+                  <TableSkeletonRows
+                    rows={5}
+                    columns={[
+                      { withIcon: true, width: "w-36" },
+                      { className: "hidden md:table-cell", width: "w-28" },
+                      { className: "hidden sm:table-cell", width: "w-24" },
+                      { className: "hidden lg:table-cell", width: "w-40" },
+                      { width: "w-16" },
+                      { width: "w-28" },
+                      { align: "right", width: "w-20" },
+                    ]}
+                  />
+                ) : paginatedEmployees.length === 0 ? (
+                  <TableEmptyState colSpan={7} icon={User} title="Nenhum funcionário encontrado." />
                 ) : (
                   paginatedEmployees.map((employee) => (
                     <TableRow key={employee.id}>
@@ -616,7 +625,9 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {paginatedEmployees.map((employee) => (
+            {loading ? (
+              <CardSkeletonGrid cards={4} />
+            ) : paginatedEmployees.map((employee) => (
               <Card key={employee.id} className="overflow-hidden">
                 <CardContent className="p-4">
                   <div className="flex items-start justify-between gap-3">
@@ -680,17 +691,19 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
           </div>
         )}
 
-      <DataPagination
-        currentPage={currentPage}
-        totalPages={totalPages}
-        pageSize={pageSize}
-        totalItems={filteredEmployees.length}
-        onPageChange={setCurrentPage}
-        onPageSizeChange={(size) => {
-          setPageSize(size)
-          setCurrentPage(1)
-        }}
-      />
+      {!loading ? (
+        <DataPagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          pageSize={pageSize}
+          totalItems={filteredEmployees.length}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={(size) => {
+            setPageSize(size)
+            setCurrentPage(1)
+          }}
+        />
+      ) : null}
 
       <ConfirmActionDialog
         open={Boolean(pendingAction)}

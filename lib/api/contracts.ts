@@ -26,6 +26,8 @@ export type ContractPayload = {
   duration: number
   startDate: string
   endDate?: string
+  firstVisitDate?: string
+  firstVisitTime?: string
   paymentDay: number
   installmentsCount: number
   recurrence?: string
@@ -67,6 +69,8 @@ export type ContractRecord = {
   duration: number
   startDate: string
   endDate: string
+  firstVisitDate: string
+  firstVisitTime: string
   paymentDay: number
   installmentsCount: number
   recurrence: string
@@ -98,6 +102,7 @@ export type ContractRecord = {
       requestId: string
       name: string
       email: string
+      phone?: string
       role: string
       status: string
       signUrl: string
@@ -175,6 +180,13 @@ export async function sendContractToClicksign(id: string) {
 
 export async function syncContractClicksign(id: string) {
   const response = await api.post<{ success: true; data: unknown }>(`/clicksign/contracts/${resolveContractId(id)}/sync`)
+  return response.data
+}
+
+export async function remindContractSigner(contractId: string, signerId: string) {
+  const response = await api.post<{ success: true; data: unknown }>(
+    `/clicksign/contracts/${resolveContractId(contractId)}/signers/${encodeURIComponent(signerId)}/reminder`,
+  )
   return response.data
 }
 

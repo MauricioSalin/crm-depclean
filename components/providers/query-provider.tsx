@@ -1,7 +1,14 @@
 "use client"
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { AxiosError } from "axios"
 import { ReactNode, useState } from "react"
+
+function shouldRetryRequest(failureCount: number, error: unknown) {
+  const status = (error as AxiosError).response?.status
+  if (status === 401) return false
+  return failureCount < 1
+}
 
 export function QueryProvider({ children }: { children: ReactNode }) {
   const [queryClient] = useState(
@@ -9,7 +16,7 @@ export function QueryProvider({ children }: { children: ReactNode }) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            retry: 1,
+            retry: shouldRetryRequest,
             refetchOnWindowFocus: false,
           },
           mutations: {

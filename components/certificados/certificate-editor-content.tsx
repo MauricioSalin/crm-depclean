@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { SearchableSelect } from "@/components/ui/searchable-select"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { getCertificateContext, sendCertificate } from "@/lib/api/certificates"
 import { buildApiFileUrl } from "@/lib/api/client"
@@ -155,10 +156,19 @@ export function CertificateEditorContent({ scheduleId }: { scheduleId: string })
 
   if (templatesQuery.isLoading || contextQuery.isLoading || !context) {
     return (
-      <Card>
-        <CardContent className="flex min-h-[260px] items-center justify-center text-sm text-muted-foreground">
-          Carregando certificado...
-        </CardContent>
+      <Card className="p-6">
+        <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
+          <div className="space-y-4">
+            <Skeleton className="h-10 w-56" />
+            <Skeleton className="h-[420px] w-full" />
+          </div>
+          <div className="space-y-4">
+            <Skeleton className="h-5 w-36" />
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-28 w-full" />
+            <Skeleton className="h-10 w-full rounded-full" />
+          </div>
+        </div>
       </Card>
     )
   }

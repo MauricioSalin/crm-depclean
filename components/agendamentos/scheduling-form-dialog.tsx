@@ -25,12 +25,18 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
 import { Check, ChevronsUpDown, X } from "lucide-react"
 import { CurrencyInput } from "@/components/ui/currency-input"
 import { SearchableSelect } from "@/components/ui/searchable-select"
+import {
+  minutesToScheduleDuration,
+  SCHEDULE_DURATION_TYPE_OPTIONS,
+  type ScheduleDurationType,
+} from "@/lib/schedule-duration"
 import type { ClientRecord } from "@/lib/api/clients"
 import type { EmployeeRecord } from "@/lib/api/employees"
 import type { ServiceRecord } from "@/lib/api/services"
@@ -43,6 +49,7 @@ export interface SchedulingFormData {
   employeeIds: string[]
   date: string
   time: string
+  durationType: ScheduleDurationType
   duration: number
   value: number
   createContract: boolean
@@ -63,6 +70,8 @@ interface EditingSchedule {
   date: string
   time?: string
   duration: number
+  billable?: boolean
+  value?: number
   isEmergency?: boolean
   notes?: string
 }
@@ -86,7 +95,8 @@ const DEFAULT_FORM_DATA: SchedulingFormData = {
   employeeIds: [],
   date: "",
   time: "",
-  duration: 60,
+  durationType: "hours",
+  duration: 1,
   value: 0,
   createContract: false,
   isEmergency: false,
@@ -128,19 +138,25 @@ export function SchedulingFormDialog({
 
   const selectedClient = clients.find(c => c.id === formData.clientId)
 
-  const getInitialFormData = (schedule: EditingSchedule): SchedulingFormData => ({
-    clientId: schedule.clientId,
-    serviceTypeId: schedule.serviceTypeId,
-    teamIds: schedule.teamIds ?? schedule.teams?.map((team) => team.id) ?? (schedule.teamId ? [schedule.teamId] : []),
-    employeeIds: schedule.additionalEmployees?.map((employee) => employee.id) ?? [],
-    date: schedule.date,
-    time: schedule.time ?? "",
-    duration: schedule.duration,
-    value: 0,
-    createContract: false,
-    isEmergency: schedule.isEmergency ?? false,
-    notes: schedule.notes || "",
-  })
+  const getInitialFormData = (schedule: EditingSchedule): SchedulingFormData => {
+    const serviceType = serviceTypes.find((item) => item.id === schedule.serviceTypeId)
+    const durationFields = minutesToScheduleDuration(schedule.duration, serviceType)
+
+    return {
+      clientId: schedule.clientId,
+      serviceTypeId: schedule.serviceTypeId,
+      teamIds: schedule.teamIds ?? schedule.teams?.map((team) => team.id) ?? (schedule.teamId ? [schedule.teamId] : []),
+      employeeIds: schedule.additionalEmployees?.map((employee) => employee.id) ?? [],
+      date: schedule.date,
+      time: schedule.time ?? "",
+      durationType: durationFields.durationType,
+      duration: durationFields.duration,
+      value: schedule.billable ? Number(schedule.value ?? 0) : 0,
+      createContract: Boolean(schedule.billable),
+      isEmergency: schedule.isEmergency ?? false,
+      notes: schedule.notes || "",
+    }
+  }
 
   useEffect(() => {
     if (!open) return
@@ -151,7 +167,7 @@ export function SchedulingFormDialog({
     }
 
     setFormData(DEFAULT_FORM_DATA)
-  }, [open, editingSchedule])
+  }, [open, editingSchedule, serviceTypes])
 
   const toggleTeam = (teamId: string) => {
     if (formData.teamIds.includes(teamId)) {
@@ -249,6 +265,9 @@ export function SchedulingFormDialog({
                   ...formData,
                   serviceTypeId: value,
                   teamIds: serviceType?.teamIds || [],
+                  durationType: serviceType?.durationType ?? formData.durationType,
+                  duration: serviceType?.defaultDuration ?? formData.duration,
+                  value: formData.createContract ? serviceType?.baseValue ?? formData.value : 0,
                 })
               }}
               options={serviceTypes.map((st) => ({ value: st.id, label: st.name }))}
@@ -409,7 +428,7 @@ export function SchedulingFormDialog({
           </div>
 
           {/* Date, Time, Duration */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label>Data *</Label>
               <Input
@@ -428,14 +447,33 @@ export function SchedulingFormDialog({
                 required
               />
             </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label>Duração (min)</Label>
+              <Label>Tipo de Duração</Label>
+              <Select
+                value={formData.durationType}
+                onValueChange={(value) => setFormData({ ...formData, durationType: value as ScheduleDurationType })}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SCHEDULE_DURATION_TYPE_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Duração</Label>
               <Input
                 type="number"
                 value={formData.duration}
                 onChange={(e) => setFormData({ ...formData, duration: Number(e.target.value) })}
-                min={15}
-                step={15}
+                min={1}
+                className="w-full"
               />
             </div>
           </div>
@@ -445,8 +483,10 @@ export function SchedulingFormDialog({
           <div className="space-y-2">
             <Label>Valor (R$)</Label>
             <CurrencyInput
-              value={Math.round(formData.value * 100)}
+              value={formData.createContract ? Math.round(formData.value * 100) : 0}
               onChange={(cents) => setFormData({ ...formData, value: cents / 100 })}
+              disabled={!formData.createContract}
+              className={!formData.createContract ? "cursor-not-allowed opacity-60" : undefined}
             />
           </div>
           )}
@@ -462,13 +502,20 @@ export function SchedulingFormDialog({
           </div>
 
           {/* Create Contract Option */}
-          {!editingSchedule && (
+          {!(editingSchedule && editingSchedule.contractId && !editingSchedule.isManual) && (
             <div className="space-y-2">
               <div className="flex items-center space-x-2 p-3 bg-muted rounded-lg">
                 <Checkbox
                   id="createContract"
                   checked={formData.createContract}
-                  onCheckedChange={(checked) => setFormData({ ...formData, createContract: !!checked })}
+                  onCheckedChange={(checked) => {
+                    const serviceType = serviceTypes.find((item) => item.id === formData.serviceTypeId)
+                    setFormData({
+                      ...formData,
+                      createContract: !!checked,
+                      value: checked ? formData.value || serviceType?.baseValue || 0 : 0,
+                    })
+                  }}
                 />
                 <div className="flex flex-col">
                   <Label htmlFor="createContract" className="text-sm font-medium cursor-pointer">

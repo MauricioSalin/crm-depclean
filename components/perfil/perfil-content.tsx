@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { changePassword, getProfileMe, updateProfile, type ChangePasswordPayload } from "@/lib/api/profile"
 import { getApiErrorMessage } from "@/lib/api/errors"
@@ -156,7 +157,31 @@ export function PerfilContent() {
   }
 
   if (loading || !formData) {
-    return <div className="rounded-xl border bg-card p-6 text-sm text-muted-foreground">Carregando perfil...</div>
+    return (
+      <div className="space-y-6">
+        <Card>
+          <CardContent>
+            <div className="flex items-center gap-6">
+              <Skeleton className="h-20 w-20 rounded-full" />
+              <div className="flex-1 space-y-3">
+                <Skeleton className="h-5 w-56" />
+                <Skeleton className="h-4 w-72 max-w-full" />
+                <Skeleton className="h-6 w-32 rounded-full" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="space-y-4 p-6">
+          <Skeleton className="h-5 w-44" />
+          <div className="grid gap-4 md:grid-cols-2">
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+          </div>
+        </Card>
+      </div>
+    )
   }
 
   return (

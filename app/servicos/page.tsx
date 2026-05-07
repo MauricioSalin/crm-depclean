@@ -5,6 +5,7 @@ import { Sidebar } from "@/components/dashboard/sidebar"
 import { Header } from "@/components/dashboard/header"
 import { ServicesContent } from "@/components/servicos/services-content"
 import { Button } from "@/components/ui/button"
+import { ContentLoadingSkeleton } from "@/components/ui/content-loading-skeleton"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Plus, List, LayoutGrid } from "lucide-react"
 import Link from "next/link"
@@ -42,7 +43,7 @@ export default function ServicosPage() {
             </Link>
           }
         />
-        <Suspense fallback={<div className="mt-4 md:mt-5 rounded-xl border bg-card p-6 text-sm text-muted-foreground">Carregando...</div>}>
+        <Suspense fallback={<ContentLoadingSkeleton className="mt-4 md:mt-5" />}>
           <ServicesContent viewMode={viewMode} viewToggle={toggle} />
         </Suspense>
       </main>

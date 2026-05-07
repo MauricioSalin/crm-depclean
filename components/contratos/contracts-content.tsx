@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react"
 import Link from "next/link"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useQuery } from "@tanstack/react-query"
 import {
   Building2,
   Calendar,
@@ -13,11 +13,11 @@ import {
   FileText,
   MoreHorizontal,
   Search,
-  Trash2,
 } from "lucide-react"
 
-import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
 import { DataPagination } from "@/components/ui/data-pagination"
+import { EmptyState, TableEmptyState } from "@/components/ui/empty-state"
+import { CardSkeletonGrid, TableSkeletonRows } from "@/components/ui/table-skeleton"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -27,18 +27,21 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { deleteContract, listContracts } from "@/lib/api/contracts"
-import { getApiErrorMessage } from "@/lib/api/errors"
+import { listContracts, type ContractRecord } from "@/lib/api/contracts"
+import { formatCivilDate } from "@/lib/date-utils"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
-import { toast } from "sonner"
 
 interface ContractsContentProps {
   viewMode: "table" | "cards"
   viewToggle?: React.ReactNode
+}
+
+const isContractSigned = (contract: Pick<ContractRecord, "status" | "clicksign">) => {
+  const clicksignStatus = contract.clicksign?.status?.toLowerCase() ?? ""
+  return ["signed", "active"].includes(contract.status) || ["closed", "finished", "completed", "done"].includes(clicksignStatus)
 }
 
 function formatCurrency(value: number) {
@@ -49,32 +52,18 @@ function formatCurrency(value: number) {
 }
 
 function formatDate(value: string) {
-  return new Intl.DateTimeFormat("pt-BR").format(new Date(value))
+  return formatCivilDate(value)
 }
 
 export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps) {
-  const queryClient = useQueryClient()
   const [searchTerm, setSearchTerm] = useUrlQueryState("q")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
-  const [pendingDelete, setPendingDelete] = useState<{ id: string; label: string } | null>(null)
 
   const contractsQuery = useQuery({
     queryKey: ["contracts", searchTerm],
     queryFn: () => listContracts(searchTerm),
-  })
-
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) => deleteContract(id),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["contracts"] })
-      toast.success("Contrato removido.")
-      setPendingDelete(null)
-    },
-    onError: (error) => {
-      toast.error(getApiErrorMessage(error, "Não foi possível remover o contrato."))
-    },
   })
 
   const contracts = contractsQuery.data?.data ?? []
@@ -165,12 +154,20 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
               </TableRow>
             </TableHeader>
             <TableBody>
-              {paginatedContracts.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center">
-                    Nenhum contrato encontrado.
-                  </TableCell>
-                </TableRow>
+              {contractsQuery.isLoading ? (
+                <TableSkeletonRows
+                  rows={5}
+                  columns={[
+                    { withIcon: true, width: "w-32" },
+                    { className: "hidden sm:table-cell", width: "w-48" },
+                    { className: "hidden md:table-cell", width: "w-24" },
+                    { className: "hidden lg:table-cell", width: "w-32" },
+                    { width: "w-28" },
+                    { align: "right", width: "w-10" },
+                  ]}
+                />
+              ) : paginatedContracts.length === 0 ? (
+                <TableEmptyState colSpan={6} icon={FileText} title="Nenhum contrato encontrado." />
               ) : (
                 paginatedContracts.map((contract) => {
                   const paidInstallments = contract.installments.filter((item) => item.status === "paid").length
@@ -228,12 +225,14 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
                                 Ver Detalhes
                               </Link>
                             </DropdownMenuItem>
-                            <DropdownMenuItem asChild>
-                              <Link href={`/contratos/${contract.id}/editar`}>
-                                <Edit className="mr-2 h-4 w-4" />
-                                Editar
-                              </Link>
-                            </DropdownMenuItem>
+                            {!isContractSigned(contract) ? (
+                              <DropdownMenuItem asChild>
+                                <Link href={`/contratos/${contract.id}/editar`}>
+                                  <Edit className="mr-2 h-4 w-4" />
+                                  Editar
+                                </Link>
+                              </DropdownMenuItem>
+                            ) : null}
                             {contract.signatureUrl ? (
                               <DropdownMenuItem asChild>
                                 <a href={contract.signatureUrl} target="_blank" rel="noreferrer">
@@ -242,14 +241,6 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
                                 </a>
                               </DropdownMenuItem>
                             ) : null}
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              className="text-destructive focus:text-destructive"
-                              onSelect={() => setPendingDelete({ id: contract.id, label: contract.contractNumber })}
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Remover
-                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
@@ -262,7 +253,11 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {paginatedContracts.map((contract) => {
+          {contractsQuery.isLoading ? (
+            <CardSkeletonGrid cards={4} />
+          ) : paginatedContracts.length === 0 ? (
+            <EmptyState icon={FileText} title="Nenhum contrato encontrado." className="sm:col-span-2" />
+          ) : paginatedContracts.map((contract) => {
             const paidInstallments = contract.installments.filter((item) => item.status === "paid").length
             const progress = contract.installmentsCount > 0 ? (paidInstallments / contract.installmentsCount) * 100 : 0
 
@@ -307,12 +302,14 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
                       </div>
                     </Link>
                     <div className="flex gap-2">
-                      <Button variant="outline" size="sm" className="flex-1" asChild>
-                        <Link href={`/contratos/${contract.id}/editar`}>
-                          <Edit className="mr-1 h-4 w-4" />
-                          Editar
-                        </Link>
-                      </Button>
+                      {!isContractSigned(contract) ? (
+                        <Button variant="outline" size="sm" className="flex-1" asChild>
+                          <Link href={`/contratos/${contract.id}/editar`}>
+                            <Edit className="mr-1 h-4 w-4" />
+                            Editar
+                          </Link>
+                        </Button>
+                      ) : null}
                       <Button size="sm" className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90" asChild>
                         <Link href={`/contratos/${contract.id}`}>
                           <Eye className="mr-1 h-4 w-4" />
@@ -328,32 +325,20 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
         </div>
       )}
 
-      <DataPagination
-        currentPage={currentPage}
-        totalPages={totalPages}
-        pageSize={pageSize}
-        totalItems={filteredContracts.length}
-        onPageChange={setCurrentPage}
-        onPageSizeChange={(size) => {
-          setPageSize(size)
-          setCurrentPage(1)
-        }}
-      />
+      {!contractsQuery.isLoading ? (
+        <DataPagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          pageSize={pageSize}
+          totalItems={filteredContracts.length}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={(size) => {
+            setPageSize(size)
+            setCurrentPage(1)
+          }}
+        />
+      ) : null}
 
-      <ConfirmActionDialog
-        open={Boolean(pendingDelete)}
-        title="Remover contrato"
-        description={`Tem certeza que deseja remover o contrato ${pendingDelete?.label ?? ""}? Esta ação não pode ser desfeita.`}
-        confirmLabel="Remover"
-        busy={deleteMutation.isPending}
-        onOpenChange={(open) => {
-          if (!open) setPendingDelete(null)
-        }}
-        onConfirm={() => {
-          if (!pendingDelete) return
-          deleteMutation.mutate(pendingDelete.id)
-        }}
-      />
     </div>
   )
 }
