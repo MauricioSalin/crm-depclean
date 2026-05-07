@@ -1,16 +1,12 @@
 "use client"
 
 import { useMutation } from "@tanstack/react-query"
-import { type FormEvent, useEffect, useId, useRef, useState } from "react"
+import { type FormEvent, useEffect, useState } from "react"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { Eye, EyeOff, LoaderCircle, Lock, Mail } from "lucide-react"
 import { toast } from "sonner"
 
-import {
-  FloatingBlocks,
-  type FloatingBlockSnapshot,
-} from "@/components/login/floating-blocks"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -23,8 +19,6 @@ import { isAuthenticated, persistSession } from "@/lib/auth/session"
 
 export default function LoginPage() {
   const router = useRouter()
-  const maskId = useId().replace(/:/g, "")
-  const collaboratorRef = useRef<HTMLSpanElement | null>(null)
   const [showPassword, setShowPassword] = useState(false)
   const [email, setEmail] = useState("teste@depclean.com")
   const [password, setPassword] = useState("teste123")
@@ -32,13 +26,6 @@ export default function LoginPage() {
   const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false)
   const [resetEmail, setResetEmail] = useState("")
   const [resetSubmitting, setResetSubmitting] = useState(false)
-  const [blocks, setBlocks] = useState<FloatingBlockSnapshot[]>([])
-  const [wordBounds, setWordBounds] = useState({
-    width: 0,
-    height: 0,
-    left: 0,
-    top: 0,
-  })
 
   const loginMutation = useMutation({
     mutationFn: login,
@@ -65,28 +52,6 @@ export default function LoginPage() {
     }
   }, [router])
 
-  useEffect(() => {
-    const updateWordBounds = () => {
-      const element = collaboratorRef.current
-      if (!element) return
-
-      const rect = element.getBoundingClientRect()
-      setWordBounds({
-        width: rect.width,
-        height: rect.height,
-        left: rect.left,
-        top: rect.top,
-      })
-    }
-
-    updateWordBounds()
-    window.addEventListener("resize", updateWordBounds)
-
-    return () => {
-      window.removeEventListener("resize", updateWordBounds)
-    }
-  }, [])
-
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     loginMutation.mutate({
@@ -111,12 +76,11 @@ export default function LoginPage() {
 
   return (
     <main className="relative h-screen overflow-hidden bg-[#f6f6f2]">
-      <FloatingBlocks onBlocksChange={setBlocks} />
       <div className="absolute inset-x-0 bottom-0 h-12 bg-primary/95" />
 
       <div className="relative z-10 flex h-full items-center justify-center px-6 py-6">
         <div className="flex w-full max-w-5xl flex-col items-center justify-center">
-          <div className="mb-8 text-center">
+          <div className="mb-12 text-center">
             <Image
               src="/logo-depclean.png"
               alt="Depclean"
@@ -127,56 +91,8 @@ export default function LoginPage() {
             />
             <h1 className="mt-8 text-3xl font-extrabold leading-tight text-gray-800">
               Bem vindo de volta,
-              <span
-                ref={collaboratorRef}
-                className="relative mx-auto block w-fit text-primary"
-              >
-                <span className="relative z-10">colaborador!</span>
-                {wordBounds.width > 0 && wordBounds.height > 0 ? (
-                  <svg
-                    aria-hidden="true"
-                    className="pointer-events-none absolute inset-0 z-20 overflow-visible"
-                    viewBox={`0 0 ${wordBounds.width} ${wordBounds.height}`}
-                    width={wordBounds.width}
-                    height={wordBounds.height}
-                  >
-                    <defs>
-                      <mask id={maskId}>
-                        <rect width="100%" height="100%" fill="black" />
-                        {blocks.map((block) => (
-                          <rect
-                            key={block.id}
-                            x={block.x - wordBounds.left}
-                            y={block.y - wordBounds.top}
-                            width={block.size}
-                            height={block.size}
-                            rx={36}
-                            ry={36}
-                            transform={`rotate(${block.rotation} ${block.x - wordBounds.left + block.size / 2} ${block.y - wordBounds.top + block.size / 2})`}
-                            fill="white"
-                          />
-                        ))}
-                      </mask>
-                    </defs>
-                    <foreignObject
-                      width="100%"
-                      height="100%"
-                      mask={`url(#${maskId})`}
-                    >
-                      <div
-                        className="h-full w-full whitespace-nowrap text-white"
-                        style={{
-                          fontFamily: "inherit",
-                          fontSize: "inherit",
-                          fontWeight: 800,
-                          lineHeight: "inherit",
-                        }}
-                      >
-                        colaborador!
-                      </div>
-                    </foreignObject>
-                  </svg>
-                ) : null}
+              <span className="relative mx-auto block w-fit text-primary">
+                colaborador!
               </span>
             </h1>
           </div>
