@@ -47,8 +47,8 @@ export function DataPagination({
   }, [onPageSizeChange, pageSize, safePageSize])
 
   return (
-    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between pt-5">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+    <div className="flex flex-col items-center gap-4 pt-5 sm:flex-row sm:justify-between">
+      <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
         <span>Exibindo</span>
         <Select
           value={safePageSize.toString()}
@@ -70,7 +70,7 @@ export function DataPagination({
         </span>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center justify-center gap-2">
         <span className="text-sm text-muted-foreground">
           {startItem}-{endItem} de {totalItems}
         </span>

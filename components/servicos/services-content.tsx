@@ -15,6 +15,7 @@ import { TableEmptyState } from "@/components/ui/empty-state"
 import { CardSkeletonGrid, TableSkeletonRows } from "@/components/ui/table-skeleton"
 import { ServiceClausesDialog } from "@/components/servicos/service-clauses-dialog"
 import { toast } from "@/components/ui/use-toast"
+import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 import {
   Table,
   TableBody,
@@ -45,6 +46,7 @@ function formatDuration(type: ServiceTypeRow) {
 }
 
 export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) {
+  const mobileFiltersOpen = useMobileFiltersOpen()
   const queryClient = useQueryClient()
   const [searchTerm, setSearchTerm] = useUrlQueryState("q")
   const [currentPage, setCurrentPage] = useState(1)
@@ -120,7 +122,7 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
+      <div className={`${mobileFiltersOpen ? "flex" : "hidden"} items-center gap-2 sm:flex`}>
         <div className="relative w-full sm:max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input

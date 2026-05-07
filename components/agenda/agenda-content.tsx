@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useRouter, useSearchParams } from "next/navigation"
 import { toast } from "sonner"
 import {
   Calendar,
@@ -19,17 +20,19 @@ import {
 } from "lucide-react"
 
 import { listClients } from "@/lib/api/clients"
+import { listEmployees } from "@/lib/api/employees"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { listSchedules, createSchedule, updateSchedule, startSchedule, completeSchedule, cancelSchedule, uploadScheduleNa, type ScheduleRecord } from "@/lib/api/schedules"
 import { listServices } from "@/lib/api/services"
 import { listTeams } from "@/lib/api/teams"
 import { toCivilDateKey } from "@/lib/date-utils"
+import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
+import { checkScheduleAvailability, formatAvailabilitySlot } from "@/lib/schedule-availability"
 import type { RecurrenceType } from "@/lib/types"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -37,24 +40,19 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { EmptyState } from "@/components/ui/empty-state"
 import { SearchableSelect } from "@/components/ui/searchable-select"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { WeekTimeline } from "./week-timeline"
-import { CurrencyInput } from "@/components/ui/currency-input"
 import { ScheduleDetailsDialog } from "@/components/agendamentos/schedule-details-dialog"
+import { SchedulingFormDialog, type SchedulingFormData } from "@/components/agendamentos/scheduling-form-dialog"
 import {
-  minutesToScheduleDuration,
-  SCHEDULE_DURATION_TYPE_OPTIONS,
   scheduleDurationToMinutes,
-  type ScheduleDurationType,
 } from "@/lib/schedule-duration"
 
 type AgendaRecurrenceType = "none" | "daily" | RecurrenceType
@@ -105,36 +103,6 @@ interface AgendaContentProps {
   onDialogChange?: (open: boolean) => void
 }
 
-type AgendaFormData = {
-  clientId: string
-  serviceTypeId: string
-  teamId: string
-  date: string
-  time: string
-  durationType: ScheduleDurationType
-  duration: number
-  value: number
-  createContract: boolean
-  recurrence: AgendaRecurrenceConfig
-  notes: string
-  isEmergency: boolean
-}
-
-const DEFAULT_FORM_DATA: AgendaFormData = {
-  clientId: "",
-  serviceTypeId: "",
-  teamId: "",
-  date: toCivilDateKey(new Date()),
-  time: "",
-  durationType: "hours",
-  duration: 1,
-  value: 0,
-  createContract: false,
-  recurrence: { ...DEFAULT_RECURRENCE },
-  notes: "",
-  isEmergency: false,
-}
-
 const formatFileSize = (size?: number) => {
   if (!size) return ""
   if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`
@@ -158,7 +126,10 @@ function canCancelSchedule(schedule: Pick<ScheduleRecord, "status">) {
 }
 
 export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps) {
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const queryClient = useQueryClient()
+  const mobileFiltersOpen = useMobileFiltersOpen()
   const [currentDate, setCurrentDate] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState<Date | null>(new Date())
   const [searchTerm, setSearchTerm] = useUrlQueryState("q")
@@ -166,6 +137,13 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   const [viewMode, setViewMode] = useState<"month" | "week">("month")
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingService, setEditingService] = useState<AgendaScheduledServiceRow | null>(null)
+  const [initialFormData, setInitialFormData] = useState<Partial<SchedulingFormData> | null>(null)
+  const [availabilitySuggestion, setAvailabilitySuggestion] = useState<{
+    formData: SchedulingFormData
+    scheduleId?: string
+    requested: { date: string; time: string }
+    suggested: { date: string; time: string }
+  } | null>(null)
   const [selectedSchedule, setSelectedSchedule] = useState<AgendaScheduledServiceRow | null>(null)
   const [cancelTarget, setCancelTarget] = useState<AgendaScheduledServiceRow | null>(null)
   const [cancelReason, setCancelReason] = useState("")
@@ -176,7 +154,6 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   const [completionEndDate, setCompletionEndDate] = useState("")
   const [completionEndTime, setCompletionEndTime] = useState("")
   const [completionFile, setCompletionFile] = useState<File | null>(null)
-  const [formData, setFormData] = useState<AgendaFormData>(DEFAULT_FORM_DATA)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
 
@@ -196,6 +173,10 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
     queryKey: ["teams", "agenda"],
     queryFn: () => listTeams(),
   })
+  const employeesQuery = useQuery({
+    queryKey: ["employees", "agenda"],
+    queryFn: () => listEmployees(),
+  })
 
   const schedules = useMemo(
     () => (schedulesQuery.data?.data ?? []).map(mapSchedule),
@@ -204,12 +185,19 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   const clients = clientsQuery.data?.data ?? []
   const serviceTypes = serviceTypesQuery.data?.data ?? []
   const teams = teamsQuery.data?.data ?? []
+  const employees = employeesQuery.data?.data ?? []
 
   useEffect(() => {
     if (openDialog !== undefined && openDialog !== isDialogOpen) {
+      if (openDialog) {
+        setEditingService(null)
+        setInitialFormData({
+          date: selectedDate ? toCivilDateKey(selectedDate) : toCivilDateKey(new Date()),
+        })
+      }
       setIsDialogOpen(openDialog)
     }
-  }, [openDialog, isDialogOpen])
+  }, [openDialog, isDialogOpen, selectedDate])
 
   const invalidateSchedules = async () => {
     await queryClient.invalidateQueries({ queryKey: ["schedules"] })
@@ -220,8 +208,8 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   }
 
   const resetForm = () => {
-    setFormData(DEFAULT_FORM_DATA)
     setEditingService(null)
+    setInitialFormData(null)
     setIsDialogOpen(false)
     onDialogChange?.(false)
   }
@@ -231,12 +219,12 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
     onDialogChange?.(open)
     if (!open) {
       setEditingService(null)
-      setFormData(DEFAULT_FORM_DATA)
+      setInitialFormData(null)
     }
   }
 
   const saveMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async ({ formData, scheduleId }: { formData: SchedulingFormData; scheduleId?: string }) => {
       const client = clients.find((item) => item.id === formData.clientId)
       const primaryUnit =
         client?.units.find((unit) => unit.isPrimary) ??
@@ -248,10 +236,10 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
 
       const payload = {
         clientId: formData.clientId,
-        unitId: editingService?.unitId ?? primaryUnit.id,
+        unitId: scheduleId ? editingService?.unitId ?? primaryUnit.id : primaryUnit.id,
         serviceTypeId: formData.serviceTypeId,
-        teamIds: formData.teamId ? [formData.teamId] : [],
-        additionalEmployeeIds: [],
+        teamIds: formData.teamIds,
+        additionalEmployeeIds: formData.employeeIds,
         scheduledDate: formData.date,
         scheduledTime: formData.time,
         estimatedDuration: scheduleDurationToMinutes(formData.duration, formData.durationType),
@@ -261,20 +249,20 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
         notes: formData.notes,
       }
 
-      if (editingService) {
-        return updateSchedule(editingService.id, payload)
+      if (scheduleId) {
+        return updateSchedule(scheduleId, payload)
       }
 
       return createSchedule(payload)
     },
-    onMutate: () => {
-      const toastId = toast.loading(editingService ? "Salvando agendamento..." : "Criando atendimento...")
+    onMutate: (variables) => {
+      const toastId = toast.loading(variables.scheduleId ? "Salvando agendamento..." : "Criando atendimento...")
       return { toastId }
     },
-    onSuccess: async (response, _variables, context) => {
+    onSuccess: async (response, variables, context) => {
       await invalidateSchedules()
       resetForm()
-      toast.success(editingService ? "Agendamento atualizado." : "Agendamento criado.", {
+      toast.success(variables.scheduleId ? "Agendamento atualizado." : "Agendamento criado.", {
         id: context?.toastId,
         description: `${response.data.clientName} • ${response.data.serviceTypeName}`,
       })
@@ -405,39 +393,55 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
     return date.toDateString() === today.toDateString()
   }
 
-  const handleSubmit = (event: React.FormEvent) => {
-    event.preventDefault()
-    saveMutation.mutate()
+  const handleFormSubmit = (formData: SchedulingFormData, isEditing: boolean) => {
+    const scheduleId = isEditing ? editingService?.id : undefined
+    const availability = checkScheduleAvailability({
+      schedules,
+      teams,
+      formData,
+      ignoreScheduleId: scheduleId,
+    })
+
+    if (!availability.available && availability.suggested) {
+      setAvailabilitySuggestion({
+        formData,
+        scheduleId,
+        requested: {
+          date: availability.requested.date,
+          time: availability.requested.time,
+        },
+        suggested: availability.suggested,
+      })
+      return
+    }
+
+    saveMutation.mutate({ formData, scheduleId })
   }
 
   const handleDateClick = (date: Date) => {
     setSelectedDate(date)
-    setFormData((previous) => ({ ...previous, date: toCivilDateKey(date) }))
   }
 
   const handleEditService = (service: AgendaScheduledServiceRow) => {
-    const serviceType = serviceTypes.find((item) => item.id === service.serviceTypeId)
-    const durationFields = minutesToScheduleDuration(service.duration, serviceType)
-
     setSelectedSchedule(null)
     setCancelTarget(null)
     setCompletionTarget(null)
     setEditingService(service)
-    setFormData({
-      clientId: service.clientId,
-      serviceTypeId: service.serviceTypeId,
-      teamId: service.teamId ?? service.teams[0]?.id ?? "",
-      date: service.date,
-      time: service.time ?? "",
-      durationType: durationFields.durationType,
-      duration: durationFields.duration,
-      value: service.billable ? Number(service.value ?? 0) : 0,
-      createContract: Boolean(service.billable),
-      recurrence: service.recurrence || { ...DEFAULT_RECURRENCE },
-      notes: service.notes || "",
-      isEmergency: service.isEmergency ?? false,
-    })
+    setInitialFormData(null)
     window.setTimeout(() => setIsDialogOpen(true), 0)
+  }
+
+  const openScheduleFormAtSlot = (date: Date, time: string) => {
+    setSelectedDate(date)
+    setEditingService(null)
+    setInitialFormData({
+      date: toCivilDateKey(date),
+      time,
+      durationType: "hours",
+      duration: 1,
+    })
+    setIsDialogOpen(true)
+    onDialogChange?.(true)
   }
 
   const openCompletionDialog = (schedule: AgendaScheduledServiceRow) => {
@@ -484,267 +488,42 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   }
 
   const selectedDateServices = selectedDate ? getServicesForDate(selectedDate) : []
-  const isEditingAutomatedSchedule = Boolean(editingService?.contractId && !editingService.isManual)
+
+  useEffect(() => {
+    const scheduleId = searchParams.get("scheduleId")
+    if (!scheduleId || schedules.length === 0) return
+
+    const schedule = schedules.find((item) => item.id === scheduleId)
+    if (!schedule) return
+
+    setSelectedDate(new Date(`${schedule.date}T00:00:00`))
+    setCurrentDate(new Date(`${schedule.date}T00:00:00`))
+    setSelectedSchedule(schedule)
+  }, [schedules, searchParams])
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
-      <Dialog open={isDialogOpen} onOpenChange={handleDialogChange}>
-        <DialogContent className="max-h-[90dvh] max-w-lg overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{editingService ? "Editar Agendamento" : "Novo Agendamento"}</DialogTitle>
-          </DialogHeader>
-
-          <form autoComplete="off" onSubmit={handleSubmit} className="space-y-6">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="col-span-2 space-y-2">
-                <Label>Cliente</Label>
-                <SearchableSelect
-                  value={formData.clientId}
-                  onValueChange={(value) => setFormData((previous) => ({ ...previous, clientId: value }))}
-                  options={clients.map((client) => ({ value: client.id, label: client.companyName }))}
-                  placeholder="Selecione o cliente"
-                  searchPlaceholder="Buscar cliente..."
-                  emptyMessage="Nenhum cliente encontrado."
-                  includeAll={false}
-                  className="w-full"
-                />
-              </div>
-
-              <div className="col-span-2 space-y-2">
-                <Label>Tipo de Serviço</Label>
-                <SearchableSelect
-                  value={formData.serviceTypeId}
-                  onValueChange={(value) => {
-                    const serviceType = serviceTypes.find((item) => item.id === value)
-                    setFormData((previous) => ({
-                      ...previous,
-                      serviceTypeId: value,
-                      durationType: serviceType?.durationType ?? previous.durationType,
-                      duration: serviceType?.defaultDuration ?? previous.duration,
-                      value: previous.createContract ? serviceType?.baseValue ?? previous.value : 0,
-                    }))
-                  }}
-                  options={serviceTypes
-                    .filter((serviceType) => serviceType.isActive)
-                    .map((serviceType) => ({ value: serviceType.id, label: serviceType.name }))}
-                  placeholder="Selecione"
-                  searchPlaceholder="Buscar serviço..."
-                  emptyMessage="Nenhum serviço encontrado."
-                  includeAll={false}
-                  className="w-full"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Equipe</Label>
-                <SearchableSelect
-                  value={formData.teamId}
-                  onValueChange={(value) => setFormData((previous) => ({ ...previous, teamId: value }))}
-                  options={teams.map((team) => ({ value: team.id, label: team.name }))}
-                  placeholder="Selecione"
-                  searchPlaceholder="Buscar equipe..."
-                  emptyMessage="Nenhuma equipe encontrada."
-                  includeAll={false}
-                  className="w-full"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Data</Label>
-                <Input
-                  type="date"
-                  value={formData.date}
-                  onChange={(event) => setFormData((previous) => ({ ...previous, date: event.target.value }))}
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Horário</Label>
-                <Input
-                  type="time"
-                  value={formData.time}
-                  onChange={(event) => setFormData((previous) => ({ ...previous, time: event.target.value }))}
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Tipo de Duração</Label>
-                <Select
-                  value={formData.durationType}
-                  onValueChange={(value) =>
-                    setFormData((previous) => ({ ...previous, durationType: value as ScheduleDurationType }))
-                  }
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SCHEDULE_DURATION_TYPE_OPTIONS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Duração</Label>
-                <Input
-                  type="number"
-                  value={formData.duration}
-                  onChange={(event) =>
-                    setFormData((previous) => ({ ...previous, duration: Number(event.target.value) }))
-                  }
-                  min={1}
-                  className="w-full"
-                />
-              </div>
-
-              {!isEditingAutomatedSchedule ? (
-                <div className="space-y-2">
-                  <Label>Valor (R$)</Label>
-                  <CurrencyInput
-                    value={formData.createContract ? Math.round(formData.value * 100) : 0}
-                    onChange={(cents) => setFormData((previous) => ({ ...previous, value: cents / 100 }))}
-                    disabled={!formData.createContract}
-                    className={!formData.createContract ? "cursor-not-allowed opacity-60" : undefined}
-                  />
-                </div>
-              ) : null}
-
-              <div className="space-y-2">
-                <Label>Recorrência</Label>
-                <SearchableSelect
-                  value={formData.recurrence.type}
-                  onValueChange={(value) =>
-                    setFormData((previous) => ({
-                      ...previous,
-                      recurrence: { ...previous.recurrence, type: value as AgendaRecurrenceType },
-                    }))
-                  }
-                  options={[
-                    { value: "none", label: "Único" },
-                    { value: "daily", label: "Diário" },
-                    { value: "weekly", label: "Semanal" },
-                    { value: "biweekly", label: "Quinzenal" },
-                    { value: "monthly", label: "Mensal" },
-                  ]}
-                  placeholder="Selecione"
-                  searchPlaceholder="Buscar recorrência..."
-                  emptyMessage="Nenhuma recorrência encontrada."
-                  includeAll={false}
-                  className="w-full"
-                />
-              </div>
-            </div>
-
-            {formData.recurrence.type === "weekly" ? (
-              <div className="space-y-2">
-                <Label>Dias da semana</Label>
-                <div className="flex flex-wrap gap-2">
-                  {DAYS_OF_WEEK.map((day) => (
-                    <div key={day.value} className="flex items-center gap-1">
-                      <Checkbox
-                        id={`agenda-day-${day.value}`}
-                        checked={formData.recurrence.daysOfWeek.includes(day.value)}
-                        onCheckedChange={(checked) => {
-                          const nextDays = checked
-                            ? [...formData.recurrence.daysOfWeek, day.value]
-                            : formData.recurrence.daysOfWeek.filter((value) => value !== day.value)
-                          setFormData((previous) => ({
-                            ...previous,
-                            recurrence: { ...previous.recurrence, daysOfWeek: nextDays },
-                          }))
-                        }}
-                      />
-                      <Label htmlFor={`agenda-day-${day.value}`} className="text-sm">
-                        {day.label}
-                      </Label>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
-            <div className="space-y-2">
-              <Label>Observações</Label>
-              <Textarea
-                value={formData.notes}
-                onChange={(event) => setFormData((previous) => ({ ...previous, notes: event.target.value }))}
-                placeholder="Observações sobre o serviço"
-              />
-            </div>
-
-            {!isEditingAutomatedSchedule ? (
-              <div className="space-y-2">
-                <div className="rounded-lg bg-muted p-3">
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="createContract"
-                      checked={formData.createContract}
-                      onCheckedChange={(checked) => {
-                        const serviceType = serviceTypes.find((item) => item.id === formData.serviceTypeId)
-                        setFormData((previous) => ({
-                          ...previous,
-                          createContract: !!checked,
-                          value: checked ? previous.value || serviceType?.baseValue || 0 : 0,
-                        }))
-                      }}
-                    />
-                    <div className="flex flex-col">
-                      <Label htmlFor="createContract" className="cursor-pointer text-sm font-medium">
-                        Gerar cobrança no financeiro
-                      </Label>
-                      <p className="text-xs text-muted-foreground">
-                        Uma cobrança será criada com o valor informado.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="rounded-lg border border-red-100 bg-red-50 p-3 dark:border-red-900/40 dark:bg-red-950/30">
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="isEmergency"
-                      checked={formData.isEmergency}
-                      onCheckedChange={(checked) =>
-                        setFormData((previous) => ({ ...previous, isEmergency: !!checked }))
-                      }
-                    />
-                    <div className="flex flex-col">
-                      <Label htmlFor="isEmergency" className="cursor-pointer text-sm font-medium">
-                        Agendamento emergencial
-                      </Label>
-                      <p className="text-xs text-muted-foreground">
-                        Marca o agendamento como prioritário/emergencial.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : null}
-
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={resetForm}>
-                Cancelar
-              </Button>
-              <Button
-                type="submit"
-                className="bg-primary text-primary-foreground hover:bg-primary/90"
-                disabled={saveMutation.isPending}
-              >
-                {editingService ? "Salvar" : "Agendar"}
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <SchedulingFormDialog
+        open={isDialogOpen}
+        onOpenChange={handleDialogChange}
+        editingSchedule={editingService}
+        initialFormData={initialFormData}
+        onSubmit={handleFormSubmit}
+        clients={clients}
+        serviceTypes={serviceTypes}
+        teams={teams}
+        employees={employees}
+      />
 
       <ScheduleDetailsDialog
         open={!!selectedSchedule}
         onOpenChange={(open) => {
-          if (!open) setSelectedSchedule(null)
+          if (!open) {
+            setSelectedSchedule(null)
+            if (searchParams.get("scheduleId")) {
+              router.replace("/agenda", { scroll: false })
+            }
+          }
         }}
         schedule={selectedSchedule}
         onStartAttendance={async (schedule) => {
@@ -952,7 +731,61 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
         </DialogContent>
       </Dialog>
 
-      <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
+      <Dialog
+        open={!!availabilitySuggestion}
+        onOpenChange={(open) => {
+          if (!open) setAvailabilitySuggestion(null)
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Horário indisponível</DialogTitle>
+            <DialogDescription>
+              Já existe um agendamento para a equipe ou funcionário nesse intervalo.
+            </DialogDescription>
+          </DialogHeader>
+          {availabilitySuggestion ? (
+            <div className="space-y-3 rounded-2xl border bg-muted/40 p-4 text-sm">
+              <div>
+                <p className="font-medium">Horário solicitado</p>
+                <p className="text-muted-foreground">
+                  {formatAvailabilitySlot(availabilitySuggestion.requested.date, availabilitySuggestion.requested.time)}
+                </p>
+              </div>
+              <div>
+                <p className="font-medium">Horário mais próximo disponível</p>
+                <p className="text-muted-foreground">
+                  {formatAvailabilitySlot(availabilitySuggestion.suggested.date, availabilitySuggestion.suggested.time)}
+                </p>
+              </div>
+            </div>
+          ) : null}
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button type="button" variant="outline" onClick={() => setAvailabilitySuggestion(null)}>
+              Voltar
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                if (!availabilitySuggestion) return
+                saveMutation.mutate({
+                  formData: {
+                    ...availabilitySuggestion.formData,
+                    date: availabilitySuggestion.suggested.date,
+                    time: availabilitySuggestion.suggested.time,
+                  },
+                  scheduleId: availabilitySuggestion.scheduleId,
+                })
+                setAvailabilitySuggestion(null)
+              }}
+            >
+              Usar horário sugerido
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <div className={`${mobileFiltersOpen ? "grid" : "hidden"} grid-cols-2 gap-2 sm:flex sm:items-center`}>
         <div className="relative sm:w-80">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -1229,6 +1062,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                     openSchedule(schedule)
                   }
                 }}
+                onSlotClick={openScheduleFormAtSlot}
               />
             </CardContent>
           </Card>

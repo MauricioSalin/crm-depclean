@@ -172,6 +172,15 @@ interface ContractService {
   employeeIds: string[]
 }
 
+const formatServiceDuration = (service?: { defaultDuration?: number; durationType?: "hours" | "shift" | "days" }) => {
+  if (!service) return "-"
+  const duration = Number(service.defaultDuration ?? 0)
+  if (!duration) return "-"
+  if (service.durationType === "shift") return `${duration} turno${duration === 1 ? "" : "s"}`
+  if (service.durationType === "days") return `${duration} dia${duration === 1 ? "" : "s"}`
+  return `${duration} hora${duration === 1 ? "" : "s"}`
+}
+
 const isContractSigned = (contract?: { status?: string; clicksign?: { status?: string } } | null) => {
   if (!contract) return false
   const clicksignStatus = contract.clicksign?.status?.toLowerCase() ?? ""
@@ -1007,10 +1016,6 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
                 <ArrowLeft className="w-4 h-4 mr-2" />
                 Voltar ao formulário
               </Button>
-              <Button type="button" variant="outline" onClick={openImport}>
-                <Upload className="w-4 h-4 mr-2" />
-                Importar
-              </Button>
               <Button
                 type="button"
                 className="bg-primary hover:bg-primary/90"
@@ -1481,7 +1486,7 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
           </div>
         </div>
         {createAutomatedSchedules && (
-          <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <div className="mt-4 grid max-w-[635px] gap-4 sm:grid-cols-[minmax(0,1fr)_180px]">
             <div className="space-y-2">
               <Label>Data da primeira visita *</Label>
               <Input
@@ -1691,27 +1696,29 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
         </div>
 
         {services.length > 0 ? (
-          <div className="pb-2 rounded-lg overflow-x-auto">
-            <Table>
+          <div className="overflow-x-auto rounded-lg border border-border/70">
+            <Table className="min-w-[860px]">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
-                  <TableHead>Serviço</TableHead>
-                  <TableHead>Equipes / Funcionários</TableHead>
-                  <TableHead className="w-24"></TableHead>
+                  <TableHead className="w-[300px]">Servi?o</TableHead>
+                  <TableHead className="w-[140px]">Dura??o</TableHead>
+                  <TableHead>Equipes / Funcion?rios</TableHead>
+                  <TableHead className="w-[132px] text-right">A??es</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {services.map((service) => {
+                  const serviceType = serviceTypes.find((item) => item.id === service.serviceTypeId)
                   const serviceTeams = teams.filter(t => service.teamIds.includes(t.id))
                   const serviceEmployees = employees.filter(e => service.employeeIds.includes(e.id))
                   return (
-                    <TableRow key={service.id} className="hover:bg-transparent !border-0">
-                      <TableCell className="w-[220px]">
+                    <TableRow key={service.id} className="hover:bg-muted/20">
+                      <TableCell className="w-[300px] py-3 align-top">
                         <Select
                           value={service.serviceTypeId}
                           onValueChange={(v) => updateService(service.id, "serviceTypeId", v)}
                         >
-                          <SelectTrigger className="w-full min-w-[220px]">
+                          <SelectTrigger className="w-full min-w-[260px]">
                             <SelectValue placeholder="Selecione" />
                           </SelectTrigger>
                           <SelectContent>
@@ -1721,8 +1728,13 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
                           </SelectContent>
                         </Select>
                       </TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-1.5 max-w-[280px]">
+                      <TableCell className="py-3 align-top">
+                        <span className="inline-flex h-9 items-center whitespace-nowrap text-sm text-muted-foreground">
+                          {formatServiceDuration(serviceType)}
+                        </span>
+                      </TableCell>
+                      <TableCell className="py-3 align-top">
+                        <div className="flex min-h-9 flex-wrap items-center gap-1.5">
                           {serviceTeams.map(t => (
                             <Badge
                               key={t.id}
@@ -1744,15 +1756,15 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
                           )}
                         </div>
                       </TableCell>
-                      <TableCell>
-                        <div className="flex gap-1">
+                      <TableCell className="py-3 align-top">
+                        <div className="flex justify-end gap-1">
                           <Button
                             type="button"
                             variant="ghost"
                             size="icon"
                             onClick={() => openServiceDetailsDialog(service.serviceTypeId)}
                             disabled={!service.serviceTypeId}
-                            title="Ver detalhes do serviço"
+                            title="Ver detalhes do servi?o"
                           >
                             <Eye className="w-4 h-4" />
                           </Button>
@@ -1761,7 +1773,7 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
                             variant="ghost"
                             size="icon"
                             onClick={() => openEditServiceDialog(service.id)}
-                            title="Editar equipes e funcionários"
+                            title="Editar equipes e funcion?rios"
                           >
                             <Users className="w-4 h-4" />
                           </Button>
@@ -1791,19 +1803,20 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
       </Card>
 
       {/* Actions */}
-      <div className={cn("flex flex-col-reverse gap-3 sm:flex-row sm:items-center", isEditing ? "sm:justify-between" : "sm:justify-end")}>
-        {isEditing && contractId ? (
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => setRemoveDialogOpen(true)}
-            disabled={deleteMutation.isPending || updateMutation.isPending}
-          >
-            <Trash2 className="w-4 h-4 mr-2" />
-            Remover
-          </Button>
-        ) : null}
+      <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-end">
         <div className="flex justify-end gap-3">
+          {isEditing && contractId ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+              onClick={() => setRemoveDialogOpen(true)}
+              disabled={deleteMutation.isPending || updateMutation.isPending}
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              Remover
+            </Button>
+          ) : null}
           <Button type="button" variant="outline" onClick={() => router.push("/contratos")}>
             Cancelar
           </Button>

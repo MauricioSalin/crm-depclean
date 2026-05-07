@@ -24,6 +24,8 @@ import type { ReactNode } from "react"
 import { listNotifications, markNotificationAsRead } from "@/lib/api/notifications"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { clearSession, getStoredAccessToken, getStoredUser } from "@/lib/auth/session"
+import { getNotificationHref } from "@/lib/notification-navigation"
+import { setMobileFiltersOpen as notifyMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 import { useSidebarCollapse } from "./sidebar-collapse-context"
 
 interface HeaderProps {
@@ -84,6 +86,8 @@ export function Header({ title, description, titleAddon, headerActions, actions,
 
   useEffect(() => {
     setMounted(true)
+    setMobileFiltersOpen(false)
+    notifyMobileFiltersOpen(false)
     const sync = () => {
       setCurrentUser(getStoredUser())
       setHasSession(Boolean(getStoredAccessToken()))
@@ -99,6 +103,18 @@ export function Header({ title, description, titleAddon, headerActions, actions,
 
   const markAsRead = (id: string) => {
     markAsReadMutation.mutate(id)
+  }
+
+  const setMobileFiltersState = (open: boolean) => {
+    setMobileFiltersOpen(open)
+    notifyMobileFiltersOpen(open)
+  }
+
+  const openNotification = (notification: (typeof notifs)[number]) => {
+    if (!notification.isRead) {
+      markAsRead(notification.id)
+    }
+    router.push(getNotificationHref(notification))
   }
 
   return (
@@ -171,7 +187,7 @@ export function Header({ title, description, titleAddon, headerActions, actions,
                         <DropdownMenuItem
                           key={notification.id}
                           className="flex flex-col items-start gap-1 cursor-pointer"
-                          onSelect={(event) => event.preventDefault()}
+                          onSelect={() => openNotification(notification)}
                         >
                           <div className="flex items-center gap-2 w-full">
                             <span
@@ -296,7 +312,7 @@ export function Header({ title, description, titleAddon, headerActions, actions,
                 variant="ghost"
                 size="sm"
                 className="shrink-0 text-muted-foreground h-9"
-                onClick={() => setMobileFiltersOpen(!mobileFiltersOpen)}
+                onClick={() => setMobileFiltersState(!mobileFiltersOpen)}
               >
                 Filtros
                 <ChevronDown className={`ml-1 h-4 w-4 transition-transform duration-200 ${mobileFiltersOpen ? "rotate-180" : ""}`} />
@@ -304,8 +320,8 @@ export function Header({ title, description, titleAddon, headerActions, actions,
             )}
           </div>
         )}
-        {hasFilters && mobileFiltersOpen && (
-          <div className="rounded-lg border bg-card p-3 sm:hidden">
+        {hasFilters && mobileFiltersOpen && filters && (
+          <div className="sm:hidden">
             {filters}
           </div>
         )}

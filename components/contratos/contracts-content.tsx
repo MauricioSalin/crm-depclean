@@ -32,6 +32,7 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { listContracts, type ContractRecord } from "@/lib/api/contracts"
 import { formatCivilDate } from "@/lib/date-utils"
+import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 
 interface ContractsContentProps {
@@ -56,6 +57,7 @@ function formatDate(value: string) {
 }
 
 export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps) {
+  const mobileFiltersOpen = useMobileFiltersOpen()
   const [searchTerm, setSearchTerm] = useUrlQueryState("q")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [currentPage, setCurrentPage] = useState(1)
@@ -101,7 +103,7 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
+      <div className={`${mobileFiltersOpen ? "grid" : "hidden"} grid-cols-2 gap-2 sm:flex sm:items-center`}>
         <div className="relative sm:w-80 sm:flex-none">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input

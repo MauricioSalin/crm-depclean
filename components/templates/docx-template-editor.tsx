@@ -60,6 +60,11 @@ type ProseMirrorSelectionLike = {
 
 type ProseMirrorTransactionLike = {
   addMark?: (from: number, to: number, mark: unknown) => ProseMirrorTransactionLike
+  delete?: (from: number, to: number) => ProseMirrorTransactionLike
+  deleteRange?: (from: number, to: number) => ProseMirrorTransactionLike
+  mapping?: {
+    map?: (pos: number) => number
+  }
   removeMark?: (from: number, to: number, markType: ProseMirrorMarkTypeLike) => ProseMirrorTransactionLike
   scrollIntoView?: () => ProseMirrorTransactionLike
   setStoredMarks?: (marks: unknown[] | null) => ProseMirrorTransactionLike
@@ -111,6 +116,15 @@ type ProseMirrorSelectionSnapshot = {
   to: number
 }
 
+type ActiveTableWidthResize = {
+  columnCount: number
+  initialColumnWidths: number[]
+  resizeColumnIndex: number
+  startClientX: number
+  tablePmStart: number
+  twipsPerPixel: number
+}
+
 export type DocxTemplateEditorRef = {
   generatePreviewPdf: (options?: { download?: boolean; previewWatermark?: boolean }) => Promise<File>
   insertVariable: (path: string) => void
@@ -131,6 +145,26 @@ type NativeTooltipState = {
   y: number
 }
 
+const DOCX_CONTEXT_MENU_TRANSLATIONS = new Map<string, string>([
+  ["Cut", "Recortar"],
+  ["Copy", "Copiar"],
+  ["Paste", "Colar"],
+  ["Paste as Plain Text", "Colar sem formatação"],
+  ["Delete", "Excluir"],
+  ["Insert row above", "Inserir linha acima"],
+  ["Insert row below", "Inserir linha abaixo"],
+  ["Delete row", "Excluir linha"],
+  ["Insert column left", "Inserir coluna à esquerda"],
+  ["Insert column right", "Inserir coluna à direita"],
+  ["Delete column", "Excluir coluna"],
+  ["Merge cells", "Mesclar células"],
+  ["Split cell", "Dividir célula"],
+  ["Select All", "Selecionar tudo"],
+  ["Comment", "Comentário"],
+])
+
+const DOCX_CONTEXT_TABLE_ACTION_TEXT = "Excluir tabela"
+
 interface DocxTemplateEditorProps {
   activeTab: TemplateEditorTab
   baseFileName?: string
@@ -149,10 +183,9 @@ interface DocxTemplateEditorProps {
 
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
-const DEFAULT_DOCX_FILES: Record<TemplateKind, string> = {
+const DEFAULT_DOCX_FILES: Partial<Record<TemplateKind, string>> = {
   contract: "/template-assets/docx-poc-contract.docx",
   informative: "/template-assets/docx-poc-informative.docx",
-  certificate: "/template-assets/docx-poc-certificate.docx",
 }
 
 const DOCX_EDITOR_FONT_NAMES = [
@@ -368,6 +401,13 @@ function getTableWidthFromAttrs(attrs: Record<string, unknown> | undefined) {
   return toPositiveNumber(width)
 }
 
+function buildDocxTableWidth(widthTwips: number) {
+  return {
+    type: "dxa",
+    value: Math.max(1, Math.round(widthTwips)),
+  }
+}
+
 function getTableColumnCount(tableNode: ProseMirrorDocumentNodeLike) {
   let columnCount = 0
 
@@ -430,6 +470,201 @@ function getDocxTableWidth(
     rawWidthTotal ??
     9360
   )
+}
+
+function sumColumnWidths(columnWidths: number[]) {
+  return columnWidths.reduce((sum, width) => sum + Math.max(1, Math.round(width)), 0)
+}
+
+function getDocxTableNodeAtPosition(
+  view: ProseMirrorViewLike | null | undefined,
+  tablePmStart: number | null,
+) {
+  if (!view?.state?.doc || tablePmStart === null) return null
+
+  const directNode = view.state.doc.nodeAt?.(tablePmStart)
+  if (directNode?.type?.name === "table") {
+    return { node: directNode, pos: tablePmStart }
+  }
+
+  try {
+    const resolved = view.state.doc.resolve?.(tablePmStart + 1)
+    if (!resolved) return null
+
+    for (let depth = resolved.depth; depth >= 0; depth -= 1) {
+      const tableNode = resolved.node?.(depth)
+      if (tableNode?.type?.name !== "table") continue
+
+      const tablePos = resolved.before?.(depth)
+      if (typeof tablePos !== "number") return null
+
+      return { node: tableNode, pos: tablePos }
+    }
+  } catch {
+    return null
+  }
+
+  return null
+}
+
+function deleteDocxTableAtPosition(view: ProseMirrorViewLike | null | undefined, tablePmStart: number | null) {
+  if (!view?.dispatch || !view.state?.tr || tablePmStart === null) return false
+
+  const table = getDocxTableNodeAtPosition(view, tablePmStart)
+  const nodeSize = table?.node.nodeSize
+  const removeTable = view.state.tr.delete ?? view.state.tr.deleteRange
+
+  if (!table || typeof nodeSize !== "number" || nodeSize <= 0 || !removeTable) return false
+
+  let transaction = removeTable.call(view.state.tr, table.pos, table.pos + nodeSize)
+  transaction = transaction.scrollIntoView?.() ?? transaction
+  view.dispatch(transaction)
+
+  return true
+}
+
+function translateDocxContextMenu(menu: HTMLElement) {
+  const walker = document.createTreeWalker(menu, NodeFilter.SHOW_TEXT)
+
+  let textNode = walker.nextNode()
+  while (textNode) {
+    const currentText = textNode.textContent ?? ""
+    const trimmedText = currentText.trim()
+    const translated = DOCX_CONTEXT_MENU_TRANSLATIONS.get(trimmedText)
+
+    if (translated) {
+      textNode.textContent = currentText.replace(trimmedText, translated)
+    }
+
+    textNode = walker.nextNode()
+  }
+}
+
+function findDocxContextMenuButton(menu: HTMLElement, labels: string[]) {
+  const buttons = Array.from(menu.querySelectorAll<HTMLButtonElement>("button.docx-text-context-menu-item"))
+
+  return buttons.find((button) => labels.some((label) => button.textContent?.includes(label))) ?? null
+}
+
+function setDocxContextMenuButtonLabel(button: HTMLElement, label: string) {
+  const spans = Array.from(button.querySelectorAll("span"))
+  const labelSpan =
+    spans.find((span) => span.textContent?.includes("Excluir coluna") || span.textContent?.includes("Delete column")) ??
+    spans.find((span) => {
+      const text = span.textContent?.trim()
+      return Boolean(text && !text.includes("Ctrl+") && text !== "Del")
+    })
+
+  if (labelSpan) {
+    labelSpan.textContent = label
+    return
+  }
+
+  button.textContent = label
+}
+
+function enhanceDocxTableContextMenu(menu: HTMLElement, onDeleteTable: () => void) {
+  translateDocxContextMenu(menu)
+
+  const menuText = menu.textContent ?? ""
+  const hasTableActions =
+    menuText.includes("Inserir linha acima") ||
+    menuText.includes("Insert row above") ||
+    menuText.includes("Excluir coluna") ||
+    menuText.includes("Delete column")
+
+  if (!hasTableActions || menu.querySelector("[data-depclean-delete-table-action='true']")) return
+
+  const referenceButton = findDocxContextMenuButton(menu, ["Excluir coluna", "Delete column"])
+  const selectAllButton = findDocxContextMenuButton(menu, ["Selecionar tudo", "Select All"])
+  const actionButton = (referenceButton?.cloneNode(true) as HTMLButtonElement | null) ?? document.createElement("button")
+
+  actionButton.type = "button"
+  actionButton.disabled = false
+  actionButton.removeAttribute("disabled")
+  actionButton.setAttribute("role", "menuitem")
+  actionButton.setAttribute("aria-disabled", "false")
+  actionButton.dataset.depcleanDeleteTableAction = "true"
+  actionButton.className = referenceButton?.className || "docx-text-context-menu-item"
+  actionButton.style.cursor = "pointer"
+  setDocxContextMenuButtonLabel(actionButton, DOCX_CONTEXT_TABLE_ACTION_TEXT)
+  actionButton.addEventListener("click", (event) => {
+    event.preventDefault()
+    event.stopPropagation()
+    onDeleteTable()
+    menu.remove()
+  })
+
+  if (selectAllButton?.parentElement === menu) {
+    menu.insertBefore(actionButton, selectAllButton)
+    return
+  }
+
+  menu.appendChild(actionButton)
+}
+
+function setDocxTableWidth(
+  view: ProseMirrorViewLike | null | undefined,
+  tablePmStart: number | null,
+  widthTwips: number,
+  columnWidths?: number[],
+) {
+  if (!view?.state?.tr?.setNodeMarkup || !view.dispatch) return false
+
+  const table = getDocxTableNodeAtPosition(view, tablePmStart)
+  if (!table) return false
+
+  const columnCount = getTableColumnCount(table.node)
+  const normalizedColumnWidths =
+    columnWidths && columnWidths.length > 0
+      ? columnWidths
+      : normalizeColumnWidths(table.node.attrs?.columnWidths, columnCount, widthTwips)
+  const tableWidth = Math.max(1, Math.round(widthTwips))
+  let transaction = view.state.tr.setNodeMarkup(table.pos, undefined, {
+    ...table.node.attrs,
+    columnWidths: normalizedColumnWidths,
+    width: buildDocxTableWidth(tableWidth),
+  })
+
+  let rowPos = table.pos + 1
+  table.node.forEach?.((rowNode) => {
+    let cellPos = rowPos + 1
+    let columnIndex = 0
+
+    rowNode.forEach?.((cellNode) => {
+      const colspan = Math.max(
+        1,
+        Math.trunc(
+          toPositiveNumber(cellNode.attrs?.colspan) ??
+            toPositiveNumber(cellNode.attrs?.colSpan) ??
+            toPositiveNumber(cellNode.attrs?.gridSpan) ??
+            1,
+        ),
+      )
+      const cellWidth =
+        colspan === 1
+          ? normalizedColumnWidths[columnIndex]
+          : sumColumnWidths(normalizedColumnWidths.slice(columnIndex, columnIndex + colspan))
+
+      if (cellWidth && cellNode.nodeSize) {
+        transaction =
+          transaction.setNodeMarkup?.(transaction.mapping?.map?.(cellPos) ?? cellPos, undefined, {
+            ...cellNode.attrs,
+            width: Math.max(1, Math.round(cellWidth)),
+            widthType: "dxa",
+            colwidth: null,
+          }) ?? transaction
+      }
+
+      cellPos += cellNode.nodeSize ?? 0
+      columnIndex += colspan
+    })
+
+    rowPos += rowNode.nodeSize ?? 0
+  })
+
+  view.dispatch(transaction)
+  return true
 }
 
 function normalizeDocxTableColumnWidths(
@@ -1222,6 +1457,8 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
     const sourceBufferRef = useRef<ArrayBuffer | null>(null)
     const latestDocumentRef = useRef<unknown | null>(null)
     const activeTableResizePmStartRef = useRef<number | null>(null)
+    const activeTableWidthResizeRef = useRef<ActiveTableWidthResize | null>(null)
+    const activeContextTablePmStartRef = useRef<number | null>(null)
 
     const [sourceBuffer, setSourceBuffer] = useState<ArrayBuffer | null>(null)
     const [previewBuffer, setPreviewBuffer] = useState<ArrayBuffer | null>(null)
@@ -1454,6 +1691,62 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
       return view
     }, [getActiveEditorRef])
 
+    const deleteActiveContextTable = useCallback(() => {
+      const deleted = deleteDocxTableAtPosition(getActiveEditorView(), activeContextTablePmStartRef.current)
+
+      if (!deleted) return
+
+      savedBufferRef.current = null
+      latestDocumentRef.current = null
+      activeContextTablePmStartRef.current = null
+      window.requestAnimationFrame(() => {
+        getActiveEditorRef()?.relayout?.()
+      })
+    }, [getActiveEditorRef, getActiveEditorView])
+
+    useEffect(() => {
+      if (activeTab !== "editor") return
+
+      const host = editorHostRef.current
+      if (!host || typeof MutationObserver === "undefined") return
+
+      const enhanceContextMenus = () => {
+        for (const menu of Array.from(document.querySelectorAll<HTMLElement>(".docx-text-context-menu"))) {
+          if (activeContextTablePmStartRef.current === null) {
+            translateDocxContextMenu(menu)
+            continue
+          }
+
+          enhanceDocxTableContextMenu(menu, deleteActiveContextTable)
+        }
+      }
+
+      const handleContextMenu = (event: globalThis.MouseEvent) => {
+        const target = event.target
+        const tableElement =
+          target instanceof Element ? target.closest<HTMLElement>(".layout-table[data-pm-start]") : null
+        const tablePmStart = tableElement?.dataset.pmStart ? Number.parseInt(tableElement.dataset.pmStart, 10) : Number.NaN
+
+        activeContextTablePmStartRef.current = Number.isFinite(tablePmStart) ? tablePmStart : null
+        window.requestAnimationFrame(enhanceContextMenus)
+      }
+
+      const observer = new MutationObserver(enhanceContextMenus)
+
+      observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+      })
+      host.addEventListener("contextmenu", handleContextMenu, true)
+      enhanceContextMenus()
+
+      return () => {
+        observer.disconnect()
+        host.removeEventListener("contextmenu", handleContextMenu, true)
+        activeContextTablePmStartRef.current = null
+      }
+    }, [activeTab, deleteActiveContextTable])
+
     useEffect(() => {
       if (activeTab !== "editor") return
 
@@ -1469,6 +1762,94 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
       const scheduleNormalizeActiveTables = () => {
         window.cancelAnimationFrame(frame)
         frame = window.requestAnimationFrame(normalizeActiveTables)
+      }
+
+      const startTableWidthResize = (event: PointerEvent | globalThis.MouseEvent) => {
+        if (activeTableWidthResizeRef.current) return true
+
+        const target = event.target
+        if (!(target instanceof Element)) return false
+
+        const handle = target.closest<HTMLElement>(".layout-table-edge-handle-right")
+        if (!handle || !host.contains(handle)) return false
+
+        const tableElement = handle.closest<HTMLElement>(".layout-table")
+        const tablePmStartValue = handle.dataset.tablePmStart ?? tableElement?.dataset.pmStart
+        const tablePmStart = tablePmStartValue ? Number.parseInt(tablePmStartValue, 10) : Number.NaN
+        if (!Number.isFinite(tablePmStart)) return false
+
+        const view = getActiveEditorView()
+        const table = getDocxTableNodeAtPosition(view, tablePmStart)
+        if (!table) return false
+
+        const columnCount = getTableColumnCount(table.node)
+        if (columnCount <= 0) return false
+
+        const tableWidth = getDocxTableWidth(table.node, tableElement, table.node.attrs?.columnWidths)
+        const columnWidths = normalizeColumnWidths(table.node.attrs?.columnWidths, columnCount, tableWidth)
+        const currentWidthTwips = sumColumnWidths(columnWidths)
+        const rectWidth = tableElement?.getBoundingClientRect().width ?? 0
+        const resizeColumnIndex = Math.min(
+          Math.max(Number.parseInt(handle.dataset.columnIndex ?? String(columnCount - 1), 10) || columnCount - 1, 0),
+          columnCount - 1,
+        )
+
+        activeTableWidthResizeRef.current = {
+          columnCount,
+          initialColumnWidths: columnWidths,
+          resizeColumnIndex,
+          startClientX: event.clientX,
+          tablePmStart: table.pos,
+          twipsPerPixel: rectWidth > 0 ? currentWidthTwips / rectWidth : 15,
+        }
+        activeTableResizePmStartRef.current = table.pos
+
+        event.preventDefault()
+        event.stopPropagation()
+        event.stopImmediatePropagation?.()
+        return true
+      }
+
+      const updateTableWidthResize = (event: PointerEvent | globalThis.MouseEvent) => {
+        const activeResize = activeTableWidthResizeRef.current
+        if (!activeResize) return false
+
+        const deltaTwips = (event.clientX - activeResize.startClientX) * activeResize.twipsPerPixel
+        const minimumWidth = activeResize.columnCount * 240
+        const nextColumnWidths = [...activeResize.initialColumnWidths]
+        const resizeColumnIndex = Math.min(
+          Math.max(activeResize.resizeColumnIndex, 0),
+          Math.max(0, nextColumnWidths.length - 1),
+        )
+        nextColumnWidths[resizeColumnIndex] = Math.max(
+          240,
+          Math.round((activeResize.initialColumnWidths[resizeColumnIndex] ?? 240) + deltaTwips),
+        )
+        const nextWidth = Math.max(minimumWidth, sumColumnWidths(nextColumnWidths))
+        const changed = setDocxTableWidth(getActiveEditorView(), activeResize.tablePmStart, nextWidth, nextColumnWidths)
+
+        if (changed) {
+          savedBufferRef.current = null
+          window.requestAnimationFrame(() => getActiveEditorRef()?.relayout?.())
+        }
+
+        event.preventDefault()
+        event.stopPropagation()
+        event.stopImmediatePropagation?.()
+        return true
+      }
+
+      const finishTableWidthResize = (event?: Event) => {
+        if (!activeTableWidthResizeRef.current) return false
+
+        activeTableWidthResizeRef.current = null
+        activeTableResizePmStartRef.current = null
+        event?.preventDefault()
+        event?.stopPropagation()
+        ;(event as PointerEvent | undefined)?.stopImmediatePropagation?.()
+
+        window.requestAnimationFrame(() => getActiveEditorRef()?.relayout?.())
+        return true
       }
 
       const normalizeTableResizeTarget = (target: EventTarget | null) => {
@@ -1494,10 +1875,23 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
       }
 
       const handleResizeStart = (event: Event) => {
+        if (
+          (event.type === "pointerdown" || event.type === "mousedown") &&
+          startTableWidthResize(event as PointerEvent | globalThis.MouseEvent)
+        ) {
+          return
+        }
+
         normalizeTableResizeTarget(event.target)
       }
 
-      const handleResizeEnd = () => {
+      const handleResizeMove = (event: Event) => {
+        updateTableWidthResize(event as PointerEvent | globalThis.MouseEvent)
+      }
+
+      const handleResizeEnd = (event?: Event) => {
+        if (finishTableWidthResize(event)) return
+
         normalizeActiveTables()
         normalizeDocxTableColumnWidthsBeforeResize(
           getActiveEditorView(),
@@ -1513,6 +1907,9 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
       host.addEventListener("pointerover", handleResizeStart, true)
       host.addEventListener("focusin", scheduleNormalizeActiveTables, true)
       document.addEventListener("mouseup", handleResizeEnd, true)
+      document.addEventListener("mousemove", handleResizeMove, true)
+      window.addEventListener("mousemove", handleResizeMove, true)
+      window.addEventListener("pointermove", handleResizeMove, true)
       window.addEventListener("mouseup", handleResizeEnd, true)
       window.addEventListener("pointerup", handleResizeEnd, true)
 
@@ -1524,11 +1921,15 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
         host.removeEventListener("pointerover", handleResizeStart, true)
         host.removeEventListener("focusin", scheduleNormalizeActiveTables, true)
         document.removeEventListener("mouseup", handleResizeEnd, true)
+        document.removeEventListener("mousemove", handleResizeMove, true)
+        window.removeEventListener("mousemove", handleResizeMove, true)
+        window.removeEventListener("pointermove", handleResizeMove, true)
         window.removeEventListener("mouseup", handleResizeEnd, true)
         window.removeEventListener("pointerup", handleResizeEnd, true)
         activeTableResizePmStartRef.current = null
+        activeTableWidthResizeRef.current = null
       }
-    }, [activeTab, getActiveEditorView])
+    }, [activeTab, getActiveEditorRef, getActiveEditorView])
 
     const rememberProseMirrorSelection = useCallback(
       (view?: ProseMirrorViewLike | null) => {
@@ -1723,6 +2124,21 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
 
             if (!cancelled) {
               await applyDocumentBuffer(buffer, baseFileName, editorInitialVariables)
+            }
+
+            return
+          }
+
+          if (!defaultFileUrl) {
+            if (!cancelled) {
+              setEditorRenderKey((current) => current + 1)
+              setSourceBuffer(null)
+              setPreviewBuffer(null)
+              setPreviewRender(null)
+              setFileName("")
+              savedBufferRef.current = null
+              sourceBufferRef.current = null
+              previewBufferRef.current = null
             }
 
             return

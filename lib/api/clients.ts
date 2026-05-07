@@ -158,3 +158,8 @@ export async function updateClient(id: string, payload: Partial<ClientPayload>) 
   const response = await api.patch<{ success: true; data: ClientRecord }>(`/clients/${resolveClientId(id)}`, payload)
   return response.data
 }
+
+export async function deleteClient(id: string) {
+  const response = await api.delete<{ success: true; data: null }>(`/clients/${resolveClientId(id)}`)
+  return response.data
+}

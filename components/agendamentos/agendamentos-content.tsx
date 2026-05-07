@@ -37,8 +37,10 @@ import { listTeams } from "@/lib/api/teams"
 import { getStoredUser } from "@/lib/auth/session"
 import type { AuthenticatedUser } from "@/lib/auth/types"
 import { formatCivilDate, toCivilDateKey } from "@/lib/date-utils"
+import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 import { scheduleDurationToMinutes } from "@/lib/schedule-duration"
+import { checkScheduleAvailability, formatAvailabilitySlot } from "@/lib/schedule-availability"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
@@ -111,6 +113,7 @@ function canCancelSchedule(schedule: Pick<ScheduleRecord, "status">) {
 
 export function AgendamentosContent({ viewMode, openDialog, onDialogChange, viewToggle }: AgendamentosContentProps) {
   const queryClient = useQueryClient()
+  const mobileFiltersOpen = useMobileFiltersOpen()
   const [searchTerm, setSearchTerm] = useUrlQueryState("q")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [dateRange, setDateRange] = useState<DateRange | undefined>()
@@ -129,6 +132,12 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
   const [completionEndTime, setCompletionEndTime] = useState("")
   const [completionFile, setCompletionFile] = useState<File | null>(null)
   const [pendingDelete, setPendingDelete] = useState<ScheduleRecord | null>(null)
+  const [availabilitySuggestion, setAvailabilitySuggestion] = useState<{
+    formData: SchedulingFormData
+    scheduleId?: string
+    requested: { date: string; time: string }
+    suggested: { date: string; time: string }
+  } | null>(null)
   const [currentUser, setCurrentUser] = useState<AuthenticatedUser | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
@@ -328,9 +337,30 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
   const paginatedSchedules = filteredSchedules.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
 
   const handleFormSubmit = (formData: SchedulingFormData, isEditing: boolean) => {
+    const scheduleId = isEditing ? editingSchedule?.id : undefined
+    const availability = checkScheduleAvailability({
+      schedules,
+      teams,
+      formData,
+      ignoreScheduleId: scheduleId,
+    })
+
+    if (!availability.available && availability.suggested) {
+      setAvailabilitySuggestion({
+        formData,
+        scheduleId,
+        requested: {
+          date: availability.requested.date,
+          time: availability.requested.time,
+        },
+        suggested: availability.suggested,
+      })
+      return
+    }
+
     saveMutation.mutate({
       formData,
-      scheduleId: isEditing ? editingSchedule?.id : undefined,
+      scheduleId,
     })
   }
 
@@ -586,7 +616,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
       </Dialog>
 
       <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
+        <div className={`${mobileFiltersOpen ? "grid" : "hidden"} grid-cols-2 gap-2 sm:flex sm:items-center`}>
           <div className="relative col-span-2 sm:w-80">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -909,6 +939,60 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
           }
         }}
       />
+
+      <Dialog
+        open={!!availabilitySuggestion}
+        onOpenChange={(open) => {
+          if (!open) setAvailabilitySuggestion(null)
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Horário indisponível</DialogTitle>
+            <DialogDescription>
+              Já existe um agendamento para a equipe ou funcionário nesse intervalo.
+            </DialogDescription>
+          </DialogHeader>
+          {availabilitySuggestion ? (
+            <div className="space-y-3 rounded-2xl border bg-muted/40 p-4 text-sm">
+              <div>
+                <p className="font-medium">Horário solicitado</p>
+                <p className="text-muted-foreground">
+                  {formatAvailabilitySlot(availabilitySuggestion.requested.date, availabilitySuggestion.requested.time)}
+                </p>
+              </div>
+              <div>
+                <p className="font-medium">Horário mais próximo disponível</p>
+                <p className="text-muted-foreground">
+                  {formatAvailabilitySlot(availabilitySuggestion.suggested.date, availabilitySuggestion.suggested.time)}
+                </p>
+              </div>
+            </div>
+          ) : null}
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button type="button" variant="outline" onClick={() => setAvailabilitySuggestion(null)}>
+              Voltar
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                if (!availabilitySuggestion) return
+                saveMutation.mutate({
+                  formData: {
+                    ...availabilitySuggestion.formData,
+                    date: availabilitySuggestion.suggested.date,
+                    time: availabilitySuggestion.suggested.time,
+                  },
+                  scheduleId: availabilitySuggestion.scheduleId,
+                })
+                setAvailabilitySuggestion(null)
+              }}
+            >
+              Usar horário sugerido
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

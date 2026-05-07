@@ -206,19 +206,31 @@ export function CertificateEditorContent({ scheduleId }: { scheduleId: string })
           </TabsTrigger>
         </TabsList>
 
-        <DocxTemplateEditor
-          ref={editorRef}
-          activeTab={editorTab}
-          applyVariablesToEditor
-          baseFileName={selectedTemplate?.baseFileName}
-          kind="certificate"
-          previewDataKey={`${scheduleId}:${selectedTemplateId}:${JSON.stringify(previewVariables)}`}
-          previewVariables={previewVariables}
-          templateFormat={selectedTemplate?.format ?? "docx"}
-          templateId={selectedTemplate?.id}
-          templateName={selectedTemplate?.name || "Certificado"}
-          watermarkImageUrl={getTemplateImageUrl(selectedTemplate)}
-        />
+        {selectedTemplate ? (
+          <DocxTemplateEditor
+            ref={editorRef}
+            activeTab={editorTab}
+            applyVariablesToEditor
+            baseFileName={selectedTemplate.baseFileName}
+            kind="certificate"
+            previewDataKey={`${scheduleId}:${selectedTemplateId}:${JSON.stringify(previewVariables)}`}
+            previewVariables={previewVariables}
+            templateFormat={selectedTemplate.format}
+            templateId={selectedTemplate.id}
+            templateName={selectedTemplate.name}
+            watermarkImageUrl={getTemplateImageUrl(selectedTemplate)}
+          />
+        ) : (
+          <Card className="flex min-h-0 flex-1 items-center justify-center border-dashed bg-muted/10 p-6 text-center">
+            <div className="max-w-sm space-y-2">
+              <FileText className="mx-auto h-10 w-10 text-muted-foreground" />
+              <h2 className="text-lg font-semibold">Selecione um template</h2>
+              <p className="text-sm text-muted-foreground">
+                O certificado será carregado somente depois que um template for escolhido.
+              </p>
+            </div>
+          </Card>
+        )}
       </Tabs>
 
       <Card className="h-[calc(100dvh-170px)] min-h-[760px] overflow-hidden xl:sticky xl:top-4 xl:mt-[55px]">

@@ -20,6 +20,7 @@ import { CardSkeletonGrid, TableSkeletonRows } from "@/components/ui/table-skele
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { getStoredUser } from "@/lib/auth/session"
+import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 import { formatCPF, formatPhone } from "@/lib/masks"
 import { getSettings, type PermissionProfileRecord } from "@/lib/api/settings"
@@ -49,6 +50,7 @@ function generatePassword(length = 12) {
 }
 
 export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewToggle }: EmployeesContentProps) {
+  const mobileFiltersOpen = useMobileFiltersOpen()
   const [employees, setEmployees] = useState<EmployeeRecord[]>([])
   const [permissionProfiles, setPermissionProfiles] = useState<PermissionProfileRecord[]>([])
   const [loading, setLoading] = useState(true)
@@ -501,7 +503,7 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
       </Dialog>
 
       <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
+        <div className={`${mobileFiltersOpen ? "grid" : "hidden"} grid-cols-2 gap-2 sm:flex sm:items-center`}>
             <div className="relative sm:w-80">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input

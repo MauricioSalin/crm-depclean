@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -19,7 +20,7 @@ import { Plus, Trash2, Building2, MapPin, Save, Loader2, Users } from "lucide-re
 import { useRouter } from "next/navigation"
 import { formatCNPJ, formatCPF, formatPhone } from "@/lib/masks"
 import { toast } from "@/components/ui/use-toast"
-import { createClient, getClientById, updateClient, type ClientPayload } from "@/lib/api/clients"
+import { createClient, deleteClient, getClientById, updateClient, type ClientPayload } from "@/lib/api/clients"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { listClientTypes } from "@/lib/api/settings"
 import { getColorFromClass } from "@/lib/utils"
@@ -98,6 +99,7 @@ export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
       },
     ]
   )
+  const [removeDialogOpen, setRemoveDialogOpen] = useState(false)
 
   const [cnpjLoading, setCnpjLoading] = useState(false)
   const [cnpjError, setCnpjError] = useState("")
@@ -333,6 +335,24 @@ export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
     onError: (error: any) => {
       toast({
         title: getApiErrorMessage(error, "Não foi possível salvar o cliente."),
+        variant: "destructive",
+      })
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => deleteClient(id),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["clients"] })
+      toast({
+        title: "Cliente removido",
+        description: "O cliente foi removido com sucesso.",
+      })
+      router.push("/clientes")
+    },
+    onError: (error: any) => {
+      toast({
+        title: getApiErrorMessage(error, "Não foi possível remover o cliente."),
         variant: "destructive",
       })
     },
@@ -716,6 +736,18 @@ export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
 
       {/* Actions */}
       <div className="flex flex-col sm:flex-row gap-3 justify-end">
+        {isEditing && clientId ? (
+          <Button
+            type="button"
+            variant="outline"
+            className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+            onClick={() => setRemoveDialogOpen(true)}
+            disabled={deleteMutation.isPending || saveMutation.isPending}
+          >
+            <Trash2 className="w-4 h-4 mr-2" />
+            Remover
+          </Button>
+        ) : null}
         <Button
           type="button"
           variant="outline"
@@ -729,6 +761,21 @@ export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
           {isEditing ? "Salvar Alterações" : "Cadastrar Cliente"}
         </Button>
       </div>
+
+      <ConfirmActionDialog
+        open={removeDialogOpen}
+        title="Remover cliente"
+        description={`Tem certeza que deseja remover ${
+          client?.companyName ? `o cliente ${client.companyName}` : "este cliente"
+        }? Esta ação não pode ser desfeita.`}
+        confirmLabel="Remover"
+        busy={deleteMutation.isPending}
+        onOpenChange={setRemoveDialogOpen}
+        onConfirm={() => {
+          if (!clientId) return
+          deleteMutation.mutate(clientId)
+        }}
+      />
     </form>
   )
 }

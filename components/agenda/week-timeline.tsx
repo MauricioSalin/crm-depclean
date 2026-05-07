@@ -23,6 +23,7 @@ interface WeekTimelineProps {
   onDateChange: (date: Date) => void
   onDaySelect: (date: Date) => void
   onEventClick?: (eventId: string) => void
+  onSlotClick?: (date: Date, time: string) => void
 }
 
 const HOUR_HEIGHT = 60 // px per hour
@@ -60,6 +61,7 @@ export function WeekTimeline({
   onDateChange,
   onDaySelect,
   onEventClick,
+  onSlotClick,
 }: WeekTimelineProps) {
   const weekDays = useMemo(() => getWeekDays(currentDate), [currentDate])
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -215,6 +217,28 @@ export function WeekTimeline({
                   }`}
                   style={{ height: TOTAL_HOURS * HOUR_HEIGHT }}
                 >
+                  {Array.from({ length: TOTAL_HOURS }, (_, hourIndex) => {
+                    const hour = START_HOUR + hourIndex
+                    const time = `${String(hour).padStart(2, "0")}:00`
+
+                    return (
+                      <button
+                        key={`${dateStr}-${time}`}
+                        type="button"
+                        className="absolute left-0 right-0 z-0 cursor-pointer border-0 bg-transparent transition-colors hover:bg-primary/10 focus-visible:bg-primary/10 focus-visible:outline-none"
+                        style={{
+                          top: hourIndex * HOUR_HEIGHT,
+                          height: HOUR_HEIGHT,
+                        }}
+                        title={`Novo agendamento em ${time}`}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          onDaySelect(day)
+                          onSlotClick?.(day, time)
+                        }}
+                      />
+                    )
+                  })}
                   {dayEvents.map((ev) => {
                     const startMinutes = timeToMinutes(ev.time)
                     const top = ((startMinutes - START_HOUR * 60) / 60) * HOUR_HEIGHT

@@ -80,6 +80,7 @@ interface SchedulingFormDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   editingSchedule?: EditingSchedule | null
+  initialFormData?: Partial<SchedulingFormData> | null
   onSubmit: (formData: SchedulingFormData, isEditing: boolean) => void
   onCancel?: () => void
   clients?: ClientRecord[]
@@ -107,6 +108,7 @@ export function SchedulingFormDialog({
   open,
   onOpenChange,
   editingSchedule,
+  initialFormData,
   onSubmit,
   clients = [],
   serviceTypes = [],
@@ -166,8 +168,8 @@ export function SchedulingFormDialog({
       return
     }
 
-    setFormData(DEFAULT_FORM_DATA)
-  }, [open, editingSchedule, serviceTypes])
+    setFormData({ ...DEFAULT_FORM_DATA, ...(initialFormData ?? {}) })
+  }, [open, editingSchedule, initialFormData, serviceTypes])
 
   const toggleTeam = (teamId: string) => {
     if (formData.teamIds.includes(teamId)) {
@@ -197,7 +199,6 @@ export function SchedulingFormDialog({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     onSubmit(formData, !!editingSchedule)
-    resetForm()
   }
 
   return (
@@ -265,6 +266,7 @@ export function SchedulingFormDialog({
                   ...formData,
                   serviceTypeId: value,
                   teamIds: serviceType?.teamIds || [],
+                  employeeIds: serviceType?.employeeIds || [],
                   durationType: serviceType?.durationType ?? formData.durationType,
                   duration: serviceType?.defaultDuration ?? formData.duration,
                   value: formData.createContract ? serviceType?.baseValue ?? formData.value : 0,

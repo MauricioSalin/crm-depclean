@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useQuery } from "@tanstack/react-query"
-import { Award, Calendar, CheckCircle2, FileText, Search } from "lucide-react"
+import { Award, Calendar, CheckCircle2, Clock, FileText, Search } from "lucide-react"
 
 import { listCertificates, type CertificateQueueRecord } from "@/lib/api/certificates"
 import { getStoredUser } from "@/lib/auth/session"
@@ -152,7 +152,7 @@ export function CertificatesContent() {
             <TableHeader>
               <TableRow className="bg-muted/50">
                 <TableHead>Cliente</TableHead>
-                <TableHead>Serviço</TableHead>
+                <TableHead className="min-w-[180px] sm:min-w-[240px]">Serviço</TableHead>
                 <TableHead>Equipe / Funcionários</TableHead>
                 <TableHead>Data/Hora</TableHead>
                 <TableHead>Status</TableHead>
@@ -188,11 +188,11 @@ export function CertificatesContent() {
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="min-w-[180px] sm:min-w-[240px]">
                       <div>
                         <p>{record.serviceTypeName}</p>
                         {record.naFileName ? (
-                          <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                          <p className="mt-1 hidden items-center gap-1 text-xs text-muted-foreground sm:flex">
                             <FileText className="h-3 w-3" />
                             {record.naFileName}
                           </p>
@@ -218,7 +218,10 @@ export function CertificatesContent() {
                           <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
                           {formatDate(record.date)}
                         </p>
-                        <p className="text-muted-foreground">{record.time || "--:--"}</p>
+                        <p className="flex items-center gap-1.5 text-muted-foreground">
+                          <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                          {record.time || "--:--"}
+                        </p>
                       </div>
                     </TableCell>
                     <TableCell>{getStatusBadge(record.status)}</TableCell>

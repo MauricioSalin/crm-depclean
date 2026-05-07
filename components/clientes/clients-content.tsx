@@ -1,9 +1,10 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -36,10 +37,13 @@ import { SearchableSelect } from "@/components/ui/searchable-select"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { EmptyState, TableEmptyState } from "@/components/ui/empty-state"
 import { CardSkeletonGrid, TableSkeletonRows } from "@/components/ui/table-skeleton"
-import { listClients } from "@/lib/api/clients"
+import { deleteClient, listClients, type ClientRecord } from "@/lib/api/clients"
 import { listContracts } from "@/lib/api/contracts"
 import { listClientTypes } from "@/lib/api/settings"
+import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
+import { getApiErrorMessage } from "@/lib/api/errors"
+import { toast } from "@/components/ui/use-toast"
 import Link from "next/link"
 
 interface ClientsContentProps {
@@ -60,10 +64,13 @@ const resolveColor = (color?: string) => {
 }
 
 export function ClientsContent({ viewMode, viewToggle }: ClientsContentProps) {
+  const queryClient = useQueryClient()
+  const mobileFiltersOpen = useMobileFiltersOpen()
   const [searchTerm, setSearchTerm] = useUrlQueryState("q")
   const [typeFilter, setTypeFilter] = useState<string>("all")
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
+  const [clientToRemove, setClientToRemove] = useState<ClientRecord | null>(null)
 
   const clientsQuery = useQuery({
     queryKey: ["clients", "content"],
@@ -83,6 +90,23 @@ export function ClientsContent({ viewMode, viewToggle }: ClientsContentProps) {
   const clients = clientsQuery.data?.data ?? []
   const contracts = contractsQuery.data?.data ?? []
   const clientTypes = clientTypesQuery.data?.data.items ?? []
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => deleteClient(id),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["clients"] })
+      setClientToRemove(null)
+      toast({
+        title: "Cliente removido",
+        description: "O cliente foi removido com sucesso.",
+      })
+    },
+    onError: (error: unknown) => {
+      toast({
+        title: getApiErrorMessage(error, "Não foi possível remover o cliente."),
+        variant: "destructive",
+      })
+    },
+  })
   const getClientTypeById = (id: string) => clientTypes.find((type) => type.id === id)
   const isClientListLoading = clientsQuery.isLoading || clientTypesQuery.isLoading
 
@@ -104,7 +128,7 @@ export function ClientsContent({ viewMode, viewToggle }: ClientsContentProps) {
 
   return (
     <div className="space-y-4">
-        <div className="grid grid-cols-2 sm:flex sm:items-center gap-2">
+        <div className={`${mobileFiltersOpen ? "grid" : "hidden"} grid-cols-2 gap-2 sm:flex sm:items-center`}>
           <div className="relative sm:flex-none sm:w-80">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -221,7 +245,7 @@ export function ClientsContent({ viewMode, viewToggle }: ClientsContentProps) {
                               </Link>
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => setClientToRemove(client)}>
                               <Trash2 className="w-4 h-4 mr-2" />
                               Excluir
                             </DropdownMenuItem>
@@ -317,6 +341,22 @@ export function ClientsContent({ viewMode, viewToggle }: ClientsContentProps) {
           onPageSizeChange={(size) => { setPageSize(size); setCurrentPage(1) }}
         />
       ) : null}
+      <ConfirmActionDialog
+        open={Boolean(clientToRemove)}
+        title="Remover cliente"
+        description={`Tem certeza que deseja remover ${
+          clientToRemove?.companyName ? `o cliente ${clientToRemove.companyName}` : "este cliente"
+        }? Esta ação não pode ser desfeita.`}
+        confirmLabel="Remover"
+        busy={deleteMutation.isPending}
+        onOpenChange={(open) => {
+          if (!open) setClientToRemove(null)
+        }}
+        onConfirm={() => {
+          if (!clientToRemove) return
+          deleteMutation.mutate(clientToRemove.id)
+        }}
+      />
       {/* </CardContent> */}
     </div>
   )

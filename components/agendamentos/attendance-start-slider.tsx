@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { animate, motion, useMotionValue, useTransform } from "framer-motion"
-import { Play } from "lucide-react"
+import { Loader2, Play } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
@@ -22,6 +22,7 @@ export function AttendanceStartSlider({
   className,
 }: AttendanceStartSliderProps) {
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isCompleted, setIsCompleted] = useState(false)
   const x = useMotionValue(0)
   const fillWidth = useTransform(x, (value) => `${Math.max(HANDLE_WIDTH + 16 + value, HANDLE_WIDTH + 16)}px`)
 
@@ -46,39 +47,55 @@ export function AttendanceStartSlider({
 
       <div className="pointer-events-none absolute inset-y-0 left-0 right-0 z-10 flex items-center justify-center px-20 text-center text-sm font-medium text-foreground/85">
         <span className="leading-5">
-          {disabled ? "Aguardando assinatura do contrato" : "Iniciar atendimento"}
+          {disabled ? "Aguardando assinatura do contrato" : isSubmitting ? "Iniciando atendimento..." : "Iniciar atendimento"}
         </span>
       </div>
 
       <motion.button
         type="button"
-        drag={disabled || isSubmitting ? false : "x"}
+        drag={disabled || isSubmitting || isCompleted ? false : "x"}
         dragConstraints={{ left: 0, right: COMPLETE_OFFSET }}
         dragElastic={0.05}
         whileTap={{ scale: disabled ? 1 : 0.98 }}
         style={{ touchAction: "pan-y", x }}
-        onDragEnd={async (_event, info) => {
-          if (disabled || isSubmitting) return
+        onDragEnd={(_event, info) => {
+          if (disabled || isSubmitting || isCompleted) return
 
           if (info.offset.x < COMPLETE_OFFSET - 20) {
             animate(x, 0, { type: "spring", stiffness: 420, damping: 32 })
             return
           }
 
+          setIsCompleted(true)
+          animate(x, COMPLETE_OFFSET, { type: "spring", stiffness: 500, damping: 36 })
+
+          let completion: Promise<void> | void
           try {
-            setIsSubmitting(true)
-            animate(x, COMPLETE_OFFSET, { type: "spring", stiffness: 500, damping: 36 })
-            await onComplete()
-          } finally {
+            completion = onComplete()
+          } catch {
+            setIsCompleted(false)
+            animate(x, 0, { type: "spring", stiffness: 420, damping: 32 })
             setIsSubmitting(false)
+            return
           }
+
+          const loadingTimer = window.setTimeout(() => setIsSubmitting(true), 120)
+          Promise.resolve(completion)
+            .catch(() => {
+              setIsCompleted(false)
+              animate(x, 0, { type: "spring", stiffness: 420, damping: 32 })
+            })
+            .finally(() => {
+              window.clearTimeout(loadingTimer)
+              setIsSubmitting(false)
+            })
         }}
         className={cn(
           "absolute left-2 top-2 z-20 flex h-12 w-12 items-center justify-center rounded-full text-white",
           disabled ? "bg-muted-foreground/40" : "bg-primary shadow-md shadow-primary/25",
         )}
       >
-        <Play className="h-4 w-4" />
+        {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
       </motion.button>
     </div>
   )

@@ -42,11 +42,13 @@ export function NotificacoesContent({
   notificationsList,
   onMarkAsRead,
   onDelete,
+  onOpenNotification,
   isLoading = false,
 }: {
   notificationsList: NotificationRecord[]
   onMarkAsRead: (id: string) => void
   onDelete: (id: string) => void
+  onOpenNotification: (notification: NotificationRecord) => void
   isLoading?: boolean
 }) {
 
@@ -113,7 +115,8 @@ export function NotificacoesContent({
             .map((notification) => (
               <Card
                 key={notification.id}
-                className={`transition-all ${!notification.isRead ? "border-l-4 border-l-primary" : ""}`}
+                className={`cursor-pointer transition-all hover:bg-muted/30 ${!notification.isRead ? "border-l-4 border-l-primary" : ""}`}
+                onClick={() => onOpenNotification(notification)}
               >
                 <CardContent className="p-4">
                   <div className="flex items-start gap-4">
@@ -135,7 +138,10 @@ export function NotificacoesContent({
                             <Button
                               variant="ghost"
                               size="icon"
-                              onClick={() => onMarkAsRead(notification.id)}
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                onMarkAsRead(notification.id)
+                              }}
                               title="Marcar como lida"
                             >
                               <Check className="h-4 w-4" />
@@ -144,7 +150,10 @@ export function NotificacoesContent({
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => onDelete(notification.id)}
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              onDelete(notification.id)
+                            }}
                             title="Excluir"
                           >
                             <Trash2 className="h-4 w-4 text-destructive" />
