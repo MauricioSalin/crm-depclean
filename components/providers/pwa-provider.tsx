@@ -152,7 +152,11 @@ async function enablePush(publicKey: string) {
     const permission = await Notification.requestPermission()
     if (permission !== "granted") return false
 
-    await subscribeCurrentBrowser(publicKey)
+    const createdSubscription = await subscribeCurrentBrowser(publicKey)
+    if (createdSubscription) {
+      await showWelcomeNotification()
+    }
+
     toast.success("Notificações ativadas neste dispositivo.")
     return true
   } catch {
@@ -164,6 +168,7 @@ async function enablePush(publicKey: string) {
 async function subscribeCurrentBrowser(publicKey: string) {
   const registration = await navigator.serviceWorker.ready
   let subscription = await registration.pushManager.getSubscription()
+  const hadSubscription = Boolean(subscription)
 
   if (!subscription) {
     subscription = await registration.pushManager.subscribe({
@@ -176,6 +181,22 @@ async function subscribeCurrentBrowser(publicKey: string) {
   if (payload) {
     await savePushSubscription(payload)
   }
+
+  return !hadSubscription
+}
+
+async function showWelcomeNotification() {
+  const registration = await navigator.serviceWorker.ready
+
+  await registration.showNotification("Notificações ativadas", {
+    body: "Você autorizou receber notificações em push nesse dispositivo. Tenha um ótimo dia de trabalho!",
+    icon: "/pwa-icon-192.png",
+    badge: "/pwa-maskable-192.png",
+    tag: "depclean-push-welcome",
+    data: {
+      url: "/notificacoes",
+    },
+  })
 }
 
 function toPushSubscriptionPayload(subscription: PushSubscription): PushSubscriptionPayload | null {
