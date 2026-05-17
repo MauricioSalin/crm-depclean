@@ -1,8 +1,10 @@
 "use client"
 
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
+import { Bell, X } from "lucide-react"
 import { toast } from "sonner"
 
+import { Button } from "@/components/ui/button"
 import {
   getPushPublicKey,
   savePushSubscription,
@@ -10,11 +12,12 @@ import {
 } from "@/lib/api/notifications"
 import { getStoredAccessToken } from "@/lib/auth/session"
 
-const PUSH_PROMPT_KEY = "depclean.pushPromptedAt"
-const PROMPT_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000
-
 export function PwaProvider() {
   const isSyncingRef = useRef(false)
+  const [publicKey, setPublicKey] = useState("")
+  const [showPrompt, setShowPrompt] = useState(false)
+  const [dismissedThisSession, setDismissedThisSession] = useState(false)
+  const [isEnabling, setIsEnabling] = useState(false)
 
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return
@@ -55,16 +58,9 @@ export function PwaProvider() {
           return
         }
 
-        if (Notification.permission === "default" && canShowPrompt()) {
-          rememberPrompt()
-          toast("Receber alertas do sistema neste dispositivo", {
-            action: {
-              label: "Ativar",
-              onClick: () => {
-                void enablePush(publicKey)
-              },
-            },
-          })
+        if (Notification.permission === "default" && !dismissedThisSession) {
+          setPublicKey(publicKey)
+          setShowPrompt(true)
         }
       } catch {
         // Push não deve bloquear o uso normal do sistema.
@@ -79,23 +75,66 @@ export function PwaProvider() {
     return () => {
       window.removeEventListener("depclean:session", syncPush)
     }
-  }, [])
+  }, [dismissedThisSession])
 
-  return null
+  if (!showPrompt || !publicKey) return null
+
+  const enableNotifications = async () => {
+    setIsEnabling(true)
+
+    try {
+      const enabled = await enablePush(publicKey)
+      if (enabled) {
+        setShowPrompt(false)
+      }
+    } finally {
+      setIsEnabling(false)
+    }
+  }
+
+  const dismissPrompt = () => {
+    setDismissedThisSession(true)
+    setShowPrompt(false)
+  }
+
+  return (
+    <div className="fixed inset-x-3 bottom-3 z-50 mx-auto max-w-md rounded-lg border bg-background p-3 shadow-lg sm:bottom-5">
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 rounded-full bg-primary/10 p-2 text-primary">
+          <Bell className="size-4" aria-hidden="true" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-foreground">Ativar notificações no celular</p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            Receba os avisos do sininho mesmo quando o app estiver fechado.
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Button size="sm" onClick={enableNotifications} disabled={isEnabling}>
+              <Bell className="size-4" aria-hidden="true" />
+              {isEnabling ? "Ativando..." : "Ativar"}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={dismissPrompt} disabled={isEnabling}>
+              Agora não
+            </Button>
+          </div>
+        </div>
+        <Button
+          aria-label="Fechar"
+          size="icon-sm"
+          variant="ghost"
+          onClick={dismissPrompt}
+          disabled={isEnabling}
+          className="-mr-1 -mt-1"
+        >
+          <X className="size-4" aria-hidden="true" />
+        </Button>
+      </div>
+    </div>
+  )
 }
 
 function canUsePush() {
   return "Notification" in window && "PushManager" in window && "serviceWorker" in navigator
-}
-
-function canShowPrompt() {
-  const raw = window.localStorage.getItem(PUSH_PROMPT_KEY)
-  const promptedAt = Number(raw)
-  return !Number.isFinite(promptedAt) || Date.now() - promptedAt > PROMPT_COOLDOWN_MS
-}
-
-function rememberPrompt() {
-  window.localStorage.setItem(PUSH_PROMPT_KEY, String(Date.now()))
 }
 
 function isIosBrowserWithoutStandalone() {
@@ -111,12 +150,14 @@ function isIosBrowserWithoutStandalone() {
 async function enablePush(publicKey: string) {
   try {
     const permission = await Notification.requestPermission()
-    if (permission !== "granted") return
+    if (permission !== "granted") return false
 
     await subscribeCurrentBrowser(publicKey)
     toast.success("Notificações ativadas neste dispositivo.")
+    return true
   } catch {
     toast.error("Não foi possível ativar notificações neste dispositivo.")
+    return false
   }
 }
 
