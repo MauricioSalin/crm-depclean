@@ -114,7 +114,12 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
     queryFn: () => getFinancialAnalytics({ dateFrom, dateTo }),
   })
 
-  const installmentStatusMutation = useMutation<unknown, Error, { installment: FinancialInstallmentRecord; status: InstallmentStatusAction }>({
+  const installmentStatusMutation = useMutation<
+    unknown,
+    Error,
+    { installment: FinancialInstallmentRecord; status: InstallmentStatusAction },
+    { toastId: string | number }
+  >({
     mutationFn: ({ installment, status }: { installment: FinancialInstallmentRecord; status: InstallmentStatusAction }) => {
       const payload = {
         status,
@@ -132,20 +137,25 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
 
       return updateInstallment(installment.contractId, installment.id, payload)
     },
-    onSuccess: async () => {
+    onMutate: () => {
+      const toastId = toast.loading("Atualizando parcela...")
+      return { toastId }
+    },
+    onSuccess: async (_data, _variables, context) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["analytics"] }),
         queryClient.invalidateQueries({ queryKey: ["contracts"] }),
         queryClient.invalidateQueries({ queryKey: ["schedules"] }),
       ])
-      toast.success("Parcela atualizada.")
+      toast.success("Parcela atualizada.", { id: context?.toastId })
     },
-    onError: (error) => {
-      toast.error(getApiErrorMessage(error, "Não foi possível atualizar a parcela."))
+    onError: (error, _variables, context) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível atualizar a parcela."), { id: context?.toastId })
     },
   })
 
   const setInstallmentStatus = (installment: FinancialInstallmentRecord, status: InstallmentStatusAction) => {
+    if (installmentStatusMutation.isPending) return
     installmentStatusMutation.mutate({ installment, status })
   }
 
@@ -208,6 +218,8 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
         return <Badge className="bg-green-100 text-green-700 hover:bg-green-100">Paga</Badge>
       case "pending":
         return <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">Pendente</Badge>
+      case "late":
+        return <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100">Atrasada</Badge>
       case "overdue":
         return <Badge className="bg-red-100 text-red-700 hover:bg-red-100">Vencida</Badge>
       case "cancelled":
@@ -381,6 +393,7 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
                 onValueChange={(value) => { setTabFilter(value); setCurrentPage(1) }}
                 options={[
                   { value: "pending", label: "Pendentes" },
+                  { value: "late", label: "Atrasadas" },
                   { value: "overdue", label: "Vencidas" },
                   { value: "paid", label: "Pagas" },
                 ]}
@@ -456,7 +469,7 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
                         <TableCell className="text-right">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon">
+                              <Button variant="ghost" size="icon" disabled={installmentStatusMutation.isPending}>
                                 <MoreHorizontal className="w-4 h-4" />
                               </Button>
                             </DropdownMenuTrigger>
@@ -465,7 +478,7 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
                                 Marcar como paga
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => setInstallmentStatus(installment, "overdue")}>
-                                Marcar como atrasada
+                                Marcar como vencida
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => setInstallmentStatus(installment, "pending")}>
                                 Marcar como pendente
@@ -513,7 +526,7 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
                     <div className="mt-4 pt-4 border-t">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="outline" size="sm" className="w-full">
+                          <Button variant="outline" size="sm" className="w-full" disabled={installmentStatusMutation.isPending}>
                             <MoreHorizontal className="w-4 h-4 mr-1" />
                             Alterar status
                           </Button>
@@ -523,7 +536,7 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
                             Marcar como paga
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => setInstallmentStatus(installment, "overdue")}>
-                            Marcar como atrasada
+                            Marcar como vencida
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => setInstallmentStatus(installment, "pending")}>
                             Marcar como pendente

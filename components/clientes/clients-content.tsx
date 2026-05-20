@@ -114,6 +114,8 @@ export function ClientsContent({ viewMode, viewToggle }: ClientsContentProps) {
     return clients.filter(client => {
       const matchesSearch = client.companyName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         client.responsibleName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (client.assessor?.name ?? "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (client.syndic?.name ?? "").toLowerCase().includes(searchTerm.toLowerCase()) ||
         client.cnpj.includes(searchTerm)
       const matchesType = typeFilter === "all" || client.clientTypeId === typeFilter
       return matchesSearch && matchesType
@@ -196,7 +198,7 @@ export function ClientsContent({ viewMode, viewToggle }: ClientsContentProps) {
                             <Building2 className="w-5 h-5" style={{ color: clientTypeColor }} />
                           </div>
                           <div className="min-w-0">
-                            <p className="font-medium truncate">{client.companyName}</p>
+                            <p className="truncate font-semibold text-foreground/80">{client.companyName}</p>
                             <p className="text-xs text-muted-foreground md:hidden">{formatCNPJ(client.cnpj)}</p>
                           </div>
                         </Link>
@@ -260,7 +262,7 @@ export function ClientsContent({ viewMode, viewToggle }: ClientsContentProps) {
           </Table>
         </div>
       ) : (
-        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 2xl:grid-cols-3">
           {isClientListLoading ? (
             <CardSkeletonGrid cards={4} />
           ) : paginatedClients.length === 0 ? (
@@ -284,7 +286,7 @@ export function ClientsContent({ viewMode, viewToggle }: ClientsContentProps) {
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-start justify-between gap-x-2 gap-y-1">
-                          <h3 className="min-w-0 flex-1 break-words text-sm font-semibold">{client.companyName}</h3>
+                          <h3 className="min-w-0 flex-1 break-words text-sm font-semibold text-foreground/80">{client.companyName}</h3>
                           <Badge
                             style={{ backgroundColor: clientTypeColor }}
                             className="shrink-0 border-0 text-xs text-white hover:opacity-90"
@@ -354,6 +356,7 @@ export function ClientsContent({ viewMode, viewToggle }: ClientsContentProps) {
         }}
         onConfirm={() => {
           if (!clientToRemove) return
+          if (deleteMutation.isPending) return
           deleteMutation.mutate(clientToRemove.id)
         }}
       />

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Braces, Download, Edit, Eye, FileText, ImageIcon, PenTool, Plus, Search, Trash2, Upload, X } from "lucide-react"
+import { Braces, Copy, Download, Edit, Eye, FileText, ImageIcon, PenTool, Plus, Search, Trash2, Upload, X } from "lucide-react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { toast as sonnerToast } from "sonner"
 
@@ -33,6 +33,7 @@ import { getOrganizationSettings, listClientTypes, type ClientTypeRecord, type O
 import {
   createTemplate,
   deleteTemplate,
+  duplicateTemplate,
   getTemplateById,
   listTemplates,
   type TemplateFormat,
@@ -45,6 +46,7 @@ import {
 import { buildApiFileUrl } from "@/lib/api/client"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
+import { cn } from "@/lib/utils"
 
 export type ContractTemplate = TemplateRecord
 
@@ -828,6 +830,25 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
     onError: (error) => {
       notify({
         title: "Não foi possível excluir o template",
+        description: getErrorMessage(error),
+        variant: "destructive",
+      })
+    },
+  })
+
+  const duplicateMutation = useMutation({
+    mutationFn: duplicateTemplate,
+    onSuccess: (response) => {
+      notify({
+        title: "Template duplicado",
+        description: `Novo template criado como "${response.data.name}".`,
+      })
+      queryClient.invalidateQueries({ queryKey: ["templates"] })
+      setCurrentPage(1)
+    },
+    onError: (error) => {
+      notify({
+        title: "Não foi possível duplicar o template",
         description: getErrorMessage(error),
         variant: "destructive",
       })
@@ -1653,10 +1674,13 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
                       <Badge
                         className={
                           template.isActive
-                            ? "cursor-pointer bg-green-100 text-green-700 hover:bg-green-200"
-                            : "cursor-pointer bg-gray-100 text-gray-700 hover:bg-gray-200"
+                            ? cn("cursor-pointer bg-green-100 text-green-700 hover:bg-green-200", toggleActiveMutation.isPending && "pointer-events-none opacity-60")
+                            : cn("cursor-pointer bg-gray-100 text-gray-700 hover:bg-gray-200", toggleActiveMutation.isPending && "pointer-events-none opacity-60")
                         }
-                        onClick={() => toggleActiveMutation.mutate({ id: template.id, isActive: !template.isActive })}
+                        onClick={() => {
+                          if (toggleActiveMutation.isPending) return
+                          toggleActiveMutation.mutate({ id: template.id, isActive: !template.isActive })
+                        }}
                       >
                         {template.isActive ? "Ativo" : "Inativo"}
                       </Badge>
@@ -1666,6 +1690,15 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
                       <div className="flex justify-end gap-1">
                         <Button variant="ghost" size="icon" onClick={() => handleEdit(template)} title="Editar">
                           <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => duplicateMutation.mutate(template.id)}
+                          title="Duplicar"
+                          disabled={duplicateMutation.isPending}
+                        >
+                          <Copy className="h-4 w-4" />
                         </Button>
                         <Button
                           variant="ghost"

@@ -237,7 +237,7 @@ export function Sidebar({ onNavigate, forceExpanded = false }: SidebarProps) {
         </Link>
       </div>
 
-      <div className={cn("flex flex-1 flex-col overflow-y-auto pb-4 transition-[padding] duration-300 ease-out", collapsed ? "px-[18px]" : "px-4")}>
+      <div className={cn("flex flex-1 flex-col overflow-y-auto pb-4 transition-[padding] duration-300 ease-out", collapsed ? "px-[16px]" : "px-4")}>
         <div>
           <p
             className={cn(

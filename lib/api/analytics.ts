@@ -9,12 +9,26 @@ export type ServicesByPeriodPoint = {
   period: string
   completed: number
   scheduled: number
+  cancelled: number
+  emergency: number
 }
 
 export type ServicesByTeamPoint = {
   team: string
   services: number
   color?: string
+}
+
+export type ServicesSummaryPoint = {
+  serviceId: string
+  serviceName: string
+  completed: number
+  scheduled: number
+  cancelled: number
+  emergency: number
+  total: number
+  completionRate: number
+  averageDurationMinutes: number
 }
 
 export type DashboardStatsRecord = {
@@ -52,15 +66,17 @@ export type FinancialInstallmentRecord = {
   dueDate: string
   paidDate?: string
   paidValue?: number
-  status: "pending" | "paid" | "overdue" | "cancelled"
+  status: "pending" | "paid" | "late" | "overdue" | "cancelled"
 }
 
 export type FinancialSummaryRecord = {
   totalPaid: number
   totalPending: number
+  totalLate?: number
   totalOverdue: number
   paidCount: number
   pendingCount: number
+  lateCount?: number
   overdueCount: number
   totalCount: number
   adherenceRate: number
@@ -78,6 +94,7 @@ export type DashboardAnalyticsRecord = {
   monthlyRevenueData: MonthlyRevenuePoint[]
   servicesByPeriodData: ServicesByPeriodPoint[]
   servicesByTeamData: ServicesByTeamPoint[]
+  servicesSummaryData: ServicesSummaryPoint[]
   recentClients: Array<{
     id: string
     companyName: string
@@ -92,7 +109,7 @@ export type DashboardAnalyticsRecord = {
     clientId: string
     clientName: string
     serviceTypeName: string
-    status: "scheduled" | "in_progress"
+    status: "scheduled" | "in_progress" | "rescheduled"
     time: string
     neighborhood: string
     date: string
@@ -113,6 +130,7 @@ export type ReportsAnalyticsRecord = {
   monthlyRevenueData: MonthlyRevenuePoint[]
   servicesByPeriodData: ServicesByPeriodPoint[]
   servicesByTeamData: ServicesByTeamPoint[]
+  servicesSummaryData: ServicesSummaryPoint[]
   clients: Array<{
     id: string
     companyName: string
@@ -130,6 +148,7 @@ export type ReportsAnalyticsRecord = {
     status: string
   }>
   teams: Array<{ id: string; name: string; color: string }>
+  services: Array<{ id: string; name: string; isActive: boolean }>
 }
 
 export async function getFinancialAnalytics(params?: { dateFrom?: string; dateTo?: string }) {
@@ -142,7 +161,7 @@ export async function getDashboardAnalytics(params?: { days?: number }) {
   return response.data
 }
 
-export async function getReportsAnalytics(params?: { dateFrom?: string; dateTo?: string; teamId?: string }) {
+export async function getReportsAnalytics(params?: { dateFrom?: string; dateTo?: string; teamId?: string; teamIds?: string; serviceId?: string; serviceIds?: string }) {
   const response = await api.get<{ success: true; data: ReportsAnalyticsRecord }>("/analytics/reports", { params })
   return response.data
 }

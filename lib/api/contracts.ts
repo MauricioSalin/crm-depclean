@@ -9,6 +9,9 @@ export type ContractServicePayload = {
   additionalEmployeeIds?: string[]
   unitIds: string[]
   clauses?: string[]
+  recurrence?: string
+  duration?: number
+  durationType?: "hours" | "shift" | "days"
   isActive?: boolean
 }
 
@@ -46,7 +49,9 @@ export type ContractInstallmentRecord = {
   dueDate: string
   paidDate?: string
   paidValue?: number
-  status: "pending" | "paid" | "overdue" | "cancelled"
+  status: "pending" | "paid" | "late" | "overdue" | "cancelled"
+  overdueMarkedAt?: string
+  lastOverdueReminderAt?: string
   paymentMethod?: string
   notes?: string
   createdAt: string
@@ -83,6 +88,9 @@ export type ContractRecord = {
     additionalEmployeeIds: string[]
     unitIds: string[]
     clauses: string[]
+    recurrence: string
+    duration: number
+    durationType: "hours" | "shift" | "days"
     isActive: boolean
   }>
   installments: ContractInstallmentRecord[]
@@ -199,7 +207,7 @@ export async function updateInstallment(
   contractId: string,
   installmentId: string,
   payload: {
-    status: "pending" | "paid" | "overdue" | "cancelled"
+    status: "pending" | "paid" | "late" | "overdue" | "cancelled"
     paidDate?: string
     paidValue?: number
     paymentMethod?: string

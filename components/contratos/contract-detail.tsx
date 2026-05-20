@@ -130,6 +130,8 @@ const getInstallmentStatusBadge = (status: string) => {
   switch (status) {
     case "paid":
       return <Badge className="bg-green-100 text-green-700 hover:bg-green-100">Paga</Badge>
+    case "late":
+      return <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100">Atrasada</Badge>
     case "overdue":
       return <Badge className="bg-red-100 text-red-700 hover:bg-red-100">Vencida</Badge>
     case "cancelled":
@@ -299,7 +301,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
   )
 
   const overdueInstallments = useMemo(
-    () => contract?.installments.filter((installment) => installment.status === "overdue") ?? [],
+    () => contract?.installments.filter((installment) => ["late", "overdue"].includes(installment.status)) ?? [],
     [contract?.installments],
   )
 
@@ -340,7 +342,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
       status,
     }: {
       installmentId: string
-      status: "pending" | "paid" | "overdue" | "cancelled"
+      status: "pending" | "paid" | "late" | "overdue" | "cancelled"
     }) =>
       updateInstallment(resolvedContractId, installmentId, {
         status,
@@ -511,7 +513,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                   disabled={syncClicksignMutation.isPending}
                 >
                   <RefreshCw className="mr-2 h-4 w-4" />
-                  Sincronizar ClickSign
+                  {syncClicksignMutation.isPending ? "Sincronizando..." : "Sincronizar ClickSign"}
                 </Button>
               ) : (
                 <Button
@@ -521,7 +523,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                   disabled={sendClicksignMutation.isPending}
                 >
                   <ExternalLink className="mr-2 h-4 w-4" />
-                  Enviar ClickSign
+                  {sendClicksignMutation.isPending ? "Enviando..." : "Enviar ClickSign"}
                 </Button>
               )}
             </div>
@@ -585,7 +587,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                           disabled={remindSignerMutation.isPending}
                         >
                           <BellRing className="h-4 w-4" />
-                          Lembrete
+                          {remindSignerMutation.isPending ? "Enviando..." : "Lembrete"}
                         </Button>
                       ) : null}
                     </TableCell>
@@ -818,13 +820,14 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                     <TableCell className="text-right">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon">
+                          <Button variant="ghost" size="icon" disabled={installmentMutation.isPending}>
                             <MoreHorizontal className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem
                             onClick={() =>
+                              !installmentMutation.isPending &&
                               installmentMutation.mutate({ installmentId: installment.id, status: "paid" })
                             }
                           >
@@ -832,6 +835,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() =>
+                              !installmentMutation.isPending &&
                               installmentMutation.mutate({ installmentId: installment.id, status: "overdue" })
                             }
                           >
@@ -839,6 +843,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() =>
+                              !installmentMutation.isPending &&
                               installmentMutation.mutate({ installmentId: installment.id, status: "pending" })
                             }
                           >

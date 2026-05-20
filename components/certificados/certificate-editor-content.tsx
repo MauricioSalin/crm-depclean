@@ -128,13 +128,17 @@ export function CertificateEditorContent({ scheduleId }: { scheduleId: string })
 
       return sendCertificate(scheduleId, file, selectedTemplate.id)
     },
-    onSuccess: async () => {
+    onMutate: () => {
+      const toastId = toast.loading("Emitindo certificado...")
+      return { toastId }
+    },
+    onSuccess: async (_data, _variables, context) => {
       await queryClient.invalidateQueries({ queryKey: ["certificates"] })
-      toast.success("Certificado enviado para processamento e anexado ao perfil do cliente.")
+      toast.success("Certificado enviado para processamento e anexado ao perfil do cliente.", { id: context?.toastId })
       router.push("/certificados")
     },
-    onError: (error) => {
-      toast.error(getApiErrorMessage(error, "Não foi possível enviar o certificado."))
+    onError: (error, _variables, context) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível enviar o certificado."), { id: context?.toastId })
     },
   })
 

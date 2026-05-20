@@ -46,6 +46,7 @@ export type NotificationRuleRecord = {
   description: string
   type: string
   daysBefore: number
+  contractExpirationAlertDays: number[]
   time: string
   channels: string[]
   targetTeamIds: string[]

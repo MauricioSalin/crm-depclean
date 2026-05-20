@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState, type FormEvent } from "react"
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react"
 import { Bell, Building, Copy, Edit, Eye, EyeOff, MessageCircle, Plus, RefreshCcw, Save, Search, Shield, Trash2, Users } from "lucide-react"
 import { toast } from "sonner"
 
@@ -25,7 +25,7 @@ import { Switch } from "@/components/ui/switch"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { cn } from "@/lib/utils"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
-import { formatCNPJ, formatCPF, formatPhone } from "@/lib/masks"
+import { formatCNPJ, formatCPF, formatPhone, isValidCNPJ, isValidCPF } from "@/lib/masks"
 import { listEmployees, type EmployeeRecord } from "@/lib/api/employees"
 import {
   createClientType,
@@ -52,6 +52,7 @@ import { listTeams, type TeamRecord } from "@/lib/api/teams"
 import { getStoredUser } from "@/lib/auth/session"
 
 type SettingsSection = "empresa" | "tipos-cliente" | "permissoes" | "usuarios" | "notificações"
+type ContractExpirationAlertDay = number | ""
 
 const SETTINGS_CARDS = [
   { id: "empresa" as SettingsSection, label: "Empresa", icon: Building, description: "Configure os dados da Depclean nos documentos", adminOnly: true },
@@ -70,6 +71,7 @@ const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
   contract_signature: "Assinatura de Contrato",
   informative: "Informativo ao Cliente",
   certificate: "Certificado ao Cliente",
+  certificate_ready: "Certificado Pronto para Emissão",
   payment_due: "Parcela Vencendo",
   payment_overdue: "Parcela Vencida",
   contract_expiring: "Contrato Vencendo",
@@ -80,7 +82,10 @@ const CHANNELS = [
   { value: "whatsapp", label: "WhatsApp", icon: MessageCircle },
 ] as const
 
+const DEFAULT_RULES_WITH_CONFIGURABLE_RECIPIENTS = new Set(["certificate_ready"])
+
 const DEFAULT_COLOR = "#84CC16"
+const DEFAULT_CONTRACT_EXPIRATION_ALERT_DAYS: ContractExpirationAlertDay[] = [60, 30]
 const EMPTY_ORGANIZATION_ADDRESS = {
   street: "",
   number: "",
@@ -144,6 +149,10 @@ function getPermissionModuleDescription(moduleKey: string) {
 }
 
 export function ConfiguracoesContent() {
+  const typeDialogResetTimeoutRef = useRef<number | null>(null)
+  const profileDialogResetTimeoutRef = useRef<number | null>(null)
+  const userDialogResetTimeoutRef = useRef<number | null>(null)
+  const ruleDialogResetTimeoutRef = useRef<number | null>(null)
   const [activeSection, setActiveSection] = useUrlQueryState("section", "tipos-cliente")
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -211,6 +220,7 @@ export function ConfiguracoesContent() {
     description: "",
     type: "new_schedule",
     daysBefore: 1,
+    contractExpirationAlertDays: DEFAULT_CONTRACT_EXPIRATION_ALERT_DAYS,
     time: "08:00",
     channels: [] as string[],
     targetTeamIds: [] as string[],
@@ -275,6 +285,16 @@ export function ConfiguracoesContent() {
     void refreshSettings()
   }, [])
 
+  useEffect(() => {
+    return () => {
+      ;[typeDialogResetTimeoutRef, profileDialogResetTimeoutRef, userDialogResetTimeoutRef, ruleDialogResetTimeoutRef].forEach((timeoutRef) => {
+        if (timeoutRef.current) {
+          window.clearTimeout(timeoutRef.current)
+        }
+      })
+    }
+  }, [])
+
   const filteredTypes = useMemo(() => clientTypes.filter((item) =>
     [item.name, item.description, item.color].join(" ").toLowerCase().includes(typeSearch.toLowerCase()),
   ), [clientTypes, typeSearch])
@@ -332,48 +352,94 @@ export function ConfiguracoesContent() {
   const paginatedUsers = useMemo(() => filteredUsers.slice((userPage - 1) * userPageSize, userPage * userPageSize), [filteredUsers, userPage, userPageSize])
   const paginatedRules = useMemo(() => filteredRules.slice((rulePage - 1) * rulePageSize, rulePage * rulePageSize), [filteredRules, rulePage, rulePageSize])
 
-  const resetTypeForm = () => {
+  const clearDialogResetTimeout = (timeoutRef: { current: number | null }) => {
+    if (timeoutRef.current) {
+      window.clearTimeout(timeoutRef.current)
+      timeoutRef.current = null
+    }
+  }
+
+  const resetTypeFormFields = () => {
     setEditingType(null)
     setTypeForm({ name: "", description: "", color: DEFAULT_COLOR })
-    setIsTypeDialogOpen(false)
   }
 
-  const resetProfileForm = () => {
+  const closeTypeDialog = () => {
+    setIsTypeDialogOpen(false)
+    clearDialogResetTimeout(typeDialogResetTimeoutRef)
+    typeDialogResetTimeoutRef.current = window.setTimeout(() => {
+      resetTypeFormFields()
+      typeDialogResetTimeoutRef.current = null
+    }, 200)
+  }
+
+  const resetProfileFormFields = () => {
     setEditingProfile(null)
     setProfileForm({ name: "", description: "", permissions: [] })
-    setIsProfileDialogOpen(false)
   }
 
-  const resetUserForm = () => {
+  const closeProfileDialog = () => {
+    setIsProfileDialogOpen(false)
+    clearDialogResetTimeout(profileDialogResetTimeoutRef)
+    profileDialogResetTimeoutRef.current = window.setTimeout(() => {
+      resetProfileFormFields()
+      profileDialogResetTimeoutRef.current = null
+    }, 200)
+  }
+
+  const resetUserFormFields = () => {
     setEditingUser(null)
     setUserForm({ name: "", email: "", phone: "", cpf: "", role: "", password: "", permissionProfileId: "", isActive: true, mustChangePassword: true })
     setShowTemporaryPassword(false)
+  }
+
+  const closeUserDialog = () => {
     setIsUserDialogOpen(false)
+    clearDialogResetTimeout(userDialogResetTimeoutRef)
+    userDialogResetTimeoutRef.current = window.setTimeout(() => {
+      resetUserFormFields()
+      userDialogResetTimeoutRef.current = null
+    }, 200)
   }
 
   const resetRuleForm = () => {
     setEditingRule(null)
-    setRuleForm({ name: "", description: "", type: "new_schedule", daysBefore: 1, time: "08:00", channels: [], targetTeamIds: [], targetEmployeeIds: [], isActive: true })
+    setRuleForm({ name: "", description: "", type: "new_schedule", daysBefore: 1, contractExpirationAlertDays: DEFAULT_CONTRACT_EXPIRATION_ALERT_DAYS, time: "08:00", channels: [], targetTeamIds: [], targetEmployeeIds: [], isActive: true })
+  }
+
+  const closeRuleDialog = () => {
     setIsRuleDialogOpen(false)
+    clearDialogResetTimeout(ruleDialogResetTimeoutRef)
+    ruleDialogResetTimeoutRef.current = window.setTimeout(() => {
+      resetRuleForm()
+      ruleDialogResetTimeoutRef.current = null
+    }, 200)
   }
 
   const openTypeDialog = (record?: ClientTypeRecord) => {
+    clearDialogResetTimeout(typeDialogResetTimeoutRef)
     if (record) {
       setEditingType(record)
       setTypeForm({ name: record.name, description: record.description, color: record.color })
+    } else {
+      resetTypeFormFields()
     }
     setIsTypeDialogOpen(true)
   }
 
   const openProfileDialog = (record?: PermissionProfileRecord) => {
+    clearDialogResetTimeout(profileDialogResetTimeoutRef)
     if (record) {
       setEditingProfile(record)
       setProfileForm({ name: record.name, description: record.description, permissions: [...record.permissions] })
+    } else {
+      resetProfileFormFields()
     }
     setIsProfileDialogOpen(true)
   }
 
   const openUserDialog = (record?: UserRecord) => {
+    clearDialogResetTimeout(userDialogResetTimeoutRef)
     if (record) {
       setEditingUser(record)
       const cachedTemporaryPassword = record.temporaryPassword ?? temporaryPasswords[record.id] ?? ""
@@ -390,14 +456,13 @@ export function ConfiguracoesContent() {
       })
       setShowTemporaryPassword(!record.mustChangePassword)
     } else {
-      setEditingUser(null)
-      setUserForm({ name: "", email: "", phone: "", cpf: "", role: "", password: "", permissionProfileId: "", isActive: true, mustChangePassword: true })
-      setShowTemporaryPassword(false)
+      resetUserFormFields()
     }
     setIsUserDialogOpen(true)
   }
 
   const openRuleDialog = (record?: NotificationRuleRecord) => {
+    clearDialogResetTimeout(ruleDialogResetTimeoutRef)
     if (record) {
       setEditingRule(record)
       setRuleForm({
@@ -405,19 +470,28 @@ export function ConfiguracoesContent() {
         description: record.description ?? "",
         type: record.type,
         daysBefore: record.daysBefore,
+        contractExpirationAlertDays: record.contractExpirationAlertDays?.length ? record.contractExpirationAlertDays : [record.daysBefore, ""],
         time: record.time,
         channels: [...record.channels],
         targetTeamIds: [...record.targetTeamIds],
         targetEmployeeIds: [...record.targetEmployeeIds],
         isActive: record.isActive,
       })
+    } else {
+      resetRuleForm()
     }
     setIsRuleDialogOpen(true)
   }
 
   const handleOrganizationSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (saving) return
+    if (!isValidCNPJ(organizationForm.cnpj)) {
+      toast.error("Informe um CNPJ válido para a empresa.")
+      return
+    }
     setSaving(true)
+    const toastId = toast.loading("Salvando dados da empresa...")
     try {
       const response = await updateOrganizationSettings(organizationForm)
       setOrganizationSettings(response.data)
@@ -428,9 +502,9 @@ export function ConfiguracoesContent() {
         phone: formatPhone(response.data.phone),
         email: response.data.email,
       })
-      toast.success("Dados da empresa atualizados.")
+      toast.success("Dados da empresa atualizados.", { id: toastId })
     } catch (error) {
-      toast.error(getApiErrorMessage(error, "Não foi possível salvar os dados da empresa."))
+      toast.error(getApiErrorMessage(error, "Não foi possível salvar os dados da empresa."), { id: toastId })
     } finally {
       setSaving(false)
     }
@@ -438,20 +512,22 @@ export function ConfiguracoesContent() {
 
   const handleTypeSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (saving) return
     setSaving(true)
+    const toastId = toast.loading(editingType ? "Salvando tipo de cliente..." : "Criando tipo de cliente...")
     try {
       if (editingType) {
         const response = await updateClientType(editingType.id, typeForm)
         upsertClientType(response.data)
-        toast.success("Tipo de cliente atualizado.")
+        toast.success("Tipo de cliente atualizado.", { id: toastId })
       } else {
         const response = await createClientType(typeForm)
         upsertClientType(response.data)
-        toast.success("Tipo de cliente criado.")
+        toast.success("Tipo de cliente criado.", { id: toastId })
       }
-      resetTypeForm()
+      closeTypeDialog()
     } catch (error) {
-      toast.error(getApiErrorMessage(error, "Não foi possível salvar o tipo de cliente."))
+      toast.error(getApiErrorMessage(error, "Não foi possível salvar o tipo de cliente."), { id: toastId })
     } finally {
       setSaving(false)
     }
@@ -459,21 +535,23 @@ export function ConfiguracoesContent() {
 
   const handleProfileSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (saving) return
     setSaving(true)
+    const toastId = toast.loading(editingProfile ? "Salvando perfil..." : "Criando perfil...")
     try {
       const payload = { ...profileForm, permissions: profileForm.permissions }
       if (editingProfile) {
         const response = await updatePermissionProfile(editingProfile.id, payload)
         upsertPermissionProfile(response.data)
-        toast.success("Perfil atualizado.")
+        toast.success("Perfil atualizado.", { id: toastId })
       } else {
         const response = await createPermissionProfile(payload)
         upsertPermissionProfile(response.data)
-        toast.success("Perfil criado.")
+        toast.success("Perfil criado.", { id: toastId })
       }
-      resetProfileForm()
+      closeProfileDialog()
     } catch (error) {
-      toast.error(getApiErrorMessage(error, "Não foi possível salvar o perfil."))
+      toast.error(getApiErrorMessage(error, "Não foi possível salvar o perfil."), { id: toastId })
     } finally {
       setSaving(false)
     }
@@ -481,6 +559,11 @@ export function ConfiguracoesContent() {
 
   const handleUserSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (saving) return
+    if (!isValidCPF(userForm.cpf)) {
+      toast.error("Informe um CPF válido para o usuário.")
+      return
+    }
     if (!userForm.permissionProfileId) {
       toast.error("Selecione um perfil de permissão.")
       return
@@ -491,6 +574,7 @@ export function ConfiguracoesContent() {
     }
 
     setSaving(true)
+    const toastId = toast.loading(editingUser ? "Salvando usuário..." : "Criando usuário...")
     try {
       if (editingUser) {
         const response = await updateUser(editingUser.id, {
@@ -510,7 +594,7 @@ export function ConfiguracoesContent() {
             [response.data.id]: response.data.temporaryPassword ?? "",
           }))
         }
-        toast.success("Usuário atualizado.")
+        toast.success("Usuário atualizado.", { id: toastId })
       } else {
         const response = await createUser({
           name: userForm.name,
@@ -529,11 +613,11 @@ export function ConfiguracoesContent() {
             [response.data.id]: response.data.temporaryPassword ?? "",
           }))
         }
-        toast.success("Usuário criado.")
+        toast.success("Usuário criado.", { id: toastId })
       }
-      resetUserForm()
+      closeUserDialog()
     } catch (error) {
-      toast.error(getApiErrorMessage(error, "Não foi possível salvar o usuário."))
+      toast.error(getApiErrorMessage(error, "Não foi possível salvar o usuário."), { id: toastId })
     } finally {
       setSaving(false)
     }
@@ -541,17 +625,24 @@ export function ConfiguracoesContent() {
 
   const handleRuleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (saving) return
+    if (!editingRule) {
+      toast.error("Apenas notificações padrão podem ser editadas.")
+      return
+    }
     setSaving(true)
+    const toastId = toast.loading("Salvando regra de notificação...")
     try {
-      if (!editingRule) {
-        toast.error("Apenas notificações padrão podem ser editadas.")
-        return
-      }
+      const contractExpirationAlertDays = ruleForm.contractExpirationAlertDays
+        .filter((value) => value !== "")
+        .map((value) => Math.max(0, Math.trunc(Number(value))))
+        .slice(0, 2)
 
       const payload = editingRule?.isDefault
         ? {
             description: ruleForm.description,
             daysBefore: ruleForm.daysBefore,
+            contractExpirationAlertDays: ruleForm.type === "contract_expiring" ? contractExpirationAlertDays : undefined,
             time: ruleForm.time,
             channels: ruleForm.channels,
             isActive: ruleForm.isActive,
@@ -561,6 +652,7 @@ export function ConfiguracoesContent() {
             description: ruleForm.description,
             type: ruleForm.type,
             daysBefore: ruleForm.daysBefore,
+            contractExpirationAlertDays: ruleForm.type === "contract_expiring" ? contractExpirationAlertDays : undefined,
             time: ruleForm.time,
             channels: ruleForm.channels,
             targetTeamIds: ruleForm.targetTeamIds,
@@ -569,55 +661,62 @@ export function ConfiguracoesContent() {
       }
       const response = await updateNotificationRule(editingRule.id, payload)
       upsertNotificationRule(response.data)
-      toast.success("Regra atualizada.")
-      resetRuleForm()
+      toast.success("Regra atualizada.", { id: toastId })
+      closeRuleDialog()
     } catch (error) {
-      toast.error(getApiErrorMessage(error, "Não foi possível salvar a regra."))
+      toast.error(getApiErrorMessage(error, "Não foi possível salvar a regra."), { id: toastId })
     } finally {
       setSaving(false)
     }
   }
 
   const handleDeleteType = async (id: string) => {
+    if (saving) return
     setSaving(true)
+    const toastId = toast.loading("Removendo tipo de cliente...")
     try {
       await deleteClientType(id)
       setClientTypes((current) => current.filter((item) => item.id !== id))
-      toast.success("Tipo de cliente removido.")
+      toast.success("Tipo de cliente removido.", { id: toastId })
     } catch (error) {
-      toast.error(getApiErrorMessage(error, "Não foi possível excluir o tipo."))
+      toast.error(getApiErrorMessage(error, "Não foi possível excluir o tipo."), { id: toastId })
     } finally {
       setSaving(false)
     }
   }
 
   const handleDeleteProfile = async (id: string) => {
+    if (saving) return
     setSaving(true)
+    const toastId = toast.loading("Removendo perfil...")
     try {
       await deletePermissionProfile(id)
       setPermissionProfiles((current) => current.filter((item) => item.id !== id))
-      toast.success("Perfil removido.")
+      toast.success("Perfil removido.", { id: toastId })
     } catch (error) {
-      toast.error(getApiErrorMessage(error, "Não foi possível excluir o perfil."))
+      toast.error(getApiErrorMessage(error, "Não foi possível excluir o perfil."), { id: toastId })
     } finally {
       setSaving(false)
     }
   }
 
   const handleDeleteUser = async (id: string) => {
+    if (saving) return
     setSaving(true)
+    const toastId = toast.loading("Removendo usuário...")
     try {
       await deleteUser(id)
       setUsers((current) => current.filter((item) => item.id !== id))
-      toast.success("Usuário removido.")
+      toast.success("Usuário removido.", { id: toastId })
     } catch (error) {
-      toast.error(getApiErrorMessage(error, "Não foi possível excluir o usuário."))
+      toast.error(getApiErrorMessage(error, "Não foi possível excluir o usuário."), { id: toastId })
     } finally {
       setSaving(false)
     }
   }
 
   const handleDeleteRule = async (id: string) => {
+    if (saving) return
     setSaving(true)
     try {
       void id
@@ -660,8 +759,10 @@ export function ConfiguracoesContent() {
 
   const handleResetUserPassword = async () => {
     if (!editingUser) return
+    if (saving) return
 
     setSaving(true)
+    const toastId = toast.loading("Redefinindo senha...")
     try {
       const response = await resetUserPassword(editingUser.id)
       upsertUser(response.data)
@@ -678,9 +779,9 @@ export function ConfiguracoesContent() {
         mustChangePassword: true,
       }))
       setShowTemporaryPassword(false)
-      toast.success("Senha redefinida.")
+      toast.success("Senha redefinida.", { id: toastId })
     } catch (error) {
-      toast.error(getApiErrorMessage(error, "Não foi possível redefinir a senha."))
+      toast.error(getApiErrorMessage(error, "Não foi possível redefinir a senha."), { id: toastId })
     } finally {
       setSaving(false)
     }
@@ -846,12 +947,15 @@ export function ConfiguracoesContent() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="organization-cnpj">CNPJ</Label>
+                  <Label htmlFor="organization-cnpj">CNPJ *</Label>
                   <Input
                     id="organization-cnpj"
                     value={organizationForm.cnpj}
                     onChange={(event) => setOrganizationForm((current) => ({ ...current, cnpj: formatCNPJ(event.target.value) }))}
                     placeholder="00.000.000/0000-00"
+                    inputMode="numeric"
+                    maxLength={18}
+                    required
                   />
                 </div>
                 <div className="space-y-2 md:col-span-2">
@@ -1001,7 +1105,7 @@ export function ConfiguracoesContent() {
             onPageSizeChange={(size) => { setTypePageSize(size); setTypePage(1) }}
           />
 
-          <Dialog open={isTypeDialogOpen} onOpenChange={(open) => (open ? setIsTypeDialogOpen(true) : resetTypeForm())}>
+          <Dialog open={isTypeDialogOpen} onOpenChange={(open) => (open ? setIsTypeDialogOpen(true) : closeTypeDialog())}>
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>{editingType ? "Editar Tipo de Cliente" : "Novo Tipo de Cliente"}</DialogTitle>
@@ -1020,7 +1124,7 @@ export function ConfiguracoesContent() {
                   <Input id="type-color" type="color" value={typeForm.color} onChange={(event) => setTypeForm({ ...typeForm, color: event.target.value })} className="h-11 w-24 p-1" />
                 </div>
                 <div className="flex justify-end gap-2">
-                  <Button type="button" variant="outline" onClick={resetTypeForm}>Cancelar</Button>
+                  <Button type="button" variant="outline" onClick={closeTypeDialog}>Cancelar</Button>
                   <Button type="submit" disabled={saving}>{editingType ? "Salvar" : "Criar"}</Button>
                 </div>
               </form>
@@ -1088,7 +1192,7 @@ export function ConfiguracoesContent() {
             onPageSizeChange={(size) => { setProfilePageSize(size); setProfilePage(1) }}
           />
 
-          <Dialog open={isProfileDialogOpen} onOpenChange={(open) => (open ? setIsProfileDialogOpen(true) : resetProfileForm())}>
+          <Dialog open={isProfileDialogOpen} onOpenChange={(open) => (open ? setIsProfileDialogOpen(true) : closeProfileDialog())}>
             <DialogContent className="max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>{editingProfile ? "Editar Permissão" : "Nova Permissão"}</DialogTitle>
@@ -1152,7 +1256,7 @@ export function ConfiguracoesContent() {
                   </Accordion>
                 </div>
                 <div className="flex justify-end gap-2">
-                  <Button type="button" variant="outline" onClick={resetProfileForm}>Cancelar</Button>
+                  <Button type="button" variant="outline" onClick={closeProfileDialog}>Cancelar</Button>
                   <Button type="submit" disabled={saving}>{editingProfile ? "Salvar" : "Criar"}</Button>
                 </div>
               </form>
@@ -1228,7 +1332,7 @@ export function ConfiguracoesContent() {
             onPageSizeChange={(size) => { setUserPageSize(size); setUserPage(1) }}
           />
 
-          <Dialog open={isUserDialogOpen} onOpenChange={(open) => (open ? setIsUserDialogOpen(true) : resetUserForm())}>
+          <Dialog open={isUserDialogOpen} onOpenChange={(open) => (open ? setIsUserDialogOpen(true) : closeUserDialog())}>
             <DialogContent className="max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>{editingUser ? "Editar Usuário do Sistema" : "Novo Usuário do Sistema"}</DialogTitle>
@@ -1252,7 +1356,7 @@ export function ConfiguracoesContent() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="user-cpf">CPF</Label>
+                  <Label htmlFor="user-cpf">CPF *</Label>
                   <Input
                     id="user-cpf"
                     value={userForm.cpf}
@@ -1338,7 +1442,7 @@ export function ConfiguracoesContent() {
                     )}
                   </div>
                   <div className="flex justify-end gap-2">
-                    <Button type="button" variant="outline" onClick={resetUserForm}>Cancelar</Button>
+                    <Button type="button" variant="outline" onClick={closeUserDialog}>Cancelar</Button>
                     <Button type="submit" disabled={saving}>{editingUser ? "Salvar" : "Criar"}</Button>
                   </div>
                 </div>
@@ -1402,7 +1506,13 @@ export function ConfiguracoesContent() {
                   <CardContent className="flex flex-1 flex-col gap-3 text-sm">
                     {item.description ? <p className="text-sm text-muted-foreground">{item.description}</p> : null}
                     <div className="text-sm text-muted-foreground">
-                      <span>{item.daysBefore === 0 ? "No dia" : `${item.daysBefore} dia(s) antes`}</span>
+                      <span>
+                        {item.type === "contract_expiring"
+                          ? `Alertas: ${(item.contractExpirationAlertDays?.length ? item.contractExpirationAlertDays : [item.daysBefore]).join(" e ")} dia(s) antes`
+                          : item.type === "payment_overdue"
+                            ? `A cada ${item.daysBefore || 7} dia(s)`
+                          : item.daysBefore === 0 ? "No dia" : `${item.daysBefore} dia(s) antes`}
+                      </span>
                       <span className="mx-1">•</span>
                       <span>às {item.time}</span>
                     </div>
@@ -1413,7 +1523,7 @@ export function ConfiguracoesContent() {
                           return <Badge key={channel} variant="outline">{channelLabel}</Badge>
                         })}
                       </div>
-                      {item.isDefault ? (
+                      {item.isDefault && !DEFAULT_RULES_WITH_CONFIGURABLE_RECIPIENTS.has(item.type) ? (
                         <span className="text-xs text-muted-foreground">Destinatários automáticos conforme o evento.</span>
                       ) : (item.targetTeamIds.length > 0 || item.targetEmployeeIds.length > 0) ? (
                         <div className="flex flex-wrap gap-1.5">
@@ -1465,7 +1575,7 @@ export function ConfiguracoesContent() {
             onPageSizeChange={(size) => { setRulePageSize(size); setRulePage(1) }}
           />
 
-          <Dialog open={isRuleDialogOpen} onOpenChange={(open) => (open ? setIsRuleDialogOpen(true) : resetRuleForm())}>
+          <Dialog open={isRuleDialogOpen} onOpenChange={(open) => (open ? setIsRuleDialogOpen(true) : closeRuleDialog())}>
             <DialogContent className="max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Editar Notificação Padrão</DialogTitle>
@@ -1492,14 +1602,56 @@ export function ConfiguracoesContent() {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="rule-days">Dias de antecedencia</Label>
-                    <Input id="rule-days" type="number" min={0} value={ruleForm.daysBefore} onChange={(event) => setRuleForm({ ...ruleForm, daysBefore: Number(event.target.value) })} />
+                    <Label htmlFor="rule-time">Horário</Label>
+                    <Input id="rule-time" type="time" value={ruleForm.time} onChange={(event) => setRuleForm({ ...ruleForm, time: event.target.value })} />
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="rule-time">Horario</Label>
-                  <Input id="rule-time" type="time" value={ruleForm.time} onChange={(event) => setRuleForm({ ...ruleForm, time: event.target.value })} />
-                </div>
+                {ruleForm.type === "contract_expiring" ? (
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">Alertas de vencimento</p>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label>Primeiro Alerta (dias antes)</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          value={ruleForm.contractExpirationAlertDays[0] ?? 0}
+                          onChange={(event) => {
+                            const next = [...ruleForm.contractExpirationAlertDays]
+                            next[0] = event.target.value === "" ? "" : Number(event.target.value)
+                            setRuleForm({ ...ruleForm, contractExpirationAlertDays: next, daysBefore: event.target.value === "" ? 0 : Number(event.target.value) })
+                          }}
+                          aria-label="Alerta 1 em dias"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Segundo Alerta (dias antes)</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          value={ruleForm.contractExpirationAlertDays[1] ?? 0}
+                          onChange={(event) => {
+                            const next = [...ruleForm.contractExpirationAlertDays]
+                            next[1] = event.target.value === "" ? "" : Number(event.target.value)
+                            setRuleForm({ ...ruleForm, contractExpirationAlertDays: next })
+                          }}
+                          aria-label="Alerta 2 em dias"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Ex.: 60 dias antes e depois 30 dias antes.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <Label htmlFor="rule-days">
+                      {ruleForm.type === "payment_overdue" ? "Intervalo de cobrança (dias)" : "Dias de antecedência"}
+                    </Label>
+                    <Input id="rule-days" type="number" min={ruleForm.type === "payment_overdue" ? 1 : 0} value={ruleForm.daysBefore} onChange={(event) => setRuleForm({ ...ruleForm, daysBefore: Number(event.target.value) })} />
+                    {ruleForm.type === "payment_overdue" ? (
+                      <p className="text-xs text-muted-foreground">A cobrança só é enviada quando a parcela for marcada manualmente como vencida.</p>
+                    ) : null}
+                  </div>
+                )}
                 <div className="space-y-2">
                   <Label>Canais</Label>
                   <div className="flex flex-wrap gap-2">
@@ -1522,7 +1674,7 @@ export function ConfiguracoesContent() {
                     })}
                   </div>
                 </div>
-                {editingRule?.isDefault ? (
+                {editingRule?.isDefault && !DEFAULT_RULES_WITH_CONFIGURABLE_RECIPIENTS.has(editingRule.type) ? (
                   <p className="text-xs text-muted-foreground">Esta regra usa destinatários automáticos: equipes e funcionários do agendamento, ou cliente nos envios externos.</p>
                 ) : (
                   <>
@@ -1558,7 +1710,7 @@ export function ConfiguracoesContent() {
                   <Label>Regra ativa</Label>
                 </div>
                 <div className="flex justify-end gap-2">
-                  <Button type="button" variant="outline" onClick={resetRuleForm}>Cancelar</Button>
+                  <Button type="button" variant="outline" onClick={closeRuleDialog}>Cancelar</Button>
                   <Button type="submit" disabled={saving}>{editingRule ? "Salvar" : "Criar"}</Button>
                 </div>
               </form>

@@ -16,6 +16,7 @@ import { TableSkeletonRows } from "@/components/ui/table-skeleton"
 import { Input } from "@/components/ui/input"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
 function formatDate(value: string) {
   if (!value) return "-"
@@ -227,25 +228,38 @@ export function CertificatesContent() {
                     <TableCell>{getStatusBadge(record.status)}</TableCell>
                     <TableCell className="text-right">
                       {canManage ? (
-                        <Button asChild size="sm">
-                          <Link href={`/certificados/${record.scheduleId}`}>
-                            {record.status === "sent" ? (
-                              <>
-                                <CheckCircle2 className="mr-2 h-4 w-4" />
-                                Reemitir
-                              </>
-                            ) : (
-                              <>
-                                <Award className="mr-2 h-4 w-4" />
-                                Gerar certificado
-                              </>
-                            )}
-                          </Link>
-                        </Button>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              asChild
+                              size="icon"
+                              className="h-9 w-9 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
+                            >
+                              <Link
+                                href={`/certificados/${record.scheduleId}`}
+                                aria-label={record.status === "sent" ? "Reemitir certificado" : "Emitir certificado"}
+                              >
+                                {record.status === "sent" ? (
+                                  <CheckCircle2 className="h-4 w-4" />
+                                ) : (
+                                  <Award className="h-4 w-4" />
+                                )}
+                              </Link>
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            {record.status === "sent" ? "Reemitir certificado" : "Emitir certificado"}
+                          </TooltipContent>
+                        </Tooltip>
                       ) : (
-                        <Button size="sm" disabled>
-                          Gerar certificado
-                        </Button>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button size="icon" className="h-9 w-9 rounded-full" disabled aria-label="Emitir certificado">
+                              <Award className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Emitir certificado</TooltipContent>
+                        </Tooltip>
                       )}
                     </TableCell>
                   </TableRow>

@@ -60,6 +60,11 @@ export async function updateTemplate(id: string, payload: Partial<TemplatePayloa
   return response.data
 }
 
+export async function duplicateTemplate(id: string) {
+  const response = await api.post<{ success: true; data: TemplateRecord }>(`/templates/${id}/duplicate`)
+  return response.data
+}
+
 export async function uploadTemplateBaseFile(id: string, file: File) {
   const formData = new FormData()
   formData.append("file", file)

@@ -28,6 +28,7 @@ const NOTIFICATION_TYPES: { value: NotificationType; label: string; icon: typeof
   { value: "contract_signature", label: "Assinatura de Contrato", icon: FileText },
   { value: "informative", label: "Informativo", icon: FileText },
   { value: "certificate", label: "Certificado", icon: FileText },
+  { value: "certificate_ready", label: "Certificado Pronto", icon: FileText },
   { value: "payment_due", label: "Parcela Vencendo", icon: DollarSign },
   { value: "payment_overdue", label: "Parcela Vencida", icon: DollarSign },
   { value: "contract_expiring", label: "Contrato Vencendo", icon: FileText },
@@ -72,6 +73,7 @@ export function NotificacoesContent({
       case "contract_signature":
       case "informative":
       case "certificate":
+      case "certificate_ready":
         return "text-emerald-600 bg-emerald-50"
       case "contract_expiring":
         return "text-purple-500 bg-purple-50"

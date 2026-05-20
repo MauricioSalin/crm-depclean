@@ -17,7 +17,7 @@ import { changePassword, getProfileMe, updateProfile, type ChangePasswordPayload
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { getSettings, type PermissionProfileRecord } from "@/lib/api/settings"
 import { getStoredAccessToken, getStoredRefreshToken, getStoredUser, isPersistentSession, persistSession } from "@/lib/auth/session"
-import { formatCPF, formatPhone } from "@/lib/masks"
+import { formatCPF, formatPhone, isValidCPF } from "@/lib/masks"
 import type { AuthenticatedUser } from "@/lib/auth/types"
 
 type ProfileResponse = AuthenticatedUser & { profileDescription: string }
@@ -82,8 +82,14 @@ export function PerfilContent() {
   const handleSave = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!profile) return
+    if (saving) return
+    if (!isValidCPF(profile.cpf)) {
+      toast.error("Informe um CPF válido.")
+      return
+    }
 
     setSaving(true)
+    const toastId = toast.loading("Salvando perfil...")
     try {
       const response = await updateProfile({
         name: profile.name,
@@ -110,9 +116,9 @@ export function PerfilContent() {
       }
 
       setProfile(updatedUser)
-      toast.success("Perfil atualizado com sucesso.")
+      toast.success("Perfil atualizado com sucesso.", { id: toastId })
     } catch (error) {
-      toast.error(getApiErrorMessage(error, "Não foi possível salvar suas alterações."))
+      toast.error(getApiErrorMessage(error, "Não foi possível salvar suas alterações."), { id: toastId })
     } finally {
       setSaving(false)
     }
@@ -120,6 +126,7 @@ export function PerfilContent() {
 
   const handlePasswordChange = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (saving) return
     setPasswordError("")
 
     if (passwordData.newPassword.length < 6) {
@@ -133,6 +140,7 @@ export function PerfilContent() {
     }
 
     setSaving(true)
+    const toastId = toast.loading("Alterando senha...")
     try {
       await changePassword(passwordData)
       const stored = getStoredUser()
@@ -148,9 +156,9 @@ export function PerfilContent() {
       }
       setPasswordDialog(false)
       setPasswordData(emptyPasswordForm)
-      toast.success("Senha alterada com sucesso.")
+      toast.success("Senha alterada com sucesso.", { id: toastId })
     } catch (error) {
-      toast.error(getApiErrorMessage(error, "Não foi possível alterar a senha."))
+      toast.error(getApiErrorMessage(error, "Não foi possível alterar a senha."), { id: toastId })
     } finally {
       setSaving(false)
     }
@@ -234,7 +242,7 @@ export function PerfilContent() {
               <div className="space-y-2">
                 <Label htmlFor="cpf" className="flex items-center gap-1.5">
                   <CreditCard className="h-3.5 w-3.5 text-muted-foreground" />
-                  CPF
+                  CPF *
                 </Label>
                   <Input
                     id="cpf"
@@ -319,13 +327,13 @@ export function PerfilContent() {
             </div>
 
             <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" className="h-9 gap-2" onClick={() => setPasswordDialog(true)}>
+              <Button type="button" variant="outline" className="h-9 gap-2" onClick={() => setPasswordDialog(true)} disabled={saving}>
                 <Lock className="h-4 w-4" />
                 Alterar Senha
               </Button>
               <Button type="submit" className="h-9 gap-2 bg-primary text-primary-foreground hover:bg-primary/90" disabled={saving}>
                 <Save className="h-4 w-4" />
-                Salvar
+                {saving ? "Salvando..." : "Salvar"}
               </Button>
             </div>
           </form>
@@ -355,7 +363,7 @@ export function PerfilContent() {
             </div>
             {passwordError && <p className="text-sm text-destructive">{passwordError}</p>}
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-              <Button type="button" variant="outline" onClick={() => setPasswordDialog(false)}>
+              <Button type="button" variant="outline" onClick={() => setPasswordDialog(false)} disabled={saving}>
                 Cancelar
               </Button>
               <Button type="submit" className="bg-primary text-primary-foreground hover:bg-primary/90" disabled={saving}>

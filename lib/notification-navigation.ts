@@ -1,6 +1,10 @@
 import type { NotificationRecord } from "@/lib/api/notifications"
 
 export function getNotificationHref(notification: NotificationRecord) {
+  if (notification.type === "certificate_ready") {
+    return "/certificados"
+  }
+
   if (notification.type === "certificate" && notification.relatedScheduleId) {
     return `/certificados/${encodeURIComponent(notification.relatedScheduleId)}`
   }

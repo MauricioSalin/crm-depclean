@@ -26,7 +26,12 @@ self.addEventListener("push", (event) => {
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
 
-  const targetUrl = new URL(event.notification.data?.url || "/notificacoes", self.location.origin).href;
+  const notificationId = event.notification.data?.notificationId;
+  const target = new URL(event.notification.data?.url || "/notificacoes", self.location.origin);
+  if (notificationId) {
+    target.searchParams.set("readNotification", notificationId);
+  }
+  const targetUrl = target.href;
 
   event.waitUntil((async () => {
     const windows = await self.clients.matchAll({
@@ -37,6 +42,10 @@ self.addEventListener("notificationclick", (event) => {
     for (const client of windows) {
       if (new URL(client.url).origin !== self.location.origin) continue;
 
+      client.postMessage({
+        type: "DEPCLEAN_PUSH_NOTIFICATION_CLICKED",
+        notificationId,
+      });
       await client.navigate(targetUrl);
       return client.focus();
     }

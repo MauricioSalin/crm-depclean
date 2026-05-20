@@ -28,6 +28,7 @@ interface SearchableSelectProps {
   allLabel?: string
   includeAll?: boolean
   className?: string
+  disabled?: boolean
 }
 
 export function SearchableSelect({
@@ -40,6 +41,7 @@ export function SearchableSelect({
   allLabel = "Todos",
   includeAll = true,
   className,
+  disabled = false,
 }: SearchableSelectProps) {
   const [open, setOpen] = React.useState(false)
 
@@ -47,15 +49,17 @@ export function SearchableSelect({
   const selectedOption = allOptions.find(o => o.value === value)
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={disabled ? false : open} onOpenChange={disabled ? undefined : setOpen}>
       <PopoverTrigger asChild>
         <Button
           variant="outline"
           role="combobox"
-          aria-expanded={open}
+          aria-expanded={!disabled && open}
+          disabled={disabled}
           className={cn(
             "justify-between font-normal h-9 text-sm",
             !value || value === "all" ? "text-muted-foreground" : "",
+            disabled ? "cursor-not-allowed opacity-60" : "",
             className,
           )}
         >

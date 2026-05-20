@@ -37,7 +37,16 @@ export type ClientRecord = {
     cpf: string
     email: string
     phone: string
+    receivesNotifications: boolean
   }
+  syndic: {
+    name: string
+    cpf: string
+    email: string
+    phone: string
+    receivesNotifications: boolean
+  }
+  responsibleReceivesNotifications: boolean
   copyNotificationsToOwner: boolean
   isActive: boolean
   units: ClientUnitRecord[]
@@ -84,6 +93,13 @@ export type ClientPayload = {
   assessorCpf?: string
   assessorEmail?: string
   assessorPhone?: string
+  assessorReceivesNotifications?: boolean
+  syndicName?: string
+  syndicCpf?: string
+  syndicEmail?: string
+  syndicPhone?: string
+  syndicReceivesNotifications?: boolean
+  responsibleReceivesNotifications?: boolean
   copyNotificationsToOwner?: boolean
   isActive?: boolean
   units: Array<{

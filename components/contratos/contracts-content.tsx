@@ -254,7 +254,7 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
           </Table>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 2xl:grid-cols-3">
           {contractsQuery.isLoading ? (
             <CardSkeletonGrid cards={4} />
           ) : paginatedContracts.length === 0 ? (

@@ -112,6 +112,11 @@ export async function cancelSchedule(id: string, payload: { cancellationReason: 
   return response.data
 }
 
+export async function reactivateSchedule(id: string) {
+  const response = await api.patch<{ success: true; data: ScheduleRecord }>(`/schedules/${id}/reactivate`)
+  return response.data
+}
+
 export async function deleteSchedule(id: string) {
   const response = await api.delete<{ success: true; data: null }>(`/schedules/${id}`)
   return response.data

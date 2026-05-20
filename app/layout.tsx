@@ -52,7 +52,7 @@ export const metadata: Metadata = {
   },
   other: {
     "mobile-web-app-capable": "yes",
-    "msapplication-TileColor": "#95c11e",
+    "msapplication-TileColor": "#ffffff",
     "msapplication-tap-highlight": "no",
   },
 }
@@ -63,7 +63,7 @@ export const viewport: Viewport = {
   viewportFit: "cover",
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)", color: "#95c11e" },
+    { media: "(prefers-color-scheme: dark)", color: "#ffffff" },
   ],
 }
 

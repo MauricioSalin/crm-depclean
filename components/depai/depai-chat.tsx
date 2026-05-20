@@ -281,11 +281,6 @@ function inferChartType(content: string) {
   return "bar"
 }
 
-function tableToCsv(table: { headers: string[]; rows: string[][] }) {
-  const escape = (value: string) => `"${value.replace(/"/g, '""')}"`
-  return [table.headers, ...table.rows].map((row) => row.map((cell) => escape(cell)).join(",")).join("\n")
-}
-
 function downloadBlob(content: BlobPart, fileName: string, type: string) {
   const blob = new Blob([content], { type })
   const url = URL.createObjectURL(blob)
@@ -294,6 +289,56 @@ function downloadBlob(content: BlobPart, fileName: string, type: string) {
   anchor.download = fileName
   anchor.click()
   URL.revokeObjectURL(url)
+}
+
+function normalizeExcelFileName(fileName?: string) {
+  const baseName = (fileName || "dados-depai.xlsx").replace(/\.(csv|xls|xlsx)$/i, "")
+  return `${baseName}.xlsx`
+}
+
+function chartDatasetToRows(chartDataset: ChartDataset) {
+  if (chartDataset.data.length === 0 || chartDataset.series.length === 0) return []
+  const maxValue = Math.max(
+    1,
+    ...chartDataset.data.flatMap((item) => chartDataset.series.map((series) => Math.abs(Number(item[series]) || 0))),
+  )
+
+  return chartDataset.data.flatMap((item) =>
+    chartDataset.series.map((series) => {
+      const value = Number(item[series]) || 0
+      const barSize = Math.max(0, Math.round((Math.abs(value) / maxValue) * 32))
+      return [series, String(item.name ?? "Item"), value, "|".repeat(barSize)]
+    }),
+  )
+}
+
+async function downloadExcelWorkbook(
+  table: { headers: string[]; rows: string[][] },
+  chartDataset: ChartDataset,
+  fileName?: string,
+) {
+  const XLSX = await import("xlsx")
+  const workbook = XLSX.utils.book_new()
+  const dataSheet = XLSX.utils.aoa_to_sheet([table.headers, ...table.rows])
+
+  XLSX.utils.book_append_sheet(workbook, dataSheet, "Dados")
+
+  const chartRows = chartDatasetToRows(chartDataset)
+  if (chartRows.length > 0) {
+    const chartSheet = XLSX.utils.aoa_to_sheet([["Série", "Item", "Valor", "Barra visual"], ...chartRows])
+    XLSX.utils.book_append_sheet(workbook, chartSheet, "Gráficos")
+  }
+
+  const summarySheet = XLSX.utils.aoa_to_sheet([
+    ["Arquivo", normalizeExcelFileName(fileName)],
+    ["Gerado em", new Date().toLocaleString("pt-BR")],
+    ["Origem", "DepAI"],
+    ["Observação", "A aba Dados contém a tabela principal. A aba Gráficos contém os dados prontos para visualização e conferência."],
+  ])
+  XLSX.utils.book_append_sheet(workbook, summarySheet, "Resumo")
+
+  const output = XLSX.write(workbook, { bookType: "xlsx", type: "array" })
+  downloadBlob(output, normalizeExcelFileName(fileName), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 }
 
 async function downloadMarkdownPdf(content: string, fileName: string) {
@@ -368,12 +413,72 @@ async function downloadChartSvgPng(element: HTMLElement, fileName: string) {
   }
 }
 
-function mapFile(file: File): DepAIFile {
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result ?? ""))
+    reader.onerror = () => reject(reader.error ?? new Error("Não foi possível ler o arquivo."))
+    reader.readAsDataURL(file)
+  })
+}
+
+function readFileAsText(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result ?? ""))
+    reader.onerror = () => reject(reader.error ?? new Error("Não foi possível ler o arquivo."))
+    reader.readAsText(file)
+  })
+}
+
+function inferFileType(file: File) {
+  if (file.type) return file.type
+  const lowerName = file.name.toLowerCase()
+
+  if (lowerName.endsWith(".png")) return "image/png"
+  if (lowerName.endsWith(".jpg") || lowerName.endsWith(".jpeg")) return "image/jpeg"
+  if (lowerName.endsWith(".webp")) return "image/webp"
+  if (lowerName.endsWith(".pdf")) return "application/pdf"
+  if (lowerName.endsWith(".xlsx")) return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  if (lowerName.endsWith(".xls")) return "application/vnd.ms-excel"
+  if (lowerName.endsWith(".docx")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  if (lowerName.endsWith(".doc")) return "application/msword"
+  if (lowerName.endsWith(".csv")) return "text/csv"
+  if (lowerName.endsWith(".txt") || lowerName.endsWith(".md")) return "text/plain"
+  if (lowerName.endsWith(".json")) return "application/json"
+
+  return "application/octet-stream"
+}
+
+async function mapFile(file: File): Promise<DepAIFile> {
+  const type = inferFileType(file)
+  const lowerName = file.name.toLowerCase()
+  const shouldReadText =
+    type.startsWith("text/") ||
+    lowerName.endsWith(".csv") ||
+    lowerName.endsWith(".txt") ||
+    lowerName.endsWith(".md") ||
+    lowerName.endsWith(".json")
+  const shouldAttachDataUrl =
+    file.size <= 8 * 1024 * 1024 &&
+    (type.startsWith("image/") ||
+      type.includes("pdf") ||
+      type.includes("spreadsheet") ||
+      type.includes("excel") ||
+      type.includes("wordprocessingml") ||
+      lowerName.endsWith(".pdf") ||
+      lowerName.endsWith(".xlsx") ||
+      lowerName.endsWith(".xls") ||
+      lowerName.endsWith(".docx") ||
+      lowerName.endsWith(".doc"))
+
   return {
     id: `${file.name}-${file.lastModified}-${file.size}`,
     name: file.name,
     size: file.size,
-    type: file.type || "application/octet-stream",
+    type,
+    content: shouldReadText ? await readFileAsText(file) : undefined,
+    dataUrl: shouldAttachDataUrl ? await readFileAsDataUrl(file) : undefined,
   }
 }
 
@@ -546,7 +651,7 @@ function ArtifactCard({ artifact, sourceContent }: { artifact: DepAIArtifact; so
           toast.error("Não encontrei uma tabela na resposta para exportar.")
           return
         }
-        downloadBlob(tableToCsv(table), artifact.fileName || "dados-depai.csv", "text/csv;charset=utf-8")
+        await downloadExcelWorkbook(table, parseChartDataset(sourceContent), artifact.fileName)
         return
       }
 
@@ -760,14 +865,17 @@ export function DepAIChat({ compact = false }: { compact?: boolean }) {
     if (!conversationsQuery.data || hydratedConversationsRef.current) return
 
     hydratedConversationsRef.current = true
-    if (conversations.some((conversation) => conversation.messages.length > 0)) return
+    setConversations((current) => {
+      if (current.some((conversation) => conversation.messages.length > 0)) return current
 
-    const nextConversations = conversationsQuery.data.length > 0 ? conversationsQuery.data : [createInitialConversation()]
-    setConversations(nextConversations)
-    setActiveConversationId((current) =>
-      nextConversations.some((conversation) => conversation.id === current) ? current : nextConversations[0].id,
-    )
-  }, [conversationsQuery.data, conversationsQuery.dataUpdatedAt])
+      const activeConversation = current.find((conversation) => conversation.id === activeConversationId) ?? current[0] ?? createInitialConversation()
+      const loadedHistory = conversationsQuery.data.filter(
+        (conversation) => conversation.messages.length > 0 && conversation.id !== activeConversation.id,
+      )
+
+      return [activeConversation, ...loadedHistory]
+    })
+  }, [activeConversationId, conversationsQuery.data, conversationsQuery.dataUpdatedAt])
 
   useEffect(() => {
     if (conversationsQuery.error) {
@@ -836,13 +944,17 @@ export function DepAIChat({ compact = false }: { compact?: boolean }) {
     })
   }
 
-  const addFiles = (selectedFiles: FileList | null) => {
+  const addFiles = async (selectedFiles: FileList | null) => {
     if (!selectedFiles) return
-    setFiles((current) => {
-      const nextFiles = Array.from(selectedFiles).map(mapFile)
-      const unique = new Map([...current, ...nextFiles].map((file) => [file.id, file]))
-      return Array.from(unique.values()).slice(0, 6)
-    })
+    try {
+      const nextFiles = await Promise.all(Array.from(selectedFiles).map(mapFile))
+      setFiles((current) => {
+        const unique = new Map([...current, ...nextFiles].map((file) => [file.id, file]))
+        return Array.from(unique.values()).slice(0, 6)
+      })
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível ler um dos arquivos anexados.")
+    }
   }
 
   const removeFile = (id: string) => setFiles((current) => current.filter((item) => item.id !== id))
@@ -984,7 +1096,7 @@ function ChatComposer({
   fileInputRef: RefObject<HTMLInputElement | null>
   onInputChange: (value: string) => void
   onSubmit: (event?: FormEvent<HTMLFormElement>) => void
-  onAddFiles: (files: FileList | null) => void
+  onAddFiles: (files: FileList | null) => void | Promise<void>
   onRemoveFile: (id: string) => void
 }) {
   return (
@@ -1005,7 +1117,7 @@ function ChatComposer({
       )}
 
       <div className="flex items-end gap-2">
-        <input ref={fileInputRef} type="file" className="hidden" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt" onChange={(event) => onAddFiles(event.target.files)} />
+        <input ref={fileInputRef} type="file" className="hidden" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt" onChange={(event) => onAddFiles(event.target.files)} />
         <Button type="button" variant="ghost" size="icon" className="h-10 w-10 shrink-0 rounded-full" onClick={() => fileInputRef.current?.click()}>
           <Plus className="h-5 w-5" />
         </Button>

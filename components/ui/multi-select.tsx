@@ -34,6 +34,7 @@ interface MultiSelectProps {
   searchPlaceholder?: string
   emptyMessage?: string
   className?: string
+  showSelectedTags?: boolean
 }
 
 export function MultiSelect({
@@ -44,6 +45,7 @@ export function MultiSelect({
   searchPlaceholder = "Buscar...",
   emptyMessage = "Nenhum item encontrado.",
   className,
+  showSelectedTags = true,
 }: MultiSelectProps) {
   const [open, setOpen] = React.useState(false)
   const [searchTerm, setSearchTerm] = React.useState("")
@@ -121,7 +123,7 @@ export function MultiSelect({
         </PopoverContent>
       </Popover>
 
-      {selectedOptions.length > 0 && (
+      {showSelectedTags && selectedOptions.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-2">
           {selectedOptions.map((option) => {
             const hasColor = Boolean(option.color)

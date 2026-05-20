@@ -18,7 +18,7 @@ import {
 import { Separator } from "@/components/ui/separator"
 import { Plus, Trash2, Building2, MapPin, Save, Loader2, Users } from "lucide-react"
 import { useRouter } from "next/navigation"
-import { formatCNPJ, formatCPF, formatPhone } from "@/lib/masks"
+import { formatCNPJ, formatCPF, formatPhone, isValidCNPJ, isValidCPF } from "@/lib/masks"
 import { toast } from "@/components/ui/use-toast"
 import { createClient, deleteClient, getClientById, updateClient, type ClientPayload } from "@/lib/api/clients"
 import { getApiErrorMessage } from "@/lib/api/errors"
@@ -76,6 +76,13 @@ export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
     assessorCpf: "",
     assessorEmail: "",
     assessorPhone: "",
+    assessorReceivesNotifications: false,
+    syndicName: "",
+    syndicCpf: "",
+    syndicEmail: "",
+    syndicPhone: "",
+    syndicReceivesNotifications: false,
+    responsibleReceivesNotifications: true,
     copyNotificationsToOwner: false,
   })
   const selectedClientType = clientTypes.find((type) => type.id === formData.clientTypeId)
@@ -164,6 +171,13 @@ export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
       assessorCpf: formatCPF(loadedClient.assessor?.cpf || ""),
       assessorEmail: loadedClient.assessor?.email || "",
       assessorPhone: formatPhone(loadedClient.assessor?.phone || ""),
+      assessorReceivesNotifications: Boolean(loadedClient.assessor?.receivesNotifications),
+      syndicName: loadedClient.syndic?.name || "",
+      syndicCpf: formatCPF(loadedClient.syndic?.cpf || ""),
+      syndicEmail: loadedClient.syndic?.email || "",
+      syndicPhone: formatPhone(loadedClient.syndic?.phone || ""),
+      syndicReceivesNotifications: Boolean(loadedClient.syndic?.receivesNotifications),
+      responsibleReceivesNotifications: Boolean(loadedClient.responsibleReceivesNotifications ?? true),
       copyNotificationsToOwner: Boolean(loadedClient.copyNotificationsToOwner),
     })
 
@@ -224,7 +238,7 @@ export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
     }
   }
 
-  const handleInputChange = (field: string, value: string) => {
+  const handleInputChange = (field: string, value: string | boolean) => {
     setFormData(prev => ({ ...prev, [field]: value }))
   }
 
@@ -296,6 +310,13 @@ export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
         assessorCpf: formData.assessorCpf.trim(),
         assessorEmail: formData.assessorEmail.trim(),
         assessorPhone: formData.assessorPhone.trim(),
+        assessorReceivesNotifications: formData.assessorReceivesNotifications,
+        syndicName: formData.syndicName.trim(),
+        syndicCpf: formData.syndicCpf.trim(),
+        syndicEmail: formData.syndicEmail.trim(),
+        syndicPhone: formData.syndicPhone.trim(),
+        syndicReceivesNotifications: formData.syndicReceivesNotifications,
+        responsibleReceivesNotifications: formData.responsibleReceivesNotifications,
         copyNotificationsToOwner: formData.copyNotificationsToOwner,
         isActive: true,
         units: units.map((unit, index) => ({
@@ -360,6 +381,71 @@ export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    if (saveMutation.isPending || cnpjLoading || cepLoading !== null) return
+    if (!isValidCNPJ(formData.cnpj)) {
+      setCnpjError("Informe um CNPJ válido")
+      toast({
+        title: "Informe um CNPJ válido.",
+        variant: "destructive",
+      })
+      return
+    }
+    if (!isValidCPF(formData.responsibleCpf)) {
+      toast({
+        title: "Informe um CPF válido para o responsável.",
+        variant: "destructive",
+      })
+      return
+    }
+    const hasAssessor = Boolean(
+      formData.assessorName.trim() ||
+      formData.assessorCpf.trim() ||
+      formData.assessorEmail.trim() ||
+      formData.assessorPhone.trim() ||
+      formData.assessorReceivesNotifications,
+    )
+    if (formData.assessorReceivesNotifications && (!formData.assessorName.trim() || !formData.assessorPhone.trim())) {
+      toast({
+        title: "Informe nome e telefone do assessor para receber notificações.",
+        variant: "destructive",
+      })
+      return
+    }
+    if (hasAssessor && !isValidCPF(formData.assessorCpf)) {
+      toast({
+        title: "Informe um CPF válido para o assessor.",
+        variant: "destructive",
+      })
+      return
+    }
+    const hasSyndic = Boolean(
+      formData.syndicName.trim() ||
+      formData.syndicCpf.trim() ||
+      formData.syndicEmail.trim() ||
+      formData.syndicPhone.trim() ||
+      formData.syndicReceivesNotifications,
+    )
+    if (formData.syndicReceivesNotifications && (!formData.syndicName.trim() || !formData.syndicPhone.trim())) {
+      toast({
+        title: "Informe nome e telefone do síndico para receber notificações.",
+        variant: "destructive",
+      })
+      return
+    }
+    if (hasSyndic && !isValidCPF(formData.syndicCpf)) {
+      toast({
+        title: "Informe um CPF válido para o síndico.",
+        variant: "destructive",
+      })
+      return
+    }
+    if (!formData.responsibleReceivesNotifications && !formData.assessorReceivesNotifications && !formData.syndicReceivesNotifications) {
+      toast({
+        title: "Selecione ao menos um contato para receber notificações.",
+        variant: "destructive",
+      })
+      return
+    }
     saveMutation.mutate()
   }
 
@@ -386,7 +472,13 @@ export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
                     handleInputChange("cnpj", formatted)
                     setCnpjError("")
                     const digits = formatted.replace(/\D/g, "")
-                    if (digits.length === 14) lookupCNPJ(digits)
+                    if (digits.length === 14) {
+                      if (isValidCNPJ(formatted)) {
+                        lookupCNPJ(digits)
+                      } else {
+                        setCnpjError("Informe um CNPJ válido")
+                      }
+                    }
                   }}
                   placeholder="00.000.000/0000-00"
                   required
@@ -495,6 +587,15 @@ export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
             </div>
           </div>
 
+          <label className="flex w-full cursor-pointer items-center gap-2 rounded-md border border-border/60 bg-muted/20 px-4 py-3 text-sm text-foreground/80 md:w-[320px]">
+            <Checkbox
+              className="cursor-pointer"
+              checked={formData.responsibleReceivesNotifications}
+              onCheckedChange={(checked) => handleInputChange("responsibleReceivesNotifications", checked === true)}
+            />
+            Receber notificações do sistema
+          </label>
+
           {/* Linha 4: Unidades */}
           <div className="flex flex-col md:flex-row gap-3">
             <div className="space-y-2 md:w-[220px] shrink-0">
@@ -567,13 +668,72 @@ export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
           <label className="flex w-full cursor-pointer items-center gap-2 rounded-md border border-border/60 bg-muted/20 px-4 py-3 text-sm text-foreground/80 md:w-[320px]">
             <Checkbox
               className="cursor-pointer"
-              checked={formData.copyNotificationsToOwner}
-              onCheckedChange={(checked) => setFormData((prev) => ({
-                ...prev,
-                copyNotificationsToOwner: checked === true,
-              }))}
+              checked={formData.assessorReceivesNotifications}
+              onCheckedChange={(checked) => handleInputChange("assessorReceivesNotifications", checked === true)}
             />
-            Enviar cópia das notificações para o proprietário
+            Receber notificações do sistema
+          </label>
+        </div>
+      </Card>
+
+      <Card className="p-6">
+        <div className="flex items-center gap-2 mb-6">
+          <Users className="w-5 h-5 text-primary" />
+          <h3 className="font-semibold text-lg">Síndico</h3>
+        </div>
+
+        <div className="space-y-5">
+          <div className="flex flex-col md:flex-row gap-3">
+            <div className="space-y-2 md:w-[320px]">
+              <Label htmlFor="syndicName">Nome</Label>
+              <Input
+                id="syndicName"
+                value={formData.syndicName}
+                onChange={(e) => handleInputChange("syndicName", e.target.value)}
+                placeholder="Nome do síndico"
+              />
+            </div>
+            <div className="space-y-2 md:w-[320px]">
+              <Label htmlFor="syndicEmail">E-mail</Label>
+              <Input
+                id="syndicEmail"
+                type="email"
+                autoComplete="off"
+                value={formData.syndicEmail}
+                onChange={(e) => handleInputChange("syndicEmail", e.target.value)}
+                placeholder="email@empresa.com.br"
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-col md:flex-row gap-3">
+            <div className="space-y-2 md:w-[320px]">
+              <Label htmlFor="syndicPhone">Telefone</Label>
+              <Input
+                id="syndicPhone"
+                value={formData.syndicPhone}
+                onChange={(e) => handleInputChange("syndicPhone", formatPhone(e.target.value))}
+                placeholder="(00) 00000-0000"
+              />
+            </div>
+            <div className="space-y-2 md:w-[320px]">
+              <Label htmlFor="syndicCpf">CPF</Label>
+              <Input
+                id="syndicCpf"
+                value={formData.syndicCpf}
+                onChange={(e) => handleInputChange("syndicCpf", formatCPF(e.target.value))}
+                placeholder="000.000.000-00"
+              />
+            </div>
+          </div>
+
+          <label className="flex w-full cursor-pointer items-center gap-2 rounded-md border border-border/60 bg-muted/20 px-4 py-3 text-sm text-foreground/80 md:w-[320px]">
+            <Checkbox
+              className="cursor-pointer"
+              checked={formData.syndicReceivesNotifications}
+              onCheckedChange={(checked) => handleInputChange("syndicReceivesNotifications", checked === true)}
+            />
+            Receber notificações do sistema
           </label>
         </div>
       </Card>
@@ -753,12 +913,13 @@ export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
           variant="outline"
           onClick={() => router.push("/clientes")}
           className="bg-transparent"
+          disabled={saveMutation.isPending || deleteMutation.isPending}
         >
           Cancelar
         </Button>
         <Button type="submit" disabled={saveMutation.isPending || cnpjLoading || cepLoading !== null}>
           <Save className="w-4 h-4 mr-2" />
-          {isEditing ? "Salvar Alterações" : "Cadastrar Cliente"}
+          {saveMutation.isPending ? "Salvando..." : isEditing ? "Salvar Alterações" : "Cadastrar Cliente"}
         </Button>
       </div>
 

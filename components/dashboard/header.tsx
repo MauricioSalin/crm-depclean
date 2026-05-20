@@ -53,6 +53,7 @@ const getNotificationDotColor = (type: string) => {
     contract_signature: "bg-emerald-500",
     informative: "bg-emerald-500",
     certificate: "bg-emerald-500",
+    certificate_ready: "bg-emerald-500",
   }
   return colorMap[type] || "bg-primary"
 }

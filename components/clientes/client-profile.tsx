@@ -40,6 +40,7 @@ import { TableEmptyState } from "@/components/ui/empty-state"
 import { TableSkeletonRows } from "@/components/ui/table-skeleton"
 import { Skeleton } from "@/components/ui/skeleton"
 import { AssignmentBadges } from "@/components/ui/assignment-badges"
+import { ScheduleTypeBadge } from "@/components/ui/schedule-type-badge"
 import { DocxTemplateEditor, type DocxTemplateEditorRef } from "@/components/templates/docx-template-editor"
 import { buildApiFileUrl } from "@/lib/api/client"
 import {
@@ -57,6 +58,7 @@ import { listClientTypes } from "@/lib/api/settings"
 import { listTeams } from "@/lib/api/teams"
 import { listTemplates, type TemplateRecord } from "@/lib/api/templates"
 import { formatCivilDate } from "@/lib/date-utils"
+import { formatCPF } from "@/lib/masks"
 
 interface ClientProfileProps {
   clientId: string
@@ -166,6 +168,85 @@ const getScheduleStatusBadge = (status: ScheduleRecord["status"]) => {
   }
 }
 
+type ClientContactInfo = {
+  name?: string
+  cpf?: string
+  email?: string
+  phone?: string
+  receivesNotifications?: boolean
+} | null | undefined
+
+const hasContactInfo = (contact: ClientContactInfo) =>
+  Boolean(contact?.name?.trim() || contact?.cpf?.trim() || contact?.email?.trim() || contact?.phone?.trim())
+
+const formatContactValue = (value?: string) => value?.trim() || "-"
+
+function NotificationStatusBadge({ enabled }: { enabled?: boolean }) {
+  return enabled ? (
+    <Badge className="bg-green-100 text-green-800 hover:bg-green-100">Recebe</Badge>
+  ) : (
+    <Badge className="bg-slate-100 text-slate-700 hover:bg-slate-100">Não recebe</Badge>
+  )
+}
+
+function ContactInfoTable({
+  title,
+  contact,
+  emptyMessage,
+}: {
+  title: string
+  contact: ClientContactInfo
+  emptyMessage: string
+}) {
+  const hasData = hasContactInfo(contact)
+
+  return (
+    <div className="overflow-x-auto rounded-md">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead colSpan={2}>{title}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {hasData ? (
+            <>
+              <TableRow>
+                <TableCell className="w-[180px] text-muted-foreground">Nome</TableCell>
+                <TableCell className="font-medium">{formatContactValue(contact?.name)}</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell className="text-muted-foreground">CPF</TableCell>
+                <TableCell className="font-medium">{contact?.cpf ? formatCPF(contact.cpf) : "-"}</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell className="text-muted-foreground">Telefone</TableCell>
+                <TableCell className="font-medium">{formatContactValue(contact?.phone)}</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell className="text-muted-foreground">E-mail</TableCell>
+                <TableCell className="font-medium">{formatContactValue(contact?.email)}</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell className="text-muted-foreground">Notificações</TableCell>
+                <TableCell>
+                  <NotificationStatusBadge enabled={contact?.receivesNotifications} />
+                </TableCell>
+              </TableRow>
+            </>
+          ) : (
+            <TableRow>
+              <TableCell colSpan={2} className="py-8 text-center text-sm text-muted-foreground">
+                {emptyMessage}
+              </TableCell>
+            </TableRow>
+          )}
+        </TableBody>
+      </Table>
+    </div>
+  )
+}
+
 export function ClientProfile({ clientId }: ClientProfileProps) {
   const router = useRouter()
   const pathname = usePathname()
@@ -222,23 +303,31 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
 
   const uploadAttachmentMutation = useMutation({
     mutationFn: (file: File) => uploadClientAttachment(resolvedClientId, file),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["client-attachments", resolvedClientId] })
-      toast.success("Anexo salvo no cliente.")
+    onMutate: () => {
+      const toastId = toast.loading("Salvando anexo...")
+      return { toastId }
     },
-    onError: (error) => {
-      toast.error(getApiErrorMessage(error, "Não foi possível salvar o anexo."))
+    onSuccess: (_data, _variables, context) => {
+      queryClient.invalidateQueries({ queryKey: ["client-attachments", resolvedClientId] })
+      toast.success("Anexo salvo no cliente.", { id: context?.toastId })
+    },
+    onError: (error, _variables, context) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível salvar o anexo."), { id: context?.toastId })
     },
   })
 
   const deleteAttachmentMutation = useMutation({
     mutationFn: (attachmentId: string) => deleteClientAttachment(resolvedClientId, attachmentId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["client-attachments", resolvedClientId] })
-      toast.success("Anexo removido.")
+    onMutate: () => {
+      const toastId = toast.loading("Removendo anexo...")
+      return { toastId }
     },
-    onError: (error) => {
-      toast.error(getApiErrorMessage(error, "Não foi possível remover o anexo."))
+    onSuccess: (_data, _variables, context) => {
+      queryClient.invalidateQueries({ queryKey: ["client-attachments", resolvedClientId] })
+      toast.success("Anexo removido.", { id: context?.toastId })
+    },
+    onError: (error, _variables, context) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível remover o anexo."), { id: context?.toastId })
     },
   })
 
@@ -256,6 +345,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
 
   const handleManualAttachmentSelected = (file?: File) => {
     if (!file) return
+    if (uploadAttachmentMutation.isPending) return
     uploadAttachmentMutation.mutate(file)
     if (fileInputRef.current) {
       fileInputRef.current.value = ""
@@ -310,7 +400,28 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
 
   const handleAttachmentDownload = useCallback(
     async (attachment: ClientAttachmentRecord) => {
-      if (attachment.type !== "informative") return
+      if (attachment.type !== "informative") {
+        const toastId = toast.loading("Baixando anexo...")
+
+        try {
+          const response = await fetch(buildApiFileUrl(attachment.documentUrl))
+          if (!response.ok) {
+            throw new Error(`Falha ao carregar o anexo (${response.status}).`)
+          }
+
+          const blob = await response.blob()
+          const fileName = attachment.fileName.trim() || attachment.title.trim() || "anexo"
+          const file = new File([blob], fileName, {
+            type: blob.type || attachment.mimeType || "application/octet-stream",
+          })
+          downloadBrowserFile(file, file.name)
+          toast.success("Anexo baixado.", { id: toastId })
+        } catch (error) {
+          toast.error(getApiErrorMessage(error, "Não foi possível baixar o anexo."), { id: toastId })
+        }
+
+        return
+      }
 
       const toastId = toast.loading("Gerando PDF do informativo...")
       setIsGeneratingInformativePdf(true)
@@ -416,7 +527,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
   }, [clientContracts, installmentOverrides])
 
   const paidInstallments = allInstallments.filter((installment) => installment.status === "paid")
-  const overdueInstallments = allInstallments.filter((installment) => installment.status === "overdue")
+  const overdueInstallments = allInstallments.filter((installment) => ["late", "overdue"].includes(installment.status))
   const pendingInstallments = allInstallments.filter((installment) => installment.status === "pending")
   const totalPaid = paidInstallments.reduce(
     (accumulator, installment) => accumulator + (installment.paidValue ?? installment.value),
@@ -596,51 +707,51 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card className="p-4">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-              <FileText className="h-5 w-5 text-primary" />
+              <FileText className="h-5 w-5 text-primary/80" />
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Contratos ativos</p>
-              <p className="text-2xl font-bold">{activeContracts}</p>
+              <p className="text-xl font-semibold text-primary/80">{activeContracts}</p>
             </div>
           </div>
         </Card>
 
         <Card className="p-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-500/10">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-50">
               <DollarSign className="h-5 w-5 text-green-500" />
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Total pago</p>
-              <p className="text-2xl font-bold text-green-600">{formatCurrency(totalPaid)}</p>
+              <p className="text-xl font-semibold text-green-600/80">{formatCurrency(totalPaid)}</p>
             </div>
           </div>
         </Card>
 
         <Card className="p-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500/10">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-50">
               <Clock className="h-5 w-5 text-amber-500" />
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Pendente</p>
-              <p className="text-2xl font-bold text-amber-600">{formatCurrency(totalPending)}</p>
+              <p className="text-xl font-semibold text-amber-600/80">{formatCurrency(totalPending)}</p>
             </div>
           </div>
         </Card>
 
         <Card className="p-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-destructive/10">
-              <AlertTriangle className="h-5 w-5 text-destructive" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-50">
+              <AlertTriangle className="h-5 w-5 text-red-500" />
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Vencido</p>
-              <p className="text-2xl font-bold text-destructive">{formatCurrency(totalOverdue)}</p>
+              <p className="text-xl font-semibold text-red-600/80">{formatCurrency(totalOverdue)}</p>
             </div>
           </div>
         </Card>
@@ -693,7 +804,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
         </TabsList>
 
         <TabsContent value="dados" className="mt-4">
-          <div className="space-y-4">
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
             <div className="overflow-x-auto rounded-md">
               <Table>
                 <TableHeader>
@@ -715,6 +826,10 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                     <TableCell className="font-medium">{client.responsibleName}</TableCell>
                   </TableRow>
                   <TableRow>
+                    <TableCell className="text-muted-foreground">CPF do responsável</TableCell>
+                    <TableCell className="font-medium">{client.responsibleCpf ? formatCPF(client.responsibleCpf) : "-"}</TableCell>
+                  </TableRow>
+                  <TableRow>
                     <TableCell className="text-muted-foreground">Telefone</TableCell>
                     <TableCell className="font-medium">{client.phone}</TableCell>
                   </TableRow>
@@ -728,6 +843,12 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                       <Badge className="border-0 text-white" style={{ backgroundColor: clientTypeColor }}>
                         {clientType?.name ?? "Cliente"}
                       </Badge>
+                    </TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell className="text-muted-foreground">Notificações do responsável</TableCell>
+                    <TableCell>
+                      <NotificationStatusBadge enabled={client.responsibleReceivesNotifications} />
                     </TableCell>
                   </TableRow>
                 </TableBody>
@@ -771,6 +892,18 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                 </TableBody>
               </Table>
             </div>
+
+            <ContactInfoTable
+              title="Síndico"
+              contact={client.syndic}
+              emptyMessage="Nenhum síndico cadastrado."
+            />
+
+            <ContactInfoTable
+              title="Assessor"
+              contact={client.assessor}
+              emptyMessage="Nenhum assessor cadastrado."
+            />
           </div>
         </TabsContent>
 
@@ -896,6 +1029,8 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                               variant={
                                 displayInstallment.status === "paid"
                                   ? "default"
+                                  : displayInstallment.status === "late"
+                                    ? "secondary"
                                   : displayInstallment.status === "overdue"
                                     ? "destructive"
                                     : "secondary"
@@ -903,6 +1038,8 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                             >
                               {displayInstallment.status === "paid"
                                 ? "Paga"
+                                : displayInstallment.status === "late"
+                                  ? "Atrasada"
                                 : displayInstallment.status === "overdue"
                                   ? "Vencida"
                                   : "Pendente"}
@@ -920,7 +1057,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                                   Marcar como paga
                                 </DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => setInstallmentStatus(installment.id, "overdue")}>
-                                  Marcar como atrasada
+                                  Marcar como vencida
                                 </DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => setInstallmentStatus(installment.id, "pending")}>
                                   Marcar como pendente
@@ -944,9 +1081,9 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
               <TableHeader>
                 <TableRow>
                   <TableHead>Serviço</TableHead>
+                  <TableHead>Tipo</TableHead>
                   <TableHead className="hidden md:table-cell">Equipe / Funcionários</TableHead>
                   <TableHead>Data</TableHead>
-                  <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -965,16 +1102,13 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                         <TableCell>
                           <p className="font-medium">{service.serviceTypeName}</p>
                         </TableCell>
+                        <TableCell>
+                          <ScheduleTypeBadge schedule={service} />
+                        </TableCell>
                         <TableCell className="hidden md:table-cell">
                           <AssignmentBadges teams={serviceTeams} employees={service.additionalEmployees} />
                         </TableCell>
                         <TableCell className="text-sm">{formatDate(service.date)}</TableCell>
-                        <TableCell>
-                          <Badge variant="default">
-                            <CheckCircle className="mr-1 h-3 w-3" />
-                            Concluído
-                          </Badge>
-                        </TableCell>
                       </TableRow>
                     )
                   })}
@@ -993,6 +1127,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
               <TableHeader>
                 <TableRow>
                   <TableHead>Serviço</TableHead>
+                  <TableHead>Tipo</TableHead>
                   <TableHead className="hidden md:table-cell">Equipe / Funcionários</TableHead>
                   <TableHead>Data</TableHead>
                   <TableHead>Horário</TableHead>
@@ -1018,6 +1153,9 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                             {service.isEmergency ? <AlertTriangle className="h-4 w-4 text-destructive" /> : null}
                           </div>
                         </TableCell>
+                        <TableCell>
+                          <ScheduleTypeBadge schedule={service} />
+                        </TableCell>
                         <TableCell className="hidden md:table-cell">
                           <AssignmentBadges teams={serviceTeams} employees={service.additionalEmployees} />
                         </TableCell>
@@ -1029,7 +1167,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                   })}
 
                 {clientServices.filter((service) => ["draft", "scheduled", "in_progress", "rescheduled"].includes(service.status)).length === 0 ? (
-                  <TableEmptyState colSpan={5} icon={Calendar} title="Nenhum serviço agendado." />
+                  <TableEmptyState colSpan={6} icon={Calendar} title="Nenhum serviço agendado." />
                 ) : null}
               </TableBody>
             </Table>
@@ -1081,24 +1219,16 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
-                        {attachment.type === "informative" ? (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleAttachmentDownload(attachment)}
-                            disabled={isGeneratingInformativePdf}
-                            title="Baixar PDF"
-                          >
-                            <Download className="h-4 w-4" />
-                          </Button>
-                        ) : (
-                          <Button variant="ghost" size="icon" asChild>
-                            <a href={buildApiFileUrl(attachment.documentUrl)} target="_blank" rel="noreferrer">
-                              <Download className="h-4 w-4" />
-                            </a>
-                          </Button>
-                        )}
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleAttachmentDownload(attachment)}
+                          disabled={attachment.type === "informative" && isGeneratingInformativePdf}
+                          title={attachment.type === "informative" ? "Baixar PDF" : "Baixar arquivo"}
+                        >
+                          <Download className="h-4 w-4" />
+                        </Button>
                         {attachment.source === "manual" ? (
                           <Button
                             type="button"

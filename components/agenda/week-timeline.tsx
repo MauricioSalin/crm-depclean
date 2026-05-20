@@ -30,6 +30,7 @@ const HOUR_HEIGHT = 60 // px per hour
 const START_HOUR = 0
 const END_HOUR = 24
 const TOTAL_HOURS = END_HOUR - START_HOUR
+const LUNCH_HOUR = 12
 
 const DAY_LABELS_SHORT = ["DOM.", "SEG.", "TER.", "QUA.", "QUI.", "SEX.", "SÁB."]
 
@@ -225,14 +226,19 @@ export function WeekTimeline({
                       <button
                         key={`${dateStr}-${time}`}
                         type="button"
-                        className="absolute left-0 right-0 z-0 cursor-pointer border-0 bg-transparent transition-colors hover:bg-primary/10 focus-visible:bg-primary/10 focus-visible:outline-none"
+                        className={`absolute left-0 right-0 z-0 border-0 transition-colors focus-visible:outline-none ${
+                          hour === LUNCH_HOUR
+                            ? "cursor-not-allowed bg-muted/45"
+                            : "cursor-pointer bg-transparent hover:bg-primary/10 focus-visible:bg-primary/10"
+                        }`}
                         style={{
                           top: hourIndex * HOUR_HEIGHT,
                           height: HOUR_HEIGHT,
                         }}
-                        title={`Novo agendamento em ${time}`}
+                        title={hour === LUNCH_HOUR ? "Horário de almoço" : `Novo agendamento em ${time}`}
                         onClick={(event) => {
                           event.stopPropagation()
+                          if (hour === LUNCH_HOUR) return
                           onDaySelect(day)
                           onSlotClick?.(day, time)
                         }}

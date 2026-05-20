@@ -96,6 +96,7 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
 
   const confirmDeleteType = () => {
     if (!pendingDelete) return
+    if (deleteMutation.isPending) return
     deleteMutation.mutate(pendingDelete.id)
   }
 
@@ -251,7 +252,7 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
           </Table>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 2xl:grid-cols-3">
           {isLoading ? (
             <CardSkeletonGrid cards={4} />
           ) : paginatedTypes.map((type) => (

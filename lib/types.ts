@@ -155,7 +155,7 @@ export interface ContractService {
 }
 
 // Installment (Parcela)
-export type InstallmentStatus = "pending" | "paid" | "overdue" | "cancelled"
+export type InstallmentStatus = "pending" | "paid" | "late" | "overdue" | "cancelled"
 
 export interface Installment {
   id: string
@@ -274,6 +274,7 @@ export type NotificationType =
   | "contract_signature"
   | "informative"
   | "certificate"
+  | "certificate_ready"
   | "payment_due"
   | "payment_overdue"
   | "contract_expiring"
@@ -304,6 +305,7 @@ export interface NotificationRule {
   name: string
   type: NotificationType
   daysBefore?: number // Dias antes para enviar (ex: 1 dia antes do agendamento)
+  contractExpirationAlertDays?: number[] // Alertas de vencimento de contrato (ex: 60 e 30 dias antes)
   time?: string // Horário de envio
   channels: NotificationChannel[]
   targetTeamIds: string[] // Equipes que receberão

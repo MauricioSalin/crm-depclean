@@ -40,25 +40,52 @@ export default function NotificacoesPage() {
 
   const markAsReadMutation = useMutation({
     mutationFn: markNotificationAsRead,
-    onSuccess: invalidateNotifications,
-    onError: (error) => {
-      toast.error(getApiErrorMessage(error, "Não foi possível marcar a notificação como lida."))
+    onMutate: () => {
+      const toastId = toast.loading("Marcando notificação como lida...")
+      return { toastId }
+    },
+    onSuccess: (_data, _variables, context) => {
+      void invalidateNotifications()
+      toast.success("Notificação marcada como lida.", { id: context?.toastId })
+    },
+    onError: (error, _variables, context) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível marcar a notificação como lida."), {
+        id: context?.toastId,
+      })
     },
   })
 
   const markAllMutation = useMutation({
     mutationFn: markAllNotificationsAsRead,
-    onSuccess: invalidateNotifications,
-    onError: (error) => {
-      toast.error(getApiErrorMessage(error, "Não foi possível marcar as notificações como lidas."))
+    onMutate: () => {
+      const toastId = toast.loading("Marcando notificações como lidas...")
+      return { toastId }
+    },
+    onSuccess: (_data, _variables, context) => {
+      void invalidateNotifications()
+      toast.success("Notificações marcadas como lidas.", { id: context?.toastId })
+    },
+    onError: (error, _variables, context) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível marcar as notificações como lidas."), {
+        id: context?.toastId,
+      })
     },
   })
 
   const deleteMutation = useMutation({
     mutationFn: deleteNotification,
-    onSuccess: invalidateNotifications,
-    onError: (error) => {
-      toast.error(getApiErrorMessage(error, "Não foi possível excluir a notificação."))
+    onMutate: () => {
+      const toastId = toast.loading("Excluindo notificação...")
+      return { toastId }
+    },
+    onSuccess: (_data, _variables, context) => {
+      void invalidateNotifications()
+      toast.success("Notificação excluída.", { id: context?.toastId })
+    },
+    onError: (error, _variables, context) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível excluir a notificação."), {
+        id: context?.toastId,
+      })
     },
   })
 
@@ -88,7 +115,13 @@ export default function NotificacoesPage() {
           }
           headerActions={
             unreadCount > 0 ? (
-              <Button variant="outline" size="sm" onClick={() => markAllMutation.mutate()} className="bg-white">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => markAllMutation.mutate()}
+                className="bg-white"
+                disabled={markAllMutation.isPending}
+              >
                 <CheckCheck className="h-4 w-4 mr-2" />
                 Marcar todas como lidas
               </Button>

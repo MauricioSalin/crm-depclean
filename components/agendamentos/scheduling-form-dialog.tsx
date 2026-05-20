@@ -139,6 +139,12 @@ export function SchedulingFormDialog({
   )
 
   const selectedClient = clients.find(c => c.id === formData.clientId)
+  const isEditing = Boolean(editingSchedule)
+  const isRecurringSchedule = Boolean(editingSchedule?.contractId && !editingSchedule?.isManual)
+  const scheduleTypeLabel = isRecurringSchedule ? "Atendimento recorrente" : "Atendimento avulso"
+  const dialogTitle = isEditing
+    ? `Editar ${isRecurringSchedule ? "atendimento recorrente" : "atendimento avulso"}`
+    : "Novo atendimento avulso"
 
   const getInitialFormData = (schedule: EditingSchedule): SchedulingFormData => {
     const serviceType = serviceTypes.find((item) => item.id === schedule.serviceTypeId)
@@ -188,7 +194,6 @@ export function SchedulingFormDialog({
   }
 
   const resetForm = () => {
-    setFormData(DEFAULT_FORM_DATA)
     onOpenChange(false)
   }
 
@@ -206,17 +211,31 @@ export function SchedulingFormDialog({
       <DialogTrigger className="hidden" />
       <DialogContent className="max-w-2xl max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{editingSchedule ? "Editar Agendamento" : "Novo Agendamento Manual"}</DialogTitle>
+          <DialogTitle>{dialogTitle}</DialogTitle>
+          <div className="mt-2 flex flex-col items-start gap-2">
+            <Badge variant={isRecurringSchedule ? "secondary" : "outline"} className="w-fit">
+              {scheduleTypeLabel}
+            </Badge>
+            {isRecurringSchedule ? (
+              <p className="text-sm text-muted-foreground">
+                Somente horário, equipes e funcionários avulsos podem ser alterados neste atendimento.
+              </p>
+            ) : null}
+          </div>
         </DialogHeader>
         <form autoComplete="off" onSubmit={handleSubmit} className="space-y-6">
           {/* Client Selection */}
           <div className="space-y-2">
             <Label>Cliente *</Label>
-            <Popover open={clientPopoverOpen} onOpenChange={setClientPopoverOpen}>
+            <Popover
+              open={isRecurringSchedule ? false : clientPopoverOpen}
+              onOpenChange={isRecurringSchedule ? undefined : setClientPopoverOpen}
+            >
               <PopoverTrigger asChild>
                 <Button
                   variant="outline"
                   role="combobox"
+                  disabled={isRecurringSchedule}
                   className="w-full justify-between font-normal"
                 >
                   {selectedClient ? selectedClient.companyName : (
@@ -278,6 +297,7 @@ export function SchedulingFormDialog({
               emptyMessage="Nenhum serviço encontrado."
               includeAll={false}
               className="w-full"
+              disabled={isRecurringSchedule}
             />
           </div>
 
@@ -437,6 +457,7 @@ export function SchedulingFormDialog({
                 type="date"
                 value={formData.date}
                 onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                disabled={isRecurringSchedule}
                 required
               />
             </div>
@@ -457,6 +478,7 @@ export function SchedulingFormDialog({
               <Select
                 value={formData.durationType}
                 onValueChange={(value) => setFormData({ ...formData, durationType: value as ScheduleDurationType })}
+                disabled={isRecurringSchedule}
               >
                 <SelectTrigger className="w-full">
                   <SelectValue />
@@ -476,6 +498,7 @@ export function SchedulingFormDialog({
                 onChange={(e) => setFormData({ ...formData, duration: Number(e.target.value) })}
                 min={1}
                 className="w-full"
+                disabled={isRecurringSchedule}
               />
             </div>
           </div>
@@ -500,6 +523,8 @@ export function SchedulingFormDialog({
               value={formData.notes}
               onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
               placeholder="Observações sobre o agendamento"
+              disabled={isRecurringSchedule}
+              className={isRecurringSchedule ? "cursor-not-allowed opacity-60" : undefined}
             />
           </div>
 

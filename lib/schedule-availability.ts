@@ -26,6 +26,9 @@ type AvailabilityResult = {
 
 const DAY_START_MINUTES = 0
 const DAY_END_MINUTES = 24 * 60
+const LUNCH_START_MINUTES = 12 * 60
+const LUNCH_END_MINUTES = 13 * 60
+const MAX_SINGLE_SIDE_LUNCH_DURATION = 5 * 60
 const SLOT_STEP_MINUTES = 30
 
 export function checkScheduleAvailability(params: {
@@ -67,11 +70,15 @@ export function checkScheduleAvailability(params: {
 
   const requestedStart = minutesFromTime(requested.time)
   const requestedEnd = requestedStart + requested.durationMinutes
+  const lunchConflict =
+    requested.durationMinutes <= MAX_SINGLE_SIDE_LUNCH_DURATION &&
+    requestedStart < LUNCH_END_MINUTES &&
+    requestedEnd > LUNCH_START_MINUTES
   const hasConflict = conflicts.some((schedule) =>
     schedule.date === requested.date &&
     requestedStart < schedule.endMinutes &&
     requestedEnd > schedule.startMinutes,
-  )
+  ) || lunchConflict
 
   if (!hasConflict) {
     return { available: true, requested }
@@ -107,9 +114,13 @@ function findNextAvailableSlot(params: {
   let startMinutes = roundToNextStep(params.startMinutes)
 
   for (let dayOffset = 0; dayOffset < 60; dayOffset += 1) {
-    const dayConflicts = params.conflicts
-      .filter((item) => item.date === currentDate)
-      .sort((a, b) => a.startMinutes - b.startMinutes)
+    const lunchBlocks = params.durationMinutes <= MAX_SINGLE_SIDE_LUNCH_DURATION
+      ? [{ date: currentDate, startMinutes: LUNCH_START_MINUTES, endMinutes: LUNCH_END_MINUTES }]
+      : []
+    const dayConflicts = [
+      ...lunchBlocks,
+      ...params.conflicts.filter((item) => item.date === currentDate),
+    ].sort((a, b) => a.startMinutes - b.startMinutes)
 
     while (startMinutes + params.durationMinutes <= DAY_END_MINUTES) {
       const endMinutes = startMinutes + params.durationMinutes

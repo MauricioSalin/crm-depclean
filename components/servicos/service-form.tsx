@@ -146,6 +146,7 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
 
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
+    if (saveMutation.isPending) return
     if (!formData.name.trim()) {
       toast({ title: "Nome obrigatório", description: "Informe o nome do serviço." })
       return
@@ -437,14 +438,14 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
 
       <div className="flex justify-end gap-3">
         <Link href="/servicos">
-          <Button type="button" variant="outline">
+          <Button type="button" variant="outline" disabled={saveMutation.isPending}>
             <ArrowLeft className="mr-2 h-4 w-4" />
             Voltar
           </Button>
         </Link>
         <Button type="submit" disabled={saveMutation.isPending || serviceQuery.isLoading}>
           <Save className="mr-2 h-4 w-4" />
-          {isEditing ? "Salvar Alterações" : "Cadastrar Serviço"}
+          {saveMutation.isPending ? "Salvando..." : isEditing ? "Salvar Alterações" : "Cadastrar Serviço"}
         </Button>
       </div>
     </form>

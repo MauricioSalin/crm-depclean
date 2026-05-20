@@ -7,12 +7,12 @@ import { Button } from "@/components/ui/button"
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { CurrencyInput } from "@/components/ui/currency-input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { DocxTemplateEditor, type DocxTemplateEditorRef } from "@/components/templates/docx-template-editor"
-import { ServiceClausesDialog } from "@/components/servicos/service-clauses-dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   AlertDialog,
@@ -71,10 +71,8 @@ import {
   X,
   ArrowLeft,
   CheckCircle2,
-  Eye,
   Upload,
   Download,
-  RefreshCw
 } from "lucide-react"
 import { cn, getColorFromClass } from "@/lib/utils"
 import { formatCivilDate, formatCivilLongDate, toCivilDateKey } from "@/lib/date-utils"
@@ -170,6 +168,10 @@ interface ContractService {
   serviceTypeId: string
   teamIds: string[]
   employeeIds: string[]
+  recurrence: string
+  duration: number
+  durationType: "hours" | "shift" | "days"
+  clauses: string[]
 }
 
 const formatServiceDuration = (service?: { defaultDuration?: number; durationType?: "hours" | "shift" | "days" }) => {
@@ -180,6 +182,16 @@ const formatServiceDuration = (service?: { defaultDuration?: number; durationTyp
   if (service.durationType === "days") return `${duration} dia${duration === 1 ? "" : "s"}`
   return `${duration} hora${duration === 1 ? "" : "s"}`
 }
+
+const recurrenceOptions = [
+  { value: "weekly", label: "Semanal" },
+  { value: "biweekly", label: "Quinzenal" },
+  { value: "monthly", label: "Mensal" },
+  { value: "bimonthly", label: "Bimestral" },
+  { value: "quarterly", label: "Trimestral" },
+  { value: "semiannual", label: "Semestral" },
+  { value: "annual", label: "Anual" },
+]
 
 const isContractSigned = (contract?: { status?: string; clicksign?: { status?: string } } | null) => {
   if (!contract) return false
@@ -305,6 +317,10 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
         serviceTypeId: s.serviceTypeId,
         teamIds: (s as any).teamIds ?? (legacyTeamId ? [legacyTeamId] : []),
         employeeIds: (s as any).additionalEmployeeIds ?? (s as any).employeeIds ?? [],
+        recurrence: (s as any).recurrence ?? "monthly",
+        duration: Number((s as any).duration ?? 1),
+        durationType: ((s as any).durationType ?? "hours") as "hours" | "shift" | "days",
+        clauses: [...((s as any).clauses ?? [])],
       }
     }) || []
   )
@@ -326,7 +342,9 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
   // Service edit dialog
   const [editServiceDialogOpen, setEditServiceDialogOpen] = useState(false)
   const [editingServiceId, setEditingServiceId] = useState<string | null>(null)
-  const [selectedServiceDetailsId, setSelectedServiceDetailsId] = useState<string | null>(null)
+  const [clausesServiceId, setClausesServiceId] = useState<string | null>(null)
+  const [clausesDialogOpen, setClausesDialogOpen] = useState(false)
+  const clausesDialogCloseTimeoutRef = useRef<number | null>(null)
   const [teamsPopoverOpen, setTeamsPopoverOpen] = useState(false)
   const [employeesPopoverOpen, setEmployeesPopoverOpen] = useState(false)
   const [teamSearchTerm, setTeamSearchTerm] = useState("")
@@ -341,9 +359,26 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
     [informativeTemplates],
   )
   const editingService = services.find(s => s.id === editingServiceId)
-  const selectedServiceDetails = selectedServiceDetailsId
-    ? serviceTypes.find((serviceType) => serviceType.id === selectedServiceDetailsId) ?? null
+  const clausesEditingService = services.find((service) => service.id === clausesServiceId) ?? null
+  const clausesEditingServiceType = clausesEditingService
+    ? serviceTypes.find((serviceType) => serviceType.id === clausesEditingService.serviceTypeId) ?? null
     : null
+
+  const clearClausesDialogCloseTimeout = () => {
+    if (clausesDialogCloseTimeoutRef.current) {
+      window.clearTimeout(clausesDialogCloseTimeoutRef.current)
+      clausesDialogCloseTimeoutRef.current = null
+    }
+  }
+
+  const closeServiceClausesDialog = () => {
+    setClausesDialogOpen(false)
+    clearClausesDialogCloseTimeout()
+    clausesDialogCloseTimeoutRef.current = window.setTimeout(() => {
+      setClausesServiceId(null)
+      clausesDialogCloseTimeoutRef.current = null
+    }, 220)
+  }
 
   useEffect(() => {
     if (!contract) return
@@ -355,6 +390,10 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
       serviceTypeId: service.serviceTypeId,
       teamIds: service.teamIds ?? [],
       employeeIds: service.additionalEmployeeIds ?? [],
+      recurrence: service.recurrence ?? "monthly",
+      duration: Number(service.duration ?? 1),
+      durationType: service.durationType ?? "hours",
+      clauses: [...(service.clauses ?? [])],
     }))
 
     setSelectedClientId(contract.clientId ?? "")
@@ -388,11 +427,33 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
   }, [contract])
 
   useEffect(() => {
+    return () => clearClausesDialogCloseTimeout()
+  }, [])
+
+  useEffect(() => {
     if (!createAutomatedSchedules) {
       setCreateAutomatedInformatives(false)
       setSelectedInformativeTemplateId("")
     }
   }, [createAutomatedSchedules])
+
+  useEffect(() => {
+    if (serviceTypes.length === 0) return
+    setServices((current) =>
+      current.map((service) => {
+        if (!service.serviceTypeId) return service
+        const serviceType = serviceTypes.find((item) => item.id === service.serviceTypeId)
+        if (!serviceType) return service
+        return {
+          ...service,
+          recurrence: service.recurrence || serviceType.defaultRecurrence || "monthly",
+          duration: service.duration || Number(serviceType.defaultDuration ?? 1),
+          durationType: service.durationType || serviceType.durationType || "hours",
+          clauses: service.clauses.length > 0 ? service.clauses : [...(serviceType.clauses ?? [])],
+        }
+      }),
+    )
+  }, [serviceTypes])
 
   useEffect(() => {
     if (createAutomatedSchedules && startDate && !firstVisitDate) {
@@ -550,11 +611,9 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
     totalValue,
     duration: installmentsCount,
     startDate,
-    firstVisitDate: createAutomatedSchedules ? firstVisitDate : undefined,
-    firstVisitTime: createAutomatedSchedules ? firstVisitTime : undefined,
     paymentDay: dueDay,
     installmentsCount,
-    recurrence: contractRecurrence,
+    recurrence: services.find((service) => service.serviceTypeId)?.recurrence ?? contractRecurrence,
     recurrenceRules: contractRecurrenceRules.map((rule) => ({
       type: rule.type,
       minUnits: Number(rule.minUnits),
@@ -572,7 +631,10 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
           teamIds: service.teamIds,
           additionalEmployeeIds: service.employeeIds,
           unitIds: selectedUnitIds,
-          clauses: serviceType?.clauses ?? [],
+          clauses: service.clauses?.length ? service.clauses : serviceType?.clauses ?? [],
+          recurrence: service.recurrence || serviceType?.defaultRecurrence || "monthly",
+          duration: Math.max(1, Number(service.duration || serviceType?.defaultDuration || 1)),
+          durationType: service.durationType || serviceType?.durationType || "hours",
           isActive: true,
         }
       }),
@@ -594,8 +656,9 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
       .filter((service) => service.serviceTypeId)
       .map((service, serviceIndex) => {
         const serviceType = serviceTypes.find((item) => item.id === service.serviceTypeId)
-        const clauses = serviceType?.clauses?.length
-          ? serviceType.clauses.map((clause, clauseIndex) => `${serviceIndex + 1}.${clauseIndex + 1}. ${clause}`).join("\n")
+        const sourceClauses = service.clauses?.length ? service.clauses : serviceType?.clauses ?? []
+        const clauses = sourceClauses.length
+          ? sourceClauses.map((clause, clauseIndex) => `${serviceIndex + 1}.${clauseIndex + 1}. ${clause}`).join("\n")
           : `${serviceIndex + 1}.1. Cláusulas específicas não informadas para este serviço.`
 
         return `${serviceIndex + 1}. ${serviceType?.name ?? "Serviço"}\n${clauses}`
@@ -794,6 +857,10 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
         serviceTypeId: "",
         teamIds: [],
         employeeIds: [],
+        recurrence: "monthly",
+        duration: 1,
+        durationType: "hours",
+        clauses: [],
       }
     ])
   }
@@ -812,6 +879,10 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
           [field]: value as string,
           teamIds: serviceType?.teamIds || [],
           employeeIds: serviceType?.employeeIds || [],
+          recurrence: serviceType?.defaultRecurrence || "monthly",
+          duration: Number(serviceType?.defaultDuration ?? 1),
+          durationType: serviceType?.durationType || "hours",
+          clauses: [...(serviceType?.clauses ?? [])],
         }
       }
       return { ...s, [field]: value }
@@ -823,9 +894,41 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
     setEditServiceDialogOpen(true)
   }
 
-  const openServiceDetailsDialog = (serviceTypeId: string) => {
-    if (!serviceTypeId) return
-    setSelectedServiceDetailsId(serviceTypeId)
+  const openServiceClausesDialog = (serviceId: string) => {
+    clearClausesDialogCloseTimeout()
+    setClausesServiceId(serviceId)
+    setClausesDialogOpen(true)
+  }
+
+  const addClauseToService = (serviceId: string) => {
+    setServices((current) =>
+      current.map((service) =>
+        service.id === serviceId
+          ? { ...service, clauses: [...service.clauses, ""] }
+          : service,
+      ),
+    )
+  }
+
+  const updateServiceClause = (serviceId: string, index: number, value: string) => {
+    setServices((current) =>
+      current.map((service) => {
+        if (service.id !== serviceId) return service
+        const clauses = [...service.clauses]
+        clauses[index] = value
+        return { ...service, clauses }
+      }),
+    )
+  }
+
+  const removeServiceClause = (serviceId: string, index: number) => {
+    setServices((current) =>
+      current.map((service) =>
+        service.id === serviceId
+          ? { ...service, clauses: service.clauses.filter((_, clauseIndex) => clauseIndex !== index) }
+          : service,
+      ),
+    )
   }
 
   const toggleTeamForService = (teamId: string) => {
@@ -863,6 +966,7 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (previewMutation.isPending || updateMutation.isPending || createMutation.isPending || isFinalizingCreate) return
 
     if (isEditing && isContractSigned(contract)) {
       toast.error("Contratos assinados não podem ser editados.")
@@ -889,16 +993,6 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
       return
     }
 
-    if (createAutomatedSchedules && !firstVisitDate) {
-      toast.error("Preencha a data da primeira visita.")
-      return
-    }
-
-    if (createAutomatedSchedules && !firstVisitTime) {
-      toast.error("Preencha o horário inicial da primeira visita.")
-      return
-    }
-
     if (services.filter((service) => service.serviceTypeId).length === 0) {
       toast.error("Adicione ao menos um serviço ao contrato.")
       return
@@ -908,16 +1002,18 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
 
     if (isEditing) {
       if (!contractId) return
+      const toastId = toast.loading("Salvando contrato...")
       try {
         await updateMutation.mutateAsync({ id: contractId, payload })
-        toast.success("Contrato atualizado com sucesso.")
+        toast.success("Contrato atualizado com sucesso.", { id: toastId })
         router.push("/contratos")
       } catch (error) {
-        toast.error(getApiErrorMessage(error, "Não foi possível atualizar o contrato."))
+        toast.error(getApiErrorMessage(error, "Não foi possível atualizar o contrato."), { id: toastId })
       }
       return
     }
 
+    const toastId = toast.loading("Gerando prévia do contrato...")
     try {
       const preview = await previewMutation.mutateAsync(payload)
       const createdAt = new Date()
@@ -927,8 +1023,9 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
       setImportedDocxFile(null)
       setEditorView("editor")
       setStep("editor")
+      toast.success("Prévia do contrato pronta.", { id: toastId })
     } catch (error) {
-      toast.error(getApiErrorMessage(error, "Não foi possível gerar a prévia do contrato."))
+      toast.error(getApiErrorMessage(error, "Não foi possível gerar a prévia do contrato."), { id: toastId })
     }
   }
 
@@ -1486,201 +1583,14 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
             />
           </div>
         </div>
-        {createAutomatedSchedules && (
-          <div className="mt-4 grid max-w-[635px] gap-4 sm:grid-cols-[minmax(0,1fr)_180px]">
-            <div className="space-y-2">
-              <Label>Data da primeira visita *</Label>
-              <Input
-                type="date"
-                value={firstVisitDate}
-                onChange={(e) => setFirstVisitDate(e.target.value)}
-                min={startDate || undefined}
-                max={endDate || undefined}
-                required={createAutomatedSchedules}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Horário inicial *</Label>
-              <Input
-                type="time"
-                value={firstVisitTime}
-                onChange={(e) => setFirstVisitTime(e.target.value)}
-                required={createAutomatedSchedules}
-              />
-            </div>
-          </div>
-        )}
         {startDate && installmentsCount > 0 && (
           <div className="mt-4 flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted-foreground">
             <span>Vigência: <strong className="text-foreground">{new Date(`${startDate}T00:00:00`).toLocaleDateString("pt-BR")}</strong> até <strong className="text-foreground">{new Date(`${endDate}T00:00:00`).toLocaleDateString("pt-BR")}</strong></span>
-            {createAutomatedSchedules && firstVisitDate && (
-              <span>Primeira visita: <strong className="text-foreground">{formatDate(firstVisitDate)}</strong> às <strong className="text-foreground">{firstVisitTime}</strong></span>
-            )}
             {totalValue > 0 && installmentsCount > 1 && (
               <span>Parcelas: <strong className="text-foreground">{installmentsCount}x de {formatCurrency(totalValue / installmentsCount)}</strong></span>
             )}
           </div>
         )}
-      </Card>
-
-      {/* Contract-level Recurrence */}
-      <Card className="p-4 sm:p-6">
-        <h3 className="font-semibold mb-4 flex items-center gap-2">
-          <RefreshCw className="w-5 h-5 text-primary" />
-          Recorrência das Visitas
-        </h3>
-
-
-        {/* Regras por unidades */}
-        <div>
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-            <div className="min-w-0">
-              <p className="text-sm font-medium">Regras por número de unidades</p>
-              <p className="text-xs text-muted-foreground mt-1">Definem a recorrência com base na quantidade de unidades das filiais selecionadas</p>
-            </div>
-            <Popover open={addRulePopoverOpen} onOpenChange={setAddRulePopoverOpen}>
-              <PopoverTrigger asChild>
-                <Button type="button" variant="outline" size="sm">
-                  <Plus className="w-4 h-4 mr-2" />
-                  Adicionar Regra
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-48 p-1" align="end">
-                <button
-                  type="button"
-                  className="w-full text-left px-3 py-2 text-sm rounded-md hover:bg-muted transition-colors"
-                  onClick={() => addContractRule("range")}
-                >
-                  De - Até
-                  <span className="block text-xs text-muted-foreground">Intervalo de unidades</span>
-                </button>
-                <button
-                  type="button"
-                  className="w-full text-left px-3 py-2 text-sm rounded-md hover:bg-muted transition-colors"
-                  onClick={() => addContractRule("above")}
-                >
-                  Acima de
-                  <span className="block text-xs text-muted-foreground">Acima de X unidades</span>
-                </button>
-              </PopoverContent>
-            </Popover>
-          </div>
-
-          {selectedTotalUnitCount > 0 && (
-            <div className="flex items-center gap-2 mb-4">
-              <Badge variant="secondary">
-                {selectedTotalUnitCount} unidades selecionadas
-              </Badge>
-              <span className="text-sm text-muted-foreground">→</span>
-              <Badge className="bg-primary text-primary-foreground">
-                {getRecurrenceLabel(contractRecurrence)}
-              </Badge>
-            </div>
-          )}
-
-          {contractRecurrenceRules.length > 0 ? (
-            <div className="rounded-md border overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-muted/50">
-                    <th className="text-left font-medium text-xs px-3 py-2">Tipo</th>
-                    <th className="text-left font-medium text-xs px-3 py-2">Condição</th>
-                    <th className="text-left font-medium text-xs px-3 py-2">Recorrência</th>
-                    <th className="w-10 px-3 py-2"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {contractRecurrenceRules.map((rule, idx) => {
-                    const isActiveRule = selectedTotalUnitCount > 0 && (
-                      (rule.type === "range" && selectedTotalUnitCount >= rule.minUnits && selectedTotalUnitCount <= rule.maxUnits) ||
-                      (rule.type === "above" && selectedTotalUnitCount > rule.minUnits)
-                    )
-                    return (
-                      <tr key={idx} className={cn("border-b last:border-b-0", isActiveRule && "bg-primary/5")}>
-                        <td className="px-3 py-2">
-                          <Badge variant="outline" className="text-[10px] whitespace-nowrap">
-                            {rule.type === "range" ? "De - Até" : "Acima de"}
-                          </Badge>
-                        </td>
-                        <td className="px-3 py-2">
-                          {rule.type === "range" ? (
-                            <div className="flex items-center gap-1.5">
-                              <Input
-                                type="number"
-                                className="w-20 h-7 text-xs"
-                                value={rule.minUnits}
-                                onChange={(e) => updateContractRule(idx, "minUnits", Number(e.target.value) || 1)}
-                                min={1}
-                              />
-                              <span className="text-muted-foreground text-xs">até</span>
-                              <Input
-                                type="number"
-                                className="w-20 h-7 text-xs"
-                                value={rule.maxUnits}
-                                onChange={(e) => updateContractRule(idx, "maxUnits", Number(e.target.value) || 1)}
-                                min={1}
-                              />
-                              <span className="text-muted-foreground whitespace-nowrap text-xs">unid.</span>
-                              {isActiveRule && (
-                                <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Aplicada</Badge>
-                              )}
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-1.5">
-                              <Input
-                                type="number"
-                                className="w-20 h-7 text-xs"
-                                value={rule.minUnits}
-                                onChange={(e) => updateContractRule(idx, "minUnits", Number(e.target.value) || 1)}
-                                min={1}
-                              />
-                              <span className="text-muted-foreground whitespace-nowrap text-xs">unid.</span>
-                              {isActiveRule && (
-                                <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Aplicada</Badge>
-                              )}
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-3 py-2">
-                          <Select
-                            value={rule.recurrence}
-                            onValueChange={(v) => updateContractRule(idx, "recurrence", v)}
-                          >
-                            <SelectTrigger className="w-[140px] h-7 text-xs">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="weekly">Semanal</SelectItem>
-                              <SelectItem value="biweekly">Quinzenal</SelectItem>
-                              <SelectItem value="monthly">Mensal</SelectItem>
-                              <SelectItem value="bimonthly">Bimestral</SelectItem>
-                              <SelectItem value="quarterly">Trimestral</SelectItem>
-                              <SelectItem value="semiannual">Semestral</SelectItem>
-                              <SelectItem value="annual">Anual</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </td>
-                        <td className="px-3 py-2">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6"
-                            onClick={() => removeContractRule(idx)}
-                          >
-                            <Trash2 className="w-3 h-3 text-destructive" />
-                          </Button>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground italic">Nenhuma regra configurada. A recorrência padrão será utilizada.</p>
-          )}
-        </div>
       </Card>
 
       {/* Services */}
@@ -1698,12 +1608,14 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
 
         {services.length > 0 ? (
           <div className="overflow-x-auto rounded-lg border border-border/70">
-            <Table className="min-w-[860px]">
+            <Table className="min-w-[1180px]">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
                   <TableHead className="w-[300px]">Serviço</TableHead>
-                  <TableHead className="w-[140px]">Duração</TableHead>
+                  <TableHead className="w-[210px]">Duração</TableHead>
+                  <TableHead className="w-[180px]">Recorrência</TableHead>
                   <TableHead>Equipes / Funcionários</TableHead>
+                  <TableHead className="w-[110px] text-center">Cláusulas</TableHead>
                   <TableHead className="w-[132px] text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
@@ -1730,9 +1642,45 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
                         </Select>
                       </TableCell>
                       <TableCell className="py-3 align-top">
-                        <span className="inline-flex h-9 items-center whitespace-nowrap text-sm text-muted-foreground">
-                          {formatServiceDuration(serviceType)}
-                        </span>
+                        <div className="flex gap-2">
+                          <Select
+                            value={service.durationType}
+                            onValueChange={(v) => updateService(service.id, "durationType", v as "hours" | "shift" | "days")}
+                          >
+                            <SelectTrigger className="w-[115px]">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="hours">Horas</SelectItem>
+                              <SelectItem value="shift">Turnos</SelectItem>
+                              <SelectItem value="days">Dias</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <Input
+                            type="number"
+                            min={1}
+                            className="w-[72px]"
+                            value={service.duration}
+                            onChange={(event) => updateService(service.id, "duration", Math.max(1, Number(event.target.value) || 1))}
+                          />
+                        </div>
+                      </TableCell>
+                      <TableCell className="py-3 align-top">
+                        <Select
+                          value={service.recurrence}
+                          onValueChange={(v) => updateService(service.id, "recurrence", v)}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {recurrenceOptions.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </TableCell>
                       <TableCell className="py-3 align-top">
                         <div className="flex min-h-9 flex-wrap items-center gap-1.5">
@@ -1757,18 +1705,20 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
                           )}
                         </div>
                       </TableCell>
+                      <TableCell className="py-3 text-center align-top">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => openServiceClausesDialog(service.id)}
+                          disabled={!service.serviceTypeId}
+                          title="Editar cláusulas do serviço"
+                        >
+                          <FileText className="w-4 h-4" />
+                        </Button>
+                      </TableCell>
                       <TableCell className="py-3 align-top">
                         <div className="flex justify-end gap-1">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => openServiceDetailsDialog(service.serviceTypeId)}
-                            disabled={!service.serviceTypeId}
-                            title="Ver detalhes do serviço"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </Button>
                           <Button
                             type="button"
                             variant="ghost"
@@ -1818,12 +1768,12 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
               Remover
             </Button>
           ) : null}
-          <Button type="button" variant="outline" onClick={() => router.push("/contratos")}>
+          <Button type="button" variant="outline" onClick={() => router.push("/contratos")} disabled={previewMutation.isPending || updateMutation.isPending || createMutation.isPending || isFinalizingCreate}>
             Cancelar
           </Button>
-          <Button type="submit" className="bg-primary hover:bg-primary/90">
+          <Button type="submit" className="bg-primary hover:bg-primary/90" disabled={previewMutation.isPending || updateMutation.isPending || createMutation.isPending || isFinalizingCreate}>
             <Save className="w-4 h-4 mr-2" />
-            {isEditing ? "Salvar Alterações" : "Criar Contrato"}
+            {previewMutation.isPending || updateMutation.isPending ? "Salvando..." : isEditing ? "Salvar Alterações" : "Criar Contrato"}
           </Button>
         </div>
       </div>
@@ -1839,20 +1789,70 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
         onOpenChange={setRemoveDialogOpen}
         onConfirm={() => {
           if (!contractId) return
+          if (deleteMutation.isPending) return
           deleteMutation.mutate(contractId)
         }}
       />
 
-      <ServiceClausesDialog
-        open={Boolean(selectedServiceDetails)}
-        title={selectedServiceDetails?.name ?? "Cláusulas do serviço"}
-        description={selectedServiceDetails?.description || "Sem descrição cadastrada."}
-        clauses={selectedServiceDetails?.clauses ?? []}
-        clausePrefix="1"
-        onOpenChange={(open) => {
-          if (!open) setSelectedServiceDetailsId(null)
-        }}
-      />
+      <Dialog open={clausesDialogOpen && Boolean(clausesEditingService)} onOpenChange={(open) => {
+        if (open) {
+          setClausesDialogOpen(true)
+          return
+        }
+
+        closeServiceClausesDialog()
+      }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Cláusulas do serviço</DialogTitle>
+          </DialogHeader>
+          {clausesEditingService && (
+            <div className="space-y-4">
+              <div className="rounded-lg border border-border/70 p-4">
+                <p className="font-semibold">{clausesEditingServiceType?.name ?? "Serviço"}</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Ajuste as cláusulas apenas para este contrato. O cadastro do serviço permanece como padrão para os próximos contratos.
+                </p>
+              </div>
+              <div className="space-y-3">
+                {clausesEditingService.clauses.length > 0 ? (
+                  clausesEditingService.clauses.map((clause, index) => (
+                    <div key={`${clausesEditingService.id}-${index}`} className="flex gap-2">
+                      <Textarea
+                        value={clause}
+                        onChange={(event) => updateServiceClause(clausesEditingService.id, index, event.target.value)}
+                        placeholder={`Cláusula ${index + 1}`}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removeServiceClause(clausesEditingService.id, index)}
+                        title="Remover cláusula"
+                      >
+                        <Trash2 className="w-4 h-4 text-destructive" />
+                      </Button>
+                    </div>
+                  ))
+                ) : (
+                  <p className="rounded-lg border border-dashed border-border/70 p-4 text-sm text-muted-foreground">
+                    Nenhuma cláusula configurada para este serviço neste contrato.
+                  </p>
+                )}
+              </div>
+              <div className="flex justify-between gap-3">
+                <Button type="button" variant="outline" onClick={() => addClauseToService(clausesEditingService.id)}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Adicionar cláusula
+                </Button>
+                <Button type="button" onClick={closeServiceClausesDialog}>
+                  Concluir
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Edit Service Dialog - Teams and Employees */}
       <Dialog open={editServiceDialogOpen} onOpenChange={setEditServiceDialogOpen}>

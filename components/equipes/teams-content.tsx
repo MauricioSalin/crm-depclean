@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Check, Edit, Search, Trash2, Users, X } from "lucide-react"
 
@@ -45,6 +45,7 @@ export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle 
   const [pendingDelete, setPendingDelete] = useState<{ id: string; label: string } | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
+  const dialogResetTimeoutRef = useRef<number | null>(null)
   const [formData, setFormData] = useState({
     name: "",
     color: "#84cc16",
@@ -73,10 +74,16 @@ export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle 
 
   useEffect(() => {
     if (openDialog) {
+      clearDialogResetTimeout()
+      resetFormFields()
       setIsDialogOpen(true)
       onDialogChange?.(false)
     }
   }, [onDialogChange, openDialog])
+
+  useEffect(() => {
+    return () => clearDialogResetTimeout()
+  }, [])
 
   useEffect(() => {
     setCurrentPage(1)
@@ -103,7 +110,7 @@ export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle 
     onSuccess: () => {
       toast({ title: "Equipe criada", description: "A equipe foi salva com sucesso." })
       queryClient.invalidateQueries({ queryKey: ["teams"] })
-      resetForm()
+      closeDialog()
     },
     onError: (error) => {
       toast({
@@ -118,7 +125,7 @@ export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle 
     onSuccess: () => {
       toast({ title: "Equipe atualizada", description: "As alterações foram salvas com sucesso." })
       queryClient.invalidateQueries({ queryKey: ["teams"] })
-      resetForm()
+      closeDialog()
     },
     onError: (error) => {
       toast({
@@ -145,16 +152,42 @@ export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle 
 
   const busy = createMutation.isPending || updateMutation.isPending
 
-  function resetForm() {
+  function clearDialogResetTimeout() {
+    if (dialogResetTimeoutRef.current) {
+      window.clearTimeout(dialogResetTimeoutRef.current)
+      dialogResetTimeoutRef.current = null
+    }
+  }
+
+  function resetFormFields() {
     setFormData({ name: "", color: "#84cc16", memberIds: [] })
     setEditingTeam(null)
-    setIsDialogOpen(false)
     setMemberSearchTerm("")
     setMemberSearchOpen(false)
   }
 
+  function closeDialog() {
+    setIsDialogOpen(false)
+    clearDialogResetTimeout()
+    dialogResetTimeoutRef.current = window.setTimeout(() => {
+      resetFormFields()
+      dialogResetTimeoutRef.current = null
+    }, 200)
+  }
+
+  function handleDialogChange(open: boolean) {
+    if (open) {
+      clearDialogResetTimeout()
+      setIsDialogOpen(true)
+      return
+    }
+
+    closeDialog()
+  }
+
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
+    if (busy) return
 
     const payload = {
       name: formData.name.trim(),
@@ -177,6 +210,7 @@ export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle 
   }
 
   function handleEdit(team: TeamView) {
+    clearDialogResetTimeout()
     setEditingTeam(team)
     setFormData({
       name: team.name,
@@ -197,12 +231,13 @@ export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle 
 
   function confirmDelete() {
     if (!pendingDelete) return
+    if (deleteMutation.isPending) return
     deleteMutation.mutate(pendingDelete.id)
   }
 
   return (
     <div className="space-y-6">
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+      <Dialog open={isDialogOpen} onOpenChange={handleDialogChange}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>{editingTeam ? "Editar Equipe" : "Nova Equipe"}</DialogTitle>
@@ -308,11 +343,11 @@ export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle 
             </div>
 
             <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={resetForm}>
+              <Button type="button" variant="outline" onClick={closeDialog} disabled={busy}>
                 Cancelar
               </Button>
               <Button type="submit" disabled={busy}>
-                {editingTeam ? "Salvar" : "Criar"}
+                {busy ? "Salvando..." : editingTeam ? "Salvar" : "Criar"}
               </Button>
             </div>
           </form>

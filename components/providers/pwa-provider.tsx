@@ -1,19 +1,23 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
+import { useQueryClient } from "@tanstack/react-query"
 import { Bell, X } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import {
   getPushPublicKey,
+  markNotificationAsRead,
   savePushSubscription,
   type PushSubscriptionPayload,
 } from "@/lib/api/notifications"
 import { getStoredAccessToken } from "@/lib/auth/session"
 
 export function PwaProvider() {
+  const queryClient = useQueryClient()
   const isSyncingRef = useRef(false)
+  const markedFromPushRef = useRef(new Set<string>())
   const [publicKey, setPublicKey] = useState("")
   const [showPrompt, setShowPrompt] = useState(false)
   const [dismissedThisSession, setDismissedThisSession] = useState(false)
@@ -38,6 +42,47 @@ export function PwaProvider() {
       window.removeEventListener("load", registerServiceWorker)
     }
   }, [])
+
+  useEffect(() => {
+    const markClickedNotificationAsRead = async (notificationId: string | null | undefined) => {
+      if (!notificationId) return
+      if (!getStoredAccessToken()) return
+      if (markedFromPushRef.current.has(notificationId)) return
+
+      markedFromPushRef.current.add(notificationId)
+
+      try {
+        await markNotificationAsRead(notificationId)
+        await queryClient.invalidateQueries({ queryKey: ["notifications"] })
+      } catch {
+        markedFromPushRef.current.delete(notificationId)
+      }
+    }
+
+    const consumeReadNotificationParam = () => {
+      const url = new URL(window.location.href)
+      const notificationId = url.searchParams.get("readNotification")
+      if (!notificationId) return
+
+      url.searchParams.delete("readNotification")
+      window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`)
+      void markClickedNotificationAsRead(notificationId)
+    }
+
+    const handleServiceWorkerMessage = (event: MessageEvent) => {
+      if (event.data?.type !== "DEPCLEAN_PUSH_NOTIFICATION_CLICKED") return
+      void markClickedNotificationAsRead(event.data.notificationId)
+    }
+
+    consumeReadNotificationParam()
+    navigator.serviceWorker?.addEventListener("message", handleServiceWorkerMessage)
+    window.addEventListener("focus", consumeReadNotificationParam)
+
+    return () => {
+      navigator.serviceWorker?.removeEventListener("message", handleServiceWorkerMessage)
+      window.removeEventListener("focus", consumeReadNotificationParam)
+    }
+  }, [queryClient])
 
   useEffect(() => {
     const syncPush = async () => {

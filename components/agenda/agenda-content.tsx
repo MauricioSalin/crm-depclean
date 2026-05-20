@@ -16,6 +16,7 @@ import {
   FileUp,
   Loader2,
   MapPin,
+  RotateCcw,
   Search,
   X,
 } from "lucide-react"
@@ -23,7 +24,7 @@ import {
 import { listClients } from "@/lib/api/clients"
 import { listEmployees } from "@/lib/api/employees"
 import { getApiErrorMessage } from "@/lib/api/errors"
-import { listSchedules, createSchedule, updateSchedule, startSchedule, completeSchedule, cancelSchedule, uploadScheduleNa, type ScheduleRecord } from "@/lib/api/schedules"
+import { listSchedules, createSchedule, updateSchedule, startSchedule, completeSchedule, cancelSchedule, reactivateSchedule, uploadScheduleNa, type ScheduleRecord } from "@/lib/api/schedules"
 import { listServices } from "@/lib/api/services"
 import { listTeams } from "@/lib/api/teams"
 import { toCivilDateKey } from "@/lib/date-utils"
@@ -130,7 +131,7 @@ function getScheduleIconTone(schedule: Pick<ScheduleRecord, "isEmergency">) {
 }
 
 function canCancelSchedule(schedule: Pick<ScheduleRecord, "status">) {
-  return !["in_progress", "completed"].includes(schedule.status)
+  return !["in_progress", "completed", "cancelled"].includes(schedule.status)
 }
 
 export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps) {
@@ -164,6 +165,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   const [completionFile, setCompletionFile] = useState<File | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
+  const scheduleDialogResetTimeoutRef = useRef<number | null>(null)
 
   const schedulesQuery = useQuery({
     queryKey: ["schedules", "agenda"],
@@ -198,14 +200,56 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   useEffect(() => {
     if (openDialog !== undefined && openDialog !== isDialogOpen) {
       if (openDialog) {
-        setEditingService(null)
-        setInitialFormData({
-          date: selectedDate ? toCivilDateKey(selectedDate) : toCivilDateKey(new Date()),
-        })
+        clearScheduleDialogResetTimeout()
+        if (!editingService && !initialFormData) {
+          setInitialFormData({
+            date: selectedDate ? toCivilDateKey(selectedDate) : toCivilDateKey(new Date()),
+          })
+        }
+        setIsDialogOpen(true)
+        return
       }
-      setIsDialogOpen(openDialog)
+
+      closeScheduleDialog()
     }
-  }, [openDialog, isDialogOpen, selectedDate])
+  }, [openDialog, isDialogOpen, selectedDate, editingService, initialFormData])
+
+  useEffect(() => {
+    return () => clearScheduleDialogResetTimeout()
+  }, [])
+
+  const clearScheduleDialogResetTimeout = () => {
+    if (scheduleDialogResetTimeoutRef.current) {
+      window.clearTimeout(scheduleDialogResetTimeoutRef.current)
+      scheduleDialogResetTimeoutRef.current = null
+    }
+  }
+
+  const resetScheduleDialogState = () => {
+    setEditingService(null)
+    setInitialFormData(null)
+  }
+
+  const closeScheduleDialog = () => {
+    setIsDialogOpen(false)
+    onDialogChange?.(false)
+    clearScheduleDialogResetTimeout()
+    scheduleDialogResetTimeoutRef.current = window.setTimeout(() => {
+      resetScheduleDialogState()
+      scheduleDialogResetTimeoutRef.current = null
+    }, 200)
+  }
+
+  const handleDialogChange = (open: boolean) => {
+    if (open) {
+      clearScheduleDialogResetTimeout()
+      setIsDialogOpen(true)
+      onDialogChange?.(true)
+      return
+    }
+
+    closeScheduleDialog()
+  }
 
   const invalidateSchedules = async () => {
     await queryClient.invalidateQueries({ queryKey: ["schedules"] })
@@ -214,22 +258,6 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
     await queryClient.invalidateQueries({ queryKey: ["notifications"] })
     await queryClient.invalidateQueries({ queryKey: ["certificates"] })
     await queryClient.invalidateQueries({ queryKey: ["analytics"] })
-  }
-
-  const resetForm = () => {
-    setEditingService(null)
-    setInitialFormData(null)
-    setIsDialogOpen(false)
-    onDialogChange?.(false)
-  }
-
-  const handleDialogChange = (open: boolean) => {
-    setIsDialogOpen(open)
-    onDialogChange?.(open)
-    if (!open) {
-      setEditingService(null)
-      setInitialFormData(null)
-    }
   }
 
   const saveMutation = useMutation({
@@ -241,6 +269,15 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
 
       if (!client || !primaryUnit) {
         throw new Error("Cliente sem unidade disponível para agendamento.")
+      }
+
+      const isRecurringScheduleUpdate = Boolean(scheduleId && editingService?.contractId && !editingService.isManual)
+      if (scheduleId && isRecurringScheduleUpdate) {
+        return updateSchedule(scheduleId, {
+          teamIds: formData.teamIds,
+          additionalEmployeeIds: formData.employeeIds,
+          scheduledTime: formData.time,
+        })
       }
 
       const payload = {
@@ -270,7 +307,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
     },
     onSuccess: async (response, variables, context) => {
       await invalidateSchedules()
-      resetForm()
+      closeScheduleDialog()
       toast.success(variables.scheduleId ? "Agendamento atualizado." : "Agendamento criado.", {
         id: context?.toastId,
         description: `${response.data.clientName} • ${response.data.serviceTypeName}`,
@@ -285,32 +322,66 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
 
   const startMutation = useMutation({
     mutationFn: (schedule: AgendaScheduledServiceRow) => startSchedule(schedule.id),
-    onSuccess: async () => {
+    onMutate: () => {
+      const toastId = toast.loading("Iniciando atendimento...")
+      return { toastId }
+    },
+    onSuccess: async (_data, _variables, context) => {
       await invalidateSchedules()
       setSelectedSchedule(null)
       toast.success("Atendimento iniciado.", {
+        id: context?.toastId,
         description: "O agendamento foi movido para em andamento.",
       })
     },
-    onError: (error) => {
-      toast.error(getApiErrorMessage(error, "Não foi possível iniciar o atendimento."))
+    onError: (error, _variables, context) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível iniciar o atendimento."), {
+        id: context?.toastId,
+      })
     },
   })
 
   const cancelMutation = useMutation({
     mutationFn: ({ id, reason }: { id: string; reason: string }) =>
       cancelSchedule(id, { cancellationReason: reason }),
-    onSuccess: async () => {
+    onMutate: () => {
+      const toastId = toast.loading("Cancelando agendamento...")
+      return { toastId }
+    },
+    onSuccess: async (_data, _variables, context) => {
       await invalidateSchedules()
       setCancelTarget(null)
       setCancelReason("")
       setCancelStep("reason")
       toast.success("Agendamento cancelado.", {
+        id: context?.toastId,
         description: "O motivo foi salvo no histórico.",
       })
     },
-    onError: (error: any) => {
-      toast.error(getApiErrorMessage(error, "Não foi possível cancelar o agendamento."))
+    onError: (error: any, _variables, context) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível cancelar o agendamento."), {
+        id: context?.toastId,
+      })
+    },
+  })
+
+  const reactivateMutation = useMutation({
+    mutationFn: (schedule: AgendaScheduledServiceRow) => reactivateSchedule(schedule.id),
+    onMutate: () => {
+      const toastId = toast.loading("Reativando agendamento...")
+      return { toastId }
+    },
+    onSuccess: async ({ data }, _variables, context) => {
+      await invalidateSchedules()
+      toast.success("Agendamento reativado.", {
+        id: context?.toastId,
+        description: `${data.clientName} • ${data.serviceTypeName}`,
+      })
+    },
+    onError: (error: any, _variables, context) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível reativar o agendamento."), {
+        id: context?.toastId,
+      })
     },
   })
 
@@ -330,13 +401,19 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       endTime: string
       file: File | null
     }) => {
-      const completed = await completeSchedule(schedule.id, { startDate, startTime, endDate, endTime })
+      if (!file && !schedule.naDocumentUrl) {
+        throw new Error("Anexe a NA da visita antes de concluir o atendimento.")
+      }
       if (file) {
         await uploadScheduleNa(schedule.id, file)
       }
-      return completed
+      return completeSchedule(schedule.id, { startDate, startTime, endDate, endTime })
     },
-    onSuccess: async ({ data }) => {
+    onMutate: () => {
+      const toastId = toast.loading("Concluindo atendimento...")
+      return { toastId }
+    },
+    onSuccess: async (_response, _variables, context) => {
       await invalidateSchedules()
       setCompletionTarget(null)
       setCompletionStartDate("")
@@ -345,11 +422,14 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       setCompletionEndTime("")
       setCompletionFile(null)
       toast.success("Atendimento concluído.", {
+        id: context?.toastId,
         description: "A agenda foi atualizada com o horário executado.",
       })
     },
-    onError: (error: any) => {
-      toast.error(getApiErrorMessage(error, "Não foi possível concluir o atendimento."))
+    onError: (error: any, _variables, context) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível concluir o atendimento."), {
+        id: context?.toastId,
+      })
     },
   })
 
@@ -432,15 +512,18 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   }
 
   const handleEditService = (service: AgendaScheduledServiceRow) => {
+    clearScheduleDialogResetTimeout()
     setSelectedSchedule(null)
     setCancelTarget(null)
     setCompletionTarget(null)
     setEditingService(service)
     setInitialFormData(null)
     window.setTimeout(() => setIsDialogOpen(true), 0)
+    onDialogChange?.(true)
   }
 
   const openScheduleFormAtSlot = (date: Date, time: string) => {
+    clearScheduleDialogResetTimeout()
     setSelectedDate(date)
     setEditingService(null)
     setInitialFormData({
@@ -603,6 +686,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                 </Button>
                 <Button
                   type="button"
+                  disabled={cancelMutation.isPending}
                   className="bg-red-500 text-white hover:bg-red-600"
                   onClick={() => {
                     if (cancelTarget) {
@@ -610,7 +694,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                     }
                   }}
                 >
-                  Confirmar cancelamento
+                  {cancelMutation.isPending ? "Cancelando..." : "Confirmar cancelamento"}
                 </Button>
               </DialogFooter>
             </>
@@ -723,7 +807,15 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
             <Button
               type="button"
               className="w-full min-w-0 sm:w-auto"
-              disabled={!completionTarget || !completionStartDate || !completionStartTime || !completionEndDate || !completionEndTime || completeMutation.isPending}
+              disabled={
+                !completionTarget ||
+                !completionStartDate ||
+                !completionStartTime ||
+                !completionEndDate ||
+                !completionEndTime ||
+                (!completionFile && !completionTarget.naDocumentUrl) ||
+                completeMutation.isPending
+              }
               onClick={() => {
                 if (completionTarget) {
                   completeMutation.mutate({
@@ -955,7 +1047,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                                   <Calendar className={`h-5 w-5 ${getScheduleIconTone(service).icon}`} />
                                 </div>
                                 <div className="min-w-0 flex-1 pr-1">
-                                  <h4 className="max-w-[190px] whitespace-normal break-words text-sm font-medium leading-snug sm:max-w-none">
+                                  <h4 className="max-w-[190px] whitespace-normal break-words text-sm font-semibold leading-snug text-foreground/80 sm:max-w-none">
                                     {service.clientName}
                                   </h4>
                                   <p className="mt-0.5 truncate text-xs text-muted-foreground">
@@ -1012,16 +1104,33 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                                   Editar
                                 </Button>
                               )}
+                              {service.status === "cancelled" && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 flex-1 text-xs"
+                                  disabled={reactivateMutation.isPending && reactivateMutation.variables?.id === service.id}
+                                  onClick={() => reactivateMutation.mutate(service)}
+                                >
+                                  {reactivateMutation.isPending && reactivateMutation.variables?.id === service.id ? (
+                                    <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <RotateCcw className="mr-1 h-3 w-3" />
+                                  )}
+                                  Reativar
+                                </Button>
+                              )}
                               {service.status === "in_progress" && (
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  className="h-7 text-xs"
+                                  className="h-7 flex-1 text-xs"
                                   onClick={() => {
                                     openCompletionDialog(service)
                                   }}
                                 >
-                                  <Check className="h-3 w-3" />
+                                  <Check className="mr-1 h-3 w-3" />
+                                  Concluir
                                 </Button>
                               )}
                               {canCancelSchedule(service) && (
@@ -1116,7 +1225,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                                   <Calendar className={`h-5 w-5 ${getScheduleIconTone(service).icon}`} />
                                 </div>
                                 <div className="min-w-0 flex-1 pr-1">
-                                  <h4 className="max-w-[190px] whitespace-normal break-words text-sm font-medium leading-snug sm:max-w-none">
+                                  <h4 className="max-w-[190px] whitespace-normal break-words text-sm font-semibold leading-snug text-foreground/80 sm:max-w-none">
                                     {service.clientName}
                                   </h4>
                                   <p className="mt-0.5 truncate text-xs text-muted-foreground">
@@ -1173,16 +1282,33 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                                   Editar
                                 </Button>
                               )}
+                              {service.status === "cancelled" && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 flex-1 text-xs"
+                                  disabled={reactivateMutation.isPending && reactivateMutation.variables?.id === service.id}
+                                  onClick={() => reactivateMutation.mutate(service)}
+                                >
+                                  {reactivateMutation.isPending && reactivateMutation.variables?.id === service.id ? (
+                                    <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <RotateCcw className="mr-1 h-3 w-3" />
+                                  )}
+                                  Reativar
+                                </Button>
+                              )}
                               {service.status === "in_progress" && (
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  className="h-7 text-xs"
+                                  className="h-7 flex-1 text-xs"
                                   onClick={() => {
                                     openCompletionDialog(service)
                                   }}
                                 >
-                                  <Check className="h-3 w-3" />
+                                  <Check className="mr-1 h-3 w-3" />
+                                  Concluir
                                 </Button>
                               )}
                               {canCancelSchedule(service) && (

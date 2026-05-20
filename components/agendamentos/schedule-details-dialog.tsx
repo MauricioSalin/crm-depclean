@@ -3,6 +3,7 @@
 import { ArrowLeft, CalendarDays, Clock3, Loader2, MapPin, Sparkles, Users } from "lucide-react"
 
 import { AttendanceStartSlider } from "@/components/agendamentos/attendance-start-slider"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useIsMobile } from "@/hooks/use-mobile"
@@ -66,6 +67,7 @@ export function ScheduleDetailsDialog({
     ...schedule.additionalEmployees.map((employee) => employee.name),
   ]
 
+  const isRecurringSchedule = Boolean(schedule.contractId && !schedule.isManual)
   const canStartAttendance = schedule.status === "scheduled"
   const showAttendanceAction = schedule.status === "scheduled" || schedule.status === "draft"
 
@@ -100,7 +102,13 @@ export function ScheduleDetailsDialog({
               ) : null}
             </DialogHeader>
 
-            <div className="mt-12 grid gap-3 md:mt-4 md:grid-cols-2">
+            <div className={cn("flex justify-center", isMobile ? "mt-12" : "mt-4")}>
+              <Badge variant={isRecurringSchedule ? "secondary" : "outline"}>
+                {isRecurringSchedule ? "Atendimento recorrente" : "Atendimento avulso"}
+              </Badge>
+            </div>
+
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
               <div className="rounded-2xl border p-4 md:col-span-2">
                 <div className="mb-2 flex items-center gap-2 text-sm font-medium">
                   <Sparkles className="h-4 w-4 text-primary" />

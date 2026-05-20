@@ -5,6 +5,9 @@ export type DepAIFile = {
   name: string
   type: string
   size: number
+  dataUrl?: string
+  content?: string
+  extractedText?: string
 }
 
 export type DepAIArtifactKind = "pdf" | "docx" | "xlsx" | "chart" | "report"

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState, type FormEvent } from "react"
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react"
 import { Copy, Edit, Eye, EyeOff, Mail, Phone, Search, Shield, Trash2, User, UserCog } from "lucide-react"
 import { toast } from "sonner"
 
@@ -22,7 +22,7 @@ import { getApiErrorMessage } from "@/lib/api/errors"
 import { getStoredUser } from "@/lib/auth/session"
 import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
-import { formatCPF, formatPhone } from "@/lib/masks"
+import { formatCPF, formatPhone, isValidCPF } from "@/lib/masks"
 import { getSettings, type PermissionProfileRecord } from "@/lib/api/settings"
 import {
   createEmployee,
@@ -68,6 +68,9 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
 
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
+  const dialogResetTimeoutRef = useRef<number | null>(null)
+  const systemUserDialogResetTimeoutRef = useRef<number | null>(null)
+  const [isSystemUserDialogOpen, setIsSystemUserDialogOpen] = useState(false)
 
   const [formData, setFormData] = useState<EmployeePayload>({
     name: "",
@@ -110,23 +113,63 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
 
   useEffect(() => {
     if (openDialog !== undefined) {
-      setIsDialogOpen(openDialog)
       if (openDialog) {
-        setEditingEmployee(null)
-        setFormData({ name: "", email: "", phone: "", cpf: "", role: "", status: "active" })
-        resetSystemUserForm()
+        clearDialogResetTimeout()
+        resetEmployeeFormFields()
+        setIsDialogOpen(true)
+      } else {
+        closeEmployeeDialog()
       }
+      onDialogChange?.(openDialog)
     }
   }, [openDialog])
 
-  const handleDialogChange = (open: boolean) => {
-    setIsDialogOpen(open)
-    onDialogChange?.(open)
-    if (!open) {
-      setEditingEmployee(null)
-      setFormData({ name: "", email: "", phone: "", cpf: "", role: "", status: "active" })
-      resetSystemUserForm()
+  useEffect(() => {
+    return () => {
+      clearDialogResetTimeout()
+      clearSystemUserDialogResetTimeout()
     }
+  }, [])
+
+  const clearDialogResetTimeout = () => {
+    if (dialogResetTimeoutRef.current) {
+      window.clearTimeout(dialogResetTimeoutRef.current)
+      dialogResetTimeoutRef.current = null
+    }
+  }
+
+  const clearSystemUserDialogResetTimeout = () => {
+    if (systemUserDialogResetTimeoutRef.current) {
+      window.clearTimeout(systemUserDialogResetTimeoutRef.current)
+      systemUserDialogResetTimeoutRef.current = null
+    }
+  }
+
+  const resetEmployeeFormFields = () => {
+    setEditingEmployee(null)
+    setFormData({ name: "", email: "", phone: "", cpf: "", role: "", status: "active" })
+    resetSystemUserForm()
+  }
+
+  const closeEmployeeDialog = () => {
+    setIsDialogOpen(false)
+    clearDialogResetTimeout()
+    dialogResetTimeoutRef.current = window.setTimeout(() => {
+      resetEmployeeFormFields()
+      dialogResetTimeoutRef.current = null
+    }, 200)
+  }
+
+  const handleDialogChange = (open: boolean) => {
+    if (open) {
+      clearDialogResetTimeout()
+      setIsDialogOpen(true)
+      onDialogChange?.(true)
+      return
+    }
+
+    closeEmployeeDialog()
+    onDialogChange?.(false)
   }
 
   const filteredEmployees = useMemo(() => {
@@ -199,6 +242,12 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (saving) return
+
+    if (!isValidCPF(formData.cpf)) {
+      toast.error("Informe um CPF válido para o funcionário.")
+      return
+    }
 
     if (!editingEmployee && createSystemUser) {
       if (permissionProfiles.length === 0) {
@@ -216,11 +265,12 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
     }
 
     setSaving(true)
+    const toastId = toast.loading(editingEmployee ? "Salvando funcionário..." : "Cadastrando funcionário...")
     try {
       if (editingEmployee) {
         const response = await updateEmployee(editingEmployee.id, formData)
         upsertEmployee(response.data)
-        toast.success("Funcionário atualizado.")
+        toast.success("Funcionário atualizado.", { id: toastId })
       } else {
         const response = await createEmployee(formData)
         if (createSystemUser) {
@@ -230,27 +280,28 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
               permissionProfileId: systemUserForm.permissionProfileId,
             })
             upsertEmployee(systemUserResponse.data)
-            toast.success("Funcionário e usuário do sistema criados.")
+            toast.success("Funcionário e usuário do sistema criados.", { id: toastId })
           } catch (systemUserError) {
             upsertEmployee(response.data)
             handleDialogChange(false)
-            toast.error(getApiErrorMessage(systemUserError, "Funcionário criado, mas não foi possível criar o usuário do sistema."))
+            toast.error(getApiErrorMessage(systemUserError, "Funcionário criado, mas não foi possível criar o usuário do sistema."), { id: toastId })
             return
           }
         } else {
           upsertEmployee(response.data)
-          toast.success("Funcionário criado.")
+          toast.success("Funcionário criado.", { id: toastId })
         }
       }
       handleDialogChange(false)
     } catch (error) {
-      toast.error(getApiErrorMessage(error, "Não foi possível salvar o funcionário."))
+      toast.error(getApiErrorMessage(error, "Não foi possível salvar o funcionário."), { id: toastId })
     } finally {
       setSaving(false)
     }
   }
 
   const handleEdit = (employee: EmployeeRecord) => {
+    clearDialogResetTimeout()
     setEditingEmployee(employee)
     resetSystemUserForm()
     setFormData({
@@ -265,13 +316,15 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
   }
 
   const handleDeactivate = async (id: string) => {
+    if (saving) return
     setSaving(true)
+    const toastId = toast.loading("Inativando funcionário...")
     try {
       await deactivateEmployee(id)
       setEmployees((current) => current.map((item) => item.id === id ? { ...item, status: "inactive", isSystemUser: item.isSystemUser } : item))
-      toast.success("Funcionário inativado.")
+      toast.success("Funcionário inativado.", { id: toastId })
     } catch (error) {
-      toast.error(getApiErrorMessage(error, "Não foi possível inativar o funcionário."))
+      toast.error(getApiErrorMessage(error, "Não foi possível inativar o funcionário."), { id: toastId })
     } finally {
       setSaving(false)
     }
@@ -282,18 +335,26 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
       toast.error("Não há perfis de permissão disponíveis para vincular.")
       return
     }
+    clearSystemUserDialogResetTimeout()
     setSystemUserEmployee(employee)
     setSystemUserForm({ password: generatePassword(), permissionProfileId: permissionProfiles[0]?.id ?? "" })
     setShowTemporaryPassword(false)
+    setIsSystemUserDialogOpen(true)
   }
 
   const closeSystemUserDialog = () => {
-    setSystemUserEmployee(null)
-    resetSystemUserForm()
+    setIsSystemUserDialogOpen(false)
+    clearSystemUserDialogResetTimeout()
+    systemUserDialogResetTimeoutRef.current = window.setTimeout(() => {
+      setSystemUserEmployee(null)
+      resetSystemUserForm()
+      systemUserDialogResetTimeoutRef.current = null
+    }, 200)
   }
 
   const submitSystemUser = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (saving) return
     if (!systemUserEmployee) return
     if (!systemUserForm.permissionProfileId) {
       toast.error("Selecione um perfil de permissão.")
@@ -304,29 +365,32 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
       return
     }
     setSaving(true)
+    const toastId = toast.loading("Criando acesso do sistema...")
     try {
       const response = await makeEmployeeSystemUser(systemUserEmployee.id, {
         password: systemUserForm.password.trim(),
         permissionProfileId: systemUserForm.permissionProfileId,
       })
       upsertEmployee(response.data)
-      toast.success("Funcionário promovido a usuário do sistema.")
+      toast.success("Funcionário promovido a usuário do sistema.", { id: toastId })
       closeSystemUserDialog()
     } catch (error) {
-      toast.error(getApiErrorMessage(error, "Não foi possível transformar em usuário."))
+      toast.error(getApiErrorMessage(error, "Não foi possível transformar em usuário."), { id: toastId })
     } finally {
       setSaving(false)
     }
   }
 
   const handleRevokeSystemUser = async (id: string) => {
+    if (saving) return
     setSaving(true)
+    const toastId = toast.loading("Removendo acesso...")
     try {
       const response = await revokeEmployeeSystemUser(id)
       upsertEmployee(response.data)
-      toast.success("Acesso removido.")
+      toast.success("Acesso removido.", { id: toastId })
     } catch (error) {
-      toast.error(getApiErrorMessage(error, "Não foi possível remover o acesso."))
+      toast.error(getApiErrorMessage(error, "Não foi possível remover o acesso."), { id: toastId })
     } finally {
       setSaving(false)
     }
@@ -405,7 +469,7 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="employee-cpf">CPF</Label>
+                <Label htmlFor="employee-cpf">CPF *</Label>
                 <Input
                   id="employee-cpf"
                   value={formData.cpf}
@@ -470,16 +534,16 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
               )}
             </div>
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-              <Button type="button" variant="outline" onClick={() => handleDialogChange(false)}>Cancelar</Button>
+              <Button type="button" variant="outline" onClick={() => handleDialogChange(false)} disabled={saving}>Cancelar</Button>
               <Button type="submit" className="bg-primary text-primary-foreground hover:bg-primary/90" disabled={saving}>
-                {editingEmployee ? "Salvar" : "Cadastrar"}
+                {saving ? "Salvando..." : editingEmployee ? "Salvar" : "Cadastrar"}
               </Button>
             </div>
           </form>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={Boolean(systemUserEmployee)} onOpenChange={(open) => !open && closeSystemUserDialog()}>
+      <Dialog open={isSystemUserDialogOpen} onOpenChange={(open) => !open && closeSystemUserDialog()}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Transformar em usuário do sistema</DialogTitle>
@@ -495,8 +559,8 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
             </div>
             {renderSystemUserFields("existing-employee-system-user-password")}
             <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={closeSystemUserDialog}>Cancelar</Button>
-              <Button type="submit" disabled={saving}>Criar usuário</Button>
+              <Button type="button" variant="outline" onClick={closeSystemUserDialog} disabled={saving}>Cancelar</Button>
+              <Button type="submit" disabled={saving}>{saving ? "Criando..." : "Criar usuário"}</Button>
             </div>
           </form>
         </DialogContent>
@@ -626,7 +690,7 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
             </Table>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 2xl:grid-cols-3">
             {loading ? (
               <CardSkeletonGrid cards={4} />
             ) : paginatedEmployees.map((employee) => (

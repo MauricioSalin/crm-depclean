@@ -49,7 +49,7 @@ export function ClientList({ days = 30 }: { days?: number }) {
                   <Building2 className="w-5 h-5" style={{ color }} />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium text-foreground text-sm truncate">{client.companyName}</p>
+                  <p className="truncate text-sm font-semibold text-foreground/80">{client.companyName}</p>
                   <p className="text-xs text-muted-foreground truncate">{client.responsibleName}</p>
                 </div>
                 <div className="flex flex-col items-end gap-1">
