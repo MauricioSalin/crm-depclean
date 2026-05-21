@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Braces, Copy, Download, Edit, Eye, FileText, ImageIcon, PenTool, Plus, Search, Trash2, Upload, X } from "lucide-react"
+import { Braces, Copy, Download, Edit, Eye, FileText, ImageIcon, MoreHorizontal, PenTool, Plus, Search, Trash2, Upload, X } from "lucide-react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { toast as sonnerToast } from "sonner"
 
@@ -17,6 +17,12 @@ import { Card, CardContent } from "@/components/ui/card"
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { TableEmptyState } from "@/components/ui/empty-state"
 import { TableSkeletonRows } from "@/components/ui/table-skeleton"
 import { Input } from "@/components/ui/input"
@@ -149,6 +155,42 @@ function formatDate(value?: string | Date | null) {
   const parsed = value instanceof Date ? value : new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value)
   if (Number.isNaN(parsed.getTime())) return ""
   return new Intl.DateTimeFormat("pt-BR").format(parsed)
+}
+
+function formatDateTime(value?: string | Date | null) {
+  if (!value) return ""
+  const parsed = value instanceof Date ? value : new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value)
+  if (Number.isNaN(parsed.getTime())) return ""
+  return new Intl.DateTimeFormat("pt-BR", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(parsed)
+}
+
+function formatRelativeUpdatedAt(value?: string | Date | null) {
+  if (!value) return ""
+  const parsed = value instanceof Date ? value : new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value)
+  if (Number.isNaN(parsed.getTime())) return ""
+
+  const diffMs = Math.max(0, Date.now() - parsed.getTime())
+  const minutes = Math.floor(diffMs / 60_000)
+
+  if (minutes < 1) return "agora"
+  if (minutes < 60) return `${minutes} ${minutes === 1 ? "minuto" : "minutos"} atrás`
+
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours} ${hours === 1 ? "hora" : "horas"} atrás`
+
+  const days = Math.floor(hours / 24)
+  if (days < 7) return `${days} ${days === 1 ? "dia" : "dias"} atrás`
+
+  if (days < 30) {
+    const weeks = Math.floor(days / 7)
+    return `${weeks} ${weeks === 1 ? "semana" : "semanas"} atrás`
+  }
+
+  const months = Math.floor(days / 30)
+  return `${months} ${months === 1 ? "mês" : "meses"} atrás`
 }
 
 function formatLongDate(value: string | Date | null | undefined = new Date()) {
@@ -1659,15 +1701,12 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
 
                     {config.requiresSigner ? (
                       <TableCell className="hidden md:table-cell">
-                        <div className="flex items-center gap-1.5">
-                          <PenTool className="h-3.5 w-3.5 text-muted-foreground" />
-                          {getSignerName(template.signerId)}
-                        </div>
+                        {getSignerName(template.signerId)}
                       </TableCell>
                     ) : null}
 
-                    <TableCell className="hidden text-sm text-muted-foreground lg:table-cell">
-                      {template.updatedAt}
+                    <TableCell className="hidden text-sm text-muted-foreground lg:table-cell" title={formatDateTime(template.updatedAt)}>
+                      {formatRelativeUpdatedAt(template.updatedAt)}
                     </TableCell>
 
                     <TableCell>
@@ -1687,28 +1726,51 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
                     </TableCell>
 
                     <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <Button variant="ghost" size="icon" onClick={() => handleEdit(template)} title="Editar">
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => duplicateMutation.mutate(template.id)}
-                          title="Duplicar"
-                          disabled={duplicateMutation.isPending}
-                        >
-                          <Copy className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setPendingDelete({ id: template.id, label: template.name })}
-                          title="Excluir"
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={(event) => event.stopPropagation()}
+                            aria-label="Acoes do template"
+                          >
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            className="cursor-pointer"
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              handleEdit(template)
+                            }}
+                          >
+                            <Edit className="mr-2 h-4 w-4" />
+                            Editar
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="cursor-pointer"
+                            disabled={duplicateMutation.isPending}
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              duplicateMutation.mutate(template.id)
+                            }}
+                          >
+                            <Copy className="mr-2 h-4 w-4" />
+                            Duplicar
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="cursor-pointer"
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              setPendingDelete({ id: template.id, label: template.name })
+                            }}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Excluir
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </TableCell>
                   </TableRow>
                 ))

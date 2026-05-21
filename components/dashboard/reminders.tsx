@@ -3,6 +3,7 @@
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Skeleton } from "@/components/ui/skeleton"
 import { MapPin, Clock, ArrowRight } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import { getDashboardAnalytics, type DashboardAnalyticsParams } from "@/lib/api/analytics"
@@ -13,6 +14,7 @@ export function UpcomingServices(period: DashboardAnalyticsParams = {}) {
     queryKey: ["analytics", "dashboard", period],
     queryFn: () => getDashboardAnalytics(period),
   })
+  const isLoading = dashboardQuery.isLoading || (dashboardQuery.isFetching && !dashboardQuery.data)
   const upcomingServices = dashboardQuery.data?.data.upcomingServices ?? []
 
   return (
@@ -29,7 +31,23 @@ export function UpcomingServices(period: DashboardAnalyticsParams = {}) {
         </Link>
       </div>
       <div className="space-y-3">
-        {upcomingServices.map((service) => {
+        {isLoading ? (
+          Array.from({ length: 3 }, (_, index) => (
+            <div key={index} className="rounded-lg border border-border p-3">
+              <div className="mb-2 flex items-start justify-between gap-2">
+                <div className="min-w-0 flex-1 space-y-2">
+                  <Skeleton className="h-4 w-40 max-w-full" />
+                  <Skeleton className="h-3 w-32 max-w-full" />
+                </div>
+                <Skeleton className="h-5 w-16 rounded-full" />
+              </div>
+              <div className="flex items-center gap-3">
+                <Skeleton className="h-3 w-12" />
+                <Skeleton className="h-3 w-28" />
+              </div>
+            </div>
+          ))
+        ) : upcomingServices.map((service) => {
           return (
             <div 
               key={service.id}

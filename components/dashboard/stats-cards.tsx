@@ -3,6 +3,7 @@
 import { ArrowUpRight, ArrowDownRight, ArrowRight, Users, DollarSign, Calendar, CheckCircle, AlertTriangle } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
 import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { getDashboardAnalytics, type DashboardAnalyticsParams, type DashboardStatsRecord } from "@/lib/api/analytics"
@@ -37,6 +38,7 @@ export function StatsCards(period: DashboardPeriodProps = {}) {
     queryKey: ["analytics", "dashboard", period],
     queryFn: () => getDashboardAnalytics(period),
   })
+  const isLoading = dashboardQuery.isLoading || (dashboardQuery.isFetching && !dashboardQuery.data)
   const dashboardStats = dashboardQuery.data?.data.stats ?? emptyStats
 
   const stats = [
@@ -99,6 +101,7 @@ export function StatsCards(period: DashboardPeriodProps = {}) {
         return (
           <Card
             key={stat.title}
+            aria-busy={isLoading}
             onMouseEnter={() => setHoveredCard(index)}
             onMouseLeave={() => setHoveredCard(null)}
             className={`${stat.bgColor} ${stat.textColor} p-3 transition-all duration-500 ease-out cursor-pointer ${hoveredCard === index ? "scale-105 shadow-2xl" : "shadow-lg"
@@ -113,22 +116,31 @@ export function StatsCards(period: DashboardPeriodProps = {}) {
                 <Icon className="w-3.5 h-3.5 text-primary" />
               </div>
             </div>
-            <p className="text-2xl font-bold mb-1">{stat.value}</p>
-            <div className="flex items-center gap-1.5 text-xs opacity-80">
-              {stat.change && (
-                <>
-                  {stat.isPositive ? (
-                    <ArrowUpRight className="w-3 h-3 text-green-500" />
-                  ) : (
-                    <ArrowDownRight className="w-3 h-3 text-red-500" />
+            {isLoading ? (
+              <>
+                <Skeleton className="mb-2 h-7 w-24" />
+                <Skeleton className="h-3 w-14" />
+              </>
+            ) : (
+              <>
+                <p className="text-2xl font-bold mb-1">{stat.value}</p>
+                <div className="flex items-center gap-1.5 text-xs opacity-80">
+                  {stat.change && (
+                    <>
+                      {stat.isPositive ? (
+                        <ArrowUpRight className="w-3 h-3 text-green-500" />
+                      ) : (
+                        <ArrowDownRight className="w-3 h-3 text-red-500" />
+                      )}
+                      <span className={stat.isPositive ? "text-green-500" : "text-red-500"}>{stat.change}</span>
+                    </>
                   )}
-                  <span className={stat.isPositive ? "text-green-500" : "text-red-500"}>{stat.change}</span>
-                </>
-              )}
-              {stat.subtitle && (
-                <span className="text-destructive font-medium">{stat.subtitle}</span>
-              )}
-            </div>
+                  {stat.subtitle && (
+                    <span className="text-destructive font-medium">{stat.subtitle}</span>
+                  )}
+                </div>
+              </>
+            )}
           </Card>
         )
       })}
@@ -141,6 +153,7 @@ export function ProductivityCards(period: DashboardPeriodProps = {}) {
     queryKey: ["analytics", "dashboard", period],
     queryFn: () => getDashboardAnalytics(period),
   })
+  const isLoading = dashboardQuery.isLoading || (dashboardQuery.isFetching && !dashboardQuery.data)
   const dashboardData = dashboardQuery.data?.data
   const dashboardStats = dashboardData?.stats ?? emptyStats
   const teamColors = new Map((dashboardData?.teamsWithActivity ?? []).map((team) => [team.id, team.color] as const))
@@ -157,7 +170,25 @@ export function ProductivityCards(period: DashboardPeriodProps = {}) {
         </Link>
       </div>
       <div className="space-y-3">
-        {[...dashboardStats.teamProductivity]
+        {isLoading ? (
+          Array.from({ length: 3 }, (_, index) => (
+            <div key={index} className="rounded-xl border bg-card p-4">
+              <div className="flex items-center gap-3">
+                <Skeleton className="h-10 w-10 shrink-0 rounded-full" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-3 w-48 max-w-full" />
+                </div>
+                <div className="space-y-2">
+                  <Skeleton className="h-3 w-16" />
+                  <Skeleton className="h-4 w-10" />
+                </div>
+              </div>
+              <Skeleton className="mt-3 h-2 w-full rounded-full" />
+            </div>
+          ))
+        ) : (
+          [...dashboardStats.teamProductivity]
           .sort((left, right) =>
             right.completedServices - left.completedServices ||
             right.scheduledServices - left.scheduledServices ||
@@ -200,7 +231,7 @@ export function ProductivityCards(period: DashboardPeriodProps = {}) {
               </div>
             </div>
           )
-        })}
+        }))}
       </div>
     </Card>
   )

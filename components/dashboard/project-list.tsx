@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/card"
 import { ArrowRight, Building2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Skeleton } from "@/components/ui/skeleton"
 import { useQuery } from "@tanstack/react-query"
 import { getDashboardAnalytics, type DashboardAnalyticsParams } from "@/lib/api/analytics"
 import { getColorFromClass } from "@/lib/utils"
@@ -14,6 +15,7 @@ export function ClientList(period: DashboardAnalyticsParams = {}) {
     queryKey: ["analytics", "dashboard", period],
     queryFn: () => getDashboardAnalytics(period),
   })
+  const isLoading = dashboardQuery.isLoading || (dashboardQuery.isFetching && !dashboardQuery.data)
   const recentClients = dashboardQuery.data?.data.recentClients ?? []
 
   return (
@@ -30,7 +32,21 @@ export function ClientList(period: DashboardAnalyticsParams = {}) {
         </Link>
       </div>
       <div className="max-h-[420px] space-y-3 overflow-y-auto pr-1">
-        {recentClients.map((client) => {
+        {isLoading ? (
+          Array.from({ length: 5 }, (_, index) => (
+            <div key={index} className="flex items-center gap-3 p-3">
+              <Skeleton className="h-10 w-10 shrink-0 rounded-xl" />
+              <div className="min-w-0 flex-1 space-y-2">
+                <Skeleton className="h-4 w-44 max-w-full" />
+                <Skeleton className="h-3 w-32 max-w-full" />
+              </div>
+              <div className="flex flex-col items-end gap-2">
+                <Skeleton className="h-5 w-20 rounded-full" />
+                <Skeleton className="h-3 w-16" />
+              </div>
+            </div>
+          ))
+        ) : recentClients.map((client) => {
           const color = getColorFromClass(client.clientTypeColor || "")
           
           return (

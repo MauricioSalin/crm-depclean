@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react"
 import Link from "next/link"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { Award, Calendar, CheckCircle2, Clock, FileText, Loader2, MoreHorizontal, RotateCcw, Search, Trash2 } from "lucide-react"
+import { Award, Calendar, Clock, FileText, Loader2, MoreHorizontal, RotateCcw, Search, Trash2 } from "lucide-react"
 
 import { deleteCertificate, listCertificates, resendCertificate, type CertificateQueueRecord } from "@/lib/api/certificates"
 import { getApiErrorMessage } from "@/lib/api/errors"
@@ -315,7 +315,7 @@ export function CertificatesContent({ viewMode, viewToggle }: CertificatesConten
                                   className="h-9 w-9 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
                                 >
                                   <Link href={`/certificados/${record.scheduleId}`} aria-label="Emitir certificado">
-                                    <CheckCircle2 className="h-4 w-4" />
+                                    <Award className="h-4 w-4" />
                                   </Link>
                                 </Button>
                               </TooltipTrigger>
@@ -435,7 +435,7 @@ export function CertificatesContent({ viewMode, viewToggle }: CertificatesConten
                         {record.status === "pending" ? (
                           <Button asChild className="h-9 flex-1 text-sm">
                             <Link href={`/certificados/${record.scheduleId}`}>
-                              <CheckCircle2 className="mr-2 h-4 w-4" />
+                              <Award className="mr-2 h-4 w-4" />
                               Emitir
                             </Link>
                           </Button>
