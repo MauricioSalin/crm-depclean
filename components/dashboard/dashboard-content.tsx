@@ -102,7 +102,7 @@ export function DashboardContent() {
     <>
       <Header
         title="Dashboard"
-        description="Visão geral da operação da Depclean"
+        description="Visão geral da operação da Depclean."
       />
 
       <div className="mt-3">

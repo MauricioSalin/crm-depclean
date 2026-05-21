@@ -11,7 +11,7 @@ export default function DepAIPage() {
       </div>
 
       <main className="flex h-screen flex-1 flex-col overflow-hidden px-3 pb-3 md:px-4 lg:ml-60 lg:px-5">
-        <Header title="DepAI" description="Chat de IA para documentos, clientes e operações do CRM" headerActions={<DepAIHeaderActions />} />
+        <Header title="DepAI" description="Chat com IA para documentos, dúvidas, relatórios e mais." headerActions={<DepAIHeaderActions />} />
         <DepAIContent />
       </main>
     </div>

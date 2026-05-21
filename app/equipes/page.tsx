@@ -7,7 +7,7 @@ import { TeamsContent } from "@/components/equipes/teams-content"
 import { Button } from "@/components/ui/button"
 import { ContentLoadingSkeleton } from "@/components/ui/content-loading-skeleton"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { List, LayoutGrid } from "lucide-react"
+import { Plus, List, LayoutGrid } from "lucide-react"
 
 export default function EquipesPage() {
   const [openDialog, setOpenDialog] = useState(false)
@@ -28,17 +28,18 @@ export default function EquipesPage() {
         <Sidebar />
       </div>
 
-      <main className="flex-1 px-3 pb-4 md:px-4 lg:px-5 lg:ml-60">
+      <main className="flex h-screen min-h-0 flex-1 flex-col overflow-hidden px-3 pb-4 md:px-4 lg:px-5 lg:ml-60">
         <Header
           title="Equipes"
-          description="Gerencie as equipes de serviço da Depclean"
+          description="Gerencie as equipes de serviço da Depclean."
           viewToggle={toggle}
           actions={
             <Button
               onClick={() => setOpenDialog(true)}
               className="w-full sm:w-auto h-9 text-sm bg-primary text-primary-foreground hover:bg-primary/90"
             >
-              + Nova Equipe
+              <Plus className="w-4 h-4 mr-2" />
+              Nova Equipe
             </Button>
           }
         />

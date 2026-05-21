@@ -28,10 +28,10 @@ export default function ClientesPage() {
         <Sidebar />
       </div>
 
-      <main className="flex-1 px-3 pb-4 md:px-4 lg:px-5 lg:ml-60">
+      <main className="flex h-screen min-h-0 flex-1 flex-col overflow-hidden px-3 pb-4 md:px-4 lg:px-5 lg:ml-60">
         <Header
           title="Clientes"
-          description="Gerencie todos os clientes da Depclean"
+          description="Gerencie todos os clientes da Depclean."
           hasFilters
           viewToggle={toggle}
           actions={

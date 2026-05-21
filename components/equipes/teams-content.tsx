@@ -242,7 +242,7 @@ export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle 
   }
 
   return (
-    <div className="space-y-6">
+    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
       <Dialog open={isDialogOpen} onOpenChange={handleDialogChange}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -374,8 +374,8 @@ export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle 
         busy={deleteMutation.isPending}
       />
 
-      <div>
-        <div className="mb-6 flex items-center gap-2">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
+        <div className="flex shrink-0 items-center gap-2">
           <div className="relative w-full sm:max-w-sm">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -389,7 +389,8 @@ export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle 
         </div>
 
         {viewMode === "grid" ? (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {teamsQuery.isLoading ? (
               <CardSkeletonGrid cards={4} />
             ) : teamsView.length === 0 ? (
@@ -441,10 +442,11 @@ export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle 
                 </CardContent>
               </Card>
             ))}
+            </div>
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-md">
-            <Table>
+          <div className="min-h-0 flex-1 overflow-hidden rounded-md">
+            <Table containerClassName="h-full">
               <TableHeader>
                 <TableRow>
                   <TableHead>Equipe / Funcionários</TableHead>

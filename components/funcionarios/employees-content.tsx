@@ -503,7 +503,7 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
                   autoComplete="off"
                   value={formData.email}
                   onChange={(event) => setFormData({ ...formData, email: event.target.value })}
-                  placeholder="Ex: mauricio@depclean.com"
+                  placeholder="Ex: mauricio@depcleanrs.com.br"
                   required
                 />
               </div>
@@ -572,8 +572,8 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
         </DialogContent>
       </Dialog>
 
-      <div className="space-y-4">
-        <div className={`${mobileFiltersOpen ? "grid" : "hidden"} grid-cols-2 gap-2 sm:flex sm:items-center`}>
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
+        <div className={`${mobileFiltersOpen ? "grid" : "hidden"} shrink-0 grid-cols-2 gap-2 sm:flex sm:items-center`}>
             <div className="relative sm:w-80">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -605,8 +605,8 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
           </div>
 
         {viewMode === "table" ? (
-          <div className="overflow-x-auto rounded-md">
-            <Table>
+          <div className="min-h-0 flex-1 overflow-hidden rounded-md">
+            <Table containerClassName="h-full">
               <TableHeader>
                 <TableRow>
                   <TableHead className="min-w-[180px]">Funcionário</TableHead>
@@ -736,7 +736,8 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
             </Table>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 2xl:grid-cols-3">
+          <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 2xl:grid-cols-3">
             {loading ? (
               <CardSkeletonGrid cards={4} />
             ) : paginatedEmployees.map((employee) => (
@@ -817,6 +818,7 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
                 </CardContent>
               </Card>
             ))}
+            </div>
           </div>
         )}
 

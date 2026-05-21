@@ -70,6 +70,8 @@ interface EditingSchedule {
   date: string
   time?: string
   duration: number
+  durationValue?: number
+  durationType?: ScheduleDurationType
   billable?: boolean
   value?: number
   isEmergency?: boolean
@@ -148,7 +150,15 @@ export function SchedulingFormDialog({
 
   const getInitialFormData = (schedule: EditingSchedule): SchedulingFormData => {
     const serviceType = serviceTypes.find((item) => item.id === schedule.serviceTypeId)
-    const durationFields = minutesToScheduleDuration(schedule.duration, serviceType)
+    let durationFields = minutesToScheduleDuration(schedule.duration, serviceType)
+    const configuredDuration = Number(schedule.durationValue)
+
+    if (schedule.durationType && Number.isFinite(configuredDuration) && configuredDuration >= 1) {
+      durationFields = {
+        durationType: schedule.durationType,
+        duration: configuredDuration,
+      }
+    }
 
     return {
       clientId: schedule.clientId,
@@ -366,10 +376,10 @@ export function SchedulingFormDialog({
                         type="button"
                         variant="ghost"
                         size="icon"
-                        className="h-3.5 w-3.5 p-0 hover:bg-transparent"
+                        className="h-4 w-4 shrink-0 rounded-full p-0 text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
                         onClick={() => toggleTeam(teamId)}
                       >
-                        <X className="h-2.5 w-2.5" />
+                        <X className="h-3 w-3" />
                       </Button>
                     </Badge>
                   ) : null
@@ -437,10 +447,10 @@ export function SchedulingFormDialog({
                         type="button"
                         variant="ghost"
                         size="icon"
-                        className="h-3.5 w-3.5 p-0 hover:bg-transparent"
+                        className="h-4 w-4 shrink-0 rounded-full p-0 text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
                         onClick={() => toggleEmployee(empId)}
                       >
-                        <X className="h-2.5 w-2.5" />
+                        <X className="h-3 w-3" />
                       </Button>
                     </Badge>
                   ) : null

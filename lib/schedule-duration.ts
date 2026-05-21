@@ -20,10 +20,17 @@ export function scheduleDurationToMinutes(duration: number, durationType: Schedu
 }
 
 export function minutesToScheduleDuration(minutes: number, service?: Pick<ServiceRecord, "durationType" | "defaultDuration">) {
-  const durationType = service?.durationType ?? "hours"
+  const safeMinutes = Number(minutes)
+  const serviceDurationType = service?.durationType ?? "hours"
+  const serviceDuration = Number(service?.defaultDuration)
+  const durationType = Number.isFinite(serviceDuration) &&
+    serviceDuration >= 1 &&
+    Math.round(scheduleDurationToMinutes(serviceDuration, serviceDurationType)) === Math.round(safeMinutes)
+    ? serviceDurationType
+    : inferDurationTypeFromMinutes(safeMinutes)
   const divisor = DURATION_TYPE_MINUTES[durationType]
-  const duration = Number(minutes) > 0
-    ? Number((Number(minutes) / divisor).toFixed(2))
+  const duration = safeMinutes > 0
+    ? Number((safeMinutes / divisor).toFixed(2))
     : service?.defaultDuration ?? 1
 
   return {
@@ -37,6 +44,20 @@ function formatDurationAmount(value: number) {
   return String(Number(value.toFixed(2))).replace(".", ",")
 }
 
+function formatDurationByType(value: number, type: ScheduleDurationType) {
+  const amount = formatDurationAmount(value)
+  if (type === "days") return `${amount} ${value === 1 ? "dia" : "dias"}`
+  if (type === "shift") return `${amount} ${value === 1 ? "turno" : "turnos"}`
+  return `${amount} ${value === 1 ? "hora" : "horas"}`
+}
+
+function inferDurationTypeFromMinutes(minutes: number): ScheduleDurationType {
+  if (!Number.isFinite(minutes) || minutes <= 0) return "hours"
+  if (minutes % DURATION_TYPE_MINUTES.days === 0) return "days"
+  if (minutes % DURATION_TYPE_MINUTES.shift === 0) return "shift"
+  return "hours"
+}
+
 export function formatConfiguredScheduleDuration(schedule: {
   duration: number
   durationValue?: number
@@ -45,12 +66,15 @@ export function formatConfiguredScheduleDuration(schedule: {
   const value = Number(schedule.durationValue)
   const type = schedule.durationType
 
-  if (Number.isFinite(value) && value > 0 && type) {
-    const amount = formatDurationAmount(value)
-    if (type === "days") return `${amount} ${value === 1 ? "dia" : "dias"}`
-    if (type === "shift") return `${amount} ${value === 1 ? "turno" : "turnos"}`
-    return `${amount} ${value === 1 ? "hora" : "horas"}`
+  if (Number.isFinite(value) && value >= 1 && type) {
+    return formatDurationByType(value, type)
   }
 
-  return `${Number(schedule.duration ?? 0)} min`
+  const minutes = Number(schedule.duration ?? 0)
+  if (Number.isFinite(minutes) && minutes > 0) {
+    const fallbackType = inferDurationTypeFromMinutes(minutes)
+    return formatDurationByType(minutes / DURATION_TYPE_MINUTES[fallbackType], fallbackType)
+  }
+
+  return "0 min"
 }

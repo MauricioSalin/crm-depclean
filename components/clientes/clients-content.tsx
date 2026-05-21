@@ -129,8 +129,8 @@ export function ClientsContent({ viewMode, viewToggle }: ClientsContentProps) {
   }, [filteredClients, currentPage, pageSize])
 
   return (
-    <div className="space-y-4">
-        <div className={`${mobileFiltersOpen ? "grid" : "hidden"} grid-cols-2 gap-2 sm:flex sm:items-center`}>
+    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
+        <div className={`${mobileFiltersOpen ? "grid" : "hidden"} shrink-0 grid-cols-2 gap-2 sm:flex sm:items-center`}>
           <div className="relative sm:flex-none sm:w-80">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -153,8 +153,8 @@ export function ClientsContent({ viewMode, viewToggle }: ClientsContentProps) {
         </div>
 
       {viewMode === "table" ? (
-        <div className="rounded-md overflow-x-auto">
-          <Table>
+        <div className="min-h-0 flex-1 overflow-hidden rounded-md">
+          <Table containerClassName="h-full">
             <TableHeader>
               <TableRow>
                 <TableHead>Cliente</TableHead>
@@ -262,74 +262,76 @@ export function ClientsContent({ viewMode, viewToggle }: ClientsContentProps) {
           </Table>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 2xl:grid-cols-3">
-          {isClientListLoading ? (
-            <CardSkeletonGrid cards={4} />
-          ) : paginatedClients.length === 0 ? (
-            <EmptyState icon={Building2} title="Nenhum cliente encontrado." className="sm:col-span-2" />
-          ) : paginatedClients.map((client) => {
-            const clientType = getClientTypeById(client.clientTypeId)
-            const clientTypeColor = resolveColor(clientType?.color)
-            const clientContracts = contracts.filter(c => c.clientId === client.id)
-            const totalContracts = clientContracts.length
+        <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 2xl:grid-cols-3">
+            {isClientListLoading ? (
+              <CardSkeletonGrid cards={4} />
+            ) : paginatedClients.length === 0 ? (
+              <EmptyState icon={Building2} title="Nenhum cliente encontrado." className="sm:col-span-2" />
+            ) : paginatedClients.map((client) => {
+              const clientType = getClientTypeById(client.clientTypeId)
+              const clientTypeColor = resolveColor(clientType?.color)
+              const clientContracts = contracts.filter(c => c.clientId === client.id)
+              const totalContracts = clientContracts.length
 
-            return (
-              <Card key={client.id} className="h-full overflow-hidden">
-                <CardContent className="flex h-full flex-col px-4 py-3">
-                  <Link href={`/clientes/${client.id}`} className="flex-1">
-                    <div className="flex items-center gap-3 mb-3">
-                      <div
-                        className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-                        style={{ backgroundColor: `${clientTypeColor}1A` }}
-                      >
-                        <Building2 className="w-5 h-5" style={{ color: clientTypeColor }} />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-start justify-between gap-x-2 gap-y-1">
-                          <h3 className="min-w-0 flex-1 break-words text-sm font-semibold text-foreground/80">{client.companyName}</h3>
-                          <Badge
-                            style={{ backgroundColor: clientTypeColor }}
-                            className="shrink-0 border-0 text-xs text-white hover:opacity-90"
-                          >
-                            {clientType?.name ?? "Cliente"}
-                          </Badge>
+              return (
+                <Card key={client.id} className="h-full overflow-hidden">
+                  <CardContent className="flex h-full flex-col px-4 py-3">
+                    <Link href={`/clientes/${client.id}`} className="flex-1">
+                      <div className="flex items-center gap-3 mb-3">
+                        <div
+                          className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                          style={{ backgroundColor: `${clientTypeColor}1A` }}
+                        >
+                          <Building2 className="w-5 h-5" style={{ color: clientTypeColor }} />
                         </div>
-                        <p className="text-xs text-muted-foreground font-mono">{formatCNPJ(client.cnpj)}</p>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-start justify-between gap-x-2 gap-y-1">
+                            <h3 className="min-w-0 flex-1 break-words text-sm font-semibold text-foreground/80">{client.companyName}</h3>
+                            <Badge
+                              style={{ backgroundColor: clientTypeColor }}
+                              className="shrink-0 border-0 text-xs text-white hover:opacity-90"
+                            >
+                              {clientType?.name ?? "Cliente"}
+                            </Badge>
+                          </div>
+                          <p className="text-xs text-muted-foreground font-mono">{formatCNPJ(client.cnpj)}</p>
+                        </div>
                       </div>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <Phone className="w-4 h-4 shrink-0" />
+                          <span>{client.phone}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <Mail className="w-4 h-4 shrink-0" />
+                          <span className="truncate">{client.email}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <FileText className="w-4 h-4 shrink-0" />
+                          <span>{totalContracts} contrato(s)</span>
+                        </div>
+                      </div>
+                    </Link>
+                    <div className="mt-auto flex gap-2 pt-3">
+                      <Button variant="outline" size="sm" className="flex-1" asChild>
+                        <Link href={`/clientes/${client.id}/editar`}>
+                          <Edit className="w-4 h-4 mr-1" />
+                          Editar
+                        </Link>
+                      </Button>
+                      <Button size="sm" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground" asChild>
+                        <Link href={`/clientes/${client.id}`}>
+                          <Eye className="w-4 h-4 mr-1" />
+                          Ver
+                        </Link>
+                      </Button>
                     </div>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <Phone className="w-4 h-4 shrink-0" />
-                        <span>{client.phone}</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <Mail className="w-4 h-4 shrink-0" />
-                        <span className="truncate">{client.email}</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <FileText className="w-4 h-4 shrink-0" />
-                        <span>{totalContracts} contrato(s)</span>
-                      </div>
-                    </div>
-                  </Link>
-                  <div className="mt-auto flex gap-2 pt-3">
-                    <Button variant="outline" size="sm" className="flex-1" asChild>
-                      <Link href={`/clientes/${client.id}/editar`}>
-                        <Edit className="w-4 h-4 mr-1" />
-                        Editar
-                      </Link>
-                    </Button>
-                    <Button size="sm" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground" asChild>
-                      <Link href={`/clientes/${client.id}`}>
-                        <Eye className="w-4 h-4 mr-1" />
-                        Ver
-                      </Link>
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            )
-          })}
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
         </div>
       )}
 

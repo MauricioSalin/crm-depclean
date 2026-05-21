@@ -303,8 +303,8 @@ export function GlobalSearch() {
         }}
         onFocus={() => setOpen(true)}
         onKeyDown={handleKeyDown}
-        placeholder="Buscar cliente, contrato, serviço..."
-        className="h-9 bg-card pl-9 pr-20 text-sm transition-all duration-300 focus:shadow-lg focus:shadow-primary/10"
+        placeholder="Pesquise por clientes, contratos ou serviços"
+        className="h-9 bg-card pl-9 pr-20 text-base transition-all duration-300 focus:shadow-lg focus:shadow-primary/10 md:text-sm"
         role="combobox"
         aria-expanded={showResults}
         aria-controls="global-search-results"

@@ -505,22 +505,26 @@ export function RelatoriosContent() {
             className={cn(
               "grid items-end gap-x-3 gap-y-2",
               selectedReport === "financial"
-                ? "sm:grid-cols-[260px_auto]"
-                : "sm:grid-cols-[260px_minmax(420px,520px)_auto]",
+                ? "sm:grid-cols-[auto_auto]"
+                : "sm:grid-cols-[auto_auto_minmax(420px,520px)]",
             )}
           >
-            <div className="flex flex-col gap-2 w-full sm:w-[260px] shrink-0">
+            <div className="flex flex-col gap-2 w-full sm:w-auto shrink-0">
               <Label>Período</Label>
               <DateRangePicker
                 value={dateRange}
                 onChange={setDateRange}
                 placeholder="Selecionar período"
-                className="w-full"
+                className="w-full sm:w-[218px]"
               />
             </div>
 
+            <Button className="w-full sm:w-[170px] sm:justify-self-start h-10 px-4 shrink-0 bg-primary hover:bg-primary/90 text-primary-foreground" onClick={handleGenerateReport} disabled={reportsQuery.isFetching || isExporting}>
+              Gerar relatório
+            </Button>
+
             {selectedReport === "services" && (
-              <div className="flex flex-col gap-2 w-full">
+              <div className="flex flex-col gap-2 w-full sm:col-start-3">
                 <Label>Serviço</Label>
                 <MultiSelect
                   options={serviceOptions}
@@ -535,7 +539,7 @@ export function RelatoriosContent() {
             )}
 
             {selectedReport === "teams" && (
-              <div className="flex flex-col gap-2 w-full">
+              <div className="flex flex-col gap-2 w-full sm:col-start-3">
                 <Label>Equipe</Label>
                 <MultiSelect
                   options={teamOptions}
@@ -549,12 +553,8 @@ export function RelatoriosContent() {
               </div>
             )}
 
-            <Button className="w-full sm:w-[170px] sm:justify-self-start h-10 px-4 shrink-0 bg-primary hover:bg-primary/90 text-primary-foreground" onClick={handleGenerateReport} disabled={reportsQuery.isFetching || isExporting}>
-              Gerar relatório
-            </Button>
-
             {selectedReport === "services" && selectedServiceOptions.length > 0 && (
-              <div className="flex flex-wrap gap-2 sm:col-start-2">
+              <div className="flex flex-wrap gap-2 sm:col-start-3">
                 {selectedServiceOptions.map((option) => (
                   <Badge
                     key={option.id}
@@ -564,10 +564,10 @@ export function RelatoriosContent() {
                     <span>{option.name}</span>
                     <button
                       type="button"
-                      className="flex h-3.5 w-3.5 items-center justify-center rounded-full hover:bg-transparent"
+                      className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
                       onClick={() => removeSelectedFilterOption(option.id)}
                     >
-                      <X className="h-2.5 w-2.5" />
+                      <X className="h-3 w-3" />
                     </button>
                   </Badge>
                 ))}
@@ -575,7 +575,7 @@ export function RelatoriosContent() {
             )}
 
             {selectedReport === "teams" && selectedTeamOptions.length > 0 && (
-              <div className="flex flex-wrap gap-2 sm:col-start-2">
+              <div className="flex flex-wrap gap-2 sm:col-start-3">
                 {selectedTeamOptions.map((option) => (
                   <Badge
                     key={option.id}
@@ -585,10 +585,10 @@ export function RelatoriosContent() {
                     <span>{option.name}</span>
                     <button
                       type="button"
-                      className="flex h-3.5 w-3.5 items-center justify-center rounded-full hover:bg-transparent"
+                      className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
                       onClick={() => removeSelectedFilterOption(option.id)}
                     >
-                      <X className="h-2.5 w-2.5" />
+                      <X className="h-3 w-3" />
                     </button>
                   </Badge>
                 ))}

@@ -66,6 +66,8 @@ export function Header({ title, description, titleAddon, headerActions, actions,
   const [currentUser, setCurrentUser] = useState<ReturnType<typeof getStoredUser>>(null)
   const [hasSession, setHasSession] = useState(false)
   const [mounted, setMounted] = useState(false)
+  const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const [isLoggingOut, setIsLoggingOut] = useState(false)
   const notificationsQuery = useQuery({
     queryKey: ["notifications"],
     queryFn: listNotifications,
@@ -118,6 +120,14 @@ export function Header({ title, description, titleAddon, headerActions, actions,
     router.push(getNotificationHref(notification))
   }
 
+  const handleLogout = () => {
+    setUserMenuOpen(false)
+    setIsLoggingOut(true)
+    clearSession()
+    queryClient.clear()
+    router.replace("/login")
+  }
+
   return (
     <>
       <div className="h-[68px] shrink-0" aria-hidden="true" />
@@ -141,7 +151,7 @@ export function Header({ title, description, titleAddon, headerActions, actions,
           </div>
 
           <div className="flex items-center gap-1.5 md:gap-2">
-            {mounted ? (
+            {mounted && hasSession && !isLoggingOut ? (
               <>
                 <DropdownMenu onOpenChange={(open) => {
                   if (open) void notificationsQuery.refetch()
@@ -207,7 +217,7 @@ export function Header({ title, description, titleAddon, headerActions, actions,
                   </DropdownMenuContent>
                 </DropdownMenu>
 
-                <DropdownMenu>
+                <DropdownMenu open={userMenuOpen} onOpenChange={setUserMenuOpen}>
                   <DropdownMenuTrigger asChild>
                     <button className="flex items-center gap-2 pl-2 md:pl-3 border-l border-border cursor-pointer hover:opacity-80 transition-opacity">
                       <Avatar className="h-7 w-7 md:h-8 md:w-8 ring-2 ring-primary/20 transition-all duration-300 hover:ring-primary/40">
@@ -258,11 +268,7 @@ export function Header({ title, description, titleAddon, headerActions, actions,
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                       className="cursor-pointer"
-                      onSelect={(event) => {
-                        event.preventDefault()
-                        clearSession()
-                        router.replace("/login")
-                      }}
+                      onSelect={handleLogout}
                     >
                       <LogOut className="mr-2 h-4 w-4" />
                       Sair
@@ -276,8 +282,6 @@ export function Header({ title, description, titleAddon, headerActions, actions,
           </div>
         </div>
       </div>
-
-      <div id="header-filters-slot" className="mt-4" aria-hidden="true" />
 
       <div className="mb-4 mt-4 flex flex-col gap-4">
         <div className="flex items-end justify-between gap-3">

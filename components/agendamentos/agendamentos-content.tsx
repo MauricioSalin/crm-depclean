@@ -744,8 +744,8 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
         </DialogContent>
       </Dialog>
 
-      <div className="space-y-4">
-        <div className={`${mobileFiltersOpen ? "grid" : "hidden"} grid-cols-2 gap-2 sm:flex sm:items-center`}>
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
+        <div className={`${mobileFiltersOpen ? "grid" : "hidden"} shrink-0 grid-cols-2 gap-2 sm:flex sm:items-center`}>
           <div className="relative col-span-2 sm:w-80">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -783,14 +783,14 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
               setCurrentPage(1)
             }}
             placeholder="Filtrar data"
-            className="sm:w-[260px]"
+            className="sm:w-[218px]"
           />
           {viewToggle ? <div className="hidden shrink-0 sm:block">{viewToggle}</div> : null}
         </div>
 
         {viewMode === "table" ? (
-          <div className="overflow-x-auto rounded-md">
-            <Table>
+          <div className="min-h-0 flex-1 overflow-hidden rounded-md">
+            <Table containerClassName="h-full">
               <TableHeader>
                 <TableRow>
                   <TableHead className="min-w-[180px]">Cliente</TableHead>
@@ -962,118 +962,120 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
             </Table>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 2xl:grid-cols-3">
-            {schedulesQuery.isLoading ? (
-              <CardSkeletonGrid cards={4} />
-            ) : paginatedSchedules.length === 0 ? (
-              <EmptyState icon={Calendar} title="Nenhum agendamento encontrado." className="sm:col-span-2" />
-            ) : paginatedSchedules.map((schedule) => (
-              <Card key={schedule.id} className="h-full cursor-pointer" onClick={() => openSchedule(schedule)}>
-                <CardContent className="flex flex-1 flex-col">
-                  <div className="mb-2 flex items-start justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className={`hidden h-10 w-10 shrink-0 items-center justify-center rounded-lg sm:flex ${getScheduleIconTone(schedule).wrapper}`}>
-                        <Calendar className={`h-5 w-5 ${getScheduleIconTone(schedule).icon}`} />
+          <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 2xl:grid-cols-3">
+              {schedulesQuery.isLoading ? (
+                <CardSkeletonGrid cards={4} />
+              ) : paginatedSchedules.length === 0 ? (
+                <EmptyState icon={Calendar} title="Nenhum agendamento encontrado." className="sm:col-span-2" />
+              ) : paginatedSchedules.map((schedule) => (
+                <Card key={schedule.id} className="h-full cursor-pointer" onClick={() => openSchedule(schedule)}>
+                  <CardContent className="flex flex-1 flex-col">
+                    <div className="mb-2 flex items-start justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className={`hidden h-10 w-10 shrink-0 items-center justify-center rounded-lg sm:flex ${getScheduleIconTone(schedule).wrapper}`}>
+                          <Calendar className={`h-5 w-5 ${getScheduleIconTone(schedule).icon}`} />
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-semibold text-foreground/80">{schedule.clientName}</h4>
+                          <p className="text-xs text-muted-foreground">{schedule.serviceTypeName}</p>
+                        </div>
                       </div>
-                      <div>
-                        <h4 className="text-sm font-semibold text-foreground/80">{schedule.clientName}</h4>
-                        <p className="text-xs text-muted-foreground">{schedule.serviceTypeName}</p>
+                      {getStatusBadge(schedule.status)}
+                    </div>
+                    <div className="mb-2">
+                      <ScheduleTypeBadge schedule={schedule} />
+                    </div>
+                    <div className="space-y-1 text-xs text-muted-foreground">
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-3 w-3" />
+                        {schedule.time} ({formatConfiguredScheduleDuration(schedule)})
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Calendar className="h-3 w-3" />
+                        {formatCivilDate(schedule.date)}
                       </div>
                     </div>
-                    {getStatusBadge(schedule.status)}
-                  </div>
-                  <div className="mb-2">
-                    <ScheduleTypeBadge schedule={schedule} />
-                  </div>
-                  <div className="space-y-1 text-xs text-muted-foreground">
-                    <div className="flex items-center gap-2">
-                      <Clock className="h-3 w-3" />
-                      {schedule.time} ({formatConfiguredScheduleDuration(schedule)})
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Calendar className="h-3 w-3" />
-                      {formatCivilDate(schedule.date)}
-                    </div>
-                  </div>
-                  {schedule.teams.length > 0 || schedule.additionalEmployees.length > 0 ? (
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {schedule.teams.map((team) => (
-                        <Badge
-                          key={team.id}
-                          variant="secondary"
-                          className="flex items-center gap-2 px-3 py-1 text-xs text-foreground/80"
-                          style={{ backgroundColor: `${team.color}1A` }}
-                        >
-                          <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: team.color }} />
-                          {team.name}
-                        </Badge>
-                      ))}
-                      {schedule.additionalEmployees.map((employee) => (
-                        <Badge key={employee.id} variant="outline" className="px-3 py-1 text-xs">
-                          {employee.name}
-                        </Badge>
-                      ))}
-                    </div>
-                  ) : null}
-                  <div className="mt-auto flex justify-end pt-3" onClick={(event) => event.stopPropagation()}>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" aria-label="Ações do agendamento">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        {!["in_progress", "cancelled"].includes(schedule.status) && (
-                          <DropdownMenuItem className="cursor-pointer" onClick={() => openEditSchedule(schedule)}>
-                            <Edit className="mr-2 h-4 w-4" />
-                            Editar
-                          </DropdownMenuItem>
-                        )}
-                        {schedule.status === "in_progress" && (
-                          <DropdownMenuItem className="cursor-pointer" onClick={() => openCompletionDialog(schedule)}>
-                            <Check className="mr-2 h-4 w-4" />
-                            Concluir
-                          </DropdownMenuItem>
-                        )}
-                        {schedule.status === "cancelled" && (
-                          <DropdownMenuItem
-                            className="cursor-pointer"
-                            disabled={reactivateMutation.isPending && reactivateMutation.variables?.id === schedule.id}
-                            onClick={() => reactivateMutation.mutate(schedule)}
+                    {schedule.teams.length > 0 || schedule.additionalEmployees.length > 0 ? (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {schedule.teams.map((team) => (
+                          <Badge
+                            key={team.id}
+                            variant="secondary"
+                            className="flex items-center gap-2 px-3 py-1 text-xs text-foreground/80"
+                            style={{ backgroundColor: `${team.color}1A` }}
                           >
-                            {reactivateMutation.isPending && reactivateMutation.variables?.id === schedule.id ? (
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            ) : (
-                              <RotateCcw className="mr-2 h-4 w-4" />
-                            )}
-                            Reativar
-                          </DropdownMenuItem>
-                        )}
-                        {canCancelSchedule(schedule) && (
-                          <DropdownMenuItem
-                            className="cursor-pointer"
-                            onClick={() => {
-                              setCancelTarget(schedule)
-                              setCancelReason(schedule.cancellationReason || "")
-                              setCancelStep("reason")
-                            }}
-                          >
-                            <X className="mr-2 h-4 w-4" />
-                            Cancelar
-                          </DropdownMenuItem>
-                        )}
-                        {canDeleteSchedule(schedule) && (
-                          <DropdownMenuItem className="cursor-pointer" onClick={() => setPendingDelete(schedule)}>
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Excluir
-                          </DropdownMenuItem>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                            <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: team.color }} />
+                            {team.name}
+                          </Badge>
+                        ))}
+                        {schedule.additionalEmployees.map((employee) => (
+                          <Badge key={employee.id} variant="outline" className="px-3 py-1 text-xs">
+                            {employee.name}
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : null}
+                    <div className="mt-auto flex justify-end pt-3" onClick={(event) => event.stopPropagation()}>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" aria-label="Ações do agendamento">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          {!["in_progress", "cancelled"].includes(schedule.status) && (
+                            <DropdownMenuItem className="cursor-pointer" onClick={() => openEditSchedule(schedule)}>
+                              <Edit className="mr-2 h-4 w-4" />
+                              Editar
+                            </DropdownMenuItem>
+                          )}
+                          {schedule.status === "in_progress" && (
+                            <DropdownMenuItem className="cursor-pointer" onClick={() => openCompletionDialog(schedule)}>
+                              <Check className="mr-2 h-4 w-4" />
+                              Concluir
+                            </DropdownMenuItem>
+                          )}
+                          {schedule.status === "cancelled" && (
+                            <DropdownMenuItem
+                              className="cursor-pointer"
+                              disabled={reactivateMutation.isPending && reactivateMutation.variables?.id === schedule.id}
+                              onClick={() => reactivateMutation.mutate(schedule)}
+                            >
+                              {reactivateMutation.isPending && reactivateMutation.variables?.id === schedule.id ? (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              ) : (
+                                <RotateCcw className="mr-2 h-4 w-4" />
+                              )}
+                              Reativar
+                            </DropdownMenuItem>
+                          )}
+                          {canCancelSchedule(schedule) && (
+                            <DropdownMenuItem
+                              className="cursor-pointer"
+                              onClick={() => {
+                                setCancelTarget(schedule)
+                                setCancelReason(schedule.cancellationReason || "")
+                                setCancelStep("reason")
+                              }}
+                            >
+                              <X className="mr-2 h-4 w-4" />
+                              Cancelar
+                            </DropdownMenuItem>
+                          )}
+                          {canDeleteSchedule(schedule) && (
+                            <DropdownMenuItem className="cursor-pointer" onClick={() => setPendingDelete(schedule)}>
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Excluir
+                            </DropdownMenuItem>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           </div>
         )}
 

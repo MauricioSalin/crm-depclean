@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
 import { ArrowLeft, Edit } from "lucide-react"
 
@@ -18,15 +19,18 @@ const isContractSigned = (contract?: Pick<ContractRecord, "status" | "clicksign"
 }
 
 export function ContractDetailHeaderActions({ contractId }: ContractDetailHeaderActionsProps) {
+  const searchParams = useSearchParams()
   const contractQuery = useQuery({
     queryKey: ["contract", contractId],
     queryFn: () => getContractById(contractId),
   })
   const contract = contractQuery.data?.data
+  const returnTo = searchParams.get("returnTo")
+  const backHref = returnTo && returnTo.startsWith("/") && !returnTo.startsWith("//") ? returnTo : "/contratos"
 
   return (
     <>
-      <Link href="/contratos" className="flex-1 sm:flex-initial">
+      <Link href={backHref} className="flex-1 sm:flex-initial">
         <Button variant="outline" className="w-full h-9 text-sm bg-transparent">
           <ArrowLeft className="mr-2 h-4 w-4" />
           Voltar

@@ -146,10 +146,10 @@ export function MultiSelect({
                   type="button"
                   variant="ghost"
                   size="icon"
-                  className="h-3.5 w-3.5 p-0 hover:bg-transparent"
+                  className="h-4 w-4 shrink-0 rounded-full p-0 text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
                   onClick={() => removeOption(option.id)}
                 >
-                  <X className="h-2.5 w-2.5" />
+                  <X className="h-3 w-3" />
                 </Button>
               </Badge>
             )

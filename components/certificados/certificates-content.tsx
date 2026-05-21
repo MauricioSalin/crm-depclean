@@ -1,21 +1,22 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 import Link from "next/link"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { Award, Calendar, CheckCircle2, Clock, FileText, Loader2, MoreHorizontal, Search, Send, Trash2 } from "lucide-react"
+import { Award, Calendar, CheckCircle2, Clock, FileText, Loader2, MoreHorizontal, RotateCcw, Search, Trash2 } from "lucide-react"
 
 import { deleteCertificate, listCertificates, resendCertificate, type CertificateQueueRecord } from "@/lib/api/certificates"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { getStoredUser } from "@/lib/auth/session"
+import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
 import { DataPagination } from "@/components/ui/data-pagination"
-import { TableEmptyState } from "@/components/ui/empty-state"
-import { TableSkeletonRows } from "@/components/ui/table-skeleton"
+import { EmptyState, TableEmptyState } from "@/components/ui/empty-state"
+import { CardSkeletonGrid, TableSkeletonRows } from "@/components/ui/table-skeleton"
 import { Input } from "@/components/ui/input"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -26,6 +27,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+
+interface CertificatesContentProps {
+  viewMode: "table" | "cards"
+  viewToggle?: ReactNode
+}
 
 function formatDate(value: string) {
   if (!value) return "-"
@@ -41,8 +47,13 @@ function getStatusBadge(status: CertificateQueueRecord["status"]) {
   return <Badge className="bg-yellow-100 text-yellow-800">Pendente</Badge>
 }
 
-export function CertificatesContent() {
+function hasResponsible(record: CertificateQueueRecord) {
+  return record.teams.length > 0 || record.additionalEmployees.length > 0
+}
+
+export function CertificatesContent({ viewMode, viewToggle }: CertificatesContentProps) {
   const queryClient = useQueryClient()
+  const mobileFiltersOpen = useMobileFiltersOpen()
   const [currentUser, setCurrentUser] = useState<ReturnType<typeof getStoredUser>>(null)
   const [mounted, setMounted] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
@@ -91,18 +102,18 @@ export function CertificatesContent() {
   const resendMutation = useMutation({
     mutationFn: (record: CertificateQueueRecord) => resendCertificate(record.scheduleId),
     onMutate: () => {
-      const toastId = toast.loading("Reenviando certificado...")
+      const toastId = toast.loading("Reemitindo certificado...")
       return { toastId }
     },
     onSuccess: async (_response, record, context) => {
       await invalidateCertificates(record.clientId)
-      toast.success("Certificado reenviado.", {
+      toast.success("Certificado reemitido.", {
         id: context?.toastId,
         description: `${record.clientName} • ${record.serviceTypeName}`,
       })
     },
     onError: (error, _record, context) => {
-      toast.error(getApiErrorMessage(error, "Não foi possível reenviar o certificado."), {
+      toast.error(getApiErrorMessage(error, "Não foi possível reemitir o certificado."), {
         id: context?.toastId,
       })
     },
@@ -178,215 +189,329 @@ export function CertificatesContent() {
 
   return (
     <>
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
-        <div className="relative col-span-2 sm:w-80">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={searchTerm}
-            onChange={(event) => {
-              setSearchTerm(event.target.value)
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
+        <div className={`${mobileFiltersOpen ? "grid" : "hidden"} shrink-0 grid-cols-2 gap-2 sm:flex sm:items-center`}>
+          <div className="relative col-span-2 sm:w-80">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={searchTerm}
+              onChange={(event) => {
+                setSearchTerm(event.target.value)
+                setCurrentPage(1)
+              }}
+              placeholder="Buscar cliente, serviço, equipe..."
+              className="pl-10 text-base md:text-sm"
+            />
+          </div>
+          <SearchableSelect
+            value={statusFilter}
+            onValueChange={(value) => {
+              setStatusFilter(value)
               setCurrentPage(1)
             }}
-            placeholder="Buscar cliente, serviço, equipe..."
-            className="pl-10"
+            allLabel="Todos os status"
+            placeholder="Status"
+            searchPlaceholder="Buscar status..."
+            className="col-span-2 sm:w-[160px]"
+            options={[
+              { value: "pending", label: "Pendentes" },
+              { value: "sent", label: "Enviados" },
+            ]}
           />
+          {viewToggle ? <div className="hidden shrink-0 sm:block">{viewToggle}</div> : null}
         </div>
-        <SearchableSelect
-          value={statusFilter}
-          onValueChange={(value) => {
-            setStatusFilter(value)
-            setCurrentPage(1)
-          }}
-          allLabel="Todos os status"
-          placeholder="Status"
-          searchPlaceholder="Buscar status..."
-          className="sm:w-[160px]"
-          options={[
-            { value: "pending", label: "Pendentes" },
-            { value: "sent", label: "Enviados" },
-          ]}
-        />
-      </div>
 
-      <div className="overflow-x-auto rounded-md">
-        <Table>
-            <TableHeader>
-              <TableRow className="bg-muted/50">
-                <TableHead>Cliente</TableHead>
-                <TableHead className="min-w-[180px] sm:min-w-[240px]">Serviço</TableHead>
-                <TableHead>Equipe / Funcionários</TableHead>
-                <TableHead>Data/Hora</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Ações</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {certificatesQuery.isLoading ? (
-                <TableSkeletonRows
-                  rows={5}
-                  columns={[
-                    { withIcon: true, width: "w-36" },
-                    { width: "w-40" },
-                    { width: "w-32" },
-                    { width: "w-24" },
-                    { width: "w-20" },
-                    { align: "right", width: "w-28" },
-                  ]}
-                />
-              ) : paginatedRecords.length === 0 ? (
-                <TableEmptyState colSpan={6} icon={Award} title="Nenhum agendamento com certificado pendente encontrado." />
-              ) : (
-                paginatedRecords.map((record) => (
-                  <TableRow key={record.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <div className="rounded-full bg-primary/10 p-3">
+        {viewMode === "table" ? (
+          <div className="min-h-0 flex-1 overflow-hidden rounded-md">
+            <Table containerClassName="h-full">
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="min-w-[190px]">Cliente</TableHead>
+                  <TableHead className="hidden min-w-[220px] sm:table-cell">Serviço</TableHead>
+                  <TableHead className="hidden lg:table-cell">Equipe / Funcionários</TableHead>
+                  <TableHead className="hidden md:table-cell">Data/Hora</TableHead>
+                  <TableHead className="hidden sm:table-cell">Status</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {certificatesQuery.isLoading ? (
+                  <TableSkeletonRows
+                    rows={5}
+                    columns={[
+                      { withIcon: true, width: "w-36" },
+                      { className: "hidden sm:table-cell", width: "w-40" },
+                      { className: "hidden lg:table-cell", width: "w-32" },
+                      { className: "hidden md:table-cell", width: "w-24" },
+                      { className: "hidden sm:table-cell", width: "w-20" },
+                      { align: "right", width: "w-16" },
+                    ]}
+                  />
+                ) : paginatedRecords.length === 0 ? (
+                  <TableEmptyState colSpan={6} icon={Award} title="Nenhum certificado encontrado." />
+                ) : (
+                  paginatedRecords.map((record) => (
+                    <TableRow key={record.id}>
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                            <Award className="h-5 w-5 text-primary" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="truncate font-semibold text-foreground/80">{record.clientName}</p>
+                            <p className="truncate text-xs text-muted-foreground">{record.unitName || "Unidade principal"}</p>
+                            <p className="mt-0.5 text-xs text-muted-foreground sm:hidden">
+                              {record.serviceTypeName} • {formatDate(record.date)}
+                            </p>
+                            <div className="mt-1 sm:hidden">{getStatusBadge(record.status)}</div>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="hidden min-w-[220px] sm:table-cell">
+                        <div>
+                          <p>{record.serviceTypeName}</p>
+                          {record.naFileName ? (
+                            <p className="mt-1 hidden items-center gap-1 text-xs text-muted-foreground md:flex">
+                              <FileText className="h-3 w-3" />
+                              {record.naFileName}
+                            </p>
+                          ) : null}
+                        </div>
+                      </TableCell>
+                      <TableCell className="hidden lg:table-cell">
+                        <div className="flex flex-wrap gap-1.5">
+                          {record.teams.map((team) => (
+                            <Badge key={team.id} variant="secondary">{team.name}</Badge>
+                          ))}
+                          {record.additionalEmployees.map((employee) => (
+                            <Badge key={employee.id} variant="outline">{employee.name}</Badge>
+                          ))}
+                          {!hasResponsible(record) ? (
+                            <span className="text-sm text-muted-foreground">Sem responsável</span>
+                          ) : null}
+                        </div>
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell">
+                        <div className="space-y-1 text-sm">
+                          <p className="flex items-center gap-1.5">
+                            <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+                            {formatDate(record.date)}
+                          </p>
+                          <p className="flex items-center gap-1.5 text-muted-foreground">
+                            <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                            {record.time || "--:--"}
+                          </p>
+                        </div>
+                      </TableCell>
+                      <TableCell className="hidden sm:table-cell">{getStatusBadge(record.status)}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end">
+                          {canManage && record.status === "pending" ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  asChild
+                                  size="icon"
+                                  className="h-9 w-9 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
+                                >
+                                  <Link href={`/certificados/${record.scheduleId}`} aria-label="Emitir certificado">
+                                    <CheckCircle2 className="h-4 w-4" />
+                                  </Link>
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>Emitir certificado</TooltipContent>
+                            </Tooltip>
+                          ) : null}
+
+                          {canManage && record.status === "sent" ? (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full" aria-label="Ações do certificado">
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                  className="cursor-pointer"
+                                  disabled={resendMutation.isPending}
+                                  onClick={() => resendMutation.mutate(record)}
+                                >
+                                  {resendMutation.isPending && resendMutation.variables?.scheduleId === record.scheduleId ? (
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <RotateCcw className="mr-2 h-4 w-4" />
+                                  )}
+                                  Reemitir
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  className="cursor-pointer"
+                                  disabled={deleteMutation.isPending}
+                                  onClick={() => setCertificateToDelete(record)}
+                                >
+                                  <Trash2 className="mr-2 h-4 w-4" />
+                                  Excluir
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          ) : null}
+
+                          {!canManage ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button size="icon" className="h-9 w-9 rounded-full" disabled aria-label="Emitir certificado">
+                                  <Award className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>Emitir certificado</TooltipContent>
+                            </Tooltip>
+                          ) : null}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        ) : (
+          <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 2xl:grid-cols-3">
+            {certificatesQuery.isLoading ? (
+              <CardSkeletonGrid cards={4} />
+            ) : paginatedRecords.length === 0 ? (
+              <EmptyState icon={Award} title="Nenhum certificado encontrado." className="sm:col-span-2" />
+            ) : (
+              paginatedRecords.map((record) => (
+                <Card key={record.id} className="h-full overflow-hidden py-4">
+                  <CardContent className="flex h-full flex-col px-4">
+                    <div className="mb-3 flex items-start justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
                           <Award className="h-5 w-5 text-primary" />
                         </div>
-                        <div>
-                          <p className="font-medium">{record.clientName}</p>
-                          <p className="text-xs text-muted-foreground">{record.unitName || "Unidade principal"}</p>
+                        <div className="min-w-0">
+                          <h3 className="truncate text-sm font-semibold text-foreground/80">{record.clientName}</h3>
+                          <p className="truncate text-xs text-muted-foreground">{record.unitName || "Unidade principal"}</p>
                         </div>
                       </div>
-                    </TableCell>
-                    <TableCell className="min-w-[180px] sm:min-w-[240px]">
-                      <div>
-                        <p>{record.serviceTypeName}</p>
-                        {record.naFileName ? (
-                          <p className="mt-1 hidden items-center gap-1 text-xs text-muted-foreground sm:flex">
-                            <FileText className="h-3 w-3" />
-                            {record.naFileName}
-                          </p>
-                        ) : null}
+                      {getStatusBadge(record.status)}
+                    </div>
+
+                    <div className="space-y-2 text-sm">
+                      <div className="flex items-start gap-2 text-muted-foreground">
+                        <FileText className="mt-0.5 h-4 w-4 shrink-0" />
+                        <div className="min-w-0">
+                          <p className="font-medium text-foreground/80">{record.serviceTypeName}</p>
+                          {record.naFileName ? (
+                            <p className="truncate text-xs text-muted-foreground">{record.naFileName}</p>
+                          ) : null}
+                        </div>
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1.5">
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <Calendar className="h-4 w-4 shrink-0" />
+                        <span>{formatDate(record.date)}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <Clock className="h-4 w-4 shrink-0" />
+                        <span>{record.time || "--:--"}</span>
+                      </div>
+                    </div>
+
+                    {hasResponsible(record) ? (
+                      <div className="mt-3 flex flex-wrap gap-1.5">
                         {record.teams.map((team) => (
                           <Badge key={team.id} variant="secondary">{team.name}</Badge>
                         ))}
                         {record.additionalEmployees.map((employee) => (
                           <Badge key={employee.id} variant="outline">{employee.name}</Badge>
                         ))}
-                        {record.teams.length === 0 && record.additionalEmployees.length === 0 ? (
-                          <span className="text-sm text-muted-foreground">Sem responsável</span>
-                        ) : null}
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="space-y-1 text-sm">
-                        <p className="flex items-center gap-1.5">
-                          <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
-                          {formatDate(record.date)}
-                        </p>
-                        <p className="flex items-center gap-1.5 text-muted-foreground">
-                          <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                          {record.time || "--:--"}
-                        </p>
-                      </div>
-                    </TableCell>
-                    <TableCell>{getStatusBadge(record.status)}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end">
-                        {canManage && record.status === "pending" ? (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                asChild
-                                size="icon"
-                                className="h-9 w-9 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
-                              >
-                                <Link href={`/certificados/${record.scheduleId}`} aria-label="Emitir certificado">
-                                  <CheckCircle2 className="h-4 w-4" />
-                                </Link>
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>Emitir certificado</TooltipContent>
-                          </Tooltip>
-                        ) : null}
+                    ) : (
+                      <p className="mt-3 text-xs text-muted-foreground">Sem responsável vinculado.</p>
+                    )}
 
-                        {canManage && record.status === "sent" ? (
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full" aria-label="Ações do certificado">
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem
-                                className="cursor-pointer"
-                                disabled={resendMutation.isPending}
-                                onClick={() => resendMutation.mutate(record)}
-                              >
-                                {resendMutation.isPending && resendMutation.variables?.scheduleId === record.scheduleId ? (
-                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                ) : (
-                                  <Send className="mr-2 h-4 w-4" />
-                                )}
-                                Reenviar
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                className="cursor-pointer"
-                                disabled={deleteMutation.isPending}
-                                onClick={() => setCertificateToDelete(record)}
-                              >
-                                <Trash2 className="mr-2 h-4 w-4" />
-                                Excluir
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        ) : null}
-
-                        {!canManage ? (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button size="icon" className="h-9 w-9 rounded-full" disabled aria-label="Emitir certificado">
-                                <Award className="h-4 w-4" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>Emitir certificado</TooltipContent>
-                          </Tooltip>
-                        ) : null}
+                    {canManage ? (
+                      <div className="mt-auto flex gap-2 pt-4">
+                        {record.status === "pending" ? (
+                          <Button asChild className="h-9 flex-1 text-sm">
+                            <Link href={`/certificados/${record.scheduleId}`}>
+                              <CheckCircle2 className="mr-2 h-4 w-4" />
+                              Emitir
+                            </Link>
+                          </Button>
+                        ) : (
+                          <>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="h-9 flex-1 text-sm"
+                              disabled={resendMutation.isPending}
+                              onClick={() => resendMutation.mutate(record)}
+                            >
+                              {resendMutation.isPending && resendMutation.variables?.scheduleId === record.scheduleId ? (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              ) : (
+                                <RotateCcw className="mr-2 h-4 w-4" />
+                              )}
+                              Reemitir
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-9 w-9 shrink-0"
+                              disabled={deleteMutation.isPending}
+                              onClick={() => setCertificateToDelete(record)}
+                              aria-label="Excluir certificado"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </>
+                        )}
                       </div>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-        </Table>
+                    ) : null}
+                  </CardContent>
+                </Card>
+              ))
+            )}
+            </div>
+          </div>
+        )}
+
+        {!certificatesQuery.isLoading ? (
+          <DataPagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            pageSize={itemsPerPage}
+            totalItems={filteredRecords.length}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={(size) => {
+              setItemsPerPage(size)
+              setCurrentPage(1)
+            }}
+          />
+        ) : null}
       </div>
 
-      {!certificatesQuery.isLoading ? (
-        <DataPagination
-          currentPage={currentPage}
-          totalPages={totalPages}
-          pageSize={itemsPerPage}
-          totalItems={filteredRecords.length}
-          onPageChange={setCurrentPage}
-          onPageSizeChange={setItemsPerPage}
-        />
-      ) : null}
-    </div>
-    <ConfirmActionDialog
-      open={!!certificateToDelete}
-      title="Excluir certificado"
-      description={
-        certificateToDelete
-          ? `Tem certeza que deseja excluir o certificado de ${certificateToDelete.clientName}? Esta ação também remove o arquivo dos anexos do cliente.`
-          : "Tem certeza que deseja excluir este certificado?"
-      }
-      confirmLabel="Excluir"
-      onOpenChange={(open) => {
-        if (!open) setCertificateToDelete(null)
-      }}
-      onConfirm={() => {
-        if (certificateToDelete) {
-          deleteMutation.mutate(certificateToDelete)
+      <ConfirmActionDialog
+        open={!!certificateToDelete}
+        title="Excluir certificado"
+        description={
+          certificateToDelete
+            ? `Tem certeza que deseja excluir o certificado de ${certificateToDelete.clientName}? Esta ação também remove o arquivo dos anexos do cliente.`
+            : "Tem certeza que deseja excluir este certificado?"
         }
-      }}
-      busy={deleteMutation.isPending}
-    />
+        confirmLabel="Excluir"
+        onOpenChange={(open) => {
+          if (!open) setCertificateToDelete(null)
+        }}
+        onConfirm={() => {
+          if (certificateToDelete) {
+            deleteMutation.mutate(certificateToDelete)
+          }
+        }}
+        busy={deleteMutation.isPending}
+      />
     </>
   )
 }

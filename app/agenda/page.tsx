@@ -20,7 +20,7 @@ export default function AgendaPage() {
       <main className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 pb-4 md:px-4 lg:ml-60 lg:overflow-hidden lg:px-5">
         <Header
           title="Agenda"
-          description="Gerencie os agendamentos e compromissos da equipe"
+          description="Gerencie os agendamentos e compromissos da equipe."
           hasFilters
           actions={
             <Button

@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { ContentLoadingSkeleton } from "@/components/ui/content-loading-skeleton"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import Link from "next/link"
-import { List, LayoutGrid } from "lucide-react"
+import { Plus, List, LayoutGrid } from "lucide-react"
 
 export default function ContratosPage() {
   const [viewMode, setViewMode] = useState<"table" | "cards">("table")
@@ -28,16 +28,17 @@ export default function ContratosPage() {
         <Sidebar />
       </div>
 
-      <main className="flex-1 px-3 pb-4 md:px-4 lg:px-5 lg:ml-60">
+      <main className="flex h-screen min-h-0 flex-1 flex-col overflow-hidden px-3 pb-4 md:px-4 lg:px-5 lg:ml-60">
         <Header
           title="Contratos"
-          description="Gerencie todos os contratos da Depclean"
+          description="Gerencie todos os contratos da Depclean."
           hasFilters
           viewToggle={toggle}
           actions={
             <Link href="/contratos/novo">
               <Button className="w-full sm:w-auto h-9 text-sm bg-primary text-primary-foreground hover:bg-primary/90">
-                + Novo Contrato
+                <Plus className="w-4 h-4 mr-2" />
+                Novo Contrato
               </Button>
             </Link>
           }

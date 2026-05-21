@@ -11,6 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react"
+import { cn } from "@/lib/utils"
 
 interface DataPaginationProps {
   currentPage: number
@@ -20,6 +21,7 @@ interface DataPaginationProps {
   onPageChange: (page: number) => void
   onPageSizeChange: (size: number) => void
   pageSizeOptions?: number[]
+  className?: string
 }
 
 export function DataPagination({
@@ -30,6 +32,7 @@ export function DataPagination({
   onPageChange,
   onPageSizeChange,
   pageSizeOptions = [10, 15, 20, 50],
+  className,
 }: DataPaginationProps) {
   const normalizedPageSizeOptions = Array.from(
     new Set(pageSizeOptions.filter((option) => Number.isFinite(option) && option > 0)),
@@ -47,7 +50,12 @@ export function DataPagination({
   }, [onPageSizeChange, pageSize, safePageSize])
 
   return (
-    <div className="flex flex-col items-center gap-4 pt-5 sm:flex-row sm:justify-between">
+    <div
+      className={cn(
+        "mt-auto flex shrink-0 flex-col items-center gap-3 bg-background/95 pt-3 backdrop-blur supports-[backdrop-filter]:bg-background/85 sm:flex-row sm:justify-between md:sticky md:bottom-0 md:z-30",
+        className,
+      )}
+    >
       <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
         <span>Exibindo</span>
         <Select

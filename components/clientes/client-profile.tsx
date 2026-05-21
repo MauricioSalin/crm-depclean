@@ -34,6 +34,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { DataPagination } from "@/components/ui/data-pagination"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { TableEmptyState } from "@/components/ui/empty-state"
@@ -110,6 +111,9 @@ const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingm
 
 const formatDate = (value?: string) =>
   formatCivilDate(value)
+
+const paginateItems = <T,>(items: T[], page: number, pageSize: number) =>
+  items.slice((page - 1) * pageSize, page * pageSize)
 
 const informativePdfFileName = (fileName: string) => {
   const cleanName = fileName.trim() || "informativo.pdf"
@@ -334,7 +338,18 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
   const [installmentOverrides, setInstallmentOverrides] = useState<
     Record<string, { status: ContractInstallmentRecord["status"]; paidDate?: string; paidValue?: number }>
   >({})
+  const [installmentsPage, setInstallmentsPage] = useState(1)
+  const [installmentsPageSize, setInstallmentsPageSize] = useState(10)
+  const [servicesPage, setServicesPage] = useState(1)
+  const [servicesPageSize, setServicesPageSize] = useState(10)
+  const [agendaPage, setAgendaPage] = useState(1)
+  const [agendaPageSize, setAgendaPageSize] = useState(10)
+  const [attachmentsPage, setAttachmentsPage] = useState(1)
+  const [attachmentsPageSize, setAttachmentsPageSize] = useState(10)
   const activeTab = getClientProfileTabFromUrl(searchParams.get("tab"))
+  const contractReturnPath = `${pathname}?tab=${clientProfileTabUrlValue.contratos}`
+  const getContractProfileHref = (contractId: string) =>
+    `/contratos/${contractId}?returnTo=${encodeURIComponent(contractReturnPath)}`
 
   const handleTabChange = (value: string) => {
     if (!isClientProfileTab(value)) return
@@ -521,10 +536,59 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
     return clientContracts.flatMap((contract) =>
       contract.installments.map((installment) => {
         const override = installmentOverrides[installment.id]
-        return override ? { ...installment, ...override } : installment
+        return {
+          ...installment,
+          ...(override ?? {}),
+          contractNumber: contract.contractNumber,
+          installmentsCount: contract.installmentsCount,
+        }
       }),
     )
   }, [clientContracts, installmentOverrides])
+  const completedServices = useMemo(
+    () => clientServices.filter((service) => service.status === "completed"),
+    [clientServices],
+  )
+  const scheduledServices = useMemo(
+    () => clientServices.filter((service) => ["draft", "scheduled", "in_progress", "rescheduled"].includes(service.status)),
+    [clientServices],
+  )
+  const installmentsTotalPages = Math.max(1, Math.ceil(allInstallments.length / installmentsPageSize))
+  const servicesTotalPages = Math.max(1, Math.ceil(completedServices.length / servicesPageSize))
+  const agendaTotalPages = Math.max(1, Math.ceil(scheduledServices.length / agendaPageSize))
+  const attachmentsTotalPages = Math.max(1, Math.ceil(clientAttachments.length / attachmentsPageSize))
+  const paginatedInstallments = useMemo(
+    () => paginateItems(allInstallments, installmentsPage, installmentsPageSize),
+    [allInstallments, installmentsPage, installmentsPageSize],
+  )
+  const paginatedServices = useMemo(
+    () => paginateItems(completedServices, servicesPage, servicesPageSize),
+    [completedServices, servicesPage, servicesPageSize],
+  )
+  const paginatedAgenda = useMemo(
+    () => paginateItems(scheduledServices, agendaPage, agendaPageSize),
+    [scheduledServices, agendaPage, agendaPageSize],
+  )
+  const paginatedAttachments = useMemo(
+    () => paginateItems(clientAttachments, attachmentsPage, attachmentsPageSize),
+    [clientAttachments, attachmentsPage, attachmentsPageSize],
+  )
+
+  useEffect(() => {
+    if (installmentsPage > installmentsTotalPages) setInstallmentsPage(installmentsTotalPages)
+  }, [installmentsPage, installmentsTotalPages])
+
+  useEffect(() => {
+    if (servicesPage > servicesTotalPages) setServicesPage(servicesTotalPages)
+  }, [servicesPage, servicesTotalPages])
+
+  useEffect(() => {
+    if (agendaPage > agendaTotalPages) setAgendaPage(agendaTotalPages)
+  }, [agendaPage, agendaTotalPages])
+
+  useEffect(() => {
+    if (attachmentsPage > attachmentsTotalPages) setAttachmentsPage(attachmentsTotalPages)
+  }, [attachmentsPage, attachmentsTotalPages])
 
   const paidInstallments = allInstallments.filter((installment) => installment.status === "paid")
   const overdueInstallments = allInstallments.filter((installment) => ["late", "overdue"].includes(installment.status))
@@ -666,7 +730,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
       ) : null}
 
       <Card className="overflow-hidden">
-        <CardContent className="px-4 py-3">
+        <CardContent className="">
           <div className="flex items-start gap-4">
             <div
               className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl"
@@ -684,7 +748,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                   {clientType?.name ?? "Cliente"}
                 </Badge>
               </div>
-              <p className="font-mono text-xs text-muted-foreground">{formatCNPJ(client.cnpj)}</p>
+              <p className="font-mono text-sm text-muted-foreground">{formatCNPJ(client.cnpj)}</p>
 
               <div className="space-y-2 text-sm">
                 <div className="flex min-w-0 items-center gap-2 text-muted-foreground">
@@ -695,11 +759,6 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <Mail className="h-4 w-4 shrink-0" />
                   <span className="truncate">{client.email}</span>
-                </div>
-
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <FileText className="h-4 w-4 shrink-0" />
-                  <span>{activeContracts} contrato(s) ativo(s)</span>
                 </div>
               </div>
             </div>
@@ -921,12 +980,20 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
               </TableHeader>
               <TableBody>
                 {clientContracts.map((contract) => (
-                  <TableRow key={contract.id}>
+                  <TableRow
+                    key={contract.id}
+                    className="cursor-pointer"
+                    onClick={() => router.push(getContractProfileHref(contract.id))}
+                  >
                     <TableCell>
-                      <div>
+                      <Link
+                        href={getContractProfileHref(contract.id)}
+                        className="block hover:text-primary"
+                        onClick={(event) => event.stopPropagation()}
+                      >
                         <p className="font-medium">{contract.contractNumber}</p>
                         <p className="text-xs text-muted-foreground">{contract.services.length} serviço(s)</p>
-                      </div>
+                      </Link>
                     </TableCell>
                     <TableCell className="font-medium">{formatCurrency(contract.totalValue)}</TableCell>
                     <TableCell className="hidden md:table-cell text-sm">
@@ -972,12 +1039,15 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
                         <Button variant="ghost" size="icon" asChild>
-                          <Link href={`/contratos/${contract.id}`}>
+                          <Link
+                            href={getContractProfileHref(contract.id)}
+                            onClick={(event) => event.stopPropagation()}
+                          >
                             <ExternalLink className="h-4 w-4" />
                           </Link>
                         </Button>
                         {contract.documentUrl ? (
-                          <Button variant="ghost" size="icon">
+                          <Button variant="ghost" size="icon" onClick={(event) => event.stopPropagation()}>
                             <Download className="h-4 w-4" />
                           </Button>
                         ) : null}
@@ -995,275 +1065,328 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
         </TabsContent>
 
         <TabsContent value="parcelas" className="mt-4">
-          <div className="overflow-x-auto rounded-md">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Contrato</TableHead>
-                  <TableHead>Parcela</TableHead>
-                  <TableHead>Valor</TableHead>
-                  <TableHead className="hidden md:table-cell">Vencimento</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {allInstallments.length === 0 ? (
-                  <TableEmptyState colSpan={6} icon={DollarSign} title="Nenhuma parcela encontrada." />
-                ) : (
-                  clientContracts.flatMap((contract) =>
-                    contract.installments.map((installment) => {
-                      const override = installmentOverrides[installment.id]
-                      const displayInstallment = override ? { ...installment, ...override } : installment
-
-                      return (
-                        <TableRow key={installment.id}>
-                          <TableCell className="text-sm">{contract.contractNumber}</TableCell>
-                          <TableCell>
-                            {installment.number}/{contract.installmentsCount}
-                          </TableCell>
-                          <TableCell className="font-medium">{formatCurrency(installment.value)}</TableCell>
-                          <TableCell className="hidden md:table-cell text-sm">{formatDate(installment.dueDate)}</TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={
-                                displayInstallment.status === "paid"
-                                  ? "default"
-                                  : displayInstallment.status === "late"
-                                    ? "secondary"
-                                  : displayInstallment.status === "overdue"
-                                    ? "destructive"
-                                    : "secondary"
-                              }
-                            >
-                              {displayInstallment.status === "paid"
-                                ? "Paga"
-                                : displayInstallment.status === "late"
-                                  ? "Atrasada"
-                                : displayInstallment.status === "overdue"
-                                  ? "Vencida"
-                                  : "Pendente"}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon">
-                                  <MoreHorizontal className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => setInstallmentStatus(installment.id, "paid")}>
-                                  Marcar como paga
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => setInstallmentStatus(installment.id, "overdue")}>
-                                  Marcar como vencida
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => setInstallmentStatus(installment.id, "pending")}>
-                                  Marcar como pendente
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </TableCell>
-                        </TableRow>
-                      )
-                    }),
-                  )
-                )}
-              </TableBody>
-            </Table>
+          <div className="space-y-3">
+            <div className="overflow-x-auto rounded-md">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Contrato</TableHead>
+                    <TableHead>Parcela</TableHead>
+                    <TableHead>Valor</TableHead>
+                    <TableHead className="hidden md:table-cell">Vencimento</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Ações</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {allInstallments.length === 0 ? (
+                    <TableEmptyState colSpan={6} icon={DollarSign} title="Nenhuma parcela encontrada." />
+                  ) : (
+                    paginatedInstallments.map((installment) => (
+                      <TableRow key={installment.id}>
+                        <TableCell className="text-sm">{installment.contractNumber}</TableCell>
+                        <TableCell>
+                          {installment.number}/{installment.installmentsCount}
+                        </TableCell>
+                        <TableCell className="font-medium">{formatCurrency(installment.value)}</TableCell>
+                        <TableCell className="hidden md:table-cell text-sm">{formatDate(installment.dueDate)}</TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={
+                              installment.status === "paid"
+                                ? "default"
+                                : installment.status === "late"
+                                  ? "secondary"
+                                : installment.status === "overdue"
+                                  ? "destructive"
+                                  : "secondary"
+                            }
+                          >
+                            {installment.status === "paid"
+                              ? "Paga"
+                              : installment.status === "late"
+                                ? "Atrasada"
+                              : installment.status === "overdue"
+                                ? "Vencida"
+                                : "Pendente"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => setInstallmentStatus(installment.id, "paid")}>
+                                Marcar como paga
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => setInstallmentStatus(installment.id, "overdue")}>
+                                Marcar como vencida
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => setInstallmentStatus(installment.id, "pending")}>
+                                Marcar como pendente
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+            {allInstallments.length > 0 ? (
+              <DataPagination
+                currentPage={installmentsPage}
+                totalPages={installmentsTotalPages}
+                pageSize={installmentsPageSize}
+                totalItems={allInstallments.length}
+                onPageChange={setInstallmentsPage}
+                onPageSizeChange={(size) => {
+                  setInstallmentsPageSize(size)
+                  setInstallmentsPage(1)
+                }}
+                className="md:static md:bottom-auto md:z-auto"
+              />
+            ) : null}
           </div>
         </TabsContent>
 
         <TabsContent value="servicos" className="mt-4">
-          <div className="overflow-x-auto rounded-md">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Serviço</TableHead>
-                  <TableHead>Tipo</TableHead>
-                  <TableHead className="hidden md:table-cell">Equipe / Funcionários</TableHead>
-                  <TableHead>Data</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {clientServices
-                  .filter((service) => service.status === "completed")
-                  .map((service) => {
-                    const serviceTeams =
-                      service.teams.length > 0
-                        ? service.teams
-                        : service.teamId && teamMap.get(service.teamId)
-                          ? [teamMap.get(service.teamId)!]
-                          : []
+          <div className="space-y-3">
+            <div className="overflow-x-auto rounded-md">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Serviço</TableHead>
+                    <TableHead>Tipo</TableHead>
+                    <TableHead className="hidden md:table-cell">Equipe / Funcionários</TableHead>
+                    <TableHead>Data</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {paginatedServices.map((service) => {
+                      const serviceTeams =
+                        service.teams.length > 0
+                          ? service.teams
+                          : service.teamId && teamMap.get(service.teamId)
+                            ? [teamMap.get(service.teamId)!]
+                            : []
 
-                    return (
-                      <TableRow key={service.id}>
-                        <TableCell>
-                          <p className="font-medium">{service.serviceTypeName}</p>
-                        </TableCell>
-                        <TableCell>
-                          <ScheduleTypeBadge schedule={service} />
-                        </TableCell>
-                        <TableCell className="hidden md:table-cell">
-                          <AssignmentBadges teams={serviceTeams} employees={service.additionalEmployees} />
-                        </TableCell>
-                        <TableCell className="text-sm">{formatDate(service.date)}</TableCell>
-                      </TableRow>
-                    )
-                  })}
+                      return (
+                        <TableRow key={service.id}>
+                          <TableCell>
+                            <p className="font-medium">{service.serviceTypeName}</p>
+                          </TableCell>
+                          <TableCell>
+                            <ScheduleTypeBadge schedule={service} />
+                          </TableCell>
+                          <TableCell className="hidden md:table-cell">
+                            <AssignmentBadges teams={serviceTeams} employees={service.additionalEmployees} />
+                          </TableCell>
+                          <TableCell className="text-sm">{formatDate(service.date)}</TableCell>
+                        </TableRow>
+                      )
+                    })}
 
-                {clientServices.filter((service) => service.status === "completed").length === 0 ? (
-                  <TableEmptyState colSpan={4} icon={CheckCircle} title="Nenhum serviço realizado ainda." />
-                ) : null}
-              </TableBody>
-            </Table>
+                  {completedServices.length === 0 ? (
+                    <TableEmptyState colSpan={4} icon={CheckCircle} title="Nenhum serviço realizado ainda." />
+                  ) : null}
+                </TableBody>
+              </Table>
+            </div>
+            {completedServices.length > 0 ? (
+              <DataPagination
+                currentPage={servicesPage}
+                totalPages={servicesTotalPages}
+                pageSize={servicesPageSize}
+                totalItems={completedServices.length}
+                onPageChange={setServicesPage}
+                onPageSizeChange={(size) => {
+                  setServicesPageSize(size)
+                  setServicesPage(1)
+                }}
+                className="md:static md:bottom-auto md:z-auto"
+              />
+            ) : null}
           </div>
         </TabsContent>
 
         <TabsContent value="agenda" className="mt-4">
-          <div className="overflow-x-auto rounded-md">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Serviço</TableHead>
-                  <TableHead>Tipo</TableHead>
-                  <TableHead className="hidden md:table-cell">Equipe / Funcionários</TableHead>
-                  <TableHead>Data</TableHead>
-                  <TableHead>Horário</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {clientServices
-                  .filter((service) => ["draft", "scheduled", "in_progress", "rescheduled"].includes(service.status))
-                  .map((service) => {
-                    const serviceTeams =
-                      service.teams.length > 0
-                        ? service.teams
-                        : service.teamId && teamMap.get(service.teamId)
-                          ? [teamMap.get(service.teamId)!]
-                          : []
+          <div className="space-y-3">
+            <div className="overflow-x-auto rounded-md">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Serviço</TableHead>
+                    <TableHead>Tipo</TableHead>
+                    <TableHead className="hidden md:table-cell">Equipe / Funcionários</TableHead>
+                    <TableHead>Data</TableHead>
+                    <TableHead>Horário</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {paginatedAgenda.map((service) => {
+                      const serviceTeams =
+                        service.teams.length > 0
+                          ? service.teams
+                          : service.teamId && teamMap.get(service.teamId)
+                            ? [teamMap.get(service.teamId)!]
+                            : []
 
-                    return (
-                      <TableRow key={service.id}>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <p className="font-medium">{service.serviceTypeName}</p>
-                            {service.isEmergency ? <AlertTriangle className="h-4 w-4 text-destructive" /> : null}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <ScheduleTypeBadge schedule={service} />
-                        </TableCell>
-                        <TableCell className="hidden md:table-cell">
-                          <AssignmentBadges teams={serviceTeams} employees={service.additionalEmployees} />
-                        </TableCell>
-                        <TableCell className="text-sm">{formatDate(service.date)}</TableCell>
-                        <TableCell className="text-sm">{service.time || "08:00"}</TableCell>
-                        <TableCell>{getScheduleStatusBadge(service.status)}</TableCell>
-                      </TableRow>
-                    )
-                  })}
+                      return (
+                        <TableRow key={service.id}>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <p className="font-medium">{service.serviceTypeName}</p>
+                              {service.isEmergency ? <AlertTriangle className="h-4 w-4 text-destructive" /> : null}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <ScheduleTypeBadge schedule={service} />
+                          </TableCell>
+                          <TableCell className="hidden md:table-cell">
+                            <AssignmentBadges teams={serviceTeams} employees={service.additionalEmployees} />
+                          </TableCell>
+                          <TableCell className="text-sm">{formatDate(service.date)}</TableCell>
+                          <TableCell className="text-sm">{service.time || "08:00"}</TableCell>
+                          <TableCell>{getScheduleStatusBadge(service.status)}</TableCell>
+                        </TableRow>
+                      )
+                    })}
 
-                {clientServices.filter((service) => ["draft", "scheduled", "in_progress", "rescheduled"].includes(service.status)).length === 0 ? (
-                  <TableEmptyState colSpan={6} icon={Calendar} title="Nenhum serviço agendado." />
-                ) : null}
-              </TableBody>
-            </Table>
+                  {scheduledServices.length === 0 ? (
+                    <TableEmptyState colSpan={6} icon={Calendar} title="Nenhum serviço agendado." />
+                  ) : null}
+                </TableBody>
+              </Table>
+            </div>
+            {scheduledServices.length > 0 ? (
+              <DataPagination
+                currentPage={agendaPage}
+                totalPages={agendaTotalPages}
+                pageSize={agendaPageSize}
+                totalItems={scheduledServices.length}
+                onPageChange={setAgendaPage}
+                onPageSizeChange={(size) => {
+                  setAgendaPageSize(size)
+                  setAgendaPage(1)
+                }}
+                className="md:static md:bottom-auto md:z-auto"
+              />
+            ) : null}
           </div>
         </TabsContent>
 
         <TabsContent value="anexos" className="mt-4">
-          <div className="overflow-x-auto rounded-md">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Tipo</TableHead>
-                  <TableHead>Arquivo</TableHead>
-                  <TableHead className="hidden md:table-cell">Origem</TableHead>
-                  <TableHead className="hidden md:table-cell">Data</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {clientAttachments.map((attachment) => (
-                  <TableRow key={attachment.id}>
-                    <TableCell>
-                      <Badge variant="secondary">{getAttachmentTypeLabel(attachment.type)}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10">
-                          <FileCheck2 className="h-4 w-4 text-primary" />
+          <div className="space-y-3">
+            <div className="overflow-x-auto rounded-md">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Tipo</TableHead>
+                    <TableHead>Arquivo</TableHead>
+                    <TableHead className="hidden md:table-cell">Origem</TableHead>
+                    <TableHead className="hidden md:table-cell">Data</TableHead>
+                    <TableHead className="text-right">Ações</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {paginatedAttachments.map((attachment) => (
+                    <TableRow key={attachment.id}>
+                      <TableCell>
+                        <Badge variant="secondary">{getAttachmentTypeLabel(attachment.type)}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10">
+                            <FileCheck2 className="h-4 w-4 text-primary" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="truncate font-medium">{attachment.title}</p>
+                            <p className="truncate text-xs text-muted-foreground">
+                              {formatAttachmentFileInfo(attachment)}
+                            </p>
+                          </div>
                         </div>
-                        <div className="min-w-0">
-                          <p className="truncate font-medium">{attachment.title}</p>
-                          <p className="truncate text-xs text-muted-foreground">
-                            {formatAttachmentFileInfo(attachment)}
-                          </p>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
-                      {attachment.source === "agenda"
-                        ? "Agenda"
-                        : attachment.source === "contracts"
-                          ? "Contratos"
-                          : attachment.source === "ai"
-                            ? "IA"
-                            : "Manual"}
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell text-sm">
-                      {new Date(attachment.uploadedAt).toLocaleDateString("pt-BR")}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleAttachmentDownload(attachment)}
-                          disabled={attachment.type === "informative" && isGeneratingInformativePdf}
-                          title={attachment.type === "informative" ? "Baixar PDF" : "Baixar arquivo"}
-                        >
-                          <Download className="h-4 w-4" />
-                        </Button>
-                        {attachment.source === "manual" ? (
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
+                        {attachment.source === "agenda"
+                          ? "Agenda"
+                          : attachment.source === "contracts"
+                            ? "Contratos"
+                            : attachment.source === "ai"
+                              ? "IA"
+                              : "Manual"}
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell text-sm">
+                        {new Date(attachment.uploadedAt).toLocaleDateString("pt-BR")}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-1">
                           <Button
                             type="button"
                             variant="ghost"
                             size="icon"
-                            onClick={() => deleteAttachmentMutation.mutate(attachment.id)}
-                            disabled={deleteAttachmentMutation.isPending}
-                            className="text-destructive hover:text-destructive"
+                            onClick={() => handleAttachmentDownload(attachment)}
+                            disabled={attachment.type === "informative" && isGeneratingInformativePdf}
+                            title={attachment.type === "informative" ? "Baixar PDF" : "Baixar arquivo"}
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <Download className="h-4 w-4" />
                           </Button>
-                        ) : null}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                          {attachment.source === "manual" ? (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => deleteAttachmentMutation.mutate(attachment.id)}
+                              disabled={deleteAttachmentMutation.isPending}
+                              className="text-destructive hover:text-destructive"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          ) : null}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
 
-                {!attachmentsQuery.isLoading && clientAttachments.length === 0 ? (
-                  <TableEmptyState colSpan={5} icon={Paperclip} title="Nenhum anexo vinculado a este cliente." />
-                ) : null}
+                  {!attachmentsQuery.isLoading && clientAttachments.length === 0 ? (
+                    <TableEmptyState colSpan={5} icon={Paperclip} title="Nenhum anexo vinculado a este cliente." />
+                  ) : null}
 
-                {attachmentsQuery.isLoading ? (
-                  <TableSkeletonRows
-                    rows={3}
-                    columns={[
-                      { width: "w-20" },
-                      { withIcon: true, width: "w-48" },
-                      { className: "hidden md:table-cell", width: "w-20" },
-                      { className: "hidden md:table-cell", width: "w-20" },
-                      { align: "right", width: "w-8" },
-                    ]}
-                  />
-                ) : null}
-              </TableBody>
-            </Table>
+                  {attachmentsQuery.isLoading ? (
+                    <TableSkeletonRows
+                      rows={3}
+                      columns={[
+                        { width: "w-20" },
+                        { withIcon: true, width: "w-48" },
+                        { className: "hidden md:table-cell", width: "w-20" },
+                        { className: "hidden md:table-cell", width: "w-20" },
+                        { align: "right", width: "w-8" },
+                      ]}
+                    />
+                  ) : null}
+                </TableBody>
+              </Table>
+            </div>
+            {!attachmentsQuery.isLoading && clientAttachments.length > 0 ? (
+              <DataPagination
+                currentPage={attachmentsPage}
+                totalPages={attachmentsTotalPages}
+                pageSize={attachmentsPageSize}
+                totalItems={clientAttachments.length}
+                onPageChange={setAttachmentsPage}
+                onPageSizeChange={(size) => {
+                  setAttachmentsPageSize(size)
+                  setAttachmentsPage(1)
+                }}
+                className="md:static md:bottom-auto md:z-auto"
+              />
+            ) : null}
           </div>
         </TabsContent>
       </Tabs>

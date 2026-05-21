@@ -303,8 +303,8 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
                     >
                       <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: team.color }} />
                       <span>{team.name}</span>
-                      <Button type="button" variant="ghost" size="icon" className="h-3.5 w-3.5 p-0 hover:bg-transparent" onClick={() => toggleTeam(teamId)}>
-                        <X className="h-2.5 w-2.5" />
+                      <Button type="button" variant="ghost" size="icon" className="h-4 w-4 shrink-0 rounded-full p-0 text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground" onClick={() => toggleTeam(teamId)}>
+                        <X className="h-3 w-3" />
                       </Button>
                     </Badge>
                   )
@@ -365,8 +365,8 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
                   return (
                     <Badge key={employeeId} variant="outline" className="flex items-center gap-2 px-3 py-1">
                       <span>{employee.name}</span>
-                      <Button type="button" variant="ghost" size="icon" className="h-3.5 w-3.5 p-0 hover:bg-transparent" onClick={() => toggleEmployee(employeeId)}>
-                        <X className="h-2.5 w-2.5" />
+                      <Button type="button" variant="ghost" size="icon" className="h-4 w-4 shrink-0 rounded-full p-0 text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground" onClick={() => toggleEmployee(employeeId)}>
+                        <X className="h-3 w-3" />
                       </Button>
                     </Badge>
                   )

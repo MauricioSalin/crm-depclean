@@ -2,10 +2,18 @@
 
 import { useEffect, useRef, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
-import { Bell, X } from "lucide-react"
+import { Bell } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   getPushPublicKey,
   markNotificationAsRead,
@@ -143,38 +151,36 @@ export function PwaProvider() {
   }
 
   return (
-    <div className="fixed inset-x-3 bottom-3 z-50 mx-auto max-w-md rounded-lg border bg-background p-3 shadow-lg sm:bottom-5">
-      <div className="flex items-start gap-3">
-        <div className="mt-0.5 rounded-full bg-primary/10 p-2 text-primary">
-          <Bell className="size-4" aria-hidden="true" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-foreground">Ativar notificações no celular</p>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            Receba os avisos do sininho mesmo quando o app estiver fechado.
-          </p>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <Button size="sm" onClick={enableNotifications} disabled={isEnabling}>
-              <Bell className="size-4" aria-hidden="true" />
-              {isEnabling ? "Ativando..." : "Ativar"}
-            </Button>
-            <Button size="sm" variant="ghost" onClick={dismissPrompt} disabled={isEnabling}>
-              Agora não
-            </Button>
+    <Dialog
+      open={showPrompt}
+      onOpenChange={(open) => {
+        if (!open && !isEnabling) dismissPrompt()
+      }}
+    >
+      <DialogContent className="max-w-md gap-5 p-0" showCloseButton={!isEnabling}>
+        <div className="flex items-start gap-4 px-6 pt-6">
+          <div className="rounded-full bg-primary/10 p-3 text-primary">
+            <Bell className="size-5" aria-hidden="true" />
           </div>
+          <DialogHeader className="min-w-0 gap-2 pr-6 text-left">
+            <DialogTitle className="text-base">Ativar notificações no celular</DialogTitle>
+            <DialogDescription className="leading-5">
+              Receba os avisos do sininho mesmo quando o app estiver fechado.
+            </DialogDescription>
+          </DialogHeader>
         </div>
-        <Button
-          aria-label="Fechar"
-          size="icon-sm"
-          variant="ghost"
-          onClick={dismissPrompt}
-          disabled={isEnabling}
-          className="-mr-1 -mt-1"
-        >
-          <X className="size-4" aria-hidden="true" />
-        </Button>
-      </div>
-    </div>
+
+        <DialogFooter className="px-6 pb-6 sm:justify-start">
+          <Button onClick={enableNotifications} disabled={isEnabling}>
+            <Bell className="size-4" aria-hidden="true" />
+            {isEnabling ? "Ativando..." : "Ativar"}
+          </Button>
+          <Button variant="ghost" onClick={dismissPrompt} disabled={isEnabling}>
+            Agora não
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

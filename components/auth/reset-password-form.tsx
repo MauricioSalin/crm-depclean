@@ -1,8 +1,9 @@
 "use client"
 
 import { useState, type FormEvent } from "react"
-import { Eye, EyeOff, Lock, LoaderCircle } from "lucide-react"
+import Image from "next/image"
 import { useRouter, useSearchParams } from "next/navigation"
+import { Eye, EyeOff, Lock, LoaderCircle } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -56,65 +57,104 @@ export function ResetPasswordForm() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#f6f6f2] px-6">
-      <Card className="w-full max-w-md border-0 bg-white shadow-[0_18px_50px_rgba(0,0,0,0.14)]">
-        <CardContent className="p-8 sm:p-10">
-          <div className="mb-6 space-y-2">
-            <h1 className="text-2xl font-bold text-foreground">Redefinir senha</h1>
-            <p className="text-sm text-muted-foreground">
-              Escolha uma nova senha para concluir a recuperação.
-            </p>
+    <main className="relative h-screen overflow-hidden bg-[#f6f6f2]">
+      <div className="absolute inset-x-0 bottom-0 h-12 bg-primary/95" />
+
+      <div className="relative z-10 flex h-full items-center justify-center px-6 py-6">
+        <div className="flex w-full max-w-5xl -translate-y-10 flex-col items-center justify-center sm:-translate-y-14">
+          <div className="mb-12 text-center">
+            <Image
+              src="/logo-depclean.png"
+              alt="Depclean"
+              width={240}
+              height={78}
+              priority
+              className="mx-auto h-auto w-[220px] sm:w-[220px]"
+            />
+            <h1 className="mt-8 text-3xl font-extrabold leading-tight text-gray-800">
+              Redefina sua senha,
+              <span className="relative mx-auto block w-fit text-primary">
+                colaborador!
+              </span>
+            </h1>
           </div>
 
-          <form autoComplete="off" onSubmit={handleSubmit} className="space-y-5">
-            <div className="space-y-2">
-              <Label htmlFor="newPassword">Nova senha</Label>
-              <div className="relative">
-                <Lock className="pointer-events-none absolute left-0 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  id="newPassword"
-                  type={showPassword ? "text" : "password"}
-                  value={newPassword}
-                  onChange={(event) => setNewPassword(event.target.value)}
-                  className="h-11 rounded-none border-0 border-b border-border bg-transparent pl-7 pr-8 shadow-none focus-visible:ring-0"
-                  required
-                />
-                <button
+          <Card className="w-full max-w-[420px] border-0 bg-white py-0 shadow-[0_18px_50px_rgba(0,0,0,0.14)]">
+            <CardContent className="p-8 sm:p-10">
+              <form autoComplete="off" onSubmit={handleSubmit} className="space-y-6">
+                {!token && (
+                  <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                    Link inválido ou expirado. Solicite uma nova recuperação de senha.
+                  </p>
+                )}
+
+                <div className="space-y-2">
+                  <Label htmlFor="newPassword">Nova senha</Label>
+                  <div className="relative">
+                    <Lock className="pointer-events-none absolute left-0 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      id="newPassword"
+                      type={showPassword ? "text" : "password"}
+                      value={newPassword}
+                      onChange={(event) => setNewPassword(event.target.value)}
+                      placeholder="Digite a nova senha"
+                      className="h-11 rounded-none border-0 border-b border-border bg-transparent pl-7 pr-8 shadow-none focus-visible:ring-0"
+                      disabled={loading || !token}
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((value) => !value)}
+                      className="absolute right-0 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+                      aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="confirmPassword">Confirmar senha</Label>
+                  <div className="relative">
+                    <Lock className="pointer-events-none absolute left-0 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      id="confirmPassword"
+                      type={showPassword ? "text" : "password"}
+                      value={confirmPassword}
+                      onChange={(event) => setConfirmPassword(event.target.value)}
+                      placeholder="Confirme a nova senha"
+                      className="h-11 rounded-none border-0 border-b border-border bg-transparent pl-7 pr-0 shadow-none focus-visible:ring-0"
+                      disabled={loading || !token}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <Button type="submit" className="mt-8 h-11 w-full text-sm font-semibold" disabled={loading || !token}>
+                  {loading ? (
+                    <span className="inline-flex items-center gap-2">
+                      <LoaderCircle className="h-4 w-4 animate-spin" />
+                      Salvando...
+                    </span>
+                  ) : (
+                    "Redefinir senha"
+                  )}
+                </Button>
+
+                <Button
                   type="button"
-                  onClick={() => setShowPassword((value) => !value)}
-                  className="absolute right-0 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
-                  aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                  variant="ghost"
+                  className="h-10 w-full text-sm font-medium text-muted-foreground hover:text-foreground"
+                  onClick={() => router.push("/login")}
+                  disabled={loading}
                 >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="confirmPassword">Confirmar senha</Label>
-              <Input
-                id="confirmPassword"
-                type={showPassword ? "text" : "password"}
-                value={confirmPassword}
-                onChange={(event) => setConfirmPassword(event.target.value)}
-                className="h-11 rounded-none border-0 border-b border-border bg-transparent shadow-none focus-visible:ring-0"
-                required
-              />
-            </div>
-
-            <Button type="submit" className="h-11 w-full text-sm font-semibold" disabled={loading || !token}>
-              {loading ? (
-                <span className="inline-flex items-center gap-2">
-                  <LoaderCircle className="h-4 w-4 animate-spin" />
-                  Salvando...
-                </span>
-              ) : (
-                "Redefinir senha"
-              )}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+                  Voltar ao login
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </main>
   )
 }

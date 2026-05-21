@@ -28,10 +28,10 @@ export default function AgendamentosPage() {
         <Sidebar />
       </div>
 
-      <main className="flex-1 px-3 pb-4 md:px-4 lg:px-5 lg:ml-60">
+      <main className="flex h-screen min-h-0 flex-1 flex-col overflow-hidden px-3 pb-4 md:px-4 lg:px-5 lg:ml-60">
         <Header
           title="Agendamentos"
-          description="Gerencie todos os agendamentos de serviços"
+          description="Gerencie todos os agendamentos de serviços."
           hasFilters
           viewToggle={toggle}
           actions={

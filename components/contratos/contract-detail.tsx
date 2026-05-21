@@ -9,6 +9,7 @@ import {
   BellRing,
   Building2,
   Calendar,
+  CalendarCheck,
   CheckCircle,
   Clock,
   Download,
@@ -551,11 +552,15 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                 <Building2 className="h-4 w-4" />
                 <span>{contract.clientCompanyName ?? client?.companyName ?? "Cliente"}</span>
               </Link>
-              <div className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
-                <Calendar className="h-4 w-4" />
-                <span>
-                  {formatDate(contract.startDate)} - {formatDate(contract.endDate)}
-                </span>
+              <div className="mt-2 space-y-1 text-sm text-muted-foreground">
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-4 w-4" />
+                  <span>{formatDate(contract.startDate)}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CalendarCheck className="h-4 w-4" />
+                  <span>{formatDate(contract.endDate)}</span>
+                </div>
               </div>
             </div>
           </div>
@@ -681,9 +686,9 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Signatário</TableHead>
-                  <TableHead>E-mail</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead sortable={false}>Signatário</TableHead>
+                  <TableHead sortable={false}>E-mail</TableHead>
+                  <TableHead sortable={false}>Status</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
@@ -736,9 +741,9 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Tipo</TableHead>
-                <TableHead>Condição</TableHead>
-                <TableHead>Recorrência</TableHead>
+                <TableHead sortable={false}>Tipo</TableHead>
+                <TableHead sortable={false}>Condição</TableHead>
+                <TableHead sortable={false}>Recorrência</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -889,29 +894,38 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                             <MoreHorizontal className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
+                        <DropdownMenuContent align="end" className="max-h-none min-w-[190px] overflow-visible">
                           <DropdownMenuItem
+                            className="h-9 rounded-lg"
+                            disabled={installmentMutation.isPending}
                             onClick={() =>
                               !installmentMutation.isPending &&
                               installmentMutation.mutate({ installmentId: installment.id, status: "paid" })
                             }
                           >
+                            <CheckCircle className="mr-2 h-4 w-4" />
                             Marcar como paga
                           </DropdownMenuItem>
                           <DropdownMenuItem
+                            className="h-9 rounded-lg"
+                            disabled={installmentMutation.isPending}
                             onClick={() =>
                               !installmentMutation.isPending &&
                               installmentMutation.mutate({ installmentId: installment.id, status: "overdue" })
                             }
                           >
+                            <AlertTriangle className="mr-2 h-4 w-4" />
                             Marcar como vencida
                           </DropdownMenuItem>
                           <DropdownMenuItem
+                            className="h-9 rounded-lg"
+                            disabled={installmentMutation.isPending}
                             onClick={() =>
                               !installmentMutation.isPending &&
                               installmentMutation.mutate({ installmentId: installment.id, status: "pending" })
                             }
                           >
+                            <Clock className="mr-2 h-4 w-4" />
                             Marcar como pendente
                           </DropdownMenuItem>
                         </DropdownMenuContent>

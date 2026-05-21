@@ -20,8 +20,8 @@ import { isAuthenticated, persistSession } from "@/lib/auth/session"
 export default function LoginPage() {
   const router = useRouter()
   const [showPassword, setShowPassword] = useState(false)
-  const [email, setEmail] = useState("teste@depclean.com")
-  const [password, setPassword] = useState("teste123")
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
   const [rememberMe, setRememberMe] = useState(true)
   const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false)
   const [resetEmail, setResetEmail] = useState("")
@@ -79,7 +79,7 @@ export default function LoginPage() {
       <div className="absolute inset-x-0 bottom-0 h-12 bg-primary/95" />
 
       <div className="relative z-10 flex h-full items-center justify-center px-6 py-6">
-        <div className="flex w-full max-w-5xl -translate-y-10 flex-col items-center justify-center sm:-translate-y-14">
+        <div className="flex w-full max-w-5xl translate-y-2 flex-col items-center justify-center sm:-translate-y-6 lg:-translate-y-14">
           <div className="mb-12 text-center">
             <Image
               src="/logo-depclean.png"
@@ -87,7 +87,7 @@ export default function LoginPage() {
               width={240}
               height={78}
               priority
-              className="mx-auto h-auto w-[220px] sm:w-[220px]"
+              className="mx-auto h-auto w-[220px] transition-transform duration-300 sm:w-[220px] lg:-translate-y-6 xl:-translate-y-8"
             />
             <h1 className="mt-8 text-3xl font-extrabold leading-tight text-gray-800">
               Bem vindo de volta,
@@ -109,7 +109,7 @@ export default function LoginPage() {
                       type="email" autoComplete="off"
                       value={email}
                       onChange={(event) => setEmail(event.target.value)}
-                      placeholder="seuemail@depclean.com"
+                      placeholder="seuemail@depcleanrs.com.br"
                       className="h-11 rounded-none border-0 border-b border-border bg-transparent pl-7 pr-0 shadow-none focus-visible:ring-0"
                       disabled={loginMutation.isPending}
                       required
@@ -203,7 +203,7 @@ export default function LoginPage() {
                 type="email" autoComplete="off"
                 value={resetEmail}
                 onChange={(event) => setResetEmail(event.target.value)}
-                placeholder="seuemail@depclean.com"
+                placeholder="seuemail@depcleanrs.com.br"
                 required
               />
             </div>

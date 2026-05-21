@@ -209,31 +209,46 @@ export function Sidebar({ onNavigate, forceExpanded = false }: SidebarProps) {
   return (
     <aside
       className={cn(
-        "fixed left-0 top-0 z-[70] flex h-screen flex-col border-r border-border bg-card transition-[width] duration-300 ease-out",
+        "fixed left-0 top-0 z-[70] flex h-screen flex-col overflow-hidden border-r border-border bg-card transition-[width] duration-300 ease-out",
         collapsed ? "w-[72px]" : "w-60",
       )}
     >
-      <div className={`flex h-[86px] shrink-0 items-center justify-start px-[14px] justify-center items-center`}>
-        <Link href="/" className={cn("flex h-12 items-center overflow-hidden transition-[width] duration-300 ease-out", showFullLogo ? "w-[170px]" : "w-[42px]")}>
-          {showFullLogo ? (
+      <div className="relative h-[86px] shrink-0">
+        <Link
+          href="/"
+          className="absolute inset-0"
+          aria-label="Ir para o Dashboard"
+        >
+          <span
+            className={cn(
+              "absolute left-[14px] top-[45px] h-12 w-[170px] -translate-y-1/2 overflow-hidden transition-opacity duration-150",
+              showFullLogo ? "opacity-100" : "pointer-events-none opacity-0",
+            )}
+          >
             <Image
               src="/logo-depclean.png"
               alt="Depclean Logo"
               width={170}
               height={52}
-              className="h-auto w-[168px] object-contain"
+              className="h-auto w-[168px] max-w-none shrink-0 object-contain"
               priority
             />
-          ) : (
+          </span>
+          <span
+            className={cn(
+              "absolute left-[14px] top-[41px] h-[42px] w-[42px] -translate-y-1/2 transition-opacity duration-150",
+              showFullLogo ? "pointer-events-none opacity-0" : "opacity-100",
+            )}
+          >
             <Image
               src="/logo-depclean-d.png"
               alt="Depclean Logo"
               width={42}
               height={43}
-              className="h-[43px] w-[42px] object-contain"
+              className="h-[43px] w-[42px] max-w-none shrink-0 object-contain"
               priority
             />
-          )}
+          </span>
         </Link>
       </div>
 

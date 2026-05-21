@@ -127,7 +127,11 @@ function getRowCellText(row: React.ReactNode, columnIndex: number) {
   return ''
 }
 
-function Table({ className, ...props }: React.ComponentProps<'table'>) {
+type TableProps = React.ComponentProps<'table'> & {
+  containerClassName?: string
+}
+
+function Table({ className, containerClassName, ...props }: TableProps) {
   const [sort, setSort] = React.useState<TableSortState>(null)
 
   const toggleSort = React.useCallback((columnIndex: number) => {
@@ -149,7 +153,7 @@ function Table({ className, ...props }: React.ComponentProps<'table'>) {
   return (
     <div
       data-slot="table-container"
-      className="relative w-full overflow-auto rounded-xl"
+      className={cn('relative w-full overflow-auto rounded-xl bg-background pr-3', containerClassName)}
     >
       <TableContext.Provider value={contextValue}>
         <table
@@ -167,7 +171,7 @@ function TableHeader({ className, ...props }: React.ComponentProps<'thead'>) {
     <TableHeaderContext.Provider value={true}>
       <thead
         data-slot="table-header"
-        className={cn('bg-muted/50 [&_tr]:border-b-0 [&_tr]:hover:bg-transparent', className)}
+        className={cn('bg-muted [&_tr]:border-b-0 [&_tr]:bg-muted [&_tr]:hover:bg-muted', className)}
         {...props}
       />
     </TableHeaderContext.Provider>
@@ -296,7 +300,7 @@ function TableHead({
     <th
       data-slot="table-head"
       className={cn(
-        'text-foreground h-11 px-4 text-left align-middle font-medium whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]',
+        'sticky top-0 z-50 h-11 bg-muted px-4 text-left align-middle font-medium whitespace-nowrap text-foreground shadow-[0_1px_0_0_var(--border)] first:rounded-tl-xl last:rounded-tr-xl [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]',
         className,
       )}
       style={{ ...style, width }}

@@ -558,6 +558,7 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
               totalItems={filteredInstallments.length}
               onPageChange={setCurrentPage}
               onPageSizeChange={(size) => { setPageSize(size); setCurrentPage(1) }}
+              className="md:static md:bottom-auto md:z-auto"
             />
           ) : null}
       </div>

@@ -102,8 +102,8 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
   }
 
   return (
-    <div className="space-y-4">
-      <div className={`${mobileFiltersOpen ? "grid" : "hidden"} grid-cols-2 gap-2 sm:flex sm:items-center`}>
+    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
+      <div className={`${mobileFiltersOpen ? "grid" : "hidden"} shrink-0 grid-cols-2 gap-2 sm:flex sm:items-center`}>
         <div className="relative sm:w-80 sm:flex-none">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -143,8 +143,8 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
       </div>
 
       {viewMode === "table" ? (
-        <div className="overflow-x-auto rounded-xl">
-          <Table>
+        <div className="min-h-0 flex-1 overflow-hidden rounded-xl">
+          <Table containerClassName="h-full">
             <TableHeader>
               <TableRow>
                 <TableHead className="min-w-[200px]">Contrato</TableHead>
@@ -187,8 +187,8 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
                         </Link>
                       </TableCell>
                       <TableCell className="hidden sm:table-cell">
-                        <Link href={`/clientes/${contract.clientId}`} className="flex items-center gap-2 hover:text-primary">
-                          <Building2 className="h-4 w-4 text-muted-foreground" />
+                        <Link href={`/clientes/${contract.clientId}`} className="group flex items-center gap-2 hover:text-primary">
+                          <Building2 className="h-4 w-4 text-muted-foreground transition-colors group-hover:text-primary" />
                           <span className="max-w-[250px] truncate">{contract.clientCompanyName}</span>
                         </Link>
                       </TableCell>
@@ -254,76 +254,78 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
           </Table>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 2xl:grid-cols-3">
-          {contractsQuery.isLoading ? (
-            <CardSkeletonGrid cards={4} />
-          ) : paginatedContracts.length === 0 ? (
-            <EmptyState icon={FileText} title="Nenhum contrato encontrado." className="sm:col-span-2" />
-          ) : paginatedContracts.map((contract) => {
-            const paidInstallments = contract.installments.filter((item) => item.status === "paid").length
-            const progress = contract.installmentsCount > 0 ? (paidInstallments / contract.installmentsCount) * 100 : 0
+        <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 2xl:grid-cols-3">
+            {contractsQuery.isLoading ? (
+              <CardSkeletonGrid cards={4} />
+            ) : paginatedContracts.length === 0 ? (
+              <EmptyState icon={FileText} title="Nenhum contrato encontrado." className="sm:col-span-2" />
+            ) : paginatedContracts.map((contract) => {
+              const paidInstallments = contract.installments.filter((item) => item.status === "paid").length
+              const progress = contract.installmentsCount > 0 ? (paidInstallments / contract.installmentsCount) * 100 : 0
 
-            return (
-              <Card key={contract.id} className="h-full overflow-hidden">
-                <CardContent className="flex h-full flex-col px-4 py-3">
-                  <Link href={`/contratos/${contract.id}`} className="flex-1">
-                    <div className="mb-2 flex items-center gap-3">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                        <FileText className="h-5 w-5 text-primary" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-start justify-between gap-x-2 gap-y-1">
-                          <h3 className="min-w-0 flex-1 break-words text-sm font-semibold">{contract.contractNumber}</h3>
-                          {getStatusBadge(contract.status)}
+              return (
+                <Card key={contract.id} className="h-full overflow-hidden">
+                  <CardContent className="flex h-full flex-col px-4 py-3">
+                    <Link href={`/contratos/${contract.id}`} className="flex-1">
+                      <div className="mb-2 flex items-center gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                          <FileText className="h-5 w-5 text-primary" />
                         </div>
-                        <p className="truncate text-xs text-muted-foreground">{contract.clientCompanyName}</p>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-start justify-between gap-x-2 gap-y-1">
+                            <h3 className="min-w-0 flex-1 break-words text-sm font-semibold">{contract.contractNumber}</h3>
+                            {getStatusBadge(contract.status)}
+                          </div>
+                          <p className="truncate text-xs text-muted-foreground">{contract.clientCompanyName}</p>
+                        </div>
                       </div>
-                    </div>
-                    <div className="space-y-2 text-sm">
-                      <div>
-                        <p className="font-medium text-foreground">{formatCurrency(contract.totalValue)}</p>
-                      </div>
-                      <div className="flex items-center gap-1 text-muted-foreground">
-                        <Calendar className="h-3 w-3" />
-                        <span>
-                          {formatDate(contract.startDate)} - {formatDate(contract.endDate)}
-                        </span>
-                      </div>
-                    </div>
-                  </Link>
-                  <div className="mt-auto space-y-3 pt-3">
-                    <Link href={`/contratos/${contract.id}`} className="block">
-                      <div className="mb-2 flex justify-between text-xs">
-                        <span>
-                          {paidInstallments}/{contract.installmentsCount} parcelas pagas
-                        </span>
-                        <span>{Math.round(progress)}%</span>
-                      </div>
-                      <div className="h-2 overflow-hidden rounded-full bg-muted">
-                        <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${progress}%` }} />
+                      <div className="space-y-2 text-sm">
+                        <div>
+                          <p className="font-medium text-foreground">{formatCurrency(contract.totalValue)}</p>
+                        </div>
+                        <div className="flex items-center gap-1 text-muted-foreground">
+                          <Calendar className="h-3 w-3" />
+                          <span>
+                            {formatDate(contract.startDate)} - {formatDate(contract.endDate)}
+                          </span>
+                        </div>
                       </div>
                     </Link>
-                    <div className="flex gap-2">
-                      {!isContractSigned(contract) ? (
-                        <Button variant="outline" size="sm" className="flex-1" asChild>
-                          <Link href={`/contratos/${contract.id}/editar`}>
-                            <Edit className="mr-1 h-4 w-4" />
-                            Editar
+                    <div className="mt-auto space-y-3 pt-3">
+                      <Link href={`/contratos/${contract.id}`} className="block">
+                        <div className="mb-2 flex justify-between text-xs">
+                          <span>
+                            {paidInstallments}/{contract.installmentsCount} parcelas pagas
+                          </span>
+                          <span>{Math.round(progress)}%</span>
+                        </div>
+                        <div className="h-2 overflow-hidden rounded-full bg-muted">
+                          <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${progress}%` }} />
+                        </div>
+                      </Link>
+                      <div className="flex gap-2">
+                        {!isContractSigned(contract) ? (
+                          <Button variant="outline" size="sm" className="flex-1" asChild>
+                            <Link href={`/contratos/${contract.id}/editar`}>
+                              <Edit className="mr-1 h-4 w-4" />
+                              Editar
+                            </Link>
+                          </Button>
+                        ) : null}
+                        <Button size="sm" className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90" asChild>
+                          <Link href={`/contratos/${contract.id}`}>
+                            <Eye className="mr-1 h-4 w-4" />
+                            Ver
                           </Link>
                         </Button>
-                      ) : null}
-                      <Button size="sm" className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90" asChild>
-                        <Link href={`/contratos/${contract.id}`}>
-                          <Eye className="mr-1 h-4 w-4" />
-                          Ver
-                        </Link>
-                      </Button>
+                      </div>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )
-          })}
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
         </div>
       )}
 
