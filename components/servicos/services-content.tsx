@@ -3,7 +3,7 @@
 import { useEffect, useState, type KeyboardEvent, type ReactNode } from "react"
 import Link from "next/link"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Search, Edit, Trash2, Clock, ClipboardList, Users } from "lucide-react"
+import { Search, Edit, Trash2, Clock, ClipboardList, Users, MoreHorizontal } from "lucide-react"
 
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -24,6 +24,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 import { listEmployees } from "@/lib/api/employees"
 import { getApiErrorMessage } from "@/lib/api/errors"
@@ -227,23 +233,31 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
                       </div>
                     </TableCell>
                     <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <Link href={`/servicos/${type.id}/editar`} onClick={(event) => event.stopPropagation()}>
-                          <Button variant="ghost" size="icon">
-                            <Edit className="h-4 w-4" />
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" onClick={(event) => event.stopPropagation()} aria-label="Ações do serviço">
+                            <MoreHorizontal className="h-4 w-4" />
                           </Button>
-                        </Link>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            handleDeleteType(type.id)
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem asChild className="cursor-pointer">
+                            <Link href={`/servicos/${type.id}/editar`} onClick={(event) => event.stopPropagation()}>
+                              <Edit className="mr-2 h-4 w-4" />
+                              Editar
+                            </Link>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="cursor-pointer"
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              handleDeleteType(type.id)
+                            }}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Excluir
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </TableCell>
                   </TableRow>
                 ))
@@ -277,24 +291,37 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
                       </p>
                     </div>
                   </div>
-                  <div className="flex shrink-0 gap-0.5">
-                    <Link href={`/servicos/${type.id}/editar`} onClick={(event) => event.stopPropagation()}>
-                      <Button variant="ghost" size="icon" className="h-8 w-8">
-                        <Edit className="h-3.5 w-3.5" />
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 shrink-0 rounded-full"
+                        aria-label="Ações do serviço"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <MoreHorizontal className="h-4 w-4" />
                       </Button>
-                    </Link>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        handleDeleteType(type.id)
-                      }}
-                    >
-                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                    </Button>
-                  </div>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem asChild className="cursor-pointer">
+                        <Link href={`/servicos/${type.id}/editar`} onClick={(event) => event.stopPropagation()}>
+                          <Edit className="mr-2 h-4 w-4" />
+                          Editar
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        className="cursor-pointer"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          handleDeleteType(type.id)
+                        }}
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Excluir
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
 
                 <div className="flex items-center gap-1 text-sm text-muted-foreground">

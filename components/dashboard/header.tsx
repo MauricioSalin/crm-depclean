@@ -2,13 +2,13 @@
 
 import { useEffect, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Search, Bell, User, FileText, LogOut, ChevronDown, PanelLeftClose, PanelLeftOpen, Settings } from "lucide-react"
+import { Bell, User, FileText, LogOut, ChevronDown, PanelLeftClose, PanelLeftOpen, Settings } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { MobileNav } from "./mobile-nav"
 import { Badge } from "@/components/ui/badge"
+import { GlobalSearch } from "./global-search"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -137,13 +137,7 @@ export function Header({ title, description, titleAddon, headerActions, actions,
               {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
             </Button>
 
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                placeholder="Buscar cliente, contrato, serviço..."
-                className="pl-9 pr-3 md:pr-16 h-9 text-sm bg-card border-border transition-all duration-300 focus:shadow-lg focus:shadow-primary/10"
-              />
-            </div>
+            <GlobalSearch />
           </div>
 
           <div className="flex items-center gap-1.5 md:gap-2">

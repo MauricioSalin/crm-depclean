@@ -15,7 +15,7 @@ import {
   Send,
   X,
 } from "lucide-react"
-import { FormEvent, useEffect, useMemo, useRef, useState, type RefObject } from "react"
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react"
 import ReactMarkdown from "react-markdown"
 import rehypeSanitize from "rehype-sanitize"
 import remarkGfm from "remark-gfm"
@@ -37,6 +37,7 @@ import {
 import { toast } from "sonner"
 
 import {
+  deleteDepAIConversation,
   listDepAIConversations,
   sendDepAIMessage,
   type DepAIArtifact,
@@ -46,6 +47,7 @@ import {
 } from "@/lib/api/depai"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { Button } from "@/components/ui/button"
+import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
 import { Textarea } from "@/components/ui/textarea"
 
 const initialMessages: DepAIMessage[] = []
@@ -364,6 +366,51 @@ async function downloadMarkdownPdf(content: string, fileName: string) {
   pdf.save(fileName)
 }
 
+const UNSUPPORTED_CANVAS_COLOR_FUNCTION = /\b(?:lab|lch|oklab|oklch|color-mix)\(/i
+const CANVAS_COLOR_PROPERTIES = [
+  "color",
+  "backgroundColor",
+  "borderTopColor",
+  "borderRightColor",
+  "borderBottomColor",
+  "borderLeftColor",
+  "outlineColor",
+  "textDecorationColor",
+  "columnRuleColor",
+  "caretColor",
+  "fill",
+  "stroke",
+] as const
+
+function sanitizeUnsupportedCanvasColors(root: HTMLElement) {
+  const document = root.ownerDocument
+  const view = document.defaultView
+  if (!view) return
+
+  const elements = [root, ...Array.from(root.querySelectorAll<HTMLElement | SVGElement>("*"))]
+  for (const element of elements) {
+    const computed = view.getComputedStyle(element)
+
+    for (const property of CANVAS_COLOR_PROPERTIES) {
+      const value = computed[property]
+      if (!value || !UNSUPPORTED_CANVAS_COLOR_FUNCTION.test(value)) continue
+
+      const fallback = property === "backgroundColor" || property.includes("border") || property === "outlineColor"
+        ? "transparent"
+        : "#0f172a"
+      element.style.setProperty(property.replace(/[A-Z]/g, "-$&").toLowerCase(), fallback, "important")
+    }
+
+    if (UNSUPPORTED_CANVAS_COLOR_FUNCTION.test(computed.boxShadow)) {
+      element.style.setProperty("box-shadow", "none", "important")
+    }
+
+    if (UNSUPPORTED_CANVAS_COLOR_FUNCTION.test(computed.textShadow)) {
+      element.style.setProperty("text-shadow", "none", "important")
+    }
+  }
+}
+
 async function downloadChartSvgPng(element: HTMLElement, fileName: string) {
   const svg = element.querySelector("svg")
 
@@ -371,45 +418,29 @@ async function downloadChartSvgPng(element: HTMLElement, fileName: string) {
     throw new Error("Prévia do gráfico não encontrada.")
   }
 
-  const rect = svg.getBoundingClientRect()
-  const width = Math.max(1, Math.ceil(rect.width || Number(svg.getAttribute("width")) || 900))
-  const height = Math.max(1, Math.ceil(rect.height || Number(svg.getAttribute("height")) || 360))
-  const clonedSvg = svg.cloneNode(true) as SVGSVGElement
+  const { default: html2canvas } = await import("html2canvas")
+  const canvas = await html2canvas(element, {
+    backgroundColor: "#ffffff",
+    scale: 2,
+    useCORS: true,
+    onclone: (clonedDocument, clonedElement) => {
+      sanitizeUnsupportedCanvasColors(clonedDocument.body)
+      sanitizeUnsupportedCanvasColors(clonedElement as HTMLElement)
+    },
+  })
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"))
+  if (!blob) throw new Error("Não foi possível preparar o PNG.")
 
-  clonedSvg.setAttribute("xmlns", "http://www.w3.org/2000/svg")
-  clonedSvg.setAttribute("width", String(width))
-  clonedSvg.setAttribute("height", String(height))
-  clonedSvg.setAttribute("viewBox", clonedSvg.getAttribute("viewBox") || `0 0 ${width} ${height}`)
-
-  const svgSource = new XMLSerializer().serializeToString(clonedSvg)
-  const svgUrl = URL.createObjectURL(new Blob([svgSource], { type: "image/svg+xml;charset=utf-8" }))
-
+  const url = URL.createObjectURL(blob)
   try {
-    const image = new Image()
-    image.decoding = "async"
-    image.src = svgUrl
-    await image.decode()
-
-    const scale = Math.min(2, window.devicePixelRatio || 1)
-    const canvas = document.createElement("canvas")
-    canvas.width = width * scale
-    canvas.height = height * scale
-
-    const context = canvas.getContext("2d")
-    if (!context) throw new Error("Não foi possível preparar o PNG.")
-
-    context.scale(scale, scale)
-    context.fillStyle = "#ffffff"
-    context.fillRect(0, 0, width, height)
-    context.drawImage(image, 0, 0, width, height)
-
-    const url = canvas.toDataURL("image/png")
     const anchor = document.createElement("a")
     anchor.href = url
     anchor.download = fileName
+    document.body.appendChild(anchor)
     anchor.click()
+    anchor.remove()
   } finally {
-    URL.revokeObjectURL(svgUrl)
+    URL.revokeObjectURL(url)
   }
 }
 
@@ -839,11 +870,13 @@ export function DepAIChat({ compact = false }: { compact?: boolean }) {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
   const hydratedConversationsRef = useRef(false)
+  const processedInitialAskRef = useRef(false)
   const [conversations, setConversations] = useState<DepAIConversation[]>(initialConversations)
   const [activeConversationId, setActiveConversationId] = useState(initialConversations[0].id)
   const [input, setInput] = useState("")
   const [files, setFiles] = useState<DepAIFile[]>([])
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [conversationToDelete, setConversationToDelete] = useState<DepAIConversation | null>(null)
   const activeConversation = conversations.find((conversation) => conversation.id === activeConversationId) ?? conversations[0]
   const messages = activeConversation.messages ?? []
 
@@ -858,6 +891,13 @@ export function DepAIChat({ compact = false }: { compact?: boolean }) {
     mutationFn: sendDepAIMessage,
     onError: (error) => {
       toast.error(getApiErrorMessage(error, "Não foi possível consultar a DepAI."))
+    },
+  })
+
+  const deleteConversationMutation = useMutation({
+    mutationFn: deleteDepAIConversation,
+    onError: (error) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível remover a conversa."))
     },
   })
 
@@ -891,39 +931,60 @@ export function DepAIChat({ compact = false }: { compact?: boolean }) {
     window.dispatchEvent(new CustomEvent("depai:history-state", { detail: { open: historyOpen } }))
   }, [historyOpen])
 
-  const submit = (event?: FormEvent<HTMLFormElement>) => {
-    event?.preventDefault()
-    const trimmed = input.trim()
-    if (!trimmed || sendMutation.isPending) return
-    const conversationId = activeConversationId
+  const sendMessage = useCallback((
+    message: string,
+    options?: {
+      conversationId?: string
+      files?: DepAIFile[]
+      history?: DepAIMessage[]
+    },
+  ) => {
+    const trimmed = message.trim()
+    if (!trimmed || sendMutation.isPending) return false
+
+    const conversationId = options?.conversationId ?? activeConversationId
+    const messageFiles = options?.files ?? files
+    const historyMessages = options?.history ?? messages
+    const now = new Date().toISOString()
 
     const userMessage: DepAIMessage = {
       id: `user-${Date.now()}`,
       role: "user",
       content: trimmed,
-      createdAt: new Date().toISOString(),
-      files,
+      createdAt: now,
+      files: messageFiles,
     }
 
-    setConversations((current) =>
-      current.map((conversation) =>
-        conversation.id === conversationId
-          ?{
-              ...conversation,
-              title: conversation.messages.length === 0 ? getConversationTitle(trimmed) : conversation.title,
-              messages: [...conversation.messages, userMessage],
-              updatedAt: new Date().toISOString(),
-            }
-          : conversation,
-      ),
-    )
+    setConversations((current) => {
+      const targetConversation = current.find((conversation) => conversation.id === conversationId) ?? {
+        id: conversationId,
+        title: "Nova conversa",
+        updatedAt: now,
+        messages: [],
+      }
+      const remainingConversations = current.filter((conversation) => conversation.id !== conversationId)
+
+      return [
+        {
+          ...targetConversation,
+          title: targetConversation.messages.length === 0 ? getConversationTitle(trimmed) : targetConversation.title,
+          messages: [...targetConversation.messages, userMessage],
+          updatedAt: now,
+        },
+        ...remainingConversations,
+      ]
+    })
+
+    setActiveConversationId(conversationId)
     setInput("")
     setFiles([])
+    setHistoryOpen(false)
+
     sendMutation.mutate({
       conversationId,
       message: trimmed,
-      files,
-      history: messages.slice(-10).map((message) => ({
+      files: messageFiles,
+      history: historyMessages.slice(-10).map((message) => ({
         role: message.role,
         content: message.content,
       })),
@@ -942,6 +1003,13 @@ export function DepAIChat({ compact = false }: { compact?: boolean }) {
         setActiveConversationId(response.conversation.id)
       },
     })
+
+    return true
+  }, [activeConversationId, files, messages, sendMutation])
+
+  const submit = (event?: FormEvent<HTMLFormElement>) => {
+    event?.preventDefault()
+    sendMessage(input)
   }
 
   const addFiles = async (selectedFiles: FileList | null) => {
@@ -980,16 +1048,68 @@ export function DepAIChat({ compact = false }: { compact?: boolean }) {
     setHistoryOpen(false)
   }
 
+  const confirmDeleteConversation = () => {
+    if (!conversationToDelete || deleteConversationMutation.isPending) return
+    const deletedConversation = conversationToDelete
+
+    deleteConversationMutation.mutate(deletedConversation.id, {
+      onSuccess: () => {
+        const fallbackConversation = createInitialConversation()
+
+        setConversations((current) => {
+          const remaining = current.filter((conversation) => conversation.id !== deletedConversation.id)
+
+          if (deletedConversation.id !== activeConversationId) {
+            return remaining.length > 0 ? remaining : [fallbackConversation]
+          }
+
+          setActiveConversationId(fallbackConversation.id)
+          return [fallbackConversation, ...remaining]
+        })
+
+        if (deletedConversation.id === activeConversationId) {
+          setInput("")
+          setFiles([])
+        }
+
+        setConversationToDelete(null)
+        toast.success("Conversa removida.")
+      },
+    })
+  }
+
+  useEffect(() => {
+    if (compact || processedInitialAskRef.current || typeof window === "undefined") return
+
+    const ask = new URLSearchParams(window.location.search).get("ask")?.trim()
+    if (!ask) return
+
+    processedInitialAskRef.current = true
+    const conversation = createConversation()
+    sendMessage(ask, { conversationId: conversation.id, files: [], history: [] })
+    window.history.replaceState(null, "", window.location.pathname)
+  }, [compact, sendMessage])
+
   useEffect(() => {
     const handleNewConversation = () => startNewConversation()
     const handleToggleHistory = () => setHistoryOpen((current) => !current)
+    const handleAsk = (event: Event) => {
+      if (compact) return
+      const message = (event as CustomEvent<{ message?: string }>).detail?.message?.trim()
+      if (!message) return
+
+      const conversation = createConversation()
+      sendMessage(message, { conversationId: conversation.id, files: [], history: [] })
+    }
 
     window.addEventListener("depai:new-conversation", handleNewConversation)
     window.addEventListener("depai:toggle-history", handleToggleHistory)
+    window.addEventListener("depai:ask", handleAsk)
 
     return () => {
       window.removeEventListener("depai:new-conversation", handleNewConversation)
       window.removeEventListener("depai:toggle-history", handleToggleHistory)
+      window.removeEventListener("depai:ask", handleAsk)
     }
   })
   if (compact) {
@@ -1066,16 +1186,45 @@ export function DepAIChat({ compact = false }: { compact?: boolean }) {
           <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
             {getVisibleConversations(conversations, activeConversationId).map((conversation) => {
               const isActive = conversation.id === activeConversationId
+              const canDelete = conversation.messages.length > 0
               return (
-                <button key={conversation.id} type="button" onClick={() => openConversation(conversation.id)} className={`w-full rounded-2xl border px-3 py-3 text-left transition-colors ${isActive ? "border-primary bg-primary/10" : "border-border bg-card hover:bg-muted/60"}`}>
-                  <p className="truncate text-sm font-medium text-foreground">{conversation.title}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{conversation.messages.length} mensagem(ns)</p>
-                </button>
+                <div key={conversation.id} className="group relative">
+                  <button type="button" onClick={() => openConversation(conversation.id)} className={`w-full rounded-2xl border px-3 py-3 pr-10 text-left transition-colors ${isActive ? "border-primary bg-primary/10" : "border-border bg-card hover:bg-muted/60"}`}>
+                    <p className="truncate text-sm font-medium text-foreground">{conversation.title}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{conversation.messages.length} mensagem(ns)</p>
+                  </button>
+                  {canDelete && (
+                    <button
+                      type="button"
+                      className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground opacity-0 transition-all hover:bg-destructive/10 hover:text-destructive focus:opacity-100 group-hover:opacity-100"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        setConversationToDelete(conversation)
+                      }}
+                      aria-label="Remover conversa"
+                      title="Remover conversa"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
               )
             })}
           </div>
         </div>
       </aside>
+
+      <ConfirmActionDialog
+        open={Boolean(conversationToDelete)}
+        title="Remover conversa"
+        description="Esta conversa será removida do histórico da DepAI. Essa ação não pode ser desfeita."
+        confirmLabel="Remover"
+        busy={deleteConversationMutation.isPending}
+        onOpenChange={(open) => {
+          if (!open && !deleteConversationMutation.isPending) setConversationToDelete(null)
+        }}
+        onConfirm={confirmDeleteConversation}
+      />
     </div>
   )
 }

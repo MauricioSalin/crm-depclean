@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Check, Edit, Search, Trash2, Users, X } from "lucide-react"
+import { Check, Edit, MoreHorizontal, Search, Trash2, Users, X } from "lucide-react"
 
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
 import { Button } from "@/components/ui/button"
@@ -10,6 +10,12 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -323,15 +329,17 @@ export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle 
                   {formData.memberIds.map((memberId) => {
                     const employee = employees.find((item) => item.id === memberId)
                     if (!employee) return null
+                    const employeeDisplayName = employee.name.split(" ").slice(0, 2).join(" ")
                     return (
-                      <Badge key={memberId} variant="secondary" className="flex items-center gap-1 px-2 py-1">
-                        <span>{employee.name}</span>
+                      <Badge key={memberId} variant="outline" className="flex items-center gap-1.5 text-xs">
+                        <span>{employeeDisplayName}</span>
                         <Button
                           type="button"
                           variant="ghost"
                           size="icon"
                           className="h-4 w-4 p-0 hover:bg-transparent"
                           onClick={() => toggleMember(memberId)}
+                          aria-label={`Remover ${employeeDisplayName}`}
                         >
                           <X className="h-3 w-3" />
                         </Button>
@@ -487,18 +495,40 @@ export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle 
                       </div>
                     </TableCell>
                     <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <Button variant="ghost" size="icon" onClick={() => handleEdit(team)}>
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setPendingDelete({ id: team.id, label: team.name })}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={(event) => event.stopPropagation()}
+                            aria-label="Ações da equipe"
+                          >
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            className="cursor-pointer"
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              handleEdit(team)
+                            }}
+                          >
+                            <Edit className="mr-2 h-4 w-4" />
+                            Editar
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="cursor-pointer"
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              setPendingDelete({ id: team.id, label: team.name })
+                            }}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Excluir
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </TableCell>
                   </TableRow>
                 ))}

@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { getDashboardAnalytics, type DashboardStatsRecord } from "@/lib/api/analytics"
+import { getDashboardAnalytics, type DashboardAnalyticsParams, type DashboardStatsRecord } from "@/lib/api/analytics"
 import Link from "next/link"
 import { getColorFromClass } from "@/lib/utils"
 
@@ -25,19 +25,17 @@ const emptyStats: DashboardStatsRecord = {
   teamProductivity: [],
 }
 
-type DashboardPeriodProps = {
-  days?: number
-}
+type DashboardPeriodProps = DashboardAnalyticsParams
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value)
 }
 
-export function StatsCards({ days = 30 }: DashboardPeriodProps) {
+export function StatsCards(period: DashboardPeriodProps = {}) {
   const [hoveredCard, setHoveredCard] = useState<number | null>(null)
   const dashboardQuery = useQuery({
-    queryKey: ["analytics", "dashboard", days],
-    queryFn: () => getDashboardAnalytics({ days }),
+    queryKey: ["analytics", "dashboard", period],
+    queryFn: () => getDashboardAnalytics(period),
   })
   const dashboardStats = dashboardQuery.data?.data.stats ?? emptyStats
 
@@ -138,10 +136,10 @@ export function StatsCards({ days = 30 }: DashboardPeriodProps) {
   )
 }
 
-export function ProductivityCards({ days = 30 }: DashboardPeriodProps) {
+export function ProductivityCards(period: DashboardPeriodProps = {}) {
   const dashboardQuery = useQuery({
-    queryKey: ["analytics", "dashboard", days],
-    queryFn: () => getDashboardAnalytics({ days }),
+    queryKey: ["analytics", "dashboard", period],
+    queryFn: () => getDashboardAnalytics(period),
   })
   const dashboardData = dashboardQuery.data?.data
   const dashboardStats = dashboardData?.stats ?? emptyStats

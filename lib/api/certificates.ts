@@ -85,3 +85,13 @@ export async function sendCertificate(scheduleId: string, file: File, templateId
   )
   return response.data
 }
+
+export async function resendCertificate(scheduleId: string) {
+  const response = await api.post<{ success: true; data: CertificateQueueRecord }>(`/certificates/${scheduleId}/resend`)
+  return response.data
+}
+
+export async function deleteCertificate(scheduleId: string) {
+  const response = await api.delete<{ success: true; data: CertificateQueueRecord }>(`/certificates/${scheduleId}`)
+  return response.data
+}

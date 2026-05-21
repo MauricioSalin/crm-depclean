@@ -2,14 +2,17 @@
 
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { useQuery } from "@tanstack/react-query"
-import { Award, Calendar, CheckCircle2, Clock, FileText, Search } from "lucide-react"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
+import { Award, Calendar, CheckCircle2, Clock, FileText, Loader2, MoreHorizontal, Search, Send, Trash2 } from "lucide-react"
 
-import { listCertificates, type CertificateQueueRecord } from "@/lib/api/certificates"
+import { deleteCertificate, listCertificates, resendCertificate, type CertificateQueueRecord } from "@/lib/api/certificates"
+import { getApiErrorMessage } from "@/lib/api/errors"
 import { getStoredUser } from "@/lib/auth/session"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { TableEmptyState } from "@/components/ui/empty-state"
 import { TableSkeletonRows } from "@/components/ui/table-skeleton"
@@ -17,6 +20,12 @@ import { Input } from "@/components/ui/input"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 
 function formatDate(value: string) {
   if (!value) return "-"
@@ -33,12 +42,14 @@ function getStatusBadge(status: CertificateQueueRecord["status"]) {
 }
 
 export function CertificatesContent() {
+  const queryClient = useQueryClient()
   const [currentUser, setCurrentUser] = useState<ReturnType<typeof getStoredUser>>(null)
   const [mounted, setMounted] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(10)
+  const [certificateToDelete, setCertificateToDelete] = useState<CertificateQueueRecord | null>(null)
 
   useEffect(() => {
     setMounted(true)
@@ -68,6 +79,55 @@ export function CertificatesContent() {
   })
 
   const records = certificatesQuery.data?.data ?? []
+
+  const invalidateCertificates = async (clientId?: string) => {
+    await queryClient.invalidateQueries({ queryKey: ["certificates"] })
+    await queryClient.invalidateQueries({ queryKey: ["notifications"] })
+    if (clientId) {
+      await queryClient.invalidateQueries({ queryKey: ["client-attachments", clientId] })
+    }
+  }
+
+  const resendMutation = useMutation({
+    mutationFn: (record: CertificateQueueRecord) => resendCertificate(record.scheduleId),
+    onMutate: () => {
+      const toastId = toast.loading("Reenviando certificado...")
+      return { toastId }
+    },
+    onSuccess: async (_response, record, context) => {
+      await invalidateCertificates(record.clientId)
+      toast.success("Certificado reenviado.", {
+        id: context?.toastId,
+        description: `${record.clientName} • ${record.serviceTypeName}`,
+      })
+    },
+    onError: (error, _record, context) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível reenviar o certificado."), {
+        id: context?.toastId,
+      })
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (record: CertificateQueueRecord) => deleteCertificate(record.scheduleId),
+    onMutate: () => {
+      const toastId = toast.loading("Excluindo certificado...")
+      return { toastId }
+    },
+    onSuccess: async (_response, record, context) => {
+      await invalidateCertificates(record.clientId)
+      setCertificateToDelete(null)
+      toast.success("Certificado excluído.", {
+        id: context?.toastId,
+        description: "O arquivo também foi removido dos anexos do cliente.",
+      })
+    },
+    onError: (error, _record, context) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível excluir o certificado."), {
+        id: context?.toastId,
+      })
+    },
+  })
 
   const filteredRecords = useMemo(() => {
     const term = searchTerm.trim().toLowerCase()
@@ -117,6 +177,7 @@ export function CertificatesContent() {
   }
 
   return (
+    <>
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
         <div className="relative col-span-2 sm:w-80">
@@ -227,40 +288,67 @@ export function CertificatesContent() {
                     </TableCell>
                     <TableCell>{getStatusBadge(record.status)}</TableCell>
                     <TableCell className="text-right">
-                      {canManage ? (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              asChild
-                              size="icon"
-                              className="h-9 w-9 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
-                            >
-                              <Link
-                                href={`/certificados/${record.scheduleId}`}
-                                aria-label={record.status === "sent" ? "Reemitir certificado" : "Emitir certificado"}
+                      <div className="flex justify-end">
+                        {canManage && record.status === "pending" ? (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                asChild
+                                size="icon"
+                                className="h-9 w-9 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
                               >
-                                {record.status === "sent" ? (
+                                <Link href={`/certificados/${record.scheduleId}`} aria-label="Emitir certificado">
                                   <CheckCircle2 className="h-4 w-4" />
+                                </Link>
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Emitir certificado</TooltipContent>
+                          </Tooltip>
+                        ) : null}
+
+                        {canManage && record.status === "sent" ? (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full" aria-label="Ações do certificado">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                className="cursor-pointer"
+                                disabled={resendMutation.isPending}
+                                onClick={() => resendMutation.mutate(record)}
+                              >
+                                {resendMutation.isPending && resendMutation.variables?.scheduleId === record.scheduleId ? (
+                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                 ) : (
-                                  <Award className="h-4 w-4" />
+                                  <Send className="mr-2 h-4 w-4" />
                                 )}
-                              </Link>
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            {record.status === "sent" ? "Reemitir certificado" : "Emitir certificado"}
-                          </TooltipContent>
-                        </Tooltip>
-                      ) : (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button size="icon" className="h-9 w-9 rounded-full" disabled aria-label="Emitir certificado">
-                              <Award className="h-4 w-4" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>Emitir certificado</TooltipContent>
-                        </Tooltip>
-                      )}
+                                Reenviar
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="cursor-pointer"
+                                disabled={deleteMutation.isPending}
+                                onClick={() => setCertificateToDelete(record)}
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Excluir
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        ) : null}
+
+                        {!canManage ? (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button size="icon" className="h-9 w-9 rounded-full" disabled aria-label="Emitir certificado">
+                                <Award className="h-4 w-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Emitir certificado</TooltipContent>
+                          </Tooltip>
+                        ) : null}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))
@@ -280,5 +368,25 @@ export function CertificatesContent() {
         />
       ) : null}
     </div>
+    <ConfirmActionDialog
+      open={!!certificateToDelete}
+      title="Excluir certificado"
+      description={
+        certificateToDelete
+          ? `Tem certeza que deseja excluir o certificado de ${certificateToDelete.clientName}? Esta ação também remove o arquivo dos anexos do cliente.`
+          : "Tem certeza que deseja excluir este certificado?"
+      }
+      confirmLabel="Excluir"
+      onOpenChange={(open) => {
+        if (!open) setCertificateToDelete(null)
+      }}
+      onConfirm={() => {
+        if (certificateToDelete) {
+          deleteMutation.mutate(certificateToDelete)
+        }
+      }}
+      busy={deleteMutation.isPending}
+    />
+    </>
   )
 }

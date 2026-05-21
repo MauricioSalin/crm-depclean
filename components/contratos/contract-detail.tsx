@@ -5,11 +5,13 @@ import Link from "next/link"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
+  AlertTriangle,
   BellRing,
   Building2,
   Calendar,
   CheckCircle,
   Clock,
+  Download,
   DollarSign,
   ExternalLink,
   FileText,
@@ -36,8 +38,9 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "@/components/ui/use-toast"
 import { ServiceClausesDialog } from "@/components/servicos/service-clauses-dialog"
-import { getClientById } from "@/lib/api/clients"
-import { getContractById, remindContractSigner, sendContractToClicksign, syncContractClicksign, updateInstallment } from "@/lib/api/contracts"
+import { buildApiFileUrl } from "@/lib/api/client"
+import { getClientAttachments, getClientById, type ClientAttachmentRecord } from "@/lib/api/clients"
+import { getContractById, remindContractSigner, sendContractToClicksign, updateInstallment } from "@/lib/api/contracts"
 import { listEmployees } from "@/lib/api/employees"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { listSchedules } from "@/lib/api/schedules"
@@ -228,6 +231,11 @@ const isSignerReminderAvailable = (status?: string) => {
   return !["signed", "closed", "finished", "completed", "done", "cancelled", "canceled", "refused", "expired", "deadline_expired"].includes(normalizedStatus)
 }
 
+const isSignedStatus = (status?: string) => {
+  const normalizedStatus = status?.toLowerCase() || ""
+  return ["signed", "active", "closed", "finished", "completed", "done"].includes(normalizedStatus)
+}
+
 export function ContractDetail({ contractId }: ContractDetailProps) {
   const queryClient = useQueryClient()
   const router = useRouter()
@@ -257,6 +265,12 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
     enabled: Boolean(contract?.clientId),
   })
 
+  const clientAttachmentsQuery = useQuery({
+    queryKey: ["client-attachments", contract?.clientId],
+    queryFn: () => getClientAttachments(contract!.clientId),
+    enabled: Boolean(contract?.clientId),
+  })
+
   const servicesQuery = useQuery({
     queryKey: ["services", "contract-detail"],
     queryFn: () => listServices(""),
@@ -278,6 +292,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
   })
 
   const client = clientQuery.data?.data
+  const clientAttachments = clientAttachmentsQuery.data?.data ?? []
   const serviceTypes = servicesQuery.data?.data ?? []
   const teams = teamsQuery.data?.data ?? []
   const employees = employeesQuery.data?.data ?? []
@@ -320,6 +335,31 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
   )
 
   const progress = contract && contract.installmentsCount > 0 ? (paidInstallments.length / contract.installmentsCount) * 100 : 0
+
+  const signedContractAttachment = useMemo<ClientAttachmentRecord | null>(() => {
+    if (!contract) return null
+    const contractNumber = contract.contractNumber.toLowerCase()
+    const pdfContracts = clientAttachments.filter((attachment) => {
+      const fileName = attachment.fileName.toLowerCase()
+      const title = attachment.title.toLowerCase()
+      const documentUrl = attachment.documentUrl.toLowerCase()
+      return attachment.type === "contract" && (fileName.endsWith(".pdf") || documentUrl.endsWith(".pdf")) && (
+        fileName.includes(contractNumber) ||
+        title.includes(contractNumber) ||
+        fileName.includes("assinado") ||
+        title.includes("assinado")
+      )
+    })
+
+    return pdfContracts[0] ?? clientAttachments.find((attachment) => attachment.type === "contract" && attachment.documentUrl.toLowerCase().endsWith(".pdf")) ?? null
+  }, [clientAttachments, contract])
+
+  const clicksignUrl = useMemo(() => {
+    const directUrl = contract?.signatureUrl?.trim()
+    if (directUrl && /^https?:\/\//i.test(directUrl)) return directUrl
+
+    return contract?.clicksign?.signers?.find((signer) => /^https?:\/\//i.test(signer.signUrl))?.signUrl ?? ""
+  }, [contract])
 
   const units = useMemo(() => {
     if (!client?.units?.length || !contract) return []
@@ -391,21 +431,6 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
     onError: clicksignErrorToast,
   })
 
-  const syncClicksignMutation = useMutation({
-    mutationFn: () => syncContractClicksign(resolvedContractId),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["contract", contractId] })
-      await queryClient.invalidateQueries({ queryKey: ["contract", resolvedContractId] })
-      await queryClient.invalidateQueries({ queryKey: ["contracts"] })
-      await queryClient.invalidateQueries({ queryKey: ["schedules", "contract-detail", resolvedContractId] })
-      toast({
-        title: "ClickSign sincronizado",
-        description: "O status do contrato e dos agendamentos foi atualizado.",
-      })
-    },
-    onError: clicksignErrorToast,
-  })
-
   const remindSignerMutation = useMutation({
     mutationFn: (signerId: string) => remindContractSigner(resolvedContractId, signerId),
     onSuccess: async () => {
@@ -418,6 +443,46 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
     },
     onError: clicksignErrorToast,
   })
+
+  const downloadSignedContractMutation = useMutation({
+    mutationFn: async (attachment: ClientAttachmentRecord) => {
+      const response = await fetch(buildApiFileUrl(attachment.documentUrl))
+      if (!response.ok) {
+        throw new Error("Não foi possível baixar o PDF assinado.")
+      }
+
+      const blob = await response.blob()
+      const objectUrl = URL.createObjectURL(blob)
+      const anchor = document.createElement("a")
+      anchor.href = objectUrl
+      anchor.download = attachment.fileName || `${contract?.contractNumber ?? "contrato-assinado"}.pdf`
+      document.body.appendChild(anchor)
+      anchor.click()
+      anchor.remove()
+      URL.revokeObjectURL(objectUrl)
+    },
+    onError: (error) => {
+      toast({
+        title: getApiErrorMessage(error, "Não foi possível baixar o contrato assinado."),
+        variant: "destructive",
+      })
+    },
+  })
+
+  const handleDownloadSignedContract = () => {
+    if (clientAttachmentsQuery.isLoading) return
+
+    if (!signedContractAttachment) {
+      toast({
+        title: "Contrato assinado indisponível",
+        description: "O PDF assinado ainda não foi encontrado nos anexos do cliente.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    downloadSignedContractMutation.mutate(signedContractAttachment)
+  }
 
   if (contractQuery.isLoading) {
     return (
@@ -468,8 +533,8 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
 
   return (
     <div className="space-y-6">
-      <Card className="px-4 py-3">
-        <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
+      <Card className="p-6">
+        <div className="flex flex-col justify-between gap-4 lg:min-h-[104px] lg:flex-row lg:items-stretch">
           <div className="flex items-start gap-4">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10">
               <FileText className="h-6 w-6 text-primary" />
@@ -495,27 +560,27 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
             </div>
           </div>
 
-          <div className="space-y-4 lg:min-w-[260px]">
-            <div className="flex flex-wrap gap-2">
-              {contract.signatureUrl ? (
+          <div className="flex w-full flex-col gap-3 lg:ml-auto lg:w-[300px] lg:min-w-[300px] lg:self-stretch">
+            <div className="flex w-full flex-wrap justify-end gap-2">
+              {clicksignUrl ? (
                 <Button variant="outline" size="sm" asChild>
-                  <a href={contract.signatureUrl} target="_blank" rel="noreferrer">
+                  <a href={clicksignUrl} target="_blank" rel="noreferrer">
                     <ExternalLink className="mr-2 h-4 w-4" />
                     ClickSign
                   </a>
                 </Button>
               ) : null}
-              {contract.clicksign?.envelopeId ? (
+              {isSignedStatus(contract.status) || isSignedStatus(contract.clicksign?.status) ? (
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => syncClicksignMutation.mutate()}
-                  disabled={syncClicksignMutation.isPending}
+                  onClick={handleDownloadSignedContract}
+                  disabled={clientAttachmentsQuery.isLoading || downloadSignedContractMutation.isPending}
                 >
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                  {syncClicksignMutation.isPending ? "Sincronizando..." : "Sincronizar ClickSign"}
+                  <Download className="mr-2 h-4 w-4" />
+                  {clientAttachmentsQuery.isLoading || downloadSignedContractMutation.isPending ? "Baixando..." : "Baixar"}
                 </Button>
-              ) : (
+              ) : contract.clicksign?.envelopeId ? null : (
                 <Button
                   variant="outline"
                   size="sm"
@@ -528,7 +593,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
               )}
             </div>
 
-            <div>
+            <div className="mt-auto">
               <div className="mb-1 flex justify-between text-xs">
                 <span className="text-muted-foreground">
                   {paidInstallments.length}/{contract.installmentsCount} parcelas pagas
@@ -540,6 +605,58 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
           </div>
         </div>
       </Card>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Card className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+              <DollarSign className="h-5 w-5 text-primary/80" />
+            </div>
+            <div className="mt-auto">
+              <p className="text-sm text-muted-foreground">Valor total</p>
+              <p className="text-xl font-semibold text-primary/80">{formatCurrency(contract.totalValue)}</p>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-50">
+              <CheckCircle className="h-5 w-5 text-green-500" />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Valor pago</p>
+              <p className="text-xl font-semibold text-green-600/80">{formatCurrency(totalPaid)}</p>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-50">
+              <Clock className="h-5 w-5 text-amber-500" />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Pendente</p>
+              <p className="text-xl font-semibold text-amber-600/80">
+                {formatCurrency(Math.max(contract.totalValue - totalPaid, 0))}
+              </p>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-50">
+              <AlertTriangle className="h-5 w-5 text-red-500" />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Vencido</p>
+              <p className="text-xl font-semibold text-red-600/80">{formatCurrency(totalOverdue)}</p>
+            </div>
+          </div>
+        </Card>
+      </div>
 
       <Card className="p-6">
         <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -560,7 +677,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
           </div>
         </div>
         {contract.clicksign?.signers?.length ? (
-          <div className="mt-4 overflow-hidden rounded-md">
+          <div className="mt-4 overflow-hidden rounded-xl">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -599,58 +716,6 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
         ) : null}
       </Card>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-              <DollarSign className="h-5 w-5 text-primary" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Valor total</p>
-              <p className="text-lg font-bold">{formatCurrency(contract.totalValue)}</p>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-500/10">
-              <CheckCircle className="h-5 w-5 text-green-500" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Valor pago</p>
-              <p className="text-lg font-bold text-green-600">{formatCurrency(totalPaid)}</p>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500/10">
-              <Clock className="h-5 w-5 text-amber-500" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Pendente</p>
-              <p className="text-lg font-bold text-amber-600">
-                {formatCurrency(Math.max(contract.totalValue - totalPaid, 0))}
-              </p>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-500/10">
-              <RefreshCw className="h-5 w-5 text-red-500" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Em atraso</p>
-              <p className="text-lg font-bold text-red-600">{formatCurrency(totalOverdue)}</p>
-            </div>
-          </div>
-        </Card>
-      </div>
-
       <Card className="p-6">
         <div className="mb-4 flex items-center gap-2">
           <RefreshCw className="h-5 w-5 text-primary" />
@@ -667,7 +732,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
           </span>
         </p>
 
-        <div className="overflow-x-auto rounded-md border">
+        <div className="overflow-x-auto rounded-xl">
           <Table>
             <TableHeader>
               <TableRow>
@@ -728,7 +793,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
         </TabsList>
 
         <TabsContent value="services" className="mt-4">
-          <div className="overflow-x-auto rounded-md border">
+          <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -795,7 +860,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
         </TabsContent>
 
         <TabsContent value="installments" className="mt-4">
-          <div className="overflow-x-auto rounded-md border">
+          <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -860,7 +925,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
         </TabsContent>
 
         <TabsContent value="units" className="mt-4">
-          <div className="overflow-x-auto rounded-md border">
+          <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -902,7 +967,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
         </TabsContent>
 
         <TabsContent value="schedule" className="mt-4">
-          <div className="overflow-x-auto rounded-md border">
+          <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>

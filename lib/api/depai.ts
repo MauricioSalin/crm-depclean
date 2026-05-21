@@ -67,3 +67,7 @@ export async function listDepAIConversations(): Promise<DepAIConversation[]> {
   const response = await api.get<ApiSuccessResponse<{ conversations: DepAIConversation[] }>>("/depai/conversations")
   return response.data.data.conversations
 }
+
+export async function deleteDepAIConversation(id: string): Promise<void> {
+  await api.delete<ApiSuccessResponse<null>>(`/depai/conversations/${encodeURIComponent(id)}`)
+}

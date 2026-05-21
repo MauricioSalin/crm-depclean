@@ -1,6 +1,6 @@
 "use client"
 
-import { ArrowLeft, CalendarDays, Clock3, Loader2, MapPin, Sparkles, Users } from "lucide-react"
+import { ArrowLeft, CalendarDays, Clock3, Loader2, MapPin, OctagonX, Sparkles, Users } from "lucide-react"
 
 import { AttendanceStartSlider } from "@/components/agendamentos/attendance-start-slider"
 import { Badge } from "@/components/ui/badge"
@@ -9,6 +9,7 @@ import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from "@
 import { useIsMobile } from "@/hooks/use-mobile"
 import type { ScheduleRecord } from "@/lib/api/schedules"
 import { formatCivilDate } from "@/lib/date-utils"
+import { formatConfiguredScheduleDuration } from "@/lib/schedule-duration"
 import { cn } from "@/lib/utils"
 
 interface ScheduleDetailsDialogProps {
@@ -40,15 +41,6 @@ function getStatusLabel(status: ScheduleRecord["status"]) {
 
 function formatScheduleDate(date: string) {
   return formatCivilDate(date, date)
-}
-
-function formatDuration(duration: number) {
-  const hours = Math.floor(duration / 60)
-  const minutes = duration % 60
-
-  if (hours > 0 && minutes > 0) return `${hours}h ${minutes}min`
-  if (hours > 0) return `${hours}h`
-  return `${minutes}min`
 }
 
 export function ScheduleDetailsDialog({
@@ -131,7 +123,7 @@ export function ScheduleDetailsDialog({
                   Horário e duração
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  {schedule.time || "Sem horário"} • {formatDuration(schedule.duration)}
+                  {schedule.time || "Sem horário"} • {formatConfiguredScheduleDuration(schedule)}
                 </p>
               </div>
 
@@ -153,6 +145,18 @@ export function ScheduleDetailsDialog({
                   {assignees.length > 0 ? assignees.join(" • ") : "Nenhuma equipe ou funcionário vinculado."}
                 </p>
               </div>
+
+              {schedule.status === "cancelled" ? (
+                <div className="rounded-2xl border border-red-100 bg-red-50/70 p-4 md:col-span-2">
+                  <div className="mb-2 flex items-center gap-2 text-sm font-medium text-red-700">
+                    <OctagonX className="h-4 w-4" />
+                    Motivo do cancelamento
+                  </div>
+                  <p className="text-sm text-red-700/80">
+                    {schedule.cancellationReason || "Motivo não informado."}
+                  </p>
+                </div>
+              ) : null}
 
               {schedule.notes ? (
                 <div className="rounded-2xl border p-4 md:col-span-2">

@@ -531,26 +531,6 @@ export function RelatoriosContent() {
                   emptyMessage="Nenhum serviço encontrado."
                   showSelectedTags={false}
                 />
-                {selectedServiceOptions.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
-                    {selectedServiceOptions.map((option) => (
-                      <Badge
-                        key={option.id}
-                        variant="outline"
-                        className="flex items-center gap-2 px-3 py-1 text-foreground/80"
-                      >
-                        <span>{option.name}</span>
-                        <button
-                          type="button"
-                          className="flex h-3.5 w-3.5 items-center justify-center rounded-full hover:bg-transparent"
-                          onClick={() => removeSelectedFilterOption(option.id)}
-                        >
-                          <X className="h-2.5 w-2.5" />
-                        </button>
-                      </Badge>
-                    ))}
-                  </div>
-                )}
               </div>
             )}
 
@@ -566,32 +546,54 @@ export function RelatoriosContent() {
                   emptyMessage="Nenhuma equipe encontrada."
                   showSelectedTags={false}
                 />
-                {selectedTeamOptions.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
-                    {selectedTeamOptions.map((option) => (
-                      <Badge
-                        key={option.id}
-                        variant="outline"
-                        className="flex items-center gap-2 px-3 py-1 text-foreground/80"
-                      >
-                        <span>{option.name}</span>
-                        <button
-                          type="button"
-                          className="flex h-3.5 w-3.5 items-center justify-center rounded-full hover:bg-transparent"
-                          onClick={() => removeSelectedFilterOption(option.id)}
-                        >
-                          <X className="h-2.5 w-2.5" />
-                        </button>
-                      </Badge>
-                    ))}
-                  </div>
-                )}
               </div>
             )}
 
             <Button className="w-full sm:w-[170px] sm:justify-self-start h-10 px-4 shrink-0 bg-primary hover:bg-primary/90 text-primary-foreground" onClick={handleGenerateReport} disabled={reportsQuery.isFetching || isExporting}>
               Gerar relatório
             </Button>
+
+            {selectedReport === "services" && selectedServiceOptions.length > 0 && (
+              <div className="flex flex-wrap gap-2 sm:col-start-2">
+                {selectedServiceOptions.map((option) => (
+                  <Badge
+                    key={option.id}
+                    variant="outline"
+                    className="flex items-center gap-2 px-3 py-1 text-foreground/80"
+                  >
+                    <span>{option.name}</span>
+                    <button
+                      type="button"
+                      className="flex h-3.5 w-3.5 items-center justify-center rounded-full hover:bg-transparent"
+                      onClick={() => removeSelectedFilterOption(option.id)}
+                    >
+                      <X className="h-2.5 w-2.5" />
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+            )}
+
+            {selectedReport === "teams" && selectedTeamOptions.length > 0 && (
+              <div className="flex flex-wrap gap-2 sm:col-start-2">
+                {selectedTeamOptions.map((option) => (
+                  <Badge
+                    key={option.id}
+                    variant="outline"
+                    className="flex items-center gap-2 px-3 py-1 text-foreground/80"
+                  >
+                    <span>{option.name}</span>
+                    <button
+                      type="button"
+                      className="flex h-3.5 w-3.5 items-center justify-center rounded-full hover:bg-transparent"
+                      onClick={() => removeSelectedFilterOption(option.id)}
+                    >
+                      <X className="h-2.5 w-2.5" />
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

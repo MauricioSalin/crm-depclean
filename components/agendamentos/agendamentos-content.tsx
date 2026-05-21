@@ -42,7 +42,7 @@ import type { AuthenticatedUser } from "@/lib/auth/types"
 import { formatCivilDate, toCivilDateKey } from "@/lib/date-utils"
 import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
-import { scheduleDurationToMinutes } from "@/lib/schedule-duration"
+import { formatConfiguredScheduleDuration, scheduleDurationToMinutes } from "@/lib/schedule-duration"
 import { checkScheduleAvailability, formatAvailabilitySlot } from "@/lib/schedule-availability"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -252,7 +252,12 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
         return updateSchedule(scheduleId, {
           teamIds: formData.teamIds,
           additionalEmployeeIds: formData.employeeIds,
+          scheduledDate: formData.date,
           scheduledTime: formData.time,
+          estimatedDuration: scheduleDurationToMinutes(formData.duration, formData.durationType),
+          durationValue: formData.duration,
+          durationType: formData.durationType,
+          notes: formData.notes,
         })
       }
 
@@ -265,6 +270,8 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
         scheduledDate: formData.date,
         scheduledTime: formData.time,
         estimatedDuration: scheduleDurationToMinutes(formData.duration, formData.durationType),
+        durationValue: formData.duration,
+        durationType: formData.durationType,
         isEmergency: formData.isEmergency,
         billable: formData.createContract,
         value: formData.createContract ? formData.value : 0,
@@ -468,6 +475,8 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
   }
 
   const openEditSchedule = (schedule: ScheduleRecord) => {
+    if (schedule.status === "cancelled") return
+
     clearScheduleDialogResetTimeout()
     setSelectedSchedule(null)
     setCancelTarget(null)
@@ -824,14 +833,14 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                           <div>
                             <p className="font-semibold text-foreground/80">{schedule.clientName}</p>
                             <p className="text-xs text-muted-foreground sm:hidden">
-                              {schedule.serviceTypeName} • {schedule.duration} min
+                              {schedule.serviceTypeName} • {formatConfiguredScheduleDuration(schedule)}
                             </p>
                           </div>
                         </div>
                       </TableCell>
                       <TableCell className="hidden sm:table-cell">
                         <p>{schedule.serviceTypeName}</p>
-                        <p className="text-xs text-muted-foreground">{schedule.duration} min</p>
+                        <p className="text-xs text-muted-foreground">{formatConfiguredScheduleDuration(schedule)}</p>
                       </TableCell>
                       <TableCell className="hidden lg:table-cell">
                         <ScheduleTypeBadge schedule={schedule} />
@@ -869,90 +878,82 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                       </TableCell>
                       <TableCell>{getStatusBadge(schedule.status)}</TableCell>
                       <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          {schedule.status === "in_progress" && (
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              className="h-8 w-8 rounded-full"
-                              title="Concluir atendimento"
-                              aria-label="Concluir atendimento"
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                openCompletionDialog(schedule)
-                              }}
-                            >
-                              <Check className="h-4 w-4" />
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" onClick={(event) => event.stopPropagation()}>
+                              <MoreHorizontal className="h-4 w-4" />
                             </Button>
-                          )}
-                          {schedule.status === "cancelled" && (
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              className="h-8 w-8 rounded-full"
-                              title="Reativar agendamento"
-                              aria-label="Reativar agendamento"
-                              disabled={reactivateMutation.isPending && reactivateMutation.variables?.id === schedule.id}
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                reactivateMutation.mutate(schedule)
-                              }}
-                            >
-                              {reactivateMutation.isPending && reactivateMutation.variables?.id === schedule.id ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <RotateCcw className="h-4 w-4" />
-                              )}
-                            </Button>
-                          )}
-                          {canCancelSchedule(schedule) && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                setCancelTarget(schedule)
-                                setCancelReason(schedule.cancellationReason || "")
-                                setCancelStep("reason")
-                              }}
-                            >
-                              <X className="h-4 w-4 text-destructive" />
-                            </Button>
-                          )}
-                          {schedule.status === "in_progress" ? (
-                            <span className="size-9 shrink-0" aria-hidden="true" />
-                          ) : (
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" onClick={(event) => event.stopPropagation()}>
-                                  <MoreHorizontal className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem
-                                  onClick={(event) => {
-                                    event.stopPropagation()
-                                    openEditSchedule(schedule)
-                                  }}
-                                >
-                                  <Edit className="mr-2 h-4 w-4" />
-                                  Editar
-                                </DropdownMenuItem>
-                                {canDeleteSchedule(schedule) && (
-                                  <DropdownMenuItem
-                                    onClick={(event) => {
-                                      event.stopPropagation()
-                                      setPendingDelete(schedule)
-                                    }}
-                                  >
-                                    <Trash2 className="mr-2 h-4 w-4" />
-                                    Excluir
-                                  </DropdownMenuItem>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {!["in_progress", "cancelled"].includes(schedule.status) && (
+                              <DropdownMenuItem
+                                className="cursor-pointer"
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  openEditSchedule(schedule)
+                                }}
+                              >
+                                <Edit className="mr-2 h-4 w-4" />
+                                Editar
+                              </DropdownMenuItem>
+                            )}
+                            {schedule.status === "in_progress" && (
+                              <DropdownMenuItem
+                                className="cursor-pointer"
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  openCompletionDialog(schedule)
+                                }}
+                              >
+                                <Check className="mr-2 h-4 w-4" />
+                                Concluir
+                              </DropdownMenuItem>
+                            )}
+                            {schedule.status === "cancelled" && (
+                              <DropdownMenuItem
+                                className="cursor-pointer"
+                                disabled={reactivateMutation.isPending && reactivateMutation.variables?.id === schedule.id}
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  reactivateMutation.mutate(schedule)
+                                }}
+                              >
+                                {reactivateMutation.isPending && reactivateMutation.variables?.id === schedule.id ? (
+                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                ) : (
+                                  <RotateCcw className="mr-2 h-4 w-4" />
                                 )}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          )}
-                        </div>
+                                Reativar
+                              </DropdownMenuItem>
+                            )}
+                            {canCancelSchedule(schedule) && (
+                              <DropdownMenuItem
+                                className="cursor-pointer"
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  setCancelTarget(schedule)
+                                  setCancelReason(schedule.cancellationReason || "")
+                                  setCancelStep("reason")
+                                }}
+                              >
+                                <X className="mr-2 h-4 w-4" />
+                                Cancelar
+                              </DropdownMenuItem>
+                            )}
+                            {canDeleteSchedule(schedule) && (
+                              <DropdownMenuItem
+                                className="cursor-pointer"
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  setPendingDelete(schedule)
+                                }}
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Excluir
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
                   ))
@@ -987,7 +988,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                   <div className="space-y-1 text-xs text-muted-foreground">
                     <div className="flex items-center gap-2">
                       <Clock className="h-3 w-3" />
-                      {schedule.time} ({schedule.duration} min)
+                      {schedule.time} ({formatConfiguredScheduleDuration(schedule)})
                     </div>
                     <div className="flex items-center gap-2">
                       <Calendar className="h-3 w-3" />
@@ -1014,64 +1015,61 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                       ))}
                     </div>
                   ) : null}
-                  <div className="mt-auto flex gap-1 pt-3" onClick={(event) => event.stopPropagation()}>
-                    {schedule.status !== "in_progress" && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 flex-1 text-xs"
-                        onClick={() => {
-                          openEditSchedule(schedule)
-                        }}
-                      >
-                        <Edit className="mr-1 h-3 w-3" />
-                        Editar
-                      </Button>
-                    )}
-                    {schedule.status === "in_progress" && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 flex-1 text-xs"
-                        onClick={() => {
-                          openCompletionDialog(schedule)
-                        }}
-                      >
-                        <Check className="mr-1 h-3 w-3" />
-                        Concluir
-                      </Button>
-                    )}
-                    {schedule.status === "cancelled" && (
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        className="h-8 w-8 rounded-full"
-                        title="Reativar agendamento"
-                        aria-label="Reativar agendamento"
-                        disabled={reactivateMutation.isPending && reactivateMutation.variables?.id === schedule.id}
-                        onClick={() => reactivateMutation.mutate(schedule)}
-                      >
-                        {reactivateMutation.isPending && reactivateMutation.variables?.id === schedule.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <RotateCcw className="h-4 w-4" />
+                  <div className="mt-auto flex justify-end pt-3" onClick={(event) => event.stopPropagation()}>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" aria-label="Ações do agendamento">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        {!["in_progress", "cancelled"].includes(schedule.status) && (
+                          <DropdownMenuItem className="cursor-pointer" onClick={() => openEditSchedule(schedule)}>
+                            <Edit className="mr-2 h-4 w-4" />
+                            Editar
+                          </DropdownMenuItem>
                         )}
-                      </Button>
-                    )}
-                    {canCancelSchedule(schedule) && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 text-xs"
-                        onClick={() => {
-                          setCancelTarget(schedule)
-                          setCancelReason(schedule.cancellationReason || "")
-                          setCancelStep("reason")
-                        }}
-                      >
-                        <X className="h-3 w-3" />
-                      </Button>
-                    )}
+                        {schedule.status === "in_progress" && (
+                          <DropdownMenuItem className="cursor-pointer" onClick={() => openCompletionDialog(schedule)}>
+                            <Check className="mr-2 h-4 w-4" />
+                            Concluir
+                          </DropdownMenuItem>
+                        )}
+                        {schedule.status === "cancelled" && (
+                          <DropdownMenuItem
+                            className="cursor-pointer"
+                            disabled={reactivateMutation.isPending && reactivateMutation.variables?.id === schedule.id}
+                            onClick={() => reactivateMutation.mutate(schedule)}
+                          >
+                            {reactivateMutation.isPending && reactivateMutation.variables?.id === schedule.id ? (
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                              <RotateCcw className="mr-2 h-4 w-4" />
+                            )}
+                            Reativar
+                          </DropdownMenuItem>
+                        )}
+                        {canCancelSchedule(schedule) && (
+                          <DropdownMenuItem
+                            className="cursor-pointer"
+                            onClick={() => {
+                              setCancelTarget(schedule)
+                              setCancelReason(schedule.cancellationReason || "")
+                              setCancelStep("reason")
+                            }}
+                          >
+                            <X className="mr-2 h-4 w-4" />
+                            Cancelar
+                          </DropdownMenuItem>
+                        )}
+                        {canDeleteSchedule(schedule) && (
+                          <DropdownMenuItem className="cursor-pointer" onClick={() => setPendingDelete(schedule)}>
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Excluir
+                          </DropdownMenuItem>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 </CardContent>
               </Card>

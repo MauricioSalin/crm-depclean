@@ -5,14 +5,14 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ArrowRight, Users } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
-import { getDashboardAnalytics } from "@/lib/api/analytics"
+import { getDashboardAnalytics, type DashboardAnalyticsParams } from "@/lib/api/analytics"
 import { getColorFromClass } from "@/lib/utils"
 import Link from "next/link"
 
-export function TeamCollaboration({ days = 30 }: { days?: number }) {
+export function TeamCollaboration(period: DashboardAnalyticsParams = {}) {
   const dashboardQuery = useQuery({
-    queryKey: ["analytics", "dashboard", days],
-    queryFn: () => getDashboardAnalytics({ days }),
+    queryKey: ["analytics", "dashboard", period],
+    queryFn: () => getDashboardAnalytics(period),
   })
   const teamsWithActivity = dashboardQuery.data?.data.teamsWithActivity ?? []
 

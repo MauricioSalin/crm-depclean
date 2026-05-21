@@ -21,6 +21,8 @@ export type ScheduleRecord = {
   date: string
   time: string
   duration: number
+  durationValue?: number
+  durationType?: "hours" | "shift" | "days"
   status: "draft" | "scheduled" | "in_progress" | "completed" | "cancelled" | "rescheduled"
   recurrence: { type: "none"; daysOfWeek: number[]; interval: number }
   billable: boolean
@@ -53,6 +55,8 @@ export type SchedulePayload = {
   scheduledDate: string
   scheduledTime?: string
   estimatedDuration: number
+  durationValue?: number
+  durationType?: "hours" | "shift" | "days"
   isEmergency?: boolean
   billable?: boolean
   value?: number

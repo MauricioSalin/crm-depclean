@@ -548,7 +548,22 @@ export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
                 required
               />
             </div>
+          </div>
+
+          {/* Linha 3: Telefone + CPF */}
+          <div className="flex flex-col md:flex-row gap-3">
             <div className="space-y-2 md:w-[220px] shrink-0">
+              <Label htmlFor="phone">Telefone *</Label>
+              <Input
+                id="phone"
+                value={formData.phone}
+                onChange={(e) => handleInputChange("phone", formatPhone(e.target.value))}
+                placeholder={cnpjLoading ? "Buscando..." : "(00) 00000-0000"}
+                disabled={cnpjLoading}
+                required
+              />
+            </div>
+            <div className="space-y-2 md:w-[320px]">
               <Label htmlFor="responsibleCpf">CPF do Responsável *</Label>
               <Input
                 id="responsibleCpf"
@@ -560,16 +575,17 @@ export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
             </div>
           </div>
 
-          {/* Linha 3: Telefone + E-mail */}
+          {/* Linha 4: Unidades + E-mail */}
           <div className="flex flex-col md:flex-row gap-3">
             <div className="space-y-2 md:w-[220px] shrink-0">
-              <Label htmlFor="phone">Telefone *</Label>
+              <Label htmlFor="primaryUnitCount">Unidades *</Label>
               <Input
-                id="phone"
-                value={formData.phone}
-                onChange={(e) => handleInputChange("phone", formatPhone(e.target.value))}
-                placeholder={cnpjLoading ? "Buscando..." : "(00) 00000-0000"}
-                disabled={cnpjLoading}
+                id="primaryUnitCount"
+                type="number"
+                value={units[0]?.unitCount || ""}
+                onChange={(e) => handleUnitChange(0, "unitCount", e.target.value)}
+                placeholder="Número de unidades"
+                min={1}
                 required
               />
             </div>
@@ -587,30 +603,19 @@ export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
             </div>
           </div>
 
-          <label className="flex w-full cursor-pointer items-center gap-2 rounded-md border border-border/60 bg-muted/20 px-4 py-3 text-sm text-foreground/80 md:w-[320px]">
+          <label className="flex w-full cursor-pointer items-start gap-3 rounded-xl bg-primary/5 p-4 md:max-w-[520px]">
             <Checkbox
-              className="cursor-pointer"
+              className="mt-0.5 cursor-pointer bg-white"
               checked={formData.responsibleReceivesNotifications}
               onCheckedChange={(checked) => handleInputChange("responsibleReceivesNotifications", checked === true)}
             />
-            Receber notificações do sistema
+            <span className="space-y-1">
+              <span className="block text-sm font-semibold text-foreground">Receber notificações do sistema</span>
+              <span className="block text-sm text-muted-foreground">
+                O responsável receberá avisos, informativos e atualizações deste cliente.
+              </span>
+            </span>
           </label>
-
-          {/* Linha 4: Unidades */}
-          <div className="flex flex-col md:flex-row gap-3">
-            <div className="space-y-2 md:w-[220px] shrink-0">
-              <Label htmlFor="primaryUnitCount">Unidades *</Label>
-              <Input
-                id="primaryUnitCount"
-                type="number"
-                value={units[0]?.unitCount || ""}
-                onChange={(e) => handleUnitChange(0, "unitCount", e.target.value)}
-                placeholder="Número de unidades"
-                min={1}
-                required
-              />
-            </div>
-          </div>
         </div>
       </Card>
 
@@ -665,16 +670,22 @@ export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
             </div>
           </div>
 
-          <label className="flex w-full cursor-pointer items-center gap-2 rounded-md border border-border/60 bg-muted/20 px-4 py-3 text-sm text-foreground/80 md:w-[320px]">
+          <label className="flex w-full cursor-pointer items-start gap-3 rounded-xl bg-primary/5 p-4 md:max-w-[520px]">
             <Checkbox
-              className="cursor-pointer"
+              className="mt-0.5 cursor-pointer bg-white"
               checked={formData.assessorReceivesNotifications}
               onCheckedChange={(checked) => handleInputChange("assessorReceivesNotifications", checked === true)}
             />
-            Receber notificações do sistema
+            <span className="space-y-1">
+              <span className="block text-sm font-semibold text-foreground">Receber notificações do sistema</span>
+              <span className="block text-sm text-muted-foreground">
+                O assessor receberá avisos, informativos e atualizações deste cliente.
+              </span>
+            </span>
           </label>
         </div>
       </Card>
+
 
       <Card className="p-6">
         <div className="flex items-center gap-2 mb-6">
@@ -727,14 +738,118 @@ export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
             </div>
           </div>
 
-          <label className="flex w-full cursor-pointer items-center gap-2 rounded-md border border-border/60 bg-muted/20 px-4 py-3 text-sm text-foreground/80 md:w-[320px]">
+          <label className="flex w-full cursor-pointer items-start gap-3 rounded-xl bg-primary/5 p-4 md:max-w-[520px]">
             <Checkbox
-              className="cursor-pointer"
+              className="mt-0.5 cursor-pointer bg-white"
               checked={formData.syndicReceivesNotifications}
               onCheckedChange={(checked) => handleInputChange("syndicReceivesNotifications", checked === true)}
             />
-            Receber notificações do sistema
+            <span className="space-y-1">
+              <span className="block text-sm font-semibold text-foreground">Receber notificações do sistema</span>
+              <span className="block text-sm text-muted-foreground">
+                O síndico receberá avisos, informativos e atualizações deste cliente.
+              </span>
+            </span>
           </label>
+        </div>
+      </Card>
+
+      <Card className="p-6">
+        <div className="flex items-center gap-2 mb-6">
+          <MapPin className="w-5 h-5 text-primary" />
+          <h3 className="font-semibold text-lg">Endereço</h3>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="space-y-2">
+            <Label>CEP *</Label>
+            <div className="relative">
+              <Input
+                value={units[0]?.address?.zipCode || ""}
+                onChange={(e) => {
+                  const formatted = formatCEP(e.target.value)
+                  handleUnitChange(0, "address.zipCode", formatted)
+                  const digits = formatted.replace(/\D/g, "")
+                  if (digits.length === 8) lookupCEP(digits, 0)
+                }}
+                placeholder="00000-000"
+                required
+              />
+              {cepLoading === 0 && (
+                <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-2 md:col-span-1 lg:col-span-2">
+            <Label>Logradouro *</Label>
+            <Input
+              value={units[0]?.address?.street || ""}
+              onChange={(e) => handleUnitChange(0, "address.street", e.target.value)}
+              placeholder={cepLoading === 0 ? "Buscando..." : "Rua, Avenida, etc."}
+              disabled={cepLoading === 0}
+              required
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Número *</Label>
+            <Input
+              value={units[0]?.address?.number || ""}
+              onChange={(e) => handleUnitChange(0, "address.number", e.target.value)}
+              placeholder="123"
+              required
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Complemento</Label>
+            <Input
+              value={units[0]?.address?.complement || ""}
+              onChange={(e) => handleUnitChange(0, "address.complement", e.target.value)}
+              placeholder="Apto, Bloco, Sala, etc."
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Bairro *</Label>
+            <Input
+              value={units[0]?.address?.neighborhood || ""}
+              onChange={(e) => handleUnitChange(0, "address.neighborhood", e.target.value)}
+              placeholder={cepLoading === 0 ? "Buscando..." : "Bairro"}
+              disabled={cepLoading === 0}
+              required
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Cidade *</Label>
+            <Input
+              value={units[0]?.address?.city || ""}
+              onChange={(e) => handleUnitChange(0, "address.city", e.target.value)}
+              placeholder={cepLoading === 0 ? "Buscando..." : "Cidade"}
+              disabled={cepLoading === 0}
+              required
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Estado *</Label>
+            <Select
+              value={units[0]?.address?.state || ""}
+              onValueChange={(value) => handleUnitChange(0, "address.state", value)}
+              disabled={cepLoading === 0}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="UF" />
+              </SelectTrigger>
+              <SelectContent>
+                {["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"].map((uf) => (
+                  <SelectItem key={uf} value={uf}>{uf}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </Card>
 

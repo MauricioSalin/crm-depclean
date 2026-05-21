@@ -143,7 +143,7 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
       </div>
 
       {viewMode === "table" ? (
-        <div className="overflow-x-auto rounded-md">
+        <div className="overflow-x-auto rounded-xl">
           <Table>
             <TableHeader>
               <TableRow>

@@ -73,6 +73,9 @@ import {
   CheckCircle2,
   Upload,
   Download,
+  Mail,
+  Phone,
+  DollarSign,
 } from "lucide-react"
 import { cn, getColorFromClass } from "@/lib/utils"
 import { formatCivilDate, formatCivilLongDate, toCivilDateKey } from "@/lib/date-utils"
@@ -91,7 +94,7 @@ import {
   type ContractPayload,
 } from "@/lib/api/contracts"
 import { getApiErrorMessage } from "@/lib/api/errors"
-import { formatCNPJ, formatCPF } from "@/lib/masks"
+import { formatCNPJ, formatCPF, formatPhone } from "@/lib/masks"
 import { listServices } from "@/lib/api/services"
 import { listTemplates } from "@/lib/api/templates"
 import { listTeams } from "@/lib/api/teams"
@@ -1287,8 +1290,8 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
           <Building2 className="w-5 h-5 text-primary" />
           Cliente
         </h3>
-        <div className="flex flex-col md:flex-row gap-5">
-          <div className="space-y-2 md:w-[340px] shrink-0">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <div className="space-y-2 lg:col-span-2 lg:max-w-[420px]">
             <Label>Selecionar Cliente *</Label>
             <Popover open={clientPopoverOpen} onOpenChange={setClientPopoverOpen}>
               <PopoverTrigger asChild>
@@ -1338,38 +1341,113 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
           </div>
           {selectedClient && (() => {
             const clientType = getClientTypeById(selectedClient.clientTypeId)
+            const assessor = selectedClient.assessor
+            const syndic = selectedClient.syndic
+            const hasAssessor = Boolean(assessor?.name || assessor?.cpf || assessor?.email || assessor?.phone)
+            const hasSyndic = Boolean(syndic?.name || syndic?.cpf || syndic?.email || syndic?.phone)
+
             return (
-              <div className="w-full rounded-lg bg-muted/50 p-3 md:max-w-[520px] md:flex-1">
+              <>
+              <div className="rounded-lg bg-muted/50 p-4 lg:col-span-2">
                 <div className="flex items-start gap-3">
-                <div
-                  className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-                  style={{ backgroundColor: `${getColorFromClass(clientType?.color || '')}1A` }}
-                >
-                  <Building2 className="w-5 h-5" style={{ color: getColorFromClass(clientType?.color || '') }} />
-                </div>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <p className="font-medium">{selectedClient.companyName}</p>
-                    <Badge
-                      style={{ backgroundColor: getColorFromClass(clientType?.color || '') }}
-                      className="text-white border-0 hover:opacity-90"
-                    >
-                      {clientType?.name}
-                    </Badge>
+                  <div
+                    className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                    style={{ backgroundColor: `${getColorFromClass(clientType?.color || '')}1A` }}
+                  >
+                    <Building2 className="w-5 h-5" style={{ color: getColorFromClass(clientType?.color || '') }} />
                   </div>
-                  <p className="text-sm text-muted-foreground">{formatCNPJ(selectedClient.cnpj)}</p>
-                  <p className="text-sm text-muted-foreground">{selectedClient.email}</p>
-                </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-medium">{selectedClient.companyName}</p>
+                      <Badge
+                        style={{ backgroundColor: getColorFromClass(clientType?.color || '') }}
+                        className="text-white border-0 hover:opacity-90"
+                      >
+                        {clientType?.name}
+                      </Badge>
+                    </div>
+                    <p className="text-sm text-muted-foreground">{formatCNPJ(selectedClient.cnpj)}</p>
+                    <p className="text-sm text-muted-foreground">{selectedClient.email}</p>
+                  </div>
                 </div>
               </div>
+
+              {hasAssessor && (
+                <div className="rounded-lg bg-muted/50 p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                      <Users className="w-5 h-5 text-primary" />
+                    </div>
+                    <div className="min-w-0 space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground">Assessor</p>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="font-medium">{assessor.name || "Assessor"}</p>
+                        <Badge variant={assessor.receivesNotifications ? "default" : "secondary"} className={assessor.receivesNotifications ? "bg-primary hover:bg-primary/90" : ""}>
+                          {assessor.receivesNotifications ? "Recebe notificações" : "Sem notificações"}
+                        </Badge>
+                      </div>
+                      {assessor.cpf && <p className="text-sm text-muted-foreground">{formatCPF(assessor.cpf)}</p>}
+                      {assessor.phone && (
+                        <p className="text-sm text-muted-foreground flex items-center gap-1.5">
+                          <Phone className="w-3.5 h-3.5" />
+                          {formatPhone(assessor.phone)}
+                        </p>
+                      )}
+                      {assessor.email && (
+                        <p className="text-sm text-muted-foreground flex items-center gap-1.5">
+                          <Mail className="w-3.5 h-3.5" />
+                          {assessor.email}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {hasSyndic && (
+                <div className="rounded-lg bg-muted/50 p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                      <Users className="w-5 h-5 text-primary" />
+                    </div>
+                    <div className="min-w-0 space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground">Síndico</p>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="font-medium">{syndic.name || "Síndico"}</p>
+                        <Badge variant={syndic.receivesNotifications ? "default" : "secondary"} className={syndic.receivesNotifications ? "bg-primary hover:bg-primary/90" : ""}>
+                          {syndic.receivesNotifications ? "Recebe notificações" : "Sem notificações"}
+                        </Badge>
+                      </div>
+                      {syndic.cpf && <p className="text-sm text-muted-foreground">{formatCPF(syndic.cpf)}</p>}
+                      {syndic.phone && (
+                        <p className="text-sm text-muted-foreground flex items-center gap-1.5">
+                          <Phone className="w-3.5 h-3.5" />
+                          {formatPhone(syndic.phone)}
+                        </p>
+                      )}
+                      {syndic.email && (
+                        <p className="text-sm text-muted-foreground flex items-center gap-1.5">
+                          <Mail className="w-3.5 h-3.5" />
+                          {syndic.email}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+              </>
             )
           })()}
         </div>
+      </Card>
 
-        {/* Branch Selection */}
-        {selectedClient && selectedClient.units && selectedClient.units.length > 0 && (
-          <div className="mt-4">
-            <Label className="mb-2 block">Filiais do Contrato</Label>
+      {/* Branch Selection */}
+      {selectedClient && selectedClient.units && selectedClient.units.length > 0 && (
+        <Card className="p-4 sm:p-6">
+          <h3 className="font-semibold mb-4 flex items-center gap-2">
+            <Building2 className="w-5 h-5 text-primary" />
+            Filiais do Contrato
+          </h3>
             <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
               {selectedClient.units.map((unit) => (
                 <label
@@ -1398,9 +1476,8 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
                 </label>
               ))}
             </div>
-          </div>
-        )}
-      </Card>
+        </Card>
+      )}
 
       {/* Automation Settings */}
       <Card className="p-4 sm:p-6">
@@ -1408,8 +1485,8 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
           <FileText className="w-5 h-5 text-primary" />
           Configuração de automatização
         </h3>
-        <div className="flex flex-col xl:flex-row gap-5">
-          <div className="space-y-2 md:w-[340px] shrink-0">
+        <div className="flex flex-col gap-4">
+          <div className="space-y-2 md:w-[340px]">
             <Label>Template do contrato *</Label>
             <Popover open={templatePopoverOpen} onOpenChange={setTemplatePopoverOpen}>
               <PopoverTrigger asChild>
@@ -1454,7 +1531,7 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
             const template = templates.find(t => t.id === selectedTemplateId)
             if (!template) return null
             return (
-              <div className="p-3 rounded-lg bg-muted/50 flex items-start gap-3 shrink-0">
+              <div className="p-3 rounded-lg bg-muted/50 flex items-start gap-3 md:max-w-[520px]">
                 <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
                   <FileText className="w-5 h-5 text-primary" />
                 </div>
@@ -1575,20 +1652,10 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
               required
             />
           </div>
-          <div className="space-y-2 w-[180px]">
-            <Label>Valor do Contrato *</Label>
-            <CurrencyInput
-              value={contractValue}
-              onChange={setContractValue}
-            />
-          </div>
         </div>
         {startDate && installmentsCount > 0 && (
           <div className="mt-4 flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted-foreground">
             <span>Vigência: <strong className="text-foreground">{new Date(`${startDate}T00:00:00`).toLocaleDateString("pt-BR")}</strong> até <strong className="text-foreground">{new Date(`${endDate}T00:00:00`).toLocaleDateString("pt-BR")}</strong></span>
-            {totalValue > 0 && installmentsCount > 1 && (
-              <span>Parcelas: <strong className="text-foreground">{installmentsCount}x de {formatCurrency(totalValue / installmentsCount)}</strong></span>
-            )}
           </div>
         )}
       </Card>
@@ -1607,7 +1674,7 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
         </div>
 
         {services.length > 0 ? (
-          <div className="overflow-x-auto rounded-lg border border-border/70">
+          <div className="overflow-x-auto rounded-lg">
             <Table className="min-w-[1180px]">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
@@ -1751,6 +1818,48 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
           </div>
         )}
 
+      </Card>
+
+      {/* Contract Value */}
+      <Card className="p-4 sm:p-6">
+        <h3 className="font-semibold mb-4 flex items-center gap-2">
+          <DollarSign className="w-5 h-5 text-primary" />
+          Valor do Contrato
+        </h3>
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(260px,420px)_1fr] lg:items-stretch">
+          <div className="space-y-2">
+            <Label>Valor do Contrato *</Label>
+            <CurrencyInput
+              value={contractValue}
+              onChange={setContractValue}
+            />
+            <p className="text-xs text-muted-foreground">
+              Informe o valor total contratado para geração das parcelas e relatórios financeiros.
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-primary/20 bg-primary/5 p-5 lg:justify-self-end lg:min-w-[360px]">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Total do contrato</p>
+                <p className="mt-2 text-3xl font-bold text-primary">{formatCurrency(totalValue)}</p>
+              </div>
+              <div className="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                <DollarSign className="w-5 h-5 text-primary" />
+              </div>
+            </div>
+            <div className="mt-5 grid grid-cols-1 gap-2 text-sm text-muted-foreground sm:grid-cols-2">
+              <div className="rounded-xl bg-background/70 p-3">
+                <span className="block text-xs">Parcelas</span>
+                <strong className="text-foreground">{installmentsCount}x</strong>
+              </div>
+              <div className="rounded-xl bg-background/70 p-3">
+                <span className="block text-xs">Valor por parcela</span>
+                <strong className="text-foreground">{formatCurrency(installmentsCount > 0 ? totalValue / installmentsCount : totalValue)}</strong>
+              </div>
+            </div>
+          </div>
+        </div>
       </Card>
 
       {/* Actions */}

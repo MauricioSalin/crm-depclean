@@ -3,7 +3,7 @@
 import { Card } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useQuery } from "@tanstack/react-query"
-import { getDashboardAnalytics } from "@/lib/api/analytics"
+import { getDashboardAnalytics, type DashboardAnalyticsParams } from "@/lib/api/analytics"
 import {
   BarChart,
   Bar,
@@ -39,10 +39,10 @@ const EMPTY_SERVICES_BY_PERIOD_DATA = [
 
 const EMPTY_CHART_COLOR = "#DDE7D5"
 
-export function ProjectAnalytics({ days = 30 }: { days?: number }) {
+export function ProjectAnalytics(period: DashboardAnalyticsParams = {}) {
   const dashboardQuery = useQuery({
-    queryKey: ["analytics", "dashboard", days],
-    queryFn: () => getDashboardAnalytics({ days }),
+    queryKey: ["analytics", "dashboard", period],
+    queryFn: () => getDashboardAnalytics(period),
   })
   const monthlyRevenueData = dashboardQuery.data?.data.monthlyRevenueData ?? []
   const servicesByPeriodData = dashboardQuery.data?.data.servicesByPeriodData ?? []

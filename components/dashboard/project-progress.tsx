@@ -2,17 +2,25 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { useQuery } from "@tanstack/react-query"
-import { getDashboardAnalytics, getFinancialAnalytics, type ServicesByTeamPoint } from "@/lib/api/analytics"
+import {
+  getDashboardAnalytics,
+  getFinancialAnalytics,
+  type DashboardAnalyticsParams,
+  type ServicesByTeamPoint,
+} from "@/lib/api/analytics"
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts"
 
 const COLORS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)"]
 const EMPTY_CHART_COLOR = "#DDE7D5"
 type ServicesByTeamChartPoint = ServicesByTeamPoint & { isEmpty?: boolean }
 
-export function ServiceDistribution({ showDescription = true, days = 30 }: { showDescription?: boolean; days?: number }) {
+export function ServiceDistribution({
+  showDescription = true,
+  ...period
+}: { showDescription?: boolean } & DashboardAnalyticsParams) {
   const dashboardQuery = useQuery({
-    queryKey: ["analytics", "dashboard", days],
-    queryFn: () => getDashboardAnalytics({ days }),
+    queryKey: ["analytics", "dashboard", period],
+    queryFn: () => getDashboardAnalytics(period),
   })
   const servicesByTeamData = dashboardQuery.data?.data.servicesByTeamData ?? []
   const hasServicesByTeamData = servicesByTeamData.some((item) => item.services > 0)

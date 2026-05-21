@@ -151,12 +151,18 @@ export type ReportsAnalyticsRecord = {
   services: Array<{ id: string; name: string; isActive: boolean }>
 }
 
+export type DashboardAnalyticsParams = {
+  days?: number
+  dateFrom?: string
+  dateTo?: string
+}
+
 export async function getFinancialAnalytics(params?: { dateFrom?: string; dateTo?: string }) {
   const response = await api.get<{ success: true; data: FinancialAnalyticsRecord }>("/analytics/financial", { params })
   return response.data
 }
 
-export async function getDashboardAnalytics(params?: { days?: number }) {
+export async function getDashboardAnalytics(params?: DashboardAnalyticsParams) {
   const response = await api.get<{ success: true; data: DashboardAnalyticsRecord }>("/analytics/dashboard", { params })
   return response.data
 }

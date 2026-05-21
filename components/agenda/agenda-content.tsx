@@ -54,6 +54,7 @@ import { WeekTimeline } from "./week-timeline"
 import { ScheduleDetailsDialog } from "@/components/agendamentos/schedule-details-dialog"
 import { SchedulingFormDialog, type SchedulingFormData } from "@/components/agendamentos/scheduling-form-dialog"
 import {
+  formatConfiguredScheduleDuration,
   scheduleDurationToMinutes,
 } from "@/lib/schedule-duration"
 
@@ -276,7 +277,12 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
         return updateSchedule(scheduleId, {
           teamIds: formData.teamIds,
           additionalEmployeeIds: formData.employeeIds,
+          scheduledDate: formData.date,
           scheduledTime: formData.time,
+          estimatedDuration: scheduleDurationToMinutes(formData.duration, formData.durationType),
+          durationValue: formData.duration,
+          durationType: formData.durationType,
+          notes: formData.notes,
         })
       }
 
@@ -289,6 +295,8 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
         scheduledDate: formData.date,
         scheduledTime: formData.time,
         estimatedDuration: scheduleDurationToMinutes(formData.duration, formData.durationType),
+        durationValue: formData.duration,
+        durationType: formData.durationType,
         isEmergency: formData.isEmergency,
         billable: formData.createContract,
         value: formData.createContract ? formData.value : 0,
@@ -512,6 +520,8 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   }
 
   const handleEditService = (service: AgendaScheduledServiceRow) => {
+    if (service.status === "cancelled") return
+
     clearScheduleDialogResetTimeout()
     setSelectedSchedule(null)
     setCancelTarget(null)
@@ -1061,7 +1071,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                             <div className="space-y-1 text-xs text-muted-foreground">
                               <div className="flex items-center gap-2">
                                 <Clock className="h-3 w-3" />
-                                {service.time} ({service.duration} min)
+                                {service.time} ({formatConfiguredScheduleDuration(service)})
                               </div>
                               {service.address ? (
                                 <div className="flex items-center gap-2">
@@ -1093,7 +1103,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                             ) : null}
 
                             <div className="mt-2 flex gap-1" onClick={(event) => event.stopPropagation()}>
-                              {service.status !== "in_progress" && (
+                              {!["in_progress", "cancelled"].includes(service.status) && (
                                 <Button
                                   variant="outline"
                                   size="sm"
@@ -1137,14 +1147,15 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  className="h-7 text-xs"
+                                  className="h-7 flex-1 text-xs"
                                   onClick={() => {
                                     setCancelTarget(service)
                                     setCancelReason(service.cancellationReason || "")
                                     setCancelStep("reason")
                                   }}
                                 >
-                                  <X className="h-3 w-3" />
+                                  <X className="mr-1 h-3 w-3" />
+                                  Cancelar
                                 </Button>
                               )}
                             </div>
@@ -1239,7 +1250,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                             <div className="space-y-1 text-xs text-muted-foreground">
                               <div className="flex items-center gap-2">
                                 <Clock className="h-3 w-3" />
-                                {service.time} ({service.duration} min)
+                                {service.time} ({formatConfiguredScheduleDuration(service)})
                               </div>
                               {service.address ? (
                                 <div className="flex items-center gap-2">
@@ -1271,7 +1282,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                             ) : null}
 
                             <div className="mt-2 flex gap-1" onClick={(event) => event.stopPropagation()}>
-                              {service.status !== "in_progress" && (
+                              {!["in_progress", "cancelled"].includes(service.status) && (
                                 <Button
                                   variant="outline"
                                   size="sm"
@@ -1315,14 +1326,15 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  className="h-7 text-xs"
+                                  className="h-7 flex-1 text-xs"
                                   onClick={() => {
                                     setCancelTarget(service)
                                     setCancelReason(service.cancellationReason || "")
                                     setCancelStep("reason")
                                   }}
                                 >
-                                  <X className="h-3 w-3" />
+                                  <X className="mr-1 h-3 w-3" />
+                                  Cancelar
                                 </Button>
                               )}
                             </div>

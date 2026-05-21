@@ -1,12 +1,18 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react"
-import { Copy, Edit, Eye, EyeOff, Mail, Phone, Search, Shield, Trash2, User, UserCog } from "lucide-react"
+import { Copy, Edit, Eye, EyeOff, Mail, MoreHorizontal, Phone, Search, Shield, Trash2, User, UserCog } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -665,23 +671,63 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
                         )}
                       </TableCell>
                       <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          {!employee.isSystemUser ? (
-                            <Button variant="ghost" size="icon" onClick={() => handleMakeSystemUser(employee)} title="Tornar usuário do sistema">
-                              <UserCog className="h-4 w-4" />
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={(event) => event.stopPropagation()}
+                              aria-label="Ações do funcionário"
+                            >
+                              <MoreHorizontal className="h-4 w-4" />
                             </Button>
-                          ) : (
-                        <Button variant="ghost" size="icon" onClick={() => setPendingAction({ kind: "revoke", id: employee.id, label: employee.name })} title="Remover acesso">
-                          <Shield className="h-4 w-4 text-destructive" />
-                        </Button>
-                      )}
-                          <Button variant="ghost" size="icon" onClick={() => handleEdit(employee)}>
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" onClick={() => setPendingAction({ kind: "deactivate", id: employee.id, label: employee.name })}>
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </div>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {!employee.isSystemUser ? (
+                              <DropdownMenuItem
+                                className="cursor-pointer"
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  handleMakeSystemUser(employee)
+                                }}
+                              >
+                                <UserCog className="mr-2 h-4 w-4" />
+                                Tornar usuário
+                              </DropdownMenuItem>
+                            ) : (
+                              <DropdownMenuItem
+                                className="cursor-pointer"
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  setPendingAction({ kind: "revoke", id: employee.id, label: employee.name })
+                                }}
+                              >
+                                <Shield className="mr-2 h-4 w-4" />
+                                Remover acesso
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem
+                              className="cursor-pointer"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                handleEdit(employee)
+                              }}
+                            >
+                              <Edit className="mr-2 h-4 w-4" />
+                              Editar
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="cursor-pointer"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                setPendingAction({ kind: "deactivate", id: employee.id, label: employee.name })
+                              }}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Inativar
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
                   ))
@@ -732,24 +778,41 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
                     )}
                   </div>
 
-                  <div className="mt-4 flex gap-2">
-                    {!employee.isSystemUser ? (
-                      <Button variant="outline" size="sm" className="flex-1" onClick={() => handleMakeSystemUser(employee)}>
-                        <UserCog className="mr-1 h-4 w-4" />
-                        Tornar usuário
-                      </Button>
-                    ) : (
-                      <Button variant="outline" size="sm" className="flex-1" onClick={() => setPendingAction({ kind: "revoke", id: employee.id, label: employee.name })}>
-                        <Shield className="mr-1 h-4 w-4 text-destructive" />
-                        Remover acesso
-                      </Button>
-                    )}
-                    <Button variant="outline" size="sm" onClick={() => handleEdit(employee)}>
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => setPendingAction({ kind: "deactivate", id: employee.id, label: employee.name })}>
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
+                  <div className="mt-4 flex justify-end">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" size="icon" className="h-9 w-9 rounded-full" aria-label="Ações do funcionário">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        {!employee.isSystemUser ? (
+                          <DropdownMenuItem className="cursor-pointer" onClick={() => handleMakeSystemUser(employee)}>
+                            <UserCog className="mr-2 h-4 w-4" />
+                            Tornar usuário
+                          </DropdownMenuItem>
+                        ) : (
+                          <DropdownMenuItem
+                            className="cursor-pointer"
+                            onClick={() => setPendingAction({ kind: "revoke", id: employee.id, label: employee.name })}
+                          >
+                            <Shield className="mr-2 h-4 w-4" />
+                            Remover acesso
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuItem className="cursor-pointer" onClick={() => handleEdit(employee)}>
+                          <Edit className="mr-2 h-4 w-4" />
+                          Editar
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="cursor-pointer"
+                          onClick={() => setPendingAction({ kind: "deactivate", id: employee.id, label: employee.name })}
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Inativar
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 </CardContent>
               </Card>

@@ -5,14 +5,14 @@ import { ArrowRight, Building2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { useQuery } from "@tanstack/react-query"
-import { getDashboardAnalytics } from "@/lib/api/analytics"
+import { getDashboardAnalytics, type DashboardAnalyticsParams } from "@/lib/api/analytics"
 import { getColorFromClass } from "@/lib/utils"
 import Link from "next/link"
 
-export function ClientList({ days = 30 }: { days?: number }) {
+export function ClientList(period: DashboardAnalyticsParams = {}) {
   const dashboardQuery = useQuery({
-    queryKey: ["analytics", "dashboard", days],
-    queryFn: () => getDashboardAnalytics({ days }),
+    queryKey: ["analytics", "dashboard", period],
+    queryFn: () => getDashboardAnalytics(period),
   })
   const recentClients = dashboardQuery.data?.data.recentClients ?? []
 

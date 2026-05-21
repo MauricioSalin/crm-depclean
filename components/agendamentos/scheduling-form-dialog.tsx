@@ -218,7 +218,7 @@ export function SchedulingFormDialog({
             </Badge>
             {isRecurringSchedule ? (
               <p className="text-sm text-muted-foreground">
-                Somente horário, equipes e funcionários avulsos podem ser alterados neste atendimento.
+                Data, horário, duração, observações, equipes e funcionários avulsos podem ser alterados neste atendimento.
               </p>
             ) : null}
           </div>
@@ -457,7 +457,6 @@ export function SchedulingFormDialog({
                 type="date"
                 value={formData.date}
                 onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                disabled={isRecurringSchedule}
                 required
               />
             </div>
@@ -478,7 +477,6 @@ export function SchedulingFormDialog({
               <Select
                 value={formData.durationType}
                 onValueChange={(value) => setFormData({ ...formData, durationType: value as ScheduleDurationType })}
-                disabled={isRecurringSchedule}
               >
                 <SelectTrigger className="w-full">
                   <SelectValue />
@@ -498,7 +496,6 @@ export function SchedulingFormDialog({
                 onChange={(e) => setFormData({ ...formData, duration: Number(e.target.value) })}
                 min={1}
                 className="w-full"
-                disabled={isRecurringSchedule}
               />
             </div>
           </div>
@@ -523,8 +520,6 @@ export function SchedulingFormDialog({
               value={formData.notes}
               onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
               placeholder="Observações sobre o agendamento"
-              disabled={isRecurringSchedule}
-              className={isRecurringSchedule ? "cursor-not-allowed opacity-60" : undefined}
             />
           </div>
 

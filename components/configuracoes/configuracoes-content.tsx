@@ -1,13 +1,19 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react"
-import { Bell, Building, Copy, Edit, Eye, EyeOff, MessageCircle, Plus, RefreshCcw, Save, Search, Shield, Trash2, Users } from "lucide-react"
+import { Bell, Building, Copy, Edit, Eye, EyeOff, MessageCircle, MoreHorizontal, Plus, RefreshCcw, Save, Search, Shield, Trash2, Users } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
@@ -1084,10 +1090,25 @@ export function ConfiguracoesContent() {
                     <TableRow key={item.id}>
                       <TableCell><span className="inline-flex h-5 w-5 rounded-full" style={{ backgroundColor: item.color }} /></TableCell>
                       <TableCell className="font-medium">{item.name}</TableCell>
-                      <TableCell>{item.description || "Sem descricao"}</TableCell>
+                      <TableCell>{item.description || "Sem descrição"}</TableCell>
                       <TableCell className="text-right">
-                        <Button variant="ghost" size="icon" onClick={() => openTypeDialog(item)}><Edit className="h-4 w-4" /></Button>
-                        <Button variant="ghost" size="icon" onClick={() => setPendingDelete({ kind: "client-type", id: item.id, label: item.name })}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" aria-label="Ações do tipo de cliente">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem className="cursor-pointer" onClick={() => openTypeDialog(item)}>
+                              <Edit className="mr-2 h-4 w-4" />
+                              Editar
+                            </DropdownMenuItem>
+                            <DropdownMenuItem className="cursor-pointer" onClick={() => setPendingDelete({ kind: "client-type", id: item.id, label: item.name })}>
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Excluir
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
                   ))
@@ -1163,7 +1184,7 @@ export function ConfiguracoesContent() {
                   paginatedProfiles.map((item) => (
                     <TableRow key={item.id}>
                       <TableCell className="font-medium">{item.name}</TableCell>
-                      <TableCell>{item.description || "Sem descricao"}</TableCell>
+                      <TableCell>{item.description || "Sem descrição"}</TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-1">
                           <Badge variant="secondary">{item.permissions.length} permissões</Badge>
@@ -1171,10 +1192,27 @@ export function ConfiguracoesContent() {
                         </div>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button variant="ghost" size="icon" onClick={() => openProfileDialog(item)}><Edit className="h-4 w-4" /></Button>
-                        <Button variant="ghost" size="icon" disabled={item.id === "profile-admin"} onClick={() => setPendingDelete({ kind: "profile", id: item.id, label: item.name })}>
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" aria-label="Ações do perfil">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem className="cursor-pointer" onClick={() => openProfileDialog(item)}>
+                              <Edit className="mr-2 h-4 w-4" />
+                              Editar
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="cursor-pointer"
+                              disabled={item.id === "profile-admin"}
+                              onClick={() => setPendingDelete({ kind: "profile", id: item.id, label: item.name })}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Excluir
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
                   ))
@@ -1313,8 +1351,23 @@ export function ConfiguracoesContent() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button variant="ghost" size="icon" onClick={() => openUserDialog(item)}><Edit className="h-4 w-4" /></Button>
-                        <Button variant="ghost" size="icon" onClick={() => setPendingDelete({ kind: "user", id: item.id, label: item.name })}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" aria-label="Ações do usuário">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem className="cursor-pointer" onClick={() => openUserDialog(item)}>
+                              <Edit className="mr-2 h-4 w-4" />
+                              Editar
+                            </DropdownMenuItem>
+                            <DropdownMenuItem className="cursor-pointer" onClick={() => setPendingDelete({ kind: "user", id: item.id, label: item.name })}>
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Excluir
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
                   ))
