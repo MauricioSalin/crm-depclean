@@ -117,13 +117,9 @@ export function CertificateEditorContent({ scheduleId }: { scheduleId: string })
         throw new Error("Selecione um template de certificado.")
       }
 
-      setEditorTab("preview")
-      await new Promise((resolve) => window.requestAnimationFrame(resolve))
-      await new Promise((resolve) => window.requestAnimationFrame(resolve))
-
-      const file = await editorRef.current?.generatePreviewPdf({ download: false })
+      const file = await editorRef.current?.saveToFile()
       if (!file) {
-        throw new Error("A prévia ainda não está pronta para gerar o PDF.")
+        throw new Error("O documento ainda não está pronto para envio.")
       }
 
       return sendCertificate(scheduleId, file, selectedTemplate.id)

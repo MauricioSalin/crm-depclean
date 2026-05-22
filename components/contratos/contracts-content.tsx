@@ -102,7 +102,7 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
+    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-visible md:overflow-hidden">
       <div className={`${mobileFiltersOpen ? "grid" : "hidden"} shrink-0 grid-cols-2 gap-2 sm:flex sm:items-center`}>
         <div className="relative sm:w-80 sm:flex-none">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -143,8 +143,8 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
       </div>
 
       {viewMode === "table" ? (
-        <div className="min-h-0 flex-1 overflow-hidden rounded-xl">
-          <Table containerClassName="h-full">
+        <div className="rounded-xl md:min-h-0 md:flex-1 md:overflow-hidden">
+          <Table containerClassName="md:h-full">
             <TableHeader>
               <TableRow>
                 <TableHead className="min-w-[200px]">Contrato</TableHead>
@@ -254,7 +254,7 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
           </Table>
         </div>
       ) : (
-        <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+        <div className="md:min-h-0 md:flex-1 md:overflow-y-auto md:pr-1">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 2xl:grid-cols-3">
             {contractsQuery.isLoading ? (
               <CardSkeletonGrid cards={4} />

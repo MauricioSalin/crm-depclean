@@ -1,6 +1,18 @@
 "use client"
 
-import { ArrowUpRight, ArrowDownRight, ArrowRight, Users, DollarSign, Calendar, CheckCircle, AlertTriangle } from "lucide-react"
+import {
+  AlertTriangle,
+  ArrowDownRight,
+  ArrowRight,
+  ArrowUpRight,
+  Calendar,
+  CheckCircle,
+  DollarSign,
+  FileCheck2,
+  FileX2,
+  Users,
+  WalletCards,
+} from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -13,6 +25,9 @@ import { getColorFromClass } from "@/lib/utils"
 const emptyStats: DashboardStatsRecord = {
   activeClients: 0,
   activeClientsChange: 0,
+  activeContracts: 0,
+  inactiveContracts: 0,
+  activeContractsGlobalValue: 0,
   monthlyRevenue: 0,
   monthlyRevenueChange: 0,
   scheduledServices: 0,
@@ -63,6 +78,30 @@ export function StatsCards(period: DashboardPeriodProps = {}) {
       delay: "100ms",
     },
     {
+      title: "Contratos Ativos",
+      value: dashboardStats.activeContracts.toString(),
+      icon: FileCheck2,
+      bgColor: "bg-card",
+      textColor: "text-foreground",
+      delay: "150ms",
+    },
+    {
+      title: "Contratos Inativos",
+      value: dashboardStats.inactiveContracts.toString(),
+      icon: FileX2,
+      bgColor: "bg-card",
+      textColor: "text-foreground",
+      delay: "180ms",
+    },
+    {
+      title: "Valor Global Ativo",
+      value: formatCurrency(dashboardStats.activeContractsGlobalValue),
+      icon: WalletCards,
+      bgColor: "bg-card",
+      textColor: "text-foreground",
+      delay: "200ms",
+    },
+    {
       title: "Serviços Agendados",
       value: dashboardStats.scheduledServices.toString(),
       change: `+${dashboardStats.scheduledServicesChange}%`,
@@ -95,7 +134,7 @@ export function StatsCards(period: DashboardPeriodProps = {}) {
   ]
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-8 gap-3">
       {stats.map((stat, index) => {
         const Icon = stat.icon
         return (

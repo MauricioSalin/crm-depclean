@@ -84,6 +84,8 @@ export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
     syndicReceivesNotifications: false,
     responsibleReceivesNotifications: true,
     copyNotificationsToOwner: false,
+    preferredServiceWeekday: "",
+    preferredServiceShift: "",
   })
   const selectedClientType = clientTypes.find((type) => type.id === formData.clientTypeId)
 
@@ -179,6 +181,11 @@ export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
       syndicReceivesNotifications: Boolean(loadedClient.syndic?.receivesNotifications),
       responsibleReceivesNotifications: Boolean(loadedClient.responsibleReceivesNotifications ?? true),
       copyNotificationsToOwner: Boolean(loadedClient.copyNotificationsToOwner),
+      preferredServiceWeekday:
+        loadedClient.preferredServiceWeekday === null || loadedClient.preferredServiceWeekday === undefined
+          ? ""
+          : String(loadedClient.preferredServiceWeekday),
+      preferredServiceShift: loadedClient.preferredServiceShift || "",
     })
 
     setUnits(
@@ -318,6 +325,8 @@ export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
         syndicReceivesNotifications: formData.syndicReceivesNotifications,
         responsibleReceivesNotifications: formData.responsibleReceivesNotifications,
         copyNotificationsToOwner: formData.copyNotificationsToOwner,
+        preferredServiceWeekday: formData.preferredServiceWeekday === "" ? null : Number(formData.preferredServiceWeekday),
+        preferredServiceShift: formData.preferredServiceShift as "" | "morning" | "afternoon",
         isActive: true,
         units: units.map((unit, index) => ({
           id: typeof unit.id === "string" ? unit.id : undefined,
@@ -364,10 +373,16 @@ export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteClient(id),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["clients"] })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["clients"] }),
+        queryClient.invalidateQueries({ queryKey: ["contracts"] }),
+        queryClient.invalidateQueries({ queryKey: ["schedules"] }),
+        queryClient.invalidateQueries({ queryKey: ["certificates"] }),
+        queryClient.invalidateQueries({ queryKey: ["analytics"] }),
+      ])
       toast({
-        title: "Cliente removido",
-        description: "O cliente foi removido com sucesso.",
+        title: "Cliente excluído",
+        description: "Agendamentos, contratos, anexos, informativos e certificados vinculados também foram removidos.",
       })
       router.push("/clientes")
     },
@@ -616,6 +631,44 @@ export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
               </span>
             </span>
           </label>
+          <div className="grid gap-4 md:grid-cols-2 md:max-w-[640px]">
+            <div className="space-y-2">
+              <Label>Melhor dia para atendimento</Label>
+              <Select
+                value={formData.preferredServiceWeekday || "none"}
+                onValueChange={(value) => handleInputChange("preferredServiceWeekday", value === "none" ? "" : value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Fluxo automático" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Fluxo automático</SelectItem>
+                  <SelectItem value="1">Segunda-feira</SelectItem>
+                  <SelectItem value="2">Terça-feira</SelectItem>
+                  <SelectItem value="3">Quarta-feira</SelectItem>
+                  <SelectItem value="4">Quinta-feira</SelectItem>
+                  <SelectItem value="5">Sexta-feira</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Melhor turno</Label>
+              <Select
+                value={formData.preferredServiceShift || "none"}
+                onValueChange={(value) => handleInputChange("preferredServiceShift", value === "none" ? "" : value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Fluxo automático" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Fluxo automático</SelectItem>
+                  <SelectItem value="morning">Manhã</SelectItem>
+                  <SelectItem value="afternoon">Tarde</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
         </div>
       </Card>
 
@@ -1020,7 +1073,7 @@ export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
             disabled={deleteMutation.isPending || saveMutation.isPending}
           >
             <Trash2 className="w-4 h-4 mr-2" />
-            Remover
+            Excluir
           </Button>
         ) : null}
         <Button
@@ -1040,11 +1093,11 @@ export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
 
       <ConfirmActionDialog
         open={removeDialogOpen}
-        title="Remover cliente"
-        description={`Tem certeza que deseja remover ${
+        title="Excluir cliente"
+        description={`Excluir ${
           client?.companyName ? `o cliente ${client.companyName}` : "este cliente"
-        }? Esta ação não pode ser desfeita.`}
-        confirmLabel="Remover"
+        } também removerá todos os agendamentos, contratos, anexos, informativos e certificados vinculados. Essa ação é irreversível. Tem certeza que deseja continuar?`}
+        confirmLabel="Excluir cliente"
         busy={deleteMutation.isPending}
         onOpenChange={setRemoveDialogOpen}
         onConfirm={() => {

@@ -103,6 +103,76 @@ function getConversationTitle(message: string) {
   return trimmed.length > 44 ? `${trimmed.slice(0, 44)}...` : trimmed
 }
 
+type MarkdownSegment =
+  | { type: "markdown"; content: string }
+  | { type: "mermaid"; content: string }
+  | { type: "svg"; content: string }
+
+const MERMAID_START_PATTERN = /^(?:%%\{[\s\S]*?\}%%\s*)?(?:flowchart|graph|sequenceDiagram|classDiagram|classDiagram-v2|stateDiagram|stateDiagram-v2|erDiagram|journey|gantt|pie|gitGraph|mindmap|timeline|quadrantChart|requirementDiagram|C4Context|C4Container|C4Component|C4Dynamic|sankey-beta|xychart-beta|block-beta)\b/i
+const SVG_START_PATTERN = /^\s*<svg(?:\s|>)/i
+
+function isMermaidSource(value: string) {
+  const trimmed = value.trim()
+  if (!trimmed) return false
+
+  if (trimmed.startsWith("---")) {
+    const [, maybeDiagram] = trimmed.split(/^---\s*$/m)
+    return MERMAID_START_PATTERN.test((maybeDiagram ?? "").trim())
+  }
+
+  return MERMAID_START_PATTERN.test(trimmed)
+}
+
+function isMermaidFragment(value: string) {
+  const lines = value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+
+  if (lines.length < 2) return false
+  const arrowLines = lines.filter((line) => /(?:-->|---|-.->|==>)/.test(line) && /[A-Za-z0-9_][\w-]*/.test(line))
+  return arrowLines.length >= 2
+}
+
+function normalizeMermaidSource(value: string) {
+  const trimmed = value.trim()
+  if (isMermaidSource(trimmed)) return trimmed
+  if (isMermaidFragment(trimmed)) return `flowchart TD\n${trimmed}`
+  return trimmed
+}
+
+function isSvgSource(value: string) {
+  return SVG_START_PATTERN.test(value.trim())
+}
+
+function parseMarkdownSegments(content: string): MarkdownSegment[] {
+  const codeFencePattern = /```([^\n`]*)\n([\s\S]*?)```/g
+  const segments: MarkdownSegment[] = []
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+
+  while ((match = codeFencePattern.exec(content)) !== null) {
+    const [fullMatch, languageLine = "", code = ""] = match
+    const before = content.slice(lastIndex, match.index)
+    if (before) segments.push({ type: "markdown", content: before })
+
+    const language = languageLine.trim().split(/\s+/)[0]?.toLowerCase() ?? ""
+    if (language === "mermaid" || isMermaidSource(code) || isMermaidFragment(code)) {
+      segments.push({ type: "mermaid", content: normalizeMermaidSource(code) })
+    } else if (language === "svg" || isSvgSource(code)) {
+      segments.push({ type: "svg", content: code.trim() })
+    } else {
+      segments.push({ type: "markdown", content: fullMatch })
+    }
+
+    lastIndex = match.index + fullMatch.length
+  }
+
+  const rest = content.slice(lastIndex)
+  if (rest) segments.push({ type: "markdown", content: rest })
+  return segments.length > 0 ? segments : [{ type: "markdown", content }]
+}
+
 function formatFileSize(size: number) {
   if (size < 1024 * 1024) return `${Math.max(1, Math.round(size / 1024))} KB`
   return `${(size / 1024 / 1024).toFixed(1)} MB`
@@ -729,7 +799,227 @@ function ArtifactCard({ artifact, sourceContent }: { artifact: DepAIArtifact; so
   )
 }
 
+function sanitizeSvgSource(source: string) {
+  const parser = new DOMParser()
+  const document = parser.parseFromString(source, "image/svg+xml")
+  const parserError = document.querySelector("parsererror")
+  const svg = document.documentElement
+
+  if (parserError || !svg || svg.nodeName.toLowerCase() !== "svg") return ""
+
+  svg.querySelectorAll("script, foreignObject, iframe, object, embed, link, meta").forEach((element) => element.remove())
+  svg.querySelectorAll("*").forEach((element) => {
+    Array.from(element.attributes).forEach((attribute) => {
+      const name = attribute.name.toLowerCase()
+      const value = attribute.value.trim()
+      if (name.startsWith("on")) {
+        element.removeAttribute(attribute.name)
+        return
+      }
+
+      if ((name === "href" || name === "xlink:href") && /^javascript:/i.test(value)) {
+        element.removeAttribute(attribute.name)
+      }
+    })
+  })
+
+  return new XMLSerializer().serializeToString(svg)
+}
+
+function SvgDiagram({ source }: { source: string }) {
+  const svgRef = useRef<HTMLDivElement | null>(null)
+  const [svg, setSvg] = useState("")
+  const [errorMessage, setErrorMessage] = useState("")
+  const [isDownloading, setIsDownloading] = useState(false)
+
+  useEffect(() => {
+    const sanitized = sanitizeSvgSource(source)
+    setSvg(sanitized)
+    setErrorMessage(sanitized ? "" : "Não foi possível renderizar esta imagem.")
+  }, [source])
+
+  const handleDownload = async () => {
+    if (!svgRef.current) return
+
+    setIsDownloading(true)
+    try {
+      await downloadChartSvgPng(svgRef.current, "imagem-depai.png")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível baixar a imagem.")
+    } finally {
+      setIsDownloading(false)
+    }
+  }
+
+  return (
+    <div className="my-4 rounded-2xl border border-border bg-card p-3 shadow-sm">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <ImageIcon className="h-4 w-4" />
+          </div>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-foreground">Imagem</p>
+            <p className="text-xs text-muted-foreground">Renderizada pela DepAI</p>
+          </div>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8 shrink-0 rounded-full"
+          disabled={!svg || isDownloading}
+          onClick={() => void handleDownload()}
+        >
+          {isDownloading ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+          Baixar imagem
+        </Button>
+      </div>
+
+      <div ref={svgRef} className="overflow-x-auto rounded-xl bg-white p-4">
+        {svg ? (
+          <div
+            className="[&_svg]:mx-auto [&_svg]:h-auto [&_svg]:max-w-full"
+            dangerouslySetInnerHTML={{ __html: svg }}
+          />
+        ) : (
+          <div className="rounded-xl border border-dashed border-border bg-muted/40 p-4 text-sm text-muted-foreground">
+            {errorMessage}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function MermaidDiagram({ chart }: { chart: string }) {
+  const diagramRef = useRef<HTMLDivElement | null>(null)
+  const [svg, setSvg] = useState("")
+  const [errorMessage, setErrorMessage] = useState("")
+  const [isDownloading, setIsDownloading] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function renderDiagram() {
+      setSvg("")
+      setErrorMessage("")
+
+      try {
+        const mermaid = (await import("mermaid")).default
+        mermaid.initialize({
+          startOnLoad: false,
+          securityLevel: "strict",
+          theme: "base",
+          themeVariables: {
+            fontFamily: "Inter, Arial, sans-serif",
+            primaryColor: "#eef7e6",
+            primaryTextColor: "#0f172a",
+            primaryBorderColor: "#84cc16",
+            lineColor: "#64748b",
+            secondaryColor: "#ffffff",
+            secondaryBorderColor: "#dce6d4",
+            tertiaryColor: "#f8fafc",
+            tertiaryBorderColor: "#dce6d4",
+            noteBkgColor: "#f7fee7",
+            noteBorderColor: "#84cc16",
+          },
+        })
+        const renderId = `depai-mermaid-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+        const result = await mermaid.render(renderId, chart)
+        if (!cancelled) setSvg(result.svg)
+      } catch {
+        if (!cancelled) setErrorMessage("Não foi possível renderizar este fluxograma.")
+      }
+    }
+
+    void renderDiagram()
+    return () => {
+      cancelled = true
+    }
+  }, [chart])
+
+  const handleDownload = async () => {
+    if (!diagramRef.current) return
+
+    setIsDownloading(true)
+    try {
+      await downloadChartSvgPng(diagramRef.current, "fluxograma-depai.png")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível baixar o fluxograma.")
+    } finally {
+      setIsDownloading(false)
+    }
+  }
+
+  return (
+    <div className="my-4 rounded-2xl border border-border bg-card p-3 shadow-sm">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <ImageIcon className="h-4 w-4" />
+          </div>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-foreground">Fluxograma</p>
+            <p className="text-xs text-muted-foreground">Renderizado pela DepAI</p>
+          </div>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8 shrink-0 rounded-full"
+          disabled={!svg || isDownloading}
+          onClick={() => void handleDownload()}
+        >
+          {isDownloading ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+          Baixar imagem
+        </Button>
+      </div>
+
+      <div ref={diagramRef} className="overflow-x-auto rounded-xl bg-white p-4">
+        {svg ? (
+          <div
+            className="[&_svg]:mx-auto [&_svg]:h-auto [&_svg]:max-w-full"
+            dangerouslySetInnerHTML={{ __html: svg }}
+          />
+        ) : errorMessage ? (
+          <div className="rounded-xl border border-dashed border-border bg-muted/40 p-4 text-sm text-muted-foreground">
+            {errorMessage}
+          </div>
+        ) : (
+          <div className="flex min-h-48 items-center justify-center text-sm text-muted-foreground">
+            <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+            Gerando fluxograma...
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function MarkdownMessage({ content }: { content: string }) {
+  const segments = useMemo(() => parseMarkdownSegments(content), [content])
+
+  return (
+    <>
+      {segments.map((segment, index) => {
+        if (segment.type === "mermaid") {
+          return <MermaidDiagram key={`mermaid-${index}-${segment.content.slice(0, 16)}`} chart={segment.content} />
+        }
+
+        if (segment.type === "svg") {
+          return <SvgDiagram key={`svg-${index}-${segment.content.slice(0, 16)}`} source={segment.content} />
+        }
+
+        if (!segment.content.trim()) return null
+        return <MarkdownText key={`markdown-${index}`} content={segment.content} />
+      })}
+    </>
+  )
+}
+
+function MarkdownText({ content }: { content: string }) {
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}

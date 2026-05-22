@@ -34,6 +34,9 @@ export type ServicesSummaryPoint = {
 export type DashboardStatsRecord = {
   activeClients: number
   activeClientsChange: number
+  activeContracts: number
+  inactiveContracts: number
+  activeContractsGlobalValue: number
   monthlyRevenue: number
   monthlyRevenueChange: number
   scheduledServices: number

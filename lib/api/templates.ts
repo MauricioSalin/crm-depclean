@@ -12,6 +12,8 @@ export type TemplateRecord = {
   html: string
   signerId: string
   signerName?: string | null
+  witnessSignerId?: string
+  witnessSignerName?: string | null
   baseFileName?: string
   baseFileUrl?: string | null
   watermarkFileName?: string
@@ -31,6 +33,7 @@ export type TemplatePayload = {
   format?: TemplateFormat
   html?: string
   signerId?: string
+  witnessSignerId?: string
   baseFileName?: string
   watermarkFileName?: string
   informativeSendDaysBefore?: number

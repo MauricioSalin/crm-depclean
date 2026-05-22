@@ -209,7 +209,8 @@ export function Sidebar({ onNavigate, forceExpanded = false }: SidebarProps) {
   return (
     <aside
       className={cn(
-        "fixed left-0 top-0 z-[70] flex h-screen flex-col overflow-hidden border-r border-border bg-card transition-[width] duration-300 ease-out",
+        "flex flex-col overflow-hidden border-r border-border bg-card transition-[width] duration-300 ease-out",
+        forceExpanded ? "relative z-auto h-full" : "fixed left-0 top-0 z-[70] h-screen",
         collapsed ? "w-[72px]" : "w-60",
       )}
     >

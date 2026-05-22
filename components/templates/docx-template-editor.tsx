@@ -1049,6 +1049,75 @@ function addPreviewPdfWatermark(page: HTMLElement, enabled: boolean) {
   }
 }
 
+type PdfCaptureStyleSnapshot = {
+  element: HTMLElement
+  cssText: string
+}
+
+function applyPdfCaptureStyles(
+  snapshots: PdfCaptureStyleSnapshot[],
+  element: HTMLElement,
+  styles: Partial<CSSStyleDeclaration>,
+) {
+  snapshots.push({ element, cssText: element.style.cssText })
+  Object.assign(element.style, styles)
+}
+
+function prepareDocxPageForPdfCapture(page: HTMLElement) {
+  const snapshots: PdfCaptureStyleSnapshot[] = []
+
+  applyPdfCaptureStyles(snapshots, page, {
+    overflow: "visible",
+  })
+
+  page.querySelectorAll<HTMLElement>(".layout-table, table").forEach((table) => {
+    applyPdfCaptureStyles(snapshots, table, {
+      borderCollapse: "collapse",
+      overflow: "visible",
+    })
+  })
+
+  page.querySelectorAll<HTMLElement>(".layout-table tr, table tr").forEach((row) => {
+    applyPdfCaptureStyles(snapshots, row, {
+      height: "auto",
+      minHeight: "18px",
+    })
+  })
+
+  page.querySelectorAll<HTMLElement>(".layout-table td, .layout-table th, table td, table th").forEach((cell) => {
+    applyPdfCaptureStyles(snapshots, cell, {
+      boxSizing: "border-box",
+      height: "auto",
+      lineHeight: "1.3",
+      minHeight: "18px",
+      overflow: "visible",
+      paddingBottom: "3px",
+      paddingTop: "3px",
+      verticalAlign: "middle",
+    })
+  })
+
+  page
+    .querySelectorAll<HTMLElement>(
+      ".layout-table p, .layout-table span, .layout-table .layout-paragraph, table p, table span, table .layout-paragraph",
+    )
+    .forEach((element) => {
+      applyPdfCaptureStyles(snapshots, element, {
+        lineHeight: "1.3",
+        minHeight: "1.3em",
+        overflow: "visible",
+        paddingBottom: "1px",
+        paddingTop: "1px",
+      })
+    })
+
+  return () => {
+    snapshots.reverse().forEach(({ element, cssText }) => {
+      element.style.cssText = cssText
+    })
+  }
+}
+
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }
@@ -2519,6 +2588,7 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
 
       for (const [index, page] of pages.entries()) {
         const removePreviewWatermark = addPreviewPdfWatermark(page, Boolean(options?.previewWatermark))
+        const restorePdfCaptureLayout = prepareDocxPageForPdfCapture(page)
         let canvas: HTMLCanvasElement
 
         try {
@@ -2529,16 +2599,17 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
             useCORS: true,
           })
         } finally {
+          restorePdfCaptureLayout()
           removePreviewWatermark()
         }
 
-        const imageData = canvas.toDataURL("image/jpeg", 0.98)
+        const imageData = canvas.toDataURL("image/png")
 
         if (index > 0) {
           pdf.addPage()
         }
 
-        pdf.addImage(imageData, "JPEG", 0, 0, pdfWidth, pdfHeight)
+        pdf.addImage(imageData, "PNG", 0, 0, pdfWidth, pdfHeight)
       }
 
       const safeDocxName = sanitizeDocxFileName(fileName || templateName, `${kind}-template.docx`)

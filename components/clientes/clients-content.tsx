@@ -35,9 +35,10 @@ import {
 } from "lucide-react"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { DataPagination } from "@/components/ui/data-pagination"
+import { CsvImportDialog, type CsvImportField } from "@/components/ui/csv-import-dialog"
 import { EmptyState, TableEmptyState } from "@/components/ui/empty-state"
 import { CardSkeletonGrid, TableSkeletonRows } from "@/components/ui/table-skeleton"
-import { deleteClient, listClients, type ClientRecord } from "@/lib/api/clients"
+import { createClient, deleteClient, listClients, type ClientRecord } from "@/lib/api/clients"
 import { listContracts } from "@/lib/api/contracts"
 import { listClientTypes } from "@/lib/api/settings"
 import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
@@ -49,6 +50,8 @@ import Link from "next/link"
 interface ClientsContentProps {
   viewMode: "table" | "cards"
   viewToggle?: React.ReactNode
+  openImport?: boolean
+  onImportChange?: (open: boolean) => void
 }
 
 const formatCNPJ = (value: string) => {
@@ -63,7 +66,25 @@ const resolveColor = (color?: string) => {
   return "#84CC16"
 }
 
-export function ClientsContent({ viewMode, viewToggle }: ClientsContentProps) {
+const CLIENT_IMPORT_FIELDS: CsvImportField[] = [
+  { key: "companyName", label: "Razão social", required: true },
+  { key: "cnpj", label: "CNPJ", required: true },
+  { key: "responsibleName", label: "Responsável", required: true },
+  { key: "responsibleCpf", label: "CPF do responsável", required: true },
+  { key: "phone", label: "Telefone" },
+  { key: "email", label: "E-mail", required: true },
+  { key: "clientTypeId", label: "Tipo", required: true },
+  { key: "unitName", label: "Unidade", required: true },
+  { key: "unitCount", label: "Quantidade de unidades", required: true },
+  { key: "street", label: "Rua", required: true },
+  { key: "number", label: "Número", required: true },
+  { key: "neighborhood", label: "Bairro", required: true },
+  { key: "city", label: "Cidade", required: true },
+  { key: "state", label: "UF", required: true },
+  { key: "zipCode", label: "CEP", required: true },
+]
+
+export function ClientsContent({ viewMode, viewToggle, openImport = false, onImportChange }: ClientsContentProps) {
   const queryClient = useQueryClient()
   const mobileFiltersOpen = useMobileFiltersOpen()
   const [searchTerm, setSearchTerm] = useUrlQueryState("q")
@@ -93,16 +114,66 @@ export function ClientsContent({ viewMode, viewToggle }: ClientsContentProps) {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteClient(id),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["clients"] })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["clients"] }),
+        queryClient.invalidateQueries({ queryKey: ["contracts"] }),
+        queryClient.invalidateQueries({ queryKey: ["schedules"] }),
+        queryClient.invalidateQueries({ queryKey: ["certificates"] }),
+        queryClient.invalidateQueries({ queryKey: ["analytics"] }),
+      ])
       setClientToRemove(null)
       toast({
-        title: "Cliente removido",
-        description: "O cliente foi removido com sucesso.",
+        title: "Cliente excluído",
+        description: "Agendamentos, contratos, anexos, informativos e certificados vinculados também foram removidos.",
       })
     },
     onError: (error: unknown) => {
       toast({
         title: getApiErrorMessage(error, "Não foi possível remover o cliente."),
+        variant: "destructive",
+      })
+    },
+  })
+  const importMutation = useMutation({
+    mutationFn: async (rows: Array<Record<string, string>>) => {
+      for (const row of rows) {
+        await createClient({
+          companyName: row.companyName,
+          cnpj: row.cnpj,
+          responsibleName: row.responsibleName,
+          responsibleCpf: row.responsibleCpf,
+          phone: row.phone,
+          email: row.email,
+          clientTypeId: row.clientTypeId,
+          responsibleReceivesNotifications: true,
+          copyNotificationsToOwner: false,
+          isActive: true,
+          units: [{
+            name: row.unitName || "Matriz",
+            isPrimary: true,
+            unitCount: Number(row.unitCount) || 0,
+            address: {
+              street: row.street,
+              number: row.number,
+              neighborhood: row.neighborhood,
+              city: row.city,
+              state: row.state,
+              zipCode: row.zipCode,
+            },
+          }],
+        })
+      }
+    },
+    onSuccess: async (_data, rows) => {
+      await queryClient.invalidateQueries({ queryKey: ["clients"] })
+      toast({
+        title: "Clientes importados",
+        description: `${rows.length} registro(s) foram inseridos no banco de dados.`,
+      })
+    },
+    onError: (error: unknown) => {
+      toast({
+        title: getApiErrorMessage(error, "Não foi possível importar os clientes."),
         variant: "destructive",
       })
     },
@@ -129,7 +200,16 @@ export function ClientsContent({ viewMode, viewToggle }: ClientsContentProps) {
   }, [filteredClients, currentPage, pageSize])
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
+    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-visible md:overflow-hidden">
+      <CsvImportDialog
+        open={openImport}
+        onOpenChange={(open) => onImportChange?.(open)}
+        title="Importar clientes"
+        description="Anexe um CSV e confira o relacionamento entre campos obrigatórios e colunas antes de importar."
+        fields={CLIENT_IMPORT_FIELDS}
+        onImport={(rows) => importMutation.mutateAsync(rows)}
+      />
+
         <div className={`${mobileFiltersOpen ? "grid" : "hidden"} shrink-0 grid-cols-2 gap-2 sm:flex sm:items-center`}>
           <div className="relative sm:flex-none sm:w-80">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -153,8 +233,8 @@ export function ClientsContent({ viewMode, viewToggle }: ClientsContentProps) {
         </div>
 
       {viewMode === "table" ? (
-        <div className="min-h-0 flex-1 overflow-hidden rounded-md">
-          <Table containerClassName="h-full">
+        <div className="rounded-md md:min-h-0 md:flex-1 md:overflow-hidden">
+          <Table containerClassName="md:h-full">
             <TableHeader>
               <TableRow>
                 <TableHead>Cliente</TableHead>
@@ -191,14 +271,11 @@ export function ClientsContent({ viewMode, viewToggle }: ClientsContentProps) {
                     <TableRow key={client.id}>
                       <TableCell>
                         <Link href={`/clientes/${client.id}`} className="flex items-center gap-3">
-                          <div
-                            className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-                            style={{ backgroundColor: `${clientTypeColor}1A` }}
-                          >
-                            <Building2 className="w-5 h-5" style={{ color: clientTypeColor }} />
+                          <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 bg-primary/10">
+                            <Building2 className="w-5 h-5 text-primary" />
                           </div>
                           <div className="min-w-0">
-                            <p className="truncate font-semibold text-foreground/80">{client.companyName}</p>
+                            <p className="truncate font-semibold text-foreground">{client.companyName}</p>
                             <p className="text-xs text-muted-foreground md:hidden">{formatCNPJ(client.cnpj)}</p>
                           </div>
                         </Link>
@@ -262,7 +339,7 @@ export function ClientsContent({ viewMode, viewToggle }: ClientsContentProps) {
           </Table>
         </div>
       ) : (
-        <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+        <div className="md:min-h-0 md:flex-1 md:overflow-y-auto md:pr-1">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 2xl:grid-cols-3">
             {isClientListLoading ? (
               <CardSkeletonGrid cards={4} />
@@ -279,15 +356,12 @@ export function ClientsContent({ viewMode, viewToggle }: ClientsContentProps) {
                   <CardContent className="flex h-full flex-col px-4 py-3">
                     <Link href={`/clientes/${client.id}`} className="flex-1">
                       <div className="flex items-center gap-3 mb-3">
-                        <div
-                          className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-                          style={{ backgroundColor: `${clientTypeColor}1A` }}
-                        >
-                          <Building2 className="w-5 h-5" style={{ color: clientTypeColor }} />
+                        <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 bg-primary/10">
+                          <Building2 className="w-5 h-5 text-primary" />
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-start justify-between gap-x-2 gap-y-1">
-                            <h3 className="min-w-0 flex-1 break-words text-sm font-semibold text-foreground/80">{client.companyName}</h3>
+                            <h3 className="min-w-0 flex-1 break-words text-sm font-semibold text-foreground">{client.companyName}</h3>
                             <Badge
                               style={{ backgroundColor: clientTypeColor }}
                               className="shrink-0 border-0 text-xs text-white hover:opacity-90"
@@ -347,11 +421,11 @@ export function ClientsContent({ viewMode, viewToggle }: ClientsContentProps) {
       ) : null}
       <ConfirmActionDialog
         open={Boolean(clientToRemove)}
-        title="Remover cliente"
-        description={`Tem certeza que deseja remover ${
+        title="Excluir cliente"
+        description={`Excluir ${
           clientToRemove?.companyName ? `o cliente ${clientToRemove.companyName}` : "este cliente"
-        }? Esta ação não pode ser desfeita.`}
-        confirmLabel="Remover"
+        } também removerá todos os agendamentos, contratos, anexos, informativos e certificados vinculados. Essa ação é irreversível. Tem certeza que deseja continuar?`}
+        confirmLabel="Excluir cliente"
         busy={deleteMutation.isPending}
         onOpenChange={(open) => {
           if (!open) setClientToRemove(null)

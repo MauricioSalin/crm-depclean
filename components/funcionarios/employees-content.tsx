@@ -21,6 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { DataPagination } from "@/components/ui/data-pagination"
+import { CsvImportDialog, type CsvImportField } from "@/components/ui/csv-import-dialog"
 import { TableEmptyState } from "@/components/ui/empty-state"
 import { CardSkeletonGrid, TableSkeletonRows } from "@/components/ui/table-skeleton"
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
@@ -46,6 +47,8 @@ interface EmployeesContentProps {
   openDialog?: boolean
   onDialogChange?: (open: boolean) => void
   viewToggle?: React.ReactNode
+  openImport?: boolean
+  onImportChange?: (open: boolean) => void
 }
 
 function generatePassword(length = 12) {
@@ -55,7 +58,16 @@ function generatePassword(length = 12) {
   return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join("")
 }
 
-export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewToggle }: EmployeesContentProps) {
+const EMPLOYEE_IMPORT_FIELDS: CsvImportField[] = [
+  { key: "name", label: "Nome", required: true },
+  { key: "email", label: "E-mail", required: true },
+  { key: "cpf", label: "CPF", required: true },
+  { key: "phone", label: "Telefone" },
+  { key: "role", label: "Cargo" },
+  { key: "status", label: "Status" },
+]
+
+export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewToggle, openImport = false, onImportChange }: EmployeesContentProps) {
   const mobileFiltersOpen = useMobileFiltersOpen()
   const [employees, setEmployees] = useState<EmployeeRecord[]>([])
   const [permissionProfiles, setPermissionProfiles] = useState<PermissionProfileRecord[]>([])
@@ -110,6 +122,28 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
       toast.error(getApiErrorMessage(error, "Não foi possível carregar os funcionários."))
     } finally {
       setLoading(false)
+    }
+  }
+
+  const importEmployees = async (rows: Array<Record<string, string>>) => {
+    try {
+      for (const row of rows) {
+        await createEmployee({
+          name: row.name,
+          email: row.email,
+          cpf: row.cpf,
+          phone: row.phone,
+          role: row.role,
+          status: row.status?.toLowerCase() === "inactive" || row.status?.toLowerCase() === "inativo" ? "inactive" : "active",
+        })
+      }
+      await refreshEmployees()
+      toast.success("Funcionários importados.", {
+        description: `${rows.length} registro(s) foram inseridos no banco de dados.`,
+      })
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Não foi possível importar os funcionários."))
+      throw error
     }
   }
 
@@ -457,6 +491,15 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
 
   return (
     <>
+      <CsvImportDialog
+        open={openImport}
+        onOpenChange={(open) => onImportChange?.(open)}
+        title="Importar funcionários"
+        description="Mapeie as colunas do CSV antes de inserir os funcionários."
+        fields={EMPLOYEE_IMPORT_FIELDS}
+        onImport={importEmployees}
+      />
+
       <Dialog open={isDialogOpen} onOpenChange={handleDialogChange}>
         <DialogContent className="max-h-[90vh] overflow-y-auto max-w-lg">
           <DialogHeader>
@@ -572,7 +615,7 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
         </DialogContent>
       </Dialog>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-visible md:overflow-hidden">
         <div className={`${mobileFiltersOpen ? "grid" : "hidden"} shrink-0 grid-cols-2 gap-2 sm:flex sm:items-center`}>
             <div className="relative sm:w-80">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -605,8 +648,8 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
           </div>
 
         {viewMode === "table" ? (
-          <div className="min-h-0 flex-1 overflow-hidden rounded-md">
-            <Table containerClassName="h-full">
+          <div className="rounded-md md:min-h-0 md:flex-1 md:overflow-hidden">
+            <Table containerClassName="md:h-full">
               <TableHeader>
                 <TableRow>
                   <TableHead className="min-w-[180px]">Funcionário</TableHead>
@@ -736,7 +779,7 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
             </Table>
           </div>
         ) : (
-          <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+          <div className="md:min-h-0 md:flex-1 md:overflow-y-auto md:pr-1">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 2xl:grid-cols-3">
             {loading ? (
               <CardSkeletonGrid cards={4} />

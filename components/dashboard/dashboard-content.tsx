@@ -1,8 +1,9 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { format, subDays } from "date-fns"
-import { AnimatePresence, motion } from "framer-motion"
+import { AnimatePresence, motion, Reorder } from "framer-motion"
+import { Check, Grip, Pencil, RotateCcw } from "lucide-react"
 import type { DateRange } from "react-day-picker"
 
 import { Header } from "@/components/dashboard/header"
@@ -12,13 +13,37 @@ import { UpcomingServices } from "@/components/dashboard/reminders"
 import { ClientList } from "@/components/dashboard/project-list"
 import { TeamCollaboration } from "@/components/dashboard/team-collaboration"
 import { ServiceDistribution } from "@/components/dashboard/project-progress"
+import { ContractsPulseWidget, LiveServicesWidget } from "@/components/dashboard/custom-dashboard-widgets"
+import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { DateRangePicker } from "@/components/ui/date-range-picker"
 import type { DashboardAnalyticsParams } from "@/lib/api/analytics"
+import { getStoredUser } from "@/lib/auth/session"
+import { cn } from "@/lib/utils"
 
 const PERIOD_OPTIONS = [30, 60, 90] as const
 type DashboardPeriod = (typeof PERIOD_OPTIONS)[number]
 type DashboardPeriodTab = DashboardPeriod | "custom"
+type DashboardWidgetId =
+  | "analytics"
+  | "serviceDistribution"
+  | "teamCollaboration"
+  | "liveServices"
+  | "upcoming"
+  | "contractsPulse"
+  | "clients"
+  | "productivity"
+
+const DEFAULT_WIDGET_ORDER: DashboardWidgetId[] = [
+  "analytics",
+  "serviceDistribution",
+  "teamCollaboration",
+  "liveServices",
+  "upcoming",
+  "contractsPulse",
+  "clients",
+  "productivity",
+]
 
 function getRangeForDays(days: DashboardPeriod): DateRange {
   const today = new Date()
@@ -36,6 +61,29 @@ function formatDateParam(date?: Date) {
 export function DashboardContent() {
   const [periodTab, setPeriodTab] = useState<DashboardPeriodTab>(30)
   const [dateRange, setDateRange] = useState<DateRange | undefined>(() => getRangeForDays(30))
+  const [isEditingDashboard, setIsEditingDashboard] = useState(false)
+  const [widgetOrder, setWidgetOrder] = useState<DashboardWidgetId[]>(DEFAULT_WIDGET_ORDER)
+  const dashboardStorageKey = useMemo(() => {
+    const user = getStoredUser()
+    return `depclean:dashboard-widgets:${user?.id ?? user?.email ?? "default"}`
+  }, [])
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(dashboardStorageKey)
+      if (!stored) return
+      const parsed = JSON.parse(stored) as DashboardWidgetId[]
+      const valid = parsed.filter((id): id is DashboardWidgetId => DEFAULT_WIDGET_ORDER.includes(id))
+      const missing = DEFAULT_WIDGET_ORDER.filter((id) => !valid.includes(id))
+      setWidgetOrder([...valid, ...missing])
+    } catch {
+      setWidgetOrder(DEFAULT_WIDGET_ORDER)
+    }
+  }, [dashboardStorageKey])
+
+  useEffect(() => {
+    window.localStorage.setItem(dashboardStorageKey, JSON.stringify(widgetOrder))
+  }, [dashboardStorageKey, widgetOrder])
 
   const handlePeriodChange = (value: string) => {
     if (value === "custom") {
@@ -60,6 +108,41 @@ export function DashboardContent() {
     days: typeof periodTab === "number" ? periodTab : undefined,
     dateFrom: formatDateParam(dateRange?.from),
     dateTo: formatDateParam(dateRange?.to ?? dateRange?.from),
+  }
+
+  const widgets: Record<DashboardWidgetId, { className: string; node: ReactNode }> = {
+    analytics: {
+      className: "lg:col-span-2",
+      node: <ProjectAnalytics {...dashboardParams} />,
+    },
+    serviceDistribution: {
+      className: "",
+      node: <ServiceDistribution showDescription={false} {...dashboardParams} />,
+    },
+    teamCollaboration: {
+      className: "lg:col-span-2",
+      node: <TeamCollaboration {...dashboardParams} />,
+    },
+    liveServices: {
+      className: "",
+      node: <LiveServicesWidget storageKey={`${dashboardStorageKey}:live-services-status`} />,
+    },
+    upcoming: {
+      className: "",
+      node: <UpcomingServices {...dashboardParams} />,
+    },
+    contractsPulse: {
+      className: "lg:col-span-2",
+      node: <ContractsPulseWidget {...dashboardParams} />,
+    },
+    clients: {
+      className: "",
+      node: <ClientList {...dashboardParams} />,
+    },
+    productivity: {
+      className: "",
+      node: <ProductivityCards {...dashboardParams} />,
+    },
   }
 
   const periodControls = (
@@ -106,34 +189,75 @@ export function DashboardContent() {
       />
 
       <div className="mt-3">
-        {periodControls}
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          {periodControls}
+          <div className="flex flex-wrap gap-2">
+            {isEditingDashboard ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-full"
+                onClick={() => setWidgetOrder(DEFAULT_WIDGET_ORDER)}
+              >
+                <RotateCcw className="mr-2 h-4 w-4" />
+                Restaurar
+              </Button>
+            ) : null}
+            <Button
+              type="button"
+              className="rounded-full"
+              variant={isEditingDashboard ? "default" : "outline"}
+              onClick={() => setIsEditingDashboard((value) => !value)}
+            >
+              {isEditingDashboard ? (
+                <>
+                  <Check className="mr-2 h-4 w-4" />
+                  Concluir
+                </>
+              ) : (
+                <>
+                  <Pencil className="mr-2 h-4 w-4" />
+                  Editar dashboard
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
       </div>
 
       <div className="mt-4 md:mt-5 space-y-3 md:space-y-4">
         <StatsCards {...dashboardParams} />
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 md:gap-4 items-stretch">
-          <div className="order-1 lg:order-none lg:col-span-2">
-            <ProjectAnalytics {...dashboardParams} />
-          </div>
-
-          <div className="order-3 lg:order-none">
-            <ServiceDistribution showDescription={false} {...dashboardParams} />
-          </div>
-
-          <div className="order-2 lg:order-none lg:col-span-2">
-            <TeamCollaboration {...dashboardParams} />
-          </div>
-
-          <div className="order-4 lg:order-none">
-            <UpcomingServices {...dashboardParams} />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
-          <ClientList {...dashboardParams} />
-          <ProductivityCards {...dashboardParams} />
-        </div>
+        <Reorder.Group
+          axis="y"
+          values={widgetOrder}
+          onReorder={setWidgetOrder}
+          className="grid grid-cols-1 gap-3 md:gap-4 lg:grid-cols-3"
+        >
+          {widgetOrder.map((widgetId) => (
+            <Reorder.Item
+              key={widgetId}
+              value={widgetId}
+              dragListener={isEditingDashboard}
+              whileDrag={{ scale: 1.02, rotate: 0.35, zIndex: 30 }}
+              transition={{ type: "spring", stiffness: 360, damping: 34 }}
+              className={cn("relative list-none", widgets[widgetId].className)}
+            >
+              {isEditingDashboard ? (
+                <div className="absolute right-3 top-3 z-10 flex h-9 w-9 cursor-grab items-center justify-center rounded-full border bg-background/95 shadow-sm active:cursor-grabbing">
+                  <Grip className="h-4 w-4 text-muted-foreground" />
+                </div>
+              ) : null}
+              <motion.div
+                animate={isEditingDashboard ? { y: [0, -1, 1, 0] } : { y: 0 }}
+                transition={isEditingDashboard ? { duration: 1.2, repeat: Infinity, ease: "easeInOut" } : undefined}
+                className={cn(isEditingDashboard ? "rounded-2xl ring-1 ring-primary/20" : "")}
+              >
+                {widgets[widgetId].node}
+              </motion.div>
+            </Reorder.Item>
+          ))}
+        </Reorder.Group>
       </div>
     </>
   )

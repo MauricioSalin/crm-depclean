@@ -68,6 +68,11 @@ export type SchedulePayload = {
   notes?: string
 }
 
+export type ScheduleRescheduleOption = {
+  date: string
+  time: string
+}
+
 export async function listSchedules(params?: {
   search?: string
   status?: string
@@ -95,6 +100,16 @@ export async function updateScheduleBilling(
   payload: Pick<SchedulePayload, "billingStatus" | "paidDate" | "paidValue" | "paymentMethod" | "billingNotes">,
 ) {
   const response = await api.patch<{ success: true; data: ScheduleRecord }>(`/schedules/${id}`, payload)
+  return response.data
+}
+
+export async function getScheduleRescheduleOptions(id: string) {
+  const response = await api.get<{ success: true; data: ScheduleRescheduleOption[] }>(`/schedules/${id}/reschedule-options`)
+  return response.data
+}
+
+export async function rescheduleSchedule(id: string, payload: { scheduledDate: string; scheduledTime?: string }) {
+  const response = await api.patch<{ success: true; data: ScheduleRecord }>(`/schedules/${id}/reschedule`, payload)
   return response.data
 }
 

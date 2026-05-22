@@ -92,6 +92,7 @@ function TabsList({
       {...props}
     >
       <span
+        data-slot="tabs-indicator"
         aria-hidden="true"
         className="pointer-events-none absolute left-0 top-0 z-0 rounded-md border border-transparent bg-white shadow-sm transition-[transform,width,height,opacity] duration-300 ease-out will-change-transform dark:border-input dark:bg-input/30"
         style={indicatorStyle}

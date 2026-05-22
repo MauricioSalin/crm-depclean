@@ -8,10 +8,11 @@ import { Button } from "@/components/ui/button"
 import { ContentLoadingSkeleton } from "@/components/ui/content-loading-skeleton"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import Link from "next/link"
-import { Plus, List, LayoutGrid } from "lucide-react"
+import { FileUp, Plus, List, LayoutGrid } from "lucide-react"
 
 export default function ClientesPage() {
   const [viewMode, setViewMode] = useState<"table" | "cards">("table")
+  const [importOpen, setImportOpen] = useState(false)
 
   const toggle = (
     <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "table" | "cards")}>
@@ -28,23 +29,34 @@ export default function ClientesPage() {
         <Sidebar />
       </div>
 
-      <main className="flex h-screen min-h-0 flex-1 flex-col overflow-hidden px-3 pb-4 md:px-4 lg:px-5 lg:ml-60">
+      <main className="flex min-h-screen flex-1 flex-col px-3 pb-4 md:h-screen md:min-h-0 md:overflow-hidden md:px-4 lg:px-5 lg:ml-60">
         <Header
           title="Clientes"
           description="Gerencie todos os clientes da Depclean."
           hasFilters
           viewToggle={toggle}
           actions={
-            <Link href="/clientes/novo">
-              <Button className="w-full sm:w-auto h-9 text-sm bg-primary text-primary-foreground hover:bg-primary/90">
-                <Plus className="w-4 h-4 mr-2" />
-                Novo Cliente
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setImportOpen(true)}
+                className="w-full sm:w-auto h-9 text-sm"
+              >
+                <FileUp className="w-4 h-4 mr-2" />
+                Importar
               </Button>
-            </Link>
+              <Link href="/clientes/novo">
+                <Button className="w-full sm:w-auto h-9 text-sm bg-primary text-primary-foreground hover:bg-primary/90">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Novo Cliente
+                </Button>
+              </Link>
+            </div>
           }
         />
         <Suspense fallback={<ContentLoadingSkeleton className="mt-4 md:mt-5" />}>
-          <ClientsContent viewMode={viewMode} viewToggle={toggle} />
+          <ClientsContent viewMode={viewMode} viewToggle={toggle} openImport={importOpen} onImportChange={setImportOpen} />
         </Suspense>
       </main>
     </div>

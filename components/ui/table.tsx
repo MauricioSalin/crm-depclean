@@ -153,7 +153,7 @@ function Table({ className, containerClassName, ...props }: TableProps) {
   return (
     <div
       data-slot="table-container"
-      className={cn('relative w-full overflow-auto rounded-xl bg-background pr-3', containerClassName)}
+      className={cn('relative w-full overflow-x-auto rounded-xl bg-background pr-3 md:overflow-auto', containerClassName)}
     >
       <TableContext.Provider value={contextValue}>
         <table
@@ -300,7 +300,7 @@ function TableHead({
     <th
       data-slot="table-head"
       className={cn(
-        'sticky top-0 z-50 h-11 bg-muted px-4 text-left align-middle font-medium whitespace-nowrap text-foreground shadow-[0_1px_0_0_var(--border)] first:rounded-tl-xl last:rounded-tr-xl [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]',
+        'h-11 bg-muted px-4 text-left align-middle font-medium whitespace-nowrap text-foreground shadow-[0_1px_0_0_var(--border)] first:rounded-tl-xl last:rounded-tr-xl md:sticky md:top-0 md:z-50 [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]',
         className,
       )}
       style={{ ...style, width }}

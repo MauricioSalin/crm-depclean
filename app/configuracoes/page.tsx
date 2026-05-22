@@ -14,7 +14,7 @@ export default function ConfiguracoesPage() {
       <main className="flex-1 px-3 pb-4 md:px-4 lg:px-5 lg:ml-60">
         <Header
           title="Configurações"
-          description="Personalize as configurações do sistema Depclean"
+          description="Personalize as configurações do sistema Depclean."
         />
 
         <div className="mt-4 md:mt-5">

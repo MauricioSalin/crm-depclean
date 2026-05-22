@@ -1256,12 +1256,13 @@ export function ConfiguracoesContent() {
                         <AccordionItem key={module.key} value={module.key} className="px-4">
                           <div className="flex items-center gap-3 py-4">
                             <Checkbox
+                              className="cursor-pointer"
                               checked={moduleState.allSelected ? true : moduleState.partialSelected ? "indeterminate" : false}
                               onCheckedChange={() => toggleModulePermissions(module.key)}
                             />
                             <AccordionTrigger
                               headerClassName="min-w-0 flex-1"
-                              className="grid w-full grid-cols-[minmax(0,1fr)_3rem_1rem] items-center gap-3 py-0 no-underline hover:no-underline [&>svg]:col-start-3 [&>svg]:self-center [&>svg]:justify-self-center [&>svg]:translate-y-0"
+                              className="grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_3rem_1rem] items-center gap-3 py-0 no-underline hover:no-underline [&>svg]:col-start-3 [&>svg]:self-center [&>svg]:justify-self-center [&>svg]:translate-y-0"
                             >
                               <div className="min-w-0 space-y-1 text-left">
                                 <div className="truncate font-medium">{module.title}</div>
@@ -1275,8 +1276,9 @@ export function ConfiguracoesContent() {
                           <AccordionContent>
                             <div className="grid gap-3 sm:grid-cols-2">
                               {module.permissions.map((permission) => (
-                                <label key={permission.key} className="flex items-start gap-3 rounded-lg border bg-card p-3">
+                                <label key={permission.key} className="flex cursor-pointer items-start gap-3 rounded-lg border bg-card p-3">
                                   <Checkbox
+                                    className="cursor-pointer"
                                     checked={profileForm.permissions.includes(permission.key)}
                                     onCheckedChange={() => togglePermission(permission.key)}
                                   />

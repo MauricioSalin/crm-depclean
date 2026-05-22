@@ -119,7 +119,12 @@ function TemplatesPageContent() {
         <Sidebar />
       </div>
 
-      <main className="flex-1 px-3 pb-4 md:px-4 lg:ml-60 lg:px-5">
+      <main
+        className={cn(
+          "flex-1 px-3 pb-4 md:px-4 lg:ml-60 lg:px-5",
+          !editorOpen && "flex min-h-screen flex-col md:h-screen md:min-h-0 md:overflow-hidden",
+        )}
+      >
         <Header
           title={pageTitle}
           description={pageDescription}
@@ -148,7 +153,12 @@ function TemplatesPageContent() {
           }
         />
 
-        <div className="mt-4 space-y-4 md:mt-5">
+        <div
+          className={cn(
+            "mt-4 md:mt-5",
+            editorOpen ? "space-y-4" : "flex flex-1 flex-col gap-4 md:min-h-0",
+          )}
+        >
           {!editorOpen ? (
             <>
               <Tabs value={activeTab} onValueChange={(value) => handleTemplateTabChange(value as TemplateTab)}>

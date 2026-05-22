@@ -30,6 +30,49 @@ export function PwaProvider() {
   const [showPrompt, setShowPrompt] = useState(false)
   const [dismissedThisSession, setDismissedThisSession] = useState(false)
   const [isEnabling, setIsEnabling] = useState(false)
+  const pullStartYRef = useRef<number | null>(null)
+  const isPullRefreshingRef = useRef(false)
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    if (!window.matchMedia("(pointer: coarse)").matches) return
+
+    const handleTouchStart = (event: TouchEvent) => {
+      if (window.scrollY > 0) {
+        pullStartYRef.current = null
+        return
+      }
+      pullStartYRef.current = event.touches[0]?.clientY ?? null
+    }
+
+    const handleTouchEnd = async (event: TouchEvent) => {
+      const startY = pullStartYRef.current
+      pullStartYRef.current = null
+      if (startY === null || isPullRefreshingRef.current) return
+
+      const endY = event.changedTouches[0]?.clientY ?? startY
+      if (endY - startY < 90 || window.scrollY > 0) return
+
+      isPullRefreshingRef.current = true
+      const toastId = toast.loading("Atualizando dados...")
+      try {
+        await queryClient.invalidateQueries()
+        toast.success("Dados atualizados.", { id: toastId })
+      } finally {
+        window.setTimeout(() => {
+          isPullRefreshingRef.current = false
+        }, 600)
+      }
+    }
+
+    window.addEventListener("touchstart", handleTouchStart, { passive: true })
+    window.addEventListener("touchend", handleTouchEnd, { passive: true })
+
+    return () => {
+      window.removeEventListener("touchstart", handleTouchStart)
+      window.removeEventListener("touchend", handleTouchEnd)
+    }
+  }, [queryClient])
 
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return

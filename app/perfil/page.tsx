@@ -12,7 +12,7 @@ export default function PerfilPage() {
       <main className="flex-1 px-3 pb-4 md:px-4 lg:px-5 lg:ml-60">
         <Header
           title="Meu Perfil"
-          description="Gerencie suas informações pessoais e configurações de conta"
+          description="Gerencie suas informações pessoais e configurações de conta."
         />
 
         <div className="mt-4 md:mt-5">

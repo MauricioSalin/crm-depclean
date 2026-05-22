@@ -96,7 +96,10 @@ const clientProfileTabUrlValue: Record<ClientProfileTab, string> = {
 }
 
 const clientProfileTabTriggerClassName =
-  "w-full cursor-pointer rounded-full bg-muted px-4 py-2 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+  "h-10 w-36 shrink-0 cursor-pointer rounded-full bg-muted px-4 py-2 text-sm transition-[background-color,color,transform] duration-300 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground lg:w-full"
+
+const clientProfileTabsListClassName =
+  "flex h-auto min-w-full w-max justify-start gap-2 overflow-visible bg-transparent p-0 lg:grid lg:w-full lg:grid-cols-6 [&_[data-slot=tabs-indicator]]:hidden"
 
 const getClientProfileTabFromUrl = (value: string | null): ClientProfileTab =>
   value ? clientProfileTabByUrlValue[value] ?? defaultClientProfileTab : defaultClientProfileTab
@@ -817,50 +820,52 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
       </div>
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-        <TabsList className="grid w-full grid-cols-2 gap-2 bg-transparent p-0 sm:grid-cols-3 lg:grid-cols-6">
-          <TabsTrigger
-            onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
-            value="dados"
-            className={clientProfileTabTriggerClassName}
-          >
-            <span className="font-semibold">Dados</span>
-          </TabsTrigger>
-          <TabsTrigger
-            onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
-            value="contratos"
-            className={clientProfileTabTriggerClassName}
-          >
-            <span className="font-semibold">Contratos</span>
-          </TabsTrigger>
-          <TabsTrigger
-            onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
-            value="parcelas"
-            className={clientProfileTabTriggerClassName}
-          >
-            <span className="font-semibold">Parcelas</span>
-          </TabsTrigger>
-          <TabsTrigger
-            onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
-            value="servicos"
-            className={clientProfileTabTriggerClassName}
-          >
-            <span className="font-semibold">Serviços</span>
-          </TabsTrigger>
-          <TabsTrigger
-            onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
-            value="agenda"
-            className={clientProfileTabTriggerClassName}
-          >
-            <span className="font-semibold">Agenda</span>
-          </TabsTrigger>
-          <TabsTrigger
-            onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
-            value="anexos"
-            className={clientProfileTabTriggerClassName}
-          >
-            <span className="font-semibold">Anexos</span>
-          </TabsTrigger>
-        </TabsList>
+        <div className="w-full overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <TabsList className={clientProfileTabsListClassName}>
+            <TabsTrigger
+              onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
+              value="dados"
+              className={clientProfileTabTriggerClassName}
+            >
+              <span className="font-semibold">Dados</span>
+            </TabsTrigger>
+            <TabsTrigger
+              onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
+              value="contratos"
+              className={clientProfileTabTriggerClassName}
+            >
+              <span className="font-semibold">Contratos</span>
+            </TabsTrigger>
+            <TabsTrigger
+              onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
+              value="parcelas"
+              className={clientProfileTabTriggerClassName}
+            >
+              <span className="font-semibold">Parcelas</span>
+            </TabsTrigger>
+            <TabsTrigger
+              onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
+              value="servicos"
+              className={clientProfileTabTriggerClassName}
+            >
+              <span className="font-semibold">Serviços</span>
+            </TabsTrigger>
+            <TabsTrigger
+              onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
+              value="agenda"
+              className={clientProfileTabTriggerClassName}
+            >
+              <span className="font-semibold">Agenda</span>
+            </TabsTrigger>
+            <TabsTrigger
+              onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
+              value="anexos"
+              className={clientProfileTabTriggerClassName}
+            >
+              <span className="font-semibold">Anexos</span>
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="dados" className="mt-4">
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">

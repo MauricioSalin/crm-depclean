@@ -13,10 +13,12 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { changePassword, getProfileMe, updateProfile, type ChangePasswordPayload } from "@/lib/api/profile"
+import { AvatarUploadDialog } from "@/components/perfil/avatar-upload-dialog"
+import { changePassword, getProfileMe, updateProfile, uploadProfileAvatar, type AvatarUploadVariant, type ChangePasswordPayload } from "@/lib/api/profile"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { getSettings, type PermissionProfileRecord } from "@/lib/api/settings"
 import { getStoredAccessToken, getStoredRefreshToken, getStoredUser, isPersistentSession, persistSession } from "@/lib/auth/session"
+import { resolveAvatarUrl } from "@/lib/avatar"
 import { formatCPF, formatPhone, isValidCPF } from "@/lib/masks"
 import type { AuthenticatedUser } from "@/lib/auth/types"
 
@@ -33,6 +35,8 @@ export function PerfilContent() {
   const [permissionProfiles, setPermissionProfiles] = useState<PermissionProfileRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [avatarDialog, setAvatarDialog] = useState(false)
+  const [avatarSaving, setAvatarSaving] = useState(false)
   const [passwordDialog, setPasswordDialog] = useState(false)
   const [passwordData, setPasswordData] = useState(emptyPasswordForm)
   const [passwordError, setPasswordError] = useState("")
@@ -164,6 +168,46 @@ export function PerfilContent() {
     }
   }
 
+  const syncStoredProfile = (updatedUser: ProfileResponse) => {
+    const { profileDescription, ...storedUser } = updatedUser
+    const stored = getStoredUser()
+    const accessToken = getStoredAccessToken()
+    const refreshToken = getStoredRefreshToken()
+
+    if (stored && accessToken && refreshToken) {
+      persistSession({
+        accessToken,
+        refreshToken,
+        user: { ...stored, ...storedUser },
+        persistent: isPersistentSession(),
+      })
+    }
+  }
+
+  const handleAvatarSave = async (variants: AvatarUploadVariant[]) => {
+    if (avatarSaving) return
+
+    setAvatarSaving(true)
+    const toastId = toast.loading("Salvando foto do perfil...")
+    try {
+      const response = await uploadProfileAvatar(variants)
+      const updatedUser = response.data
+
+      syncStoredProfile(updatedUser)
+      setProfile({
+        ...updatedUser,
+        cpf: formatCPF(updatedUser.cpf),
+        phone: formatPhone(updatedUser.phone),
+      })
+      setAvatarDialog(false)
+      toast.success("Foto do perfil atualizada.", { id: toastId })
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Não foi possível salvar a foto do perfil."), { id: toastId })
+    } finally {
+      setAvatarSaving(false)
+    }
+  }
+
   if (loading || !formData) {
     return (
       <div className="space-y-6">
@@ -199,10 +243,15 @@ export function PerfilContent() {
           <div className="flex items-center gap-6">
             <div className="relative group shrink-0">
               <Avatar className="h-20 w-20 ring-4 ring-primary/20">
-                <AvatarImage src={formData.avatar || "/professional-avatar.jpg"} alt={formData.name} />
+                <AvatarImage src={resolveAvatarUrl(formData.avatar)} alt={formData.name} />
                 <AvatarFallback className="text-xl">{profileInitials}</AvatarFallback>
               </Avatar>
-              <button type="button" className="absolute inset-0 flex cursor-pointer items-center justify-center rounded-full bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
+              <button
+                type="button"
+                className="absolute inset-0 flex cursor-pointer items-center justify-center rounded-full bg-black/40 opacity-0 transition-opacity group-hover:opacity-100"
+                onClick={() => setAvatarDialog(true)}
+                aria-label="Alterar foto do perfil"
+              >
                 <Camera className="h-5 w-5 text-white" />
               </button>
             </div>
@@ -226,7 +275,7 @@ export function PerfilContent() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Informacoes Pessoais</CardTitle>
+          <CardTitle>Informações Pessoais</CardTitle>
         </CardHeader>
         <CardContent>
           <form autoComplete="off" onSubmit={handleSave} className="space-y-6">
@@ -373,6 +422,16 @@ export function PerfilContent() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <AvatarUploadDialog
+        open={avatarDialog}
+        onOpenChange={setAvatarDialog}
+        currentAvatar={formData.avatar}
+        userName={formData.name}
+        initials={profileInitials}
+        saving={avatarSaving}
+        onSave={handleAvatarSave}
+      />
     </div>
   )
 }

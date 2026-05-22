@@ -17,6 +17,11 @@ export type ChangePasswordPayload = {
   confirmPassword: string
 }
 
+export type AvatarUploadVariant = {
+  size: number
+  file: File
+}
+
 export async function getProfileMe() {
   const response = await api.get<{ success: true; data: AuthenticatedUser & { profileDescription: string } }>("/profile/me")
   return response.data
@@ -29,5 +34,25 @@ export async function updateProfile(payload: UpdateProfilePayload) {
 
 export async function changePassword(payload: ChangePasswordPayload) {
   const response = await api.post<{ success: true; data: null }>("/profile/me/password", payload)
+  return response.data
+}
+
+export async function uploadProfileAvatar(variants: AvatarUploadVariant[]) {
+  const formData = new FormData()
+
+  variants.forEach((variant) => {
+    formData.append(`avatar${variant.size}`, variant.file)
+  })
+
+  const response = await api.post<{ success: true; data: AuthenticatedUser & { profileDescription: string } }>(
+    "/profile/me/avatar",
+    formData,
+    {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    },
+  )
+
   return response.data
 }

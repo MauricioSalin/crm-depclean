@@ -52,7 +52,7 @@ export function DataPagination({
   return (
     <div
       className={cn(
-        "mt-auto flex shrink-0 flex-col items-center gap-3 bg-background/95 pt-3 backdrop-blur supports-[backdrop-filter]:bg-background/85 sm:flex-row sm:justify-between md:sticky md:bottom-0 md:z-30",
+        "flex shrink-0 flex-col items-center gap-3 bg-background/95 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/85 sm:flex-row sm:justify-between md:sticky md:bottom-0 md:z-30 md:mt-auto",
         className,
       )}
     >

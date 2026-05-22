@@ -66,6 +66,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { DataPagination } from "@/components/ui/data-pagination"
+import { CsvImportDialog, type CsvImportField } from "@/components/ui/csv-import-dialog"
 import { EmptyState, TableEmptyState } from "@/components/ui/empty-state"
 import { CardSkeletonGrid, TableSkeletonRows } from "@/components/ui/table-skeleton"
 import { ScheduleTypeBadge } from "@/components/ui/schedule-type-badge"
@@ -80,6 +81,8 @@ interface AgendamentosContentProps {
   openDialog?: boolean
   onDialogChange?: (open: boolean) => void
   viewToggle?: React.ReactNode
+  openImport?: boolean
+  onImportChange?: (open: boolean) => void
 }
 
 function getStatusBadge(status: ScheduleRecord["status"]) {
@@ -112,17 +115,27 @@ function currentCompletionDateTime() {
   return { date, time }
 }
 
-function getScheduleIconTone(schedule: Pick<ScheduleRecord, "isEmergency">) {
-  return schedule.isEmergency
-    ? { wrapper: "bg-red-50", icon: "text-red-600" }
-    : { wrapper: "bg-primary/10", icon: "text-primary" }
+function getScheduleIconTone(_schedule: Pick<ScheduleRecord, "isEmergency">) {
+  return { wrapper: "bg-primary/10", icon: "text-primary" }
 }
 
 function canCancelSchedule(schedule: Pick<ScheduleRecord, "status">) {
   return !["in_progress", "completed", "cancelled"].includes(schedule.status)
 }
 
-export function AgendamentosContent({ viewMode, openDialog, onDialogChange, viewToggle }: AgendamentosContentProps) {
+const SCHEDULE_IMPORT_FIELDS: CsvImportField[] = [
+  { key: "clientId", label: "Cliente", required: true },
+  { key: "unitId", label: "Unidade", required: true },
+  { key: "serviceTypeId", label: "Serviço", required: true },
+  { key: "teamIds", label: "Equipes" },
+  { key: "additionalEmployeeIds", label: "Funcionários avulsos" },
+  { key: "scheduledDate", label: "Data", required: true },
+  { key: "scheduledTime", label: "Horário", required: true },
+  { key: "estimatedDuration", label: "Duração em minutos", required: true },
+  { key: "notes", label: "Observações" },
+]
+
+export function AgendamentosContent({ viewMode, openDialog, onDialogChange, viewToggle, openImport = false, onImportChange }: AgendamentosContentProps) {
   const queryClient = useQueryClient()
   const mobileFiltersOpen = useMobileFiltersOpen()
   const [searchTerm, setSearchTerm] = useUrlQueryState("q")
@@ -324,6 +337,33 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
     },
   })
 
+  const importSchedulesMutation = useMutation({
+    mutationFn: async (rows: Array<Record<string, string>>) => {
+      for (const row of rows) {
+        await createSchedule({
+          clientId: row.clientId,
+          unitId: row.unitId,
+          serviceTypeId: row.serviceTypeId,
+          teamIds: row.teamIds ? row.teamIds.split(",").map((value) => value.trim()).filter(Boolean) : [],
+          additionalEmployeeIds: row.additionalEmployeeIds ? row.additionalEmployeeIds.split(",").map((value) => value.trim()).filter(Boolean) : [],
+          scheduledDate: row.scheduledDate,
+          scheduledTime: row.scheduledTime,
+          estimatedDuration: Number(row.estimatedDuration) || 60,
+          notes: row.notes,
+        })
+      }
+    },
+    onSuccess: async (_data, rows) => {
+      await invalidateSchedules()
+      toast.success("Agendamentos importados.", {
+        description: `${rows.length} registro(s) foram inseridos no banco de dados.`,
+      })
+    },
+    onError: (error) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível importar os agendamentos."))
+    },
+  })
+
   const cancelMutation = useMutation({
     mutationFn: ({ id, reason }: { id: string; reason: string }) => cancelSchedule(id, { cancellationReason: reason }),
     onMutate: () => {
@@ -512,6 +552,15 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
 
   return (
     <>
+      <CsvImportDialog
+        open={openImport}
+        onOpenChange={(open) => onImportChange?.(open)}
+        title="Importar agendamentos"
+        description="Use ids existentes de cliente, unidade, serviço, equipes e funcionários para garantir a importação correta."
+        fields={SCHEDULE_IMPORT_FIELDS}
+        onImport={(rows) => importSchedulesMutation.mutateAsync(rows)}
+      />
+
       <SchedulingFormDialog
         open={isDialogOpen}
         onOpenChange={handleScheduleDialogChange}
@@ -545,7 +594,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
           }
         }}
       >
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="max-sm:left-0 max-sm:top-0 max-sm:h-[100dvh] max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:overflow-y-auto max-sm:rounded-none max-sm:border-0 sm:max-w-md">
           {cancelStep === "reason" ? (
             <>
               <DialogHeader className="min-w-0 pr-6">
@@ -621,7 +670,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
           }
         }}
       >
-        <DialogContent className="max-h-[calc(100dvh-1rem)] min-w-0 content-start overflow-x-hidden overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+1.5rem)] sm:max-w-lg">
+        <DialogContent className="max-h-[calc(100dvh-1rem)] min-w-0 content-start overflow-x-hidden overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+1.5rem)] max-sm:left-0 max-sm:top-0 max-sm:h-[100dvh] max-sm:max-h-none max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none max-sm:border-0 sm:max-w-lg">
           <DialogHeader className="min-w-0 pr-6">
             <DialogTitle>Concluir agendamento</DialogTitle>
             <DialogDescription>
@@ -744,7 +793,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
         </DialogContent>
       </Dialog>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-visible md:overflow-hidden">
         <div className={`${mobileFiltersOpen ? "grid" : "hidden"} shrink-0 grid-cols-2 gap-2 sm:flex sm:items-center`}>
           <div className="relative col-span-2 sm:w-80">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -789,8 +838,8 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
         </div>
 
         {viewMode === "table" ? (
-          <div className="min-h-0 flex-1 overflow-hidden rounded-md">
-            <Table containerClassName="h-full">
+          <div className="rounded-md md:min-h-0 md:flex-1 md:overflow-hidden">
+            <Table containerClassName="md:h-full">
               <TableHeader>
                 <TableRow>
                   <TableHead className="min-w-[180px]">Cliente</TableHead>
@@ -831,7 +880,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                             <Calendar className={`h-5 w-5 ${getScheduleIconTone(schedule).icon}`} />
                           </div>
                           <div>
-                            <p className="font-semibold text-foreground/80">{schedule.clientName}</p>
+                            <p className="font-semibold text-foreground">{schedule.clientName}</p>
                             <p className="text-xs text-muted-foreground sm:hidden">
                               {schedule.serviceTypeName} • {formatConfiguredScheduleDuration(schedule)}
                             </p>
@@ -962,7 +1011,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
             </Table>
           </div>
         ) : (
-          <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+          <div className="md:min-h-0 md:flex-1 md:overflow-y-auto md:pr-1">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 2xl:grid-cols-3">
               {schedulesQuery.isLoading ? (
                 <CardSkeletonGrid cards={4} />
@@ -977,7 +1026,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                           <Calendar className={`h-5 w-5 ${getScheduleIconTone(schedule).icon}`} />
                         </div>
                         <div>
-                          <h4 className="text-sm font-semibold text-foreground/80">{schedule.clientName}</h4>
+                          <h4 className="text-sm font-semibold text-foreground">{schedule.clientName}</h4>
                           <p className="text-xs text-muted-foreground">{schedule.serviceTypeName}</p>
                         </div>
                       </div>
@@ -1116,7 +1165,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
           if (!open) setAvailabilitySuggestion(null)
         }}
       >
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="max-sm:left-0 max-sm:top-0 max-sm:h-[100dvh] max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:overflow-y-auto max-sm:rounded-none max-sm:border-0 sm:max-w-md">
           <DialogHeader className="min-w-0 pr-6">
             <DialogTitle>Horário indisponível</DialogTitle>
             <DialogDescription>

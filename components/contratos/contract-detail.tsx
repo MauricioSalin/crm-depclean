@@ -77,6 +77,12 @@ const contractDetailTabUrlValue: Record<ContractDetailTab, string> = {
   schedule: "agenda",
 }
 
+const contractDetailTabTriggerClassName =
+  "h-10 w-44 shrink-0 cursor-pointer rounded-full bg-muted px-4 py-2 text-sm transition-[background-color,color,transform] duration-300 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground lg:w-full"
+
+const contractDetailTabsListClassName =
+  "flex h-auto min-w-full w-max justify-start gap-2 overflow-visible bg-transparent p-0 lg:grid lg:w-full lg:grid-cols-4 [&_[data-slot=tabs-indicator]]:hidden"
+
 const getContractDetailTabFromUrl = (value: string | null): ContractDetailTab =>
   value ? contractDetailTabByUrlValue[value] ?? defaultContractDetailTab : defaultContractDetailTab
 
@@ -566,9 +572,9 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
           </div>
 
           <div className="flex w-full flex-col gap-3 lg:ml-auto lg:w-[300px] lg:min-w-[300px] lg:self-stretch">
-            <div className="flex w-full flex-wrap justify-end gap-2">
+            <div className="flex w-full gap-2 sm:flex-wrap sm:justify-end">
               {clicksignUrl ? (
-                <Button variant="outline" size="sm" asChild>
+                <Button variant="outline" size="sm" className="flex-1 sm:flex-none" asChild>
                   <a href={clicksignUrl} target="_blank" rel="noreferrer">
                     <ExternalLink className="mr-2 h-4 w-4" />
                     ClickSign
@@ -579,6 +585,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                 <Button
                   variant="outline"
                   size="sm"
+                  className="flex-1 sm:flex-none"
                   onClick={handleDownloadSignedContract}
                   disabled={clientAttachmentsQuery.isLoading || downloadSignedContractMutation.isPending}
                 >
@@ -589,6 +596,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                 <Button
                   variant="outline"
                   size="sm"
+                  className="flex-1 sm:flex-none"
                   onClick={() => sendClicksignMutation.mutate()}
                   disabled={sendClicksignMutation.isPending}
                 >
@@ -766,36 +774,38 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
       </Card>
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-        <TabsList className="grid w-full grid-cols-2 gap-2 bg-transparent p-0 sm:grid-cols-4">
-          <TabsTrigger
-            onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
-            value="services"
-            className="w-full rounded-full bg-muted px-4 py-2 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-          >
-            <span className="font-semibold">Serviços ({contract.services.length})</span>
-          </TabsTrigger>
-          <TabsTrigger
-            onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
-            value="installments"
-            className="w-full rounded-full bg-muted px-4 py-2 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-          >
-            <span className="font-semibold">Parcelas ({contract.installmentsCount})</span>
-          </TabsTrigger>
-          <TabsTrigger
-            onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
-            value="units"
-            className="w-full rounded-full bg-muted px-4 py-2 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-          >
-            <span className="font-semibold">Filiais ({units.length})</span>
-          </TabsTrigger>
-          <TabsTrigger
-            onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
-            value="schedule"
-            className="w-full rounded-full bg-muted px-4 py-2 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-          >
-            <span className="font-semibold">Agenda ({contractSchedules.length})</span>
-          </TabsTrigger>
-        </TabsList>
+        <div className="w-full overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <TabsList className={contractDetailTabsListClassName}>
+            <TabsTrigger
+              onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
+              value="services"
+              className={contractDetailTabTriggerClassName}
+            >
+              <span className="font-semibold">Serviços ({contract.services.length})</span>
+            </TabsTrigger>
+            <TabsTrigger
+              onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
+              value="installments"
+              className={contractDetailTabTriggerClassName}
+            >
+              <span className="font-semibold">Parcelas ({contract.installmentsCount})</span>
+            </TabsTrigger>
+            <TabsTrigger
+              onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
+              value="units"
+              className={contractDetailTabTriggerClassName}
+            >
+              <span className="font-semibold">Filiais ({units.length})</span>
+            </TabsTrigger>
+            <TabsTrigger
+              onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
+              value="schedule"
+              className={contractDetailTabTriggerClassName}
+            >
+              <span className="font-semibold">Agenda ({contractSchedules.length})</span>
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="services" className="mt-4">
           <div className="overflow-x-auto">

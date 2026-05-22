@@ -395,7 +395,7 @@ export function GlobalSearch() {
                     if (itemIndex >= 0) itemRefs.current[itemIndex] = node
                   }}
                   className={cn(
-                    "mb-2 flex w-full cursor-pointer items-center justify-between rounded-xl px-3 py-2 text-sm font-medium text-primary transition-colors hover:bg-primary/10",
+                    "mb-2 flex w-full cursor-pointer items-center justify-between rounded-xl px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-primary/10",
                     activeIndex === flatItems.findIndex((flatItem) => flatItem.id === `view-all-${section.key}`) && "bg-primary/10",
                   )}
                   onMouseEnter={() => setActiveIndex(flatItems.findIndex((flatItem) => flatItem.id === `view-all-${section.key}`))}

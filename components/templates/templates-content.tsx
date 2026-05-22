@@ -109,6 +109,7 @@ type TemplateFormState = {
   format: TemplateFormat
   html: string
   signerId: string
+  witnessSignerId: string
   isActive: boolean
   watermarkFileName: string
   watermarkFileUrl: string
@@ -167,6 +168,10 @@ function formatDateTime(value?: string | Date | null) {
   }).format(parsed)
 }
 
+function capitalizeFirstLetter(value: string) {
+  return value ? value.charAt(0).toLocaleUpperCase("pt-BR") + value.slice(1) : value
+}
+
 function formatRelativeUpdatedAt(value?: string | Date | null) {
   if (!value) return ""
   const parsed = value instanceof Date ? value : new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value)
@@ -175,22 +180,22 @@ function formatRelativeUpdatedAt(value?: string | Date | null) {
   const diffMs = Math.max(0, Date.now() - parsed.getTime())
   const minutes = Math.floor(diffMs / 60_000)
 
-  if (minutes < 1) return "agora"
-  if (minutes < 60) return `${minutes} ${minutes === 1 ? "minuto" : "minutos"} atrás`
+  if (minutes < 1) return "Agora"
+  if (minutes < 60) return capitalizeFirstLetter(`${minutes} ${minutes === 1 ? "minuto" : "minutos"} atrás`)
 
   const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours} ${hours === 1 ? "hora" : "horas"} atrás`
+  if (hours < 24) return capitalizeFirstLetter(`${hours} ${hours === 1 ? "hora" : "horas"} atrás`)
 
   const days = Math.floor(hours / 24)
-  if (days < 7) return `${days} ${days === 1 ? "dia" : "dias"} atrás`
+  if (days < 7) return capitalizeFirstLetter(`${days} ${days === 1 ? "dia" : "dias"} atrás`)
 
   if (days < 30) {
     const weeks = Math.floor(days / 7)
-    return `${weeks} ${weeks === 1 ? "semana" : "semanas"} atrás`
+    return capitalizeFirstLetter(`${weeks} ${weeks === 1 ? "semana" : "semanas"} atrás`)
   }
 
   const months = Math.floor(days / 30)
-  return `${months} ${months === 1 ? "mês" : "meses"} atrás`
+  return capitalizeFirstLetter(`${months} ${months === 1 ? "mês" : "meses"} atrás`)
 }
 
 function formatLongDate(value: string | Date | null | undefined = new Date()) {
@@ -552,6 +557,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
     format: "docx",
     html: "",
     signerId: "",
+    witnessSignerId: "",
     isActive: true,
     watermarkFileName: "",
     watermarkFileUrl: "",
@@ -709,6 +715,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
       format: "docx",
       html: "",
       signerId: "",
+      witnessSignerId: "",
       isActive: true,
       watermarkFileName: "",
       watermarkFileUrl: "",
@@ -767,6 +774,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
       format: "docx",
       html: "",
       signerId: "",
+      witnessSignerId: "",
       isActive: true,
       watermarkFileName: "",
       watermarkFileUrl: "",
@@ -803,6 +811,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
         format: "docx" as const,
         html: formData.html,
         signerId: config.requiresSigner ? formData.signerId : "",
+        witnessSignerId: config.requiresSigner ? formData.witnessSignerId : "",
         baseFileName: docxFile.name,
         isActive: formData.isActive,
         watermarkFileName: formData.watermarkFileName,
@@ -836,6 +845,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
         format: savedTemplate.format || "docx",
         html: savedTemplate.html || "",
         signerId: savedTemplate.signerId || "",
+        witnessSignerId: savedTemplate.witnessSignerId || "",
         isActive: savedTemplate.isActive,
         watermarkFileName: savedTemplate.watermarkFileName || "",
         watermarkFileUrl: savedTemplate.watermarkFileUrl || "",
@@ -935,6 +945,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
       format: template.format || "docx",
       html: template.html || "",
       signerId: template.signerId,
+      witnessSignerId: template.witnessSignerId || "",
       isActive: template.isActive,
       watermarkFileName: template.watermarkFileName || "",
       watermarkFileUrl: template.watermarkFileUrl || "",
@@ -959,6 +970,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
       format: "docx",
       html: "",
       signerId: "",
+      witnessSignerId: "",
       isActive: true,
       watermarkFileName: "",
       watermarkFileUrl: "",
@@ -1410,6 +1422,35 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
                 </div>
               ) : null}
 
+              {config.requiresSigner ? (
+                <div className="min-w-0 space-y-2">
+                  <Label htmlFor="tpl-witness-signer" className="flex items-center gap-1.5">
+                    <PenTool className="h-3.5 w-3.5 text-muted-foreground" />
+                    Testemunha
+                  </Label>
+                  <Select
+                    value={formData.witnessSignerId || "none"}
+                    onValueChange={(value) =>
+                      setFormData((current) => ({ ...current, witnessSignerId: value === "none" ? "" : value }))
+                    }
+                  >
+                    <SelectTrigger className={FORM_SELECT_TRIGGER_CLASS_NAME}>
+                      <SelectValue placeholder="Opcional" />
+                    </SelectTrigger>
+                    <SelectContent className={FORM_SELECT_CONTENT_CLASS_NAME}>
+                      <SelectItem value="none">Sem testemunha</SelectItem>
+                      {employees
+                        .filter((employee) => employee.status === "active")
+                        .map((employee) => (
+                          <SelectItem key={employee.id} value={employee.id} textValue={employee.name} className="max-w-full">
+                            <span className="block min-w-0 truncate">{employee.name}</span>
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : null}
+
               <div className="min-w-0 space-y-2">
                 <Label htmlFor="tpl-status">Status</Label>
                 <Select
@@ -1434,7 +1475,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
                 <Accordion type="single" collapsible className="rounded-xl border bg-background px-3">
                   {variableGroups.map((group) => (
                     <AccordionItem key={group.id} value={group.id}>
-                      <AccordionTrigger className="items-center px-1 py-3 hover:no-underline">
+                      <AccordionTrigger className="cursor-pointer items-center px-1 py-3 hover:no-underline">
                         <span className="flex min-w-0 flex-1 items-center gap-3">
                           <span className="truncate">{group.label}</span>
                           <span className="ml-auto min-w-7 rounded-full bg-muted px-2 py-0.5 text-center text-xs text-muted-foreground">
@@ -1447,7 +1488,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
                           <button
                             key={variable.path}
                             type="button"
-                            className="w-full rounded-xl border bg-card px-3 py-2 text-left transition hover:border-primary/50 hover:bg-primary/5"
+                            className="w-full cursor-pointer rounded-xl border bg-card px-3 py-2 text-left transition hover:border-primary/50 hover:bg-primary/5"
                             onClick={() => handleSelectVariable(variable.path)}
                           >
                             <span className="block text-sm font-medium">{variable.label}</span>
@@ -1612,6 +1653,35 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
               </div>
             ) : null}
 
+            {config.requiresSigner ? (
+              <div className="space-y-2">
+                <Label htmlFor="import-witness-signer" className="flex items-center gap-1.5">
+                  <PenTool className="h-3.5 w-3.5 text-muted-foreground" />
+                  Testemunha
+                </Label>
+                <Select
+                  value={formData.witnessSignerId || "none"}
+                  onValueChange={(value) =>
+                    setFormData((current) => ({ ...current, witnessSignerId: value === "none" ? "" : value }))
+                  }
+                >
+                  <SelectTrigger className={FORM_SELECT_TRIGGER_CLASS_NAME}>
+                    <SelectValue placeholder="Opcional" />
+                  </SelectTrigger>
+                  <SelectContent className={FORM_SELECT_CONTENT_CLASS_NAME}>
+                    <SelectItem value="none">Sem testemunha</SelectItem>
+                    {employees
+                      .filter((employee) => employee.status === "active")
+                      .map((employee) => (
+                        <SelectItem key={employee.id} value={employee.id} textValue={employee.name} className="max-w-full">
+                          <span className="block min-w-0 truncate">{employee.name}</span>
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
+
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <Button type="button" variant="outline" onClick={() => setIsImportOpen(false)}>
                 Cancelar
@@ -1639,7 +1709,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
         busy={deleteMutation.isPending}
       />
 
-      <div className="space-y-4">
+      <div className="flex flex-col gap-4 md:min-h-0 md:flex-1 md:overflow-hidden">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="relative w-full sm:max-w-md">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -1659,8 +1729,8 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
           </Button>
         </div>
 
-        <div className="overflow-x-auto rounded-md">
-          <Table>
+        <div className="rounded-md md:min-h-0 md:flex-1 md:overflow-hidden">
+          <Table containerClassName="md:h-full">
             <TableHeader>
               <TableRow>
                 <TableHead>Template</TableHead>

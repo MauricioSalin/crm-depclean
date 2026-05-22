@@ -1,13 +1,19 @@
 "use client"
 
+import { useEffect, useState } from "react"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { ArrowLeft, CalendarDays, Clock3, Loader2, MapPin, OctagonX, Sparkles, Users } from "lucide-react"
+import { toast } from "sonner"
 
 import { AttendanceStartSlider } from "@/components/agendamentos/attendance-start-slider"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { useIsMobile } from "@/hooks/use-mobile"
-import type { ScheduleRecord } from "@/lib/api/schedules"
+import { getApiErrorMessage } from "@/lib/api/errors"
+import { getScheduleRescheduleOptions, rescheduleSchedule, type ScheduleRecord } from "@/lib/api/schedules"
 import { formatCivilDate } from "@/lib/date-utils"
 import { formatConfiguredScheduleDuration } from "@/lib/schedule-duration"
 import { cn } from "@/lib/utils"
@@ -51,6 +57,48 @@ export function ScheduleDetailsDialog({
   isStartingAttendance = false,
 }: ScheduleDetailsDialogProps) {
   const isMobile = useIsMobile()
+  const queryClient = useQueryClient()
+  const [mode, setMode] = useState<"details" | "reschedule">("details")
+  const [customDate, setCustomDate] = useState("")
+  const [customTime, setCustomTime] = useState("")
+
+  useEffect(() => {
+    if (!open || !schedule) return
+    setMode("details")
+    setCustomDate(schedule.date)
+    setCustomTime(schedule.time || "08:00")
+  }, [open, schedule?.id, schedule?.date, schedule?.time])
+
+  const optionsQuery = useQuery({
+    queryKey: ["schedule", "reschedule-options", schedule?.id],
+    queryFn: () => getScheduleRescheduleOptions(schedule!.id),
+    enabled: open && mode === "reschedule" && Boolean(schedule?.id),
+  })
+
+  const rescheduleMutation = useMutation({
+    mutationFn: (payload: { scheduledDate: string; scheduledTime?: string }) =>
+      rescheduleSchedule(schedule!.id, payload),
+    onMutate: () => {
+      const toastId = toast.loading("Reagendando atendimento...")
+      return { toastId }
+    },
+    onSuccess: async (_response, _variables, context) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["schedules"] }),
+        queryClient.invalidateQueries({ queryKey: ["analytics"] }),
+      ])
+      toast.success("Atendimento reagendado.", {
+        id: context?.toastId,
+        description: "A disponibilidade da equipe foi validada antes de salvar.",
+      })
+      onOpenChange(false)
+    },
+    onError: (error, _variables, context) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível reagendar o atendimento."), {
+        id: context?.toastId,
+      })
+    },
+  })
 
   if (!schedule) return null
 
@@ -60,8 +108,22 @@ export function ScheduleDetailsDialog({
   ]
 
   const isRecurringSchedule = Boolean(schedule.contractId && !schedule.isManual)
-  const canStartAttendance = schedule.status === "scheduled"
-  const showAttendanceAction = schedule.status === "scheduled" || schedule.status === "draft"
+  const canStartAttendance = schedule.status === "scheduled" || schedule.status === "rescheduled"
+  const canReschedule = ["draft", "scheduled", "rescheduled"].includes(schedule.status)
+  const showAttendanceAction = canStartAttendance || schedule.status === "draft"
+  const rescheduleOptions = optionsQuery.data?.data ?? []
+
+  const submitReschedule = (date: string, time: string) => {
+    if (!date) {
+      toast.error("Escolha uma data para reagendar.")
+      return
+    }
+
+    rescheduleMutation.mutate({
+      scheduledDate: date,
+      scheduledTime: time || schedule.time || "08:00",
+    })
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -94,6 +156,105 @@ export function ScheduleDetailsDialog({
               ) : null}
             </DialogHeader>
 
+            {mode === "reschedule" ? (
+              <div className={cn("space-y-5", isMobile ? "mt-12" : "mt-2")}>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-lg font-semibold text-foreground">Reagendar atendimento</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Escolha uma sugestão validada ou informe uma nova data e horário.
+                    </p>
+                  </div>
+                  {!isMobile ? (
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setMode("details")}>
+                      <ArrowLeft className="mr-2 h-4 w-4" />
+                      Voltar
+                    </Button>
+                  ) : null}
+                </div>
+
+                {isMobile ? (
+                  <Button type="button" variant="ghost" size="sm" className="pl-0" onClick={() => setMode("details")}>
+                    <ArrowLeft className="mr-2 h-4 w-4" />
+                    Voltar para detalhes
+                  </Button>
+                ) : null}
+
+                <div className="rounded-2xl border p-4">
+                  <div className="mb-3 flex items-center gap-2 text-sm font-medium">
+                    <CalendarDays className="h-4 w-4 text-primary" />
+                    Sugestões disponíveis
+                  </div>
+                  {optionsQuery.isLoading ? (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Procurando horários livres...
+                    </div>
+                  ) : (
+                    <div className="grid gap-2 sm:grid-cols-3">
+                      {rescheduleOptions.map((option) => (
+                        <Button
+                          key={`${option.date}-${option.time}`}
+                          type="button"
+                          variant="outline"
+                          className="h-auto justify-start rounded-2xl px-4 py-3 text-left"
+                          disabled={rescheduleMutation.isPending}
+                          onClick={() => submitReschedule(option.date, option.time)}
+                        >
+                          <span className="flex flex-col">
+                            <span className="font-semibold">{formatScheduleDate(option.date)}</span>
+                            <span className="text-xs text-muted-foreground">{option.time}</span>
+                          </span>
+                        </Button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-2xl border p-4">
+                  <div className="mb-3 flex items-center gap-2 text-sm font-medium">
+                    <Clock3 className="h-4 w-4 text-primary" />
+                    Escolher manualmente
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="reschedule-date">Data</Label>
+                      <Input
+                        id="reschedule-date"
+                        type="date"
+                        value={customDate}
+                        onChange={(event) => setCustomDate(event.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="reschedule-time">Horário</Label>
+                      <Input
+                        id="reschedule-time"
+                        type="time"
+                        value={customTime}
+                        onChange={(event) => setCustomTime(event.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    className="mt-4 w-full sm:w-auto"
+                    disabled={rescheduleMutation.isPending}
+                    onClick={() => submitReschedule(customDate, customTime)}
+                  >
+                    {rescheduleMutation.isPending ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Validando...
+                      </>
+                    ) : (
+                      "Salvar reagendamento"
+                    )}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <>
             <div className={cn("flex justify-center", isMobile ? "mt-12" : "mt-4")}>
               <Badge variant={isRecurringSchedule ? "secondary" : "outline"}>
                 {isRecurringSchedule ? "Atendimento recorrente" : "Atendimento avulso"}
@@ -178,30 +339,55 @@ export function ScheduleDetailsDialog({
                           : "O atendimento será liberado assim que o contrato estiver assinado."}
                       </p>
                     </div>
-                    <Button
-                      type="button"
-                      size="lg"
-                      className="min-w-[220px]"
-                      disabled={!canStartAttendance || isStartingAttendance}
-                      onClick={() => onStartAttendance(schedule)}
-                    >
-                      {isStartingAttendance ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Iniciando...
-                        </>
-                      ) : (
-                        "Iniciar atendimento"
-                      )}
-                    </Button>
+                    <div className="flex flex-wrap gap-2">
+                      {canReschedule ? (
+                        <Button
+                          type="button"
+                          size="lg"
+                          variant="outline"
+                          className="min-w-[160px]"
+                          onClick={() => setMode("reschedule")}
+                        >
+                          Reagendar
+                        </Button>
+                      ) : null}
+                      <Button
+                        type="button"
+                        size="lg"
+                        className="min-w-[220px]"
+                        disabled={!canStartAttendance || isStartingAttendance}
+                        onClick={() => onStartAttendance(schedule)}
+                      >
+                        {isStartingAttendance ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Iniciando...
+                          </>
+                        ) : (
+                          "Iniciar atendimento"
+                        )}
+                      </Button>
+                    </div>
                   </div>
                 </div>
               ) : null}
             </div>
+              </>
+            )}
           </div>
 
-          {showAttendanceAction && isMobile ? (
-            <div className="bg-background p-4">
+          {showAttendanceAction && isMobile && mode === "details" ? (
+            <div className="space-y-3 bg-background p-4">
+              {canReschedule ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-12 w-full rounded-2xl"
+                  onClick={() => setMode("reschedule")}
+                >
+                  Reagendar
+                </Button>
+              ) : null}
               <AttendanceStartSlider
                 disabled={!canStartAttendance || isStartingAttendance}
                 isSubmitting={isStartingAttendance}

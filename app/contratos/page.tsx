@@ -28,7 +28,7 @@ export default function ContratosPage() {
         <Sidebar />
       </div>
 
-      <main className="flex h-screen min-h-0 flex-1 flex-col overflow-hidden px-3 pb-4 md:px-4 lg:px-5 lg:ml-60">
+      <main className="flex min-h-screen flex-1 flex-col px-3 pb-4 md:h-screen md:min-h-0 md:overflow-hidden md:px-4 lg:px-5 lg:ml-60">
         <Header
           title="Contratos"
           description="Gerencie todos os contratos da Depclean."

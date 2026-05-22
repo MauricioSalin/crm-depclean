@@ -24,6 +24,7 @@ import type { ReactNode } from "react"
 import { listNotifications, markNotificationAsRead } from "@/lib/api/notifications"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { clearSession, getStoredAccessToken, getStoredUser } from "@/lib/auth/session"
+import { resolveAvatarUrl } from "@/lib/avatar"
 import { getNotificationHref } from "@/lib/notification-navigation"
 import { setMobileFiltersOpen as notifyMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 import { useSidebarCollapse } from "./sidebar-collapse-context"
@@ -221,7 +222,7 @@ export function Header({ title, description, titleAddon, headerActions, actions,
                   <DropdownMenuTrigger asChild>
                     <button className="flex items-center gap-2 pl-2 md:pl-3 border-l border-border cursor-pointer hover:opacity-80 transition-opacity">
                       <Avatar className="h-7 w-7 md:h-8 md:w-8 ring-2 ring-primary/20 transition-all duration-300 hover:ring-primary/40">
-                        <AvatarImage src={currentUser?.avatar || "/professional-avatar.jpg"} alt={currentUser?.name || "Usuário"} />
+                        <AvatarImage src={resolveAvatarUrl(currentUser?.avatar)} alt={currentUser?.name || "Usuário"} />
                         <AvatarFallback className="text-xs">
                           {(currentUser?.name || "Usuário")
                             .split(" ")
