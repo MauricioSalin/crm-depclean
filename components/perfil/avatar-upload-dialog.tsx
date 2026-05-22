@@ -1,9 +1,8 @@
 "use client"
 
-import { type PointerEvent, useEffect, useMemo, useRef, useState } from "react"
+import { type PointerEvent, type WheelEvent, useEffect, useMemo, useRef, useState } from "react"
 import { ImagePlus, Loader2, Upload, ZoomIn } from "lucide-react"
 
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -13,11 +12,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { resolveAvatarUrl } from "@/lib/avatar"
 import type { AvatarUploadVariant } from "@/lib/api/profile"
 
 const CROP_SIZE = 300
 const AVATAR_SIZES = [96, 192, 512]
+const SOURCE_IMAGE_MAX_FILE_SIZE = 10 * 1024 * 1024
+const AVATAR_VARIANT_MAX_FILE_SIZE = 2 * 1024 * 1024
+const ACCEPTED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"])
 
 type Point = {
   x: number
@@ -47,12 +48,14 @@ function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality?: number)
   return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, quality))
 }
 
+function formatFileSize(bytes: number) {
+  if (bytes >= 1024 * 1024) return `${Math.round(bytes / 1024 / 1024)} MB`
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`
+}
+
 export function AvatarUploadDialog({
   open,
   onOpenChange,
-  currentAvatar,
-  userName,
-  initials,
   saving = false,
   onSave,
 }: AvatarUploadDialogProps) {
@@ -60,7 +63,6 @@ export function AvatarUploadDialog({
   const imageRef = useRef<HTMLImageElement | null>(null)
   const dragRef = useRef<{ pointerId: number; start: Point; offset: Point } | null>(null)
   const [imageUrl, setImageUrl] = useState("")
-  const [imageName, setImageName] = useState("")
   const [naturalSize, setNaturalSize] = useState<ImageSize | null>(null)
   const [zoom, setZoom] = useState(1)
   const [offset, setOffset] = useState<Point>({ x: 0, y: 0 })
@@ -72,7 +74,6 @@ export function AvatarUploadDialog({
       if (current) URL.revokeObjectURL(current)
       return ""
     })
-    setImageName("")
     setNaturalSize(null)
     setZoom(1)
     setOffset({ x: 0, y: 0 })
@@ -114,11 +115,22 @@ export function AvatarUploadDialog({
     const file = files?.[0]
     if (!file) return
 
+    if (!ACCEPTED_IMAGE_TYPES.has(file.type)) {
+      setErrorMessage("Escolha uma imagem PNG, JPG ou WEBP.")
+      if (inputRef.current) inputRef.current.value = ""
+      return
+    }
+
+    if (file.size > SOURCE_IMAGE_MAX_FILE_SIZE) {
+      setErrorMessage(`Imagem muito grande. Envie uma foto de até ${formatFileSize(SOURCE_IMAGE_MAX_FILE_SIZE)}.`)
+      if (inputRef.current) inputRef.current.value = ""
+      return
+    }
+
     setImageUrl((current) => {
       if (current) URL.revokeObjectURL(current)
       return URL.createObjectURL(file)
     })
-    setImageName(file.name)
     setNaturalSize(null)
     setZoom(1)
     setOffset({ x: 0, y: 0 })
@@ -158,6 +170,14 @@ export function AvatarUploadDialog({
     }
   }
 
+  const handleWheel = (event: WheelEvent<HTMLDivElement>) => {
+    if (!imageUrl || !displaySize) return
+
+    event.preventDefault()
+    const nextZoom = clamp(zoom + (event.deltaY < 0 ? 0.08 : -0.08), 1, 3)
+    handleZoomChange(nextZoom)
+  }
+
   const createVariants = async () => {
     const image = imageRef.current
     if (!image || !naturalSize || !displaySize) {
@@ -189,6 +209,10 @@ export function AvatarUploadDialog({
       const blob = webpBlob ?? (await canvasToBlob(canvas, "image/png"))
       if (!blob) continue
 
+      if (blob.size > AVATAR_VARIANT_MAX_FILE_SIZE) {
+        throw new Error(`A foto otimizada ficou acima de ${formatFileSize(AVATAR_VARIANT_MAX_FILE_SIZE)}. Reduza o zoom ou escolha uma imagem menor.`)
+      }
+
       const extension = blob.type === "image/webp" ? "webp" : "png"
       variants.push({
         size,
@@ -215,7 +239,7 @@ export function AvatarUploadDialog({
 
   return (
     <Dialog open={open} onOpenChange={saving ? undefined : onOpenChange}>
-      <DialogContent className="max-w-xl">
+      <DialogContent className="max-w-md">
         <DialogHeader className="pr-6">
           <DialogTitle>Alterar foto do perfil</DialogTitle>
           <DialogDescription>
@@ -231,8 +255,7 @@ export function AvatarUploadDialog({
           onChange={(event) => handleFileChange(event.target.files)}
         />
 
-        <div className="grid gap-5 md:grid-cols-[1fr_150px]">
-          <div className="space-y-4">
+        <div className="space-y-4">
             {imageUrl ? (
               <div
                 className="relative mx-auto h-[300px] w-[300px] touch-none overflow-hidden rounded-2xl bg-muted shadow-inner"
@@ -240,6 +263,7 @@ export function AvatarUploadDialog({
                 onPointerMove={handlePointerMove}
                 onPointerUp={handlePointerEnd}
                 onPointerCancel={handlePointerEnd}
+                onWheel={handleWheel}
               >
                 <img
                   ref={imageRef}
@@ -261,23 +285,28 @@ export function AvatarUploadDialog({
                     setOffset({ x: 0, y: 0 })
                     setZoom(1)
                   }}
+                  onError={() => {
+                    setErrorMessage("Não foi possível abrir essa imagem. Escolha outra foto em PNG, JPG ou WEBP.")
+                    setNaturalSize(null)
+                  }}
                 />
+                <div className="pointer-events-none absolute left-1/2 top-1/2 h-[286px] w-[286px] -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-white/90 shadow-[0_0_0_999px_rgba(0,0,0,0.45)]" />
                 <div className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-black/10" />
               </div>
             ) : (
               <button
                 type="button"
-                className="flex h-[300px] w-full flex-col items-center justify-center rounded-2xl border border-dashed bg-muted/20 text-center transition-colors hover:bg-muted/40"
+                className="group mx-auto flex h-[210px] w-full max-w-[360px] cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed bg-muted/20 text-center transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/50 hover:bg-primary/5 hover:shadow-md"
                 onClick={() => inputRef.current?.click()}
               >
-                <ImagePlus className="mb-3 h-9 w-9 text-primary" />
+                <ImagePlus className="mb-3 h-9 w-9 text-primary transition-transform duration-300 group-hover:scale-105" />
                 <span className="font-semibold">Selecionar imagem</span>
-                <span className="mt-1 text-sm text-muted-foreground">PNG, JPG ou WEBP</span>
+                <span className="mt-1 text-sm text-muted-foreground">PNG, JPG ou WEBP até {formatFileSize(SOURCE_IMAGE_MAX_FILE_SIZE)}</span>
               </button>
             )}
 
             {imageUrl ? (
-              <div className="space-y-3">
+              <div>
                 <div className="flex items-center gap-3">
                   <ZoomIn className="h-4 w-4 text-muted-foreground" />
                   <input
@@ -287,45 +316,13 @@ export function AvatarUploadDialog({
                     step="0.01"
                     value={zoom}
                     onChange={(event) => handleZoomChange(Number(event.target.value))}
-                    className="h-2 flex-1 accent-primary"
+                    className="h-2 flex-1 cursor-pointer accent-primary"
                   />
-                </div>
-                <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-                  <span className="truncate">{imageName}</span>
-                  <button type="button" className="font-medium text-primary hover:opacity-80" onClick={() => inputRef.current?.click()}>
-                    Trocar imagem
-                  </button>
                 </div>
               </div>
             ) : null}
 
             {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
-          </div>
-
-          <div className="flex flex-col items-center justify-center rounded-2xl border bg-muted/20 p-4 text-center">
-            {imageUrl && displaySize ? (
-              <div className="relative h-24 w-24 overflow-hidden rounded-full bg-muted ring-4 ring-primary/15">
-                <img
-                  src={imageUrl}
-                  alt={userName}
-                  draggable={false}
-                  className="absolute left-1/2 top-1/2 max-w-none select-none"
-                  style={{
-                    width: displaySize.width * (96 / CROP_SIZE),
-                    height: displaySize.height * (96 / CROP_SIZE),
-                    transform: `translate(calc(-50% + ${offset.x * (96 / CROP_SIZE)}px), calc(-50% + ${offset.y * (96 / CROP_SIZE)}px))`,
-                  }}
-                />
-              </div>
-            ) : (
-              <Avatar className="h-24 w-24 ring-4 ring-primary/15">
-                <AvatarImage src={resolveAvatarUrl(currentAvatar)} alt={userName} />
-                <AvatarFallback>{initials}</AvatarFallback>
-              </Avatar>
-            )}
-            <p className="mt-3 text-sm font-semibold">{userName}</p>
-            <p className="mt-1 text-xs text-muted-foreground">Prévia circular</p>
-          </div>
         </div>
 
         <DialogFooter>

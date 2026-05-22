@@ -41,7 +41,7 @@ import { toast } from "@/components/ui/use-toast"
 import { ServiceClausesDialog } from "@/components/servicos/service-clauses-dialog"
 import { buildApiFileUrl } from "@/lib/api/client"
 import { getClientAttachments, getClientById, type ClientAttachmentRecord } from "@/lib/api/clients"
-import { getContractById, remindContractSigner, sendContractToClicksign, updateInstallment } from "@/lib/api/contracts"
+import { getContractById, remindContractSigner, sendContractToClicksign, updateInstallment, type ContractRecord } from "@/lib/api/contracts"
 import { listEmployees } from "@/lib/api/employees"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { listSchedules } from "@/lib/api/schedules"
@@ -56,6 +56,8 @@ interface ContractDetailProps {
 const contractDetailTabs = ["services", "installments", "units", "schedule"] as const
 
 type ContractDetailTab = (typeof contractDetailTabs)[number]
+
+type ClicksignSignerRecord = NonNullable<ContractRecord["clicksign"]>["signers"][number]
 
 const defaultContractDetailTab: ContractDetailTab = "services"
 
@@ -195,9 +197,62 @@ const getClicksignStatusLabel = (status?: string) => {
       return "Expirado"
     case "deadline_expired":
       return "Prazo expirado"
+    case "waiting_client":
+      return "Aguardando cliente"
+    case "waiting_witness":
+      return "Aguardando testemunha"
     default:
       return status || "Não enviado"
   }
+}
+
+const normalizeClicksignRole = (role?: string) => String(role ?? "").toLowerCase()
+
+const isClicksignClientRole = (role?: string) => {
+  const normalizedRole = normalizeClicksignRole(role)
+  return normalizedRole.includes("cliente") || normalizedRole.includes("assessor") || normalizedRole.includes("contractor")
+}
+
+const isClicksignWitnessRole = (role?: string) => {
+  const normalizedRole = normalizeClicksignRole(role)
+  return normalizedRole.includes("testemunha") || normalizedRole.includes("witness")
+}
+
+const isClicksignInternalRole = (role?: string) => {
+  const normalizedRole = normalizeClicksignRole(role)
+  return normalizedRole.includes("depclean") || normalizedRole.includes("assinante") || normalizedRole.includes("contractee")
+}
+
+const getClicksignSignerRoleLabel = (role?: string) => {
+  if (isClicksignWitnessRole(role)) return "Testemunha"
+  if (isClicksignInternalRole(role)) return "Assinante"
+  if (normalizeClicksignRole(role).includes("assessor")) return "Assessor"
+  return "Cliente"
+}
+
+const isSignedStatus = (status?: string) => {
+  const normalizedStatus = status?.toLowerCase() || ""
+  return ["signed", "active", "closed", "finished", "completed", "done"].includes(normalizedStatus)
+}
+
+const getClicksignSignerDisplayStatus = (
+  signer: ClicksignSignerRecord,
+  signers: ClicksignSignerRecord[],
+) => {
+  const normalizedStatus = signer.status?.toLowerCase() || "pending"
+  const finalStatuses = ["signed", "closed", "finished", "completed", "done", "cancelled", "canceled", "refused", "expired", "deadline_expired"]
+  if (finalStatuses.includes(normalizedStatus)) return normalizedStatus
+
+  const clientSigners = signers.filter((item) => isClicksignClientRole(item.role))
+  const witnessSigners = signers.filter((item) => isClicksignWitnessRole(item.role))
+  const clientPhaseComplete = clientSigners.length === 0 || clientSigners.every((item) => isSignedStatus(item.status))
+  const witnessPhaseComplete = witnessSigners.length === 0 || witnessSigners.every((item) => isSignedStatus(item.status))
+
+  if (isClicksignWitnessRole(signer.role) && !clientPhaseComplete) return "waiting_client"
+  if (isClicksignInternalRole(signer.role) && witnessSigners.length > 0 && !witnessPhaseComplete) return "waiting_witness"
+  if (isClicksignInternalRole(signer.role) && !clientPhaseComplete) return "waiting_client"
+
+  return normalizedStatus
 }
 
 const getClicksignSignerStatusBadge = (status?: string) => {
@@ -228,6 +283,10 @@ const getClicksignSignerStatusBadge = (status?: string) => {
       return <Badge className="bg-gray-100 text-gray-700 hover:bg-gray-100">Expirado</Badge>
     case "deadline_expired":
       return <Badge className="bg-purple-100 text-purple-700 hover:bg-purple-100">Prazo expirado</Badge>
+    case "waiting_client":
+      return <Badge className="bg-stone-100 text-stone-700 hover:bg-stone-100">Aguardando cliente</Badge>
+    case "waiting_witness":
+      return <Badge className="bg-stone-100 text-stone-700 hover:bg-stone-100">Aguardando testemunha</Badge>
     default:
       return <Badge variant="secondary">{getClicksignStatusLabel(status)}</Badge>
   }
@@ -235,12 +294,7 @@ const getClicksignSignerStatusBadge = (status?: string) => {
 
 const isSignerReminderAvailable = (status?: string) => {
   const normalizedStatus = status?.toLowerCase() || "pending"
-  return !["signed", "closed", "finished", "completed", "done", "cancelled", "canceled", "refused", "expired", "deadline_expired"].includes(normalizedStatus)
-}
-
-const isSignedStatus = (status?: string) => {
-  const normalizedStatus = status?.toLowerCase() || ""
-  return ["signed", "active", "closed", "finished", "completed", "done"].includes(normalizedStatus)
+  return !["signed", "closed", "finished", "completed", "done", "cancelled", "canceled", "refused", "expired", "deadline_expired", "waiting_client", "waiting_witness"].includes(normalizedStatus)
 }
 
 export function ContractDetail({ contractId }: ContractDetailProps) {
@@ -695,34 +749,42 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
               <TableHeader>
                 <TableRow>
                   <TableHead sortable={false}>Signatário</TableHead>
+                  <TableHead sortable={false}>Papel</TableHead>
                   <TableHead sortable={false}>E-mail</TableHead>
                   <TableHead sortable={false}>Status</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {contract.clicksign.signers.map((signer) => (
-                  <TableRow key={`${signer.signerId}-${signer.email}`}>
-                    <TableCell className="font-medium">{signer.name}</TableCell>
-                    <TableCell>{signer.email}</TableCell>
-                    <TableCell>{getClicksignSignerStatusBadge(signer.status)}</TableCell>
-                    <TableCell className="text-right">
-                      {isSignerReminderAvailable(signer.status) ? (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="gap-2"
-                          onClick={() => remindSignerMutation.mutate(signer.signerId)}
-                          disabled={remindSignerMutation.isPending}
-                        >
-                          <BellRing className="h-4 w-4" />
-                          {remindSignerMutation.isPending ? "Enviando..." : "Lembrete"}
-                        </Button>
-                      ) : null}
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {contract.clicksign.signers.map((signer) => {
+                  const displayStatus = getClicksignSignerDisplayStatus(signer, contract.clicksign?.signers ?? [])
+
+                  return (
+                    <TableRow key={`${signer.signerId}-${signer.email}`}>
+                      <TableCell className="font-medium">{signer.name}</TableCell>
+                      <TableCell>
+                        <Badge variant="secondary">{getClicksignSignerRoleLabel(signer.role)}</Badge>
+                      </TableCell>
+                      <TableCell>{signer.email}</TableCell>
+                      <TableCell>{getClicksignSignerStatusBadge(displayStatus)}</TableCell>
+                      <TableCell className="text-right">
+                        {isSignerReminderAvailable(displayStatus) ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="gap-2"
+                            onClick={() => remindSignerMutation.mutate(signer.signerId)}
+                            disabled={remindSignerMutation.isPending}
+                          >
+                            <BellRing className="h-4 w-4" />
+                            {remindSignerMutation.isPending ? "Enviando..." : "Lembrete"}
+                          </Button>
+                        ) : null}
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
               </TableBody>
             </Table>
           </div>

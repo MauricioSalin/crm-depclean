@@ -32,14 +32,14 @@ export function ServiceDistribution({
   const total = hasServicesByTeamData ? servicesByTeamData.reduce((acc, curr) => acc + curr.services, 0) : 0
 
   return (
-    <Card className="h-full overflow-hidden hover:shadow-xl transition-all duration-500">
+    <Card className="flex h-full min-h-[360px] flex-col overflow-hidden hover:shadow-xl transition-all duration-500">
       <CardHeader className="pb-3">
         <CardTitle className="text-base">Serviços por Equipe</CardTitle>
         {showDescription && (
           <CardDescription>Distribuição de serviços entre as equipes</CardDescription>
         )}
       </CardHeader>
-      <CardContent className="flex flex-col items-center gap-4">
+      <CardContent className="flex flex-1 flex-col items-center justify-center gap-4">
         {isLoading ? (
           <>
             <div className="relative my-2 h-[180px] w-[180px] animate-pulse rounded-full bg-muted">
@@ -117,7 +117,7 @@ export function FinancialOverview() {
   const isLoading = financialQuery.isLoading || (financialQuery.isFetching && !financialQuery.data)
   const financeData = financialQuery.data?.data.financeHealthData ?? [
     { name: 'Pagas', value: 0 },
-    { name: 'Pendentes', value: 0 },
+    { name: 'Em atraso', value: 0 },
     { name: 'Vencidas', value: 0 },
   ]
   const total = financeData.reduce((acc, curr) => acc + curr.value, 0)

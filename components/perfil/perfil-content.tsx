@@ -242,9 +242,9 @@ export function PerfilContent() {
         <CardContent>
           <div className="flex items-center gap-6">
             <div className="relative group shrink-0">
-              <Avatar className="h-20 w-20 ring-4 ring-primary/20">
+              <Avatar className="h-24 w-24 ring-4 ring-primary/20">
                 <AvatarImage src={resolveAvatarUrl(formData.avatar)} alt={formData.name} />
-                <AvatarFallback className="text-xl">{profileInitials}</AvatarFallback>
+                <AvatarFallback className="text-2xl">{profileInitials}</AvatarFallback>
               </Avatar>
               <button
                 type="button"
@@ -252,7 +252,7 @@ export function PerfilContent() {
                 onClick={() => setAvatarDialog(true)}
                 aria-label="Alterar foto do perfil"
               >
-                <Camera className="h-5 w-5 text-white" />
+                <Camera className="h-6 w-6 text-white" />
               </button>
             </div>
             <div className="min-w-0 flex-1">

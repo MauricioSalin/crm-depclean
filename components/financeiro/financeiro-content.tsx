@@ -53,6 +53,7 @@ import {
   PieChart,
   Pie,
   Cell,
+  Legend,
 } from "recharts"
 
 interface FinanceiroContentProps {
@@ -65,12 +66,12 @@ interface FinanceiroContentProps {
 type InstallmentStatusAction = "pending" | "paid" | "overdue"
 
 const EMPTY_MONTHLY_REVENUE_DATA = [
-  { month: "Mês 1", value: 0 },
-  { month: "Mês 2", value: 0 },
-  { month: "Mês 3", value: 0 },
-  { month: "Mês 4", value: 0 },
-  { month: "Mês 5", value: 0 },
-  { month: "Mês 6", value: 0 },
+  { month: "Mês 1", value: 0, paidValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
+  { month: "Mês 2", value: 0, paidValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
+  { month: "Mês 3", value: 0, paidValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
+  { month: "Mês 4", value: 0, paidValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
+  { month: "Mês 5", value: 0, paidValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
+  { month: "Mês 6", value: 0, paidValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
 ]
 
 const EMPTY_DONUT_DATA = [{ name: "Sem dados", value: 1 }]
@@ -163,9 +164,11 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
   const summary = financialQuery.data?.data.summary ?? {
     totalPaid: 0,
     totalPending: 0,
+    totalLate: 0,
     totalOverdue: 0,
     paidCount: 0,
     pendingCount: 0,
+    lateCount: 0,
     overdueCount: 0,
     totalCount: 0,
     adherenceRate: 0,
@@ -173,10 +176,10 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
   const monthlyRevenueData = financialQuery.data?.data.monthlyRevenueData ?? []
   const financeHealthData = financialQuery.data?.data.financeHealthData ?? [
     { name: "Pagas", value: 0 },
-    { name: "Pendentes", value: 0 },
+    { name: "Em atraso", value: 0 },
     { name: "Vencidas", value: 0 },
   ]
-  const hasMonthlyRevenueData = monthlyRevenueData.some((item) => item.value > 0)
+  const hasMonthlyRevenueData = monthlyRevenueData.some((item) => item.paidValue > 0 || item.lateValue > 0 || item.overdueValue > 0)
   const monthlyRevenueChartData = monthlyRevenueData.length > 0 ? monthlyRevenueData : EMPTY_MONTHLY_REVENUE_DATA
   const hasFinanceHealthData = financeHealthData.some((item) => item.value > 0)
   const financeHealthChartData = hasFinanceHealthData ? financeHealthData : EMPTY_DONUT_DATA
@@ -283,9 +286,10 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card className="p-4 md:p-5 lg:col-span-2" data-report-chart="faturamento-mensal">
           <h3 className="font-semibold text-base mb-4">Faturamento Mensal</h3>
-          <div className="relative h-[250px] w-full">
+          <div className="-mx-1 overflow-x-auto px-1 pb-2">
+          <div className="relative h-[250px] min-w-[560px] sm:min-w-0">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={monthlyRevenueChartData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
+              <BarChart data={monthlyRevenueChartData} margin={{ top: 5, right: 8, left: 0, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                 <XAxis
                   dataKey="month"
@@ -293,6 +297,7 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
                   className="text-muted-foreground"
                 />
                 <YAxis
+                  width={34}
                   tick={{ fontSize: 12 }}
                   className="text-muted-foreground"
                   tickFormatter={(value) => `${(value / 1000).toFixed(0)}k`}
@@ -305,11 +310,30 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
                     borderRadius: '8px',
                     fontSize: '12px'
                   }}
-                  formatter={(value: number) => [formatCurrency(value), 'Faturamento']}
+                  formatter={(value: number, name: string) => [
+                    formatCurrency(value),
+                    name === "paidValue" ? "Pagas" : name === "lateValue" ? "Em atraso" : name === "overdueValue" ? "Vencidas" : "Faturamento",
+                  ]}
+                />
+                <Legend />
+                <Bar
+                  dataKey="paidValue"
+                  name="Pagas"
+                  fill={hasMonthlyRevenueData ? "var(--primary)" : EMPTY_CHART_COLOR}
+                  minPointSize={hasMonthlyRevenueData ? 0 : 3}
+                  radius={[4, 4, 0, 0]}
                 />
                 <Bar
-                  dataKey="value"
-                  fill={hasMonthlyRevenueData ? "var(--primary)" : EMPTY_CHART_COLOR}
+                  dataKey="lateValue"
+                  name="Em atraso"
+                  fill={hasMonthlyRevenueData ? "#F59E0B" : "#F6EFE4"}
+                  minPointSize={hasMonthlyRevenueData ? 0 : 3}
+                  radius={[4, 4, 0, 0]}
+                />
+                <Bar
+                  dataKey="overdueValue"
+                  name="Vencidas"
+                  fill={hasMonthlyRevenueData ? "#EF4444" : "#F3E7E7"}
                   minPointSize={hasMonthlyRevenueData ? 0 : 3}
                   radius={[4, 4, 0, 0]}
                 />
@@ -320,6 +344,7 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
                 Sem faturamento no período.
               </div>
             ) : null}
+          </div>
           </div>
         </Card>
 

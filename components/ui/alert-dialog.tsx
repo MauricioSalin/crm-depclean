@@ -5,6 +5,7 @@ import * as AlertDialogPrimitive from '@radix-ui/react-alert-dialog'
 
 import { cn } from '@/lib/utils'
 import { buttonVariants } from '@/components/ui/button'
+import { useBodyScrollLock } from '@/components/ui/use-body-scroll-lock'
 
 function AlertDialog({
   ...props
@@ -48,6 +49,8 @@ function AlertDialogContent({
   className,
   ...props
 }: React.ComponentProps<typeof AlertDialogPrimitive.Content>) {
+  useBodyScrollLock()
+
   return (
     <AlertDialogPortal>
       <AlertDialogOverlay />

@@ -396,7 +396,7 @@ export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle 
             ) : teamsView.length === 0 ? (
               <EmptyState icon={Users} title="Nenhuma equipe encontrada." className="sm:col-span-2" />
             ) : paginatedTeams.map((team) => (
-              <Card key={team.id} className="overflow-hidden transition-shadow hover:shadow-lg">
+              <Card key={team.id} className="flex h-full flex-col overflow-hidden transition-shadow hover:shadow-lg">
                 <CardHeader className="pb-2">
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex min-w-0 items-center gap-3">
@@ -408,23 +408,10 @@ export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle 
                       </div>
                       <CardTitle className="text-base leading-tight">{team.name}</CardTitle>
                     </div>
-
-                    <div className="flex gap-1 shrink-0">
-                      <Button variant="ghost" size="icon" onClick={() => handleEdit(team)}>
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setPendingDelete({ id: team.id, label: team.name })}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </div>
                   </div>
                 </CardHeader>
 
-                <CardContent>
+                <CardContent className="flex flex-1 flex-col">
                   <div className="space-y-3">
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Users className="h-4 w-4" />
@@ -438,6 +425,22 @@ export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle 
                         </Badge>
                       ))}
                     </div>
+                  </div>
+                  <div className="mt-auto grid grid-cols-2 gap-2 pt-4">
+                    <Button type="button" variant="outline" size="sm" className="h-8 rounded-full" onClick={() => handleEdit(team)}>
+                      <Edit className="mr-2 h-4 w-4" />
+                      Editar
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 rounded-full text-destructive hover:text-destructive"
+                      onClick={() => setPendingDelete({ id: team.id, label: team.name })}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Excluir
+                    </Button>
                   </div>
                 </CardContent>
               </Card>

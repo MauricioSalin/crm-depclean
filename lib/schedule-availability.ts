@@ -104,6 +104,71 @@ export function formatAvailabilitySlot(date: string, time: string) {
   return `${day}/${month}/${year} às ${time}`
 }
 
+export function getAvailableRescheduleTimes(params: {
+  schedules: ScheduleRecord[]
+  teams: TeamRecord[]
+  schedule: ScheduleRecord | null | undefined
+  date: string
+  now?: Date
+  startMinutes?: number
+  endMinutes?: number
+  stepMinutes?: number
+}) {
+  const { schedule, date } = params
+  if (!schedule || !date) return []
+
+  const durationConfig = getScheduleDurationConfig(schedule)
+  const durationMinutes = scheduleDurationToMinutes(durationConfig.duration, durationConfig.durationType)
+  const stepMinutes = params.stepMinutes ?? SLOT_STEP_MINUTES
+  const startMinutes = params.startMinutes ?? 8 * 60
+  const endMinutes = params.endMinutes ?? 18 * 60
+  const todayKey = dateKeyFromLocalDate(params.now ?? new Date())
+
+  if (date < todayKey || durationMinutes <= 0 || durationMinutes > endMinutes - startMinutes) {
+    return []
+  }
+
+  const nowMinutes = minutesFromDate(params.now ?? new Date())
+  const firstSlot = date === todayKey ? Math.max(startMinutes, roundToNextStep(nowMinutes)) : startMinutes
+  const slots: string[] = []
+  const baseFormData = {
+    teamIds: schedule.teams.map((team) => team.id),
+    employeeIds: schedule.additionalEmployees.map((employee) => employee.id),
+    date,
+    durationType: durationConfig.durationType,
+    duration: durationConfig.duration,
+  }
+
+  for (let start = firstSlot; start + durationMinutes <= endMinutes; start += stepMinutes) {
+    const time = timeFromMinutes(start)
+    const availability = checkScheduleAvailability({
+      schedules: params.schedules,
+      teams: params.teams,
+      ignoreScheduleId: schedule.id,
+      formData: {
+        ...baseFormData,
+        time,
+      },
+    })
+
+    if (availability.available) {
+      slots.push(time)
+    }
+  }
+
+  return slots
+}
+
+export function isRescheduleDateAvailable(params: {
+  schedules: ScheduleRecord[]
+  teams: TeamRecord[]
+  schedule: ScheduleRecord | null | undefined
+  date: string
+  now?: Date
+}) {
+  return getAvailableRescheduleTimes(params).length > 0
+}
+
 function findNextAvailableSlot(params: {
   date: string
   startMinutes: number
@@ -185,6 +250,34 @@ function timeFromMinutes(totalMinutes: number) {
 
 function roundToNextStep(totalMinutes: number) {
   return Math.ceil(totalMinutes / SLOT_STEP_MINUTES) * SLOT_STEP_MINUTES
+}
+
+function getScheduleDurationConfig(schedule: ScheduleRecord) {
+  const durationValue = Number(schedule.durationValue)
+  if (Number.isFinite(durationValue) && durationValue > 0 && schedule.durationType) {
+    return {
+      duration: durationValue,
+      durationType: schedule.durationType as ScheduleDurationType,
+    }
+  }
+
+  const durationMinutes = Number(schedule.duration)
+  return {
+    duration: Number.isFinite(durationMinutes) && durationMinutes > 0 ? durationMinutes / 60 : 1,
+    durationType: "hours" as ScheduleDurationType,
+  }
+}
+
+function dateKeyFromLocalDate(date: Date) {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-")
+}
+
+function minutesFromDate(date: Date) {
+  return date.getHours() * 60 + date.getMinutes()
 }
 
 function addDays(dateKey: string, days: number) {

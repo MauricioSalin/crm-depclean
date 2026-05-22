@@ -171,7 +171,11 @@ export function Header({ title, description, titleAddon, headerActions, actions,
                       )}
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-80 max-w-[calc(100vw-2rem)] overflow-hidden">
+                  <DropdownMenuContent
+                    align="end"
+                    collisionPadding={12}
+                    className="w-[calc(100vw-1.5rem)] max-w-[calc(100vw-1.5rem)] overflow-hidden sm:w-80 sm:max-w-[calc(100vw-2rem)]"
+                  >
                     <DropdownMenuLabel className="flex items-center justify-between px-4">
                       <span>Notificações</span>
                       <Badge variant="secondary" className="text-xs">
@@ -288,8 +292,8 @@ export function Header({ title, description, titleAddon, headerActions, actions,
         <div className="flex items-end justify-between gap-3">
           <div>
             <div className="mb-1 flex items-center gap-2">
-              <h1 className="text-xl font-bold text-foreground md:text-2xl lg:text-3xl">{title}</h1>
-              {titleAddon}
+              <h1 className="text-xl font-bold leading-none text-foreground md:text-2xl lg:text-3xl">{title}</h1>
+              {titleAddon && <div className="flex items-center pt-0.5">{titleAddon}</div>}
             </div>
             <p className="text-xs text-muted-foreground md:text-sm">{description}</p>
           </div>

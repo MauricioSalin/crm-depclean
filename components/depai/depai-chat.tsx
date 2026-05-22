@@ -110,10 +110,21 @@ type MarkdownSegment =
 
 const MERMAID_START_PATTERN = /^(?:%%\{[\s\S]*?\}%%\s*)?(?:flowchart|graph|sequenceDiagram|classDiagram|classDiagram-v2|stateDiagram|stateDiagram-v2|erDiagram|journey|gantt|pie|gitGraph|mindmap|timeline|quadrantChart|requirementDiagram|C4Context|C4Container|C4Component|C4Dynamic|sankey-beta|xychart-beta|block-beta)\b/i
 const SVG_START_PATTERN = /^\s*<svg(?:\s|>)/i
+const SVG_BLOCK_PATTERN = /<svg\b[\s\S]*?<\/svg>/i
+
+function extractSvgSource(value: string) {
+  const match = value.match(SVG_BLOCK_PATTERN)
+  return match?.[0]?.trim() ?? null
+}
+
+function isXmlLikeSource(value: string) {
+  return /^\s*(?:<\?xml|<!doctype|<!--|<svg|<html|<body|<div|<defs|<g|<path|<rect|<text|<line|<circle|<ellipse|<polygon|<polyline)\b/i.test(value)
+}
 
 function isMermaidSource(value: string) {
   const trimmed = value.trim()
   if (!trimmed) return false
+  if (extractSvgSource(trimmed) || isXmlLikeSource(trimmed)) return false
 
   if (trimmed.startsWith("---")) {
     const [, maybeDiagram] = trimmed.split(/^---\s*$/m)
@@ -124,10 +135,12 @@ function isMermaidSource(value: string) {
 }
 
 function isMermaidFragment(value: string) {
+  if (extractSvgSource(value) || isXmlLikeSource(value)) return false
+
   const lines = value
     .split(/\r?\n/)
     .map((line) => line.trim())
-    .filter(Boolean)
+    .filter((line) => Boolean(line) && !line.startsWith("<"))
 
   if (lines.length < 2) return false
   const arrowLines = lines.filter((line) => /(?:-->|---|-.->|==>)/.test(line) && /[A-Za-z0-9_][\w-]*/.test(line))
@@ -142,7 +155,26 @@ function normalizeMermaidSource(value: string) {
 }
 
 function isSvgSource(value: string) {
-  return SVG_START_PATTERN.test(value.trim())
+  const trimmed = value.trim()
+  return SVG_START_PATTERN.test(trimmed) || Boolean(extractSvgSource(trimmed))
+}
+
+function pushMarkdownWithInlineSvg(segments: MarkdownSegment[], content: string) {
+  if (!content) return
+
+  const pattern = /<svg\b[\s\S]*?<\/svg>/gi
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+
+  while ((match = pattern.exec(content)) !== null) {
+    const before = content.slice(lastIndex, match.index)
+    if (before) segments.push({ type: "markdown", content: before })
+    segments.push({ type: "svg", content: match[0].trim() })
+    lastIndex = match.index + match[0].length
+  }
+
+  const rest = content.slice(lastIndex)
+  if (rest) segments.push({ type: "markdown", content: rest })
 }
 
 function parseMarkdownSegments(content: string): MarkdownSegment[] {
@@ -154,13 +186,14 @@ function parseMarkdownSegments(content: string): MarkdownSegment[] {
   while ((match = codeFencePattern.exec(content)) !== null) {
     const [fullMatch, languageLine = "", code = ""] = match
     const before = content.slice(lastIndex, match.index)
-    if (before) segments.push({ type: "markdown", content: before })
+    pushMarkdownWithInlineSvg(segments, before)
 
     const language = languageLine.trim().split(/\s+/)[0]?.toLowerCase() ?? ""
-    if (language === "mermaid" || isMermaidSource(code) || isMermaidFragment(code)) {
+    const svgSource = extractSvgSource(code)
+    if (language === "svg" || language === "xml" || svgSource || isSvgSource(code)) {
+      segments.push({ type: "svg", content: svgSource ?? code.trim() })
+    } else if (language === "mermaid" || isMermaidSource(code) || isMermaidFragment(code)) {
       segments.push({ type: "mermaid", content: normalizeMermaidSource(code) })
-    } else if (language === "svg" || isSvgSource(code)) {
-      segments.push({ type: "svg", content: code.trim() })
     } else {
       segments.push({ type: "markdown", content: fullMatch })
     }
@@ -169,7 +202,7 @@ function parseMarkdownSegments(content: string): MarkdownSegment[] {
   }
 
   const rest = content.slice(lastIndex)
-  if (rest) segments.push({ type: "markdown", content: rest })
+  pushMarkdownWithInlineSvg(segments, rest)
   return segments.length > 0 ? segments : [{ type: "markdown", content }]
 }
 
@@ -876,7 +909,7 @@ function SvgDiagram({ source }: { source: string }) {
         </Button>
       </div>
 
-      <div ref={svgRef} className="overflow-x-auto rounded-xl bg-white p-4">
+      <div ref={svgRef} className="max-h-[70vh] overflow-auto rounded-xl bg-white p-4">
         {svg ? (
           <div
             className="[&_svg]:mx-auto [&_svg]:h-auto [&_svg]:max-w-full"
@@ -909,6 +942,7 @@ function MermaidDiagram({ chart }: { chart: string }) {
         const mermaid = (await import("mermaid")).default
         mermaid.initialize({
           startOnLoad: false,
+          suppressErrorRendering: true,
           securityLevel: "strict",
           theme: "base",
           themeVariables: {
@@ -925,6 +959,11 @@ function MermaidDiagram({ chart }: { chart: string }) {
             noteBorderColor: "#84cc16",
           },
         })
+        const canRender = await mermaid.parse(chart, { suppressErrors: true })
+        if (!canRender) {
+          if (!cancelled) setErrorMessage("Não foi possível renderizar este fluxograma.")
+          return
+        }
         const renderId = `depai-mermaid-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
         const result = await mermaid.render(renderId, chart)
         if (!cancelled) setSvg(result.svg)
@@ -977,7 +1016,7 @@ function MermaidDiagram({ chart }: { chart: string }) {
         </Button>
       </div>
 
-      <div ref={diagramRef} className="overflow-x-auto rounded-xl bg-white p-4">
+      <div ref={diagramRef} className="max-h-[70vh] overflow-auto rounded-xl bg-white p-4">
         {svg ? (
           <div
             className="[&_svg]:mx-auto [&_svg]:h-auto [&_svg]:max-w-full"
@@ -1456,8 +1495,23 @@ export function DepAIChat({ compact = false }: { compact?: boolean }) {
         </div>
       </section>
 
-      <aside className={`h-full shrink-0 overflow-hidden bg-background/95 transition-[width] duration-300 ease-out ${historyOpen ? "w-[340px]" : "w-0"}`}>
-        <div className="flex h-full w-[340px] flex-col p-4">
+      {historyOpen && (
+        <button
+          type="button"
+          className="absolute inset-0 z-30 bg-background/65 backdrop-blur-[1px] md:hidden"
+          onClick={() => setHistoryOpen(false)}
+          aria-label="Fechar histórico"
+        />
+      )}
+
+      <aside
+        className={`absolute inset-y-0 right-0 z-40 h-full w-[min(calc(100vw-1.5rem),340px)] overflow-hidden bg-background/95 shadow-2xl shadow-black/10 backdrop-blur-sm transition-[opacity,transform] duration-300 ease-out md:relative md:inset-auto md:z-auto md:shrink-0 md:transition-[width,opacity,transform] md:shadow-none md:backdrop-blur-0 ${
+          historyOpen
+            ? "translate-x-0 opacity-100 md:w-[340px]"
+            : "pointer-events-none translate-x-full opacity-0 md:pointer-events-auto md:w-0 md:translate-x-0 md:opacity-100"
+        }`}
+      >
+        <div className="flex h-full w-[min(calc(100vw-1.5rem),340px)] flex-col p-4 md:w-[340px]">
           <div className="mb-4 flex items-start justify-between gap-3">
             <div>
               <p className="text-sm font-semibold text-foreground">{"Histórico"}</p>

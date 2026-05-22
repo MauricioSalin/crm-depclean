@@ -5,6 +5,13 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Skeleton } from "@/components/ui/skeleton"
+import { SwipeableNotification } from "@/components/dashboard/swipeable-notification"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import {
   Bell,
   Check,
@@ -13,6 +20,7 @@ import {
   Calendar,
   DollarSign,
   FileText,
+  MoreHorizontal,
   Trash2,
   MessageCircle,
 } from "lucide-react"
@@ -115,73 +123,91 @@ export function NotificacoesContent({
           {[...notificationsList]
             .sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime())
             .map((notification) => (
-              <Card
+              <SwipeableNotification
                 key={notification.id}
-                className={`cursor-pointer transition-all hover:bg-muted/30 ${!notification.isRead ? "border-l-4 border-l-primary" : ""}`}
-                onClick={() => onOpenNotification(notification)}
+                isRead={notification.isRead}
+                onMarkRead={() => onMarkAsRead(notification.id)}
+                dismissOnMarkRead={false}
               >
-                <CardContent className="p-4">
-                  <div className="flex items-start gap-4">
-                    <div className={`p-2 rounded-full ${getNotificationColor(notification.type)}`}>
-                      {getNotificationIcon(notification.type)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <h4 className={`font-medium ${!notification.isRead ? "text-foreground" : "text-muted-foreground"}`}>
-                            {notification.title}
-                          </h4>
-                          <p className="text-sm text-muted-foreground mt-1">
-                            {notification.message}
-                          </p>
+                <Card
+                  className={`cursor-pointer transition-all hover:bg-muted/30 ${!notification.isRead ? "border-l-4 border-l-primary" : ""}`}
+                  onClick={() => onOpenNotification(notification)}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-start gap-4">
+                      <div className={`p-2 rounded-full ${getNotificationColor(notification.type)}`}>
+                        {getNotificationIcon(notification.type)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <h4 className={`font-medium ${!notification.isRead ? "text-foreground" : "text-muted-foreground"}`}>
+                              {notification.title}
+                            </h4>
+                            <p className="text-sm text-muted-foreground mt-1">
+                              {notification.message}
+                            </p>
+                          </div>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 shrink-0"
+                                onClick={(event) => event.stopPropagation()}
+                                onPointerDown={(event) => event.stopPropagation()}
+                                aria-label="Ações da notificação"
+                              >
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              {!notification.isRead && (
+                                <DropdownMenuItem
+                                  className="cursor-pointer"
+                                  onClick={(event) => {
+                                    event.stopPropagation()
+                                    onMarkAsRead(notification.id)
+                                  }}
+                                >
+                                  <Check className="h-4 w-4" />
+                                  Marcar como lida
+                                </DropdownMenuItem>
+                              )}
+                              <DropdownMenuItem
+                                className="cursor-pointer text-destructive focus:text-destructive"
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  onDelete(notification.id)
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                                Excluir
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
-                        <div className="flex items-center gap-1">
-                          {!notification.isRead && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                onMarkAsRead(notification.id)
-                              }}
-                              title="Marcar como lida"
-                            >
-                              <Check className="h-4 w-4" />
-                            </Button>
-                          )}
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              onDelete(notification.id)
-                            }}
-                            title="Excluir"
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
+                        <div className="flex items-center gap-2 mt-2">
+                          <span className="text-xs text-muted-foreground">
+                            {new Date(notification.sentAt).toLocaleString("pt-BR")}
+                          </span>
+                          <div className="flex gap-1">
+                            {notification.channels.map(channel => {
+                              const channelConfig = CHANNELS.find(c => c.value === channel)
+                              return channelConfig ? (
+                                <Badge key={channel} variant="outline" className="text-xs">
+                                  <channelConfig.icon className="h-3 w-3 mr-1" />
+                                  {channelConfig.label}
+                                </Badge>
+                              ) : null
+                            })}
+                          </div>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 mt-2">
-                        <span className="text-xs text-muted-foreground">
-                          {new Date(notification.sentAt).toLocaleString("pt-BR")}
-                        </span>
-                        <div className="flex gap-1">
-                          {notification.channels.map(channel => {
-                            const channelConfig = CHANNELS.find(c => c.value === channel)
-                            return channelConfig ? (
-                              <Badge key={channel} variant="outline" className="text-xs">
-                                <channelConfig.icon className="h-3 w-3 mr-1" />
-                                {channelConfig.label}
-                              </Badge>
-                            ) : null
-                          })}
-                        </div>
-                      </div>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+              </SwipeableNotification>
             ))}
         </div>
       ) : (

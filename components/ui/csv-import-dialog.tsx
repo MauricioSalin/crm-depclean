@@ -1,7 +1,7 @@
 "use client"
 
-import { useMemo, useState } from "react"
-import { FileUp, Loader2 } from "lucide-react"
+import { type DragEvent, useMemo, useRef, useState } from "react"
+import { Download, FileCheck2, FileSpreadsheet, FileUp, Loader2, UploadCloud } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -13,8 +13,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import {
   Select,
   SelectContent,
@@ -97,12 +95,27 @@ function parseCsv(text: string) {
   return { headers, rows }
 }
 
+function escapeCsvCell(value: string) {
+  return `"${value.replace(/"/g, "\"\"")}"`
+}
+
+function toSlug(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "modelo"
+}
+
 export function CsvImportDialog({ open, onOpenChange, title, description, fields, onImport }: CsvImportDialogProps) {
+  const inputRef = useRef<HTMLInputElement | null>(null)
   const [fileName, setFileName] = useState("")
   const [headers, setHeaders] = useState<string[]>([])
   const [rows, setRows] = useState<Array<Record<string, string>>>([])
   const [mapping, setMapping] = useState<Record<string, string>>({})
   const [isImporting, setIsImporting] = useState(false)
+  const [isDragging, setIsDragging] = useState(false)
 
   const requiredFields = useMemo(() => fields.filter((field) => field.required), [fields])
 
@@ -112,12 +125,15 @@ export function CsvImportDialog({ open, onOpenChange, title, description, fields
     setRows([])
     setMapping({})
     setIsImporting(false)
+    setIsDragging(false)
+    if (inputRef.current) inputRef.current.value = ""
   }
 
   const handleFileChange = async (file?: File | null) => {
     if (!file) return
     if (!file.name.toLowerCase().endsWith(".csv")) {
       toast.error("Envie um arquivo .csv.")
+      if (inputRef.current) inputRef.current.value = ""
       return
     }
 
@@ -125,6 +141,7 @@ export function CsvImportDialog({ open, onOpenChange, title, description, fields
     const parsed = parseCsv(text)
     if (parsed.headers.length === 0 || parsed.rows.length === 0) {
       toast.error("O CSV precisa ter cabeçalho e pelo menos uma linha.")
+      if (inputRef.current) inputRef.current.value = ""
       return
     }
 
@@ -138,6 +155,25 @@ export function CsvImportDialog({ open, onOpenChange, title, description, fields
     setHeaders(parsed.headers)
     setRows(parsed.rows)
     setMapping(nextMapping)
+  }
+
+  const handleDownloadTemplate = () => {
+    const header = fields.map((field) => escapeCsvCell(field.label)).join(";")
+    const blob = new Blob([`\uFEFF${header}\n`], { type: "text/csv;charset=utf-8" })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.href = url
+    link.download = `${toSlug(title)}-modelo.csv`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }
+
+  const handleDrop = (event: DragEvent<HTMLButtonElement>) => {
+    event.preventDefault()
+    setIsDragging(false)
+    void handleFileChange(event.dataTransfer.files?.[0])
   }
 
   const handleSubmit = async () => {
@@ -180,27 +216,65 @@ export function CsvImportDialog({ open, onOpenChange, title, description, fields
         onOpenChange(nextOpen)
       }}
     >
-      <DialogContent className="max-h-[calc(100dvh-1rem)] overflow-y-auto sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
+      <DialogContent className="flex max-h-[min(82dvh,680px)] flex-col gap-0 overflow-hidden p-0 sm:max-w-xl">
+        <DialogHeader className="shrink-0 gap-3 px-6 pb-4 pt-6 sm:flex-row sm:items-start sm:gap-4 sm:space-y-0">
+          <div className="space-y-1.5">
+            <DialogTitle>{title}</DialogTitle>
+            <DialogDescription>{description}</DialogDescription>
+          </div>
+          <Button type="button" variant="outline" className="h-9 shrink-0 gap-2 rounded-full sm:ml-auto" onClick={handleDownloadTemplate}>
+            <Download className="h-4 w-4" />
+            Baixar modelo
+          </Button>
         </DialogHeader>
 
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="csv-file">Arquivo CSV</Label>
-            <Input id="csv-file" type="file" accept=".csv,text/csv" onChange={(event) => void handleFileChange(event.target.files?.[0])} />
-            {fileName ? (
-              <p className="text-xs text-muted-foreground">
-                {fileName} · {rows.length} linha(s)
-              </p>
-            ) : null}
-          </div>
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 pb-4 pr-5">
+          <input
+            ref={inputRef}
+            id="csv-file"
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={(event) => void handleFileChange(event.target.files?.[0])}
+          />
+
+          <button
+            type="button"
+            className={`group flex w-full cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed p-8 text-center transition-all duration-300 ${
+              isDragging
+                ? "border-primary/60 bg-primary/10 shadow-md"
+                : "border-border bg-muted/20 hover:-translate-y-0.5 hover:border-primary/50 hover:bg-primary/5 hover:shadow-md"
+            }`}
+            onClick={() => inputRef.current?.click()}
+            onDragOver={(event) => {
+              event.preventDefault()
+              setIsDragging(true)
+            }}
+            onDragLeave={() => setIsDragging(false)}
+            onDrop={handleDrop}
+          >
+            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary transition-transform duration-300 group-hover:scale-105">
+              {fileName ? <FileCheck2 className="h-6 w-6" /> : <UploadCloud className="h-6 w-6" />}
+            </div>
+            <span className="text-sm font-semibold text-foreground">
+              {fileName || "Selecionar arquivo CSV"}
+            </span>
+            <span className="mt-1 text-xs text-muted-foreground">
+              {fileName ? `${rows.length} linha(s) identificada(s)` : "Clique ou arraste o arquivo .csv aqui"}
+            </span>
+          </button>
 
           {headers.length > 0 ? (
             <div className="space-y-3">
-              <div className="grid grid-cols-[1fr_1.2fr] gap-3 text-xs font-semibold text-muted-foreground">
-                <span>Campo</span>
+              <div className="flex items-center gap-2 rounded-2xl bg-muted/30 px-4 py-3">
+                <FileSpreadsheet className="h-4 w-4 text-primary" />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold">Relacionamento das colunas</p>
+                  <p className="text-xs text-muted-foreground">Confira os campos antes de importar.</p>
+                </div>
+              </div>
+              <div className="sticky top-0 z-10 grid grid-cols-[1fr_1.2fr] gap-3 border-b bg-background/95 px-1 py-2 text-xs font-semibold text-muted-foreground backdrop-blur">
+                <span>Campo do sistema</span>
                 <span>Coluna do CSV</span>
               </div>
               {fields.map((field) => (
@@ -231,7 +305,7 @@ export function CsvImportDialog({ open, onOpenChange, title, description, fields
           ) : null}
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="shrink-0 border-t bg-background px-6 py-4">
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>

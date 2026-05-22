@@ -319,6 +319,7 @@ export interface NotificationRule {
 export interface DashboardStats {
   activeClients: number
   activeClientsChange: number
+  inactiveClients: number
   monthlyRevenue: number
   monthlyRevenueChange: number
   scheduledServices: number
@@ -374,6 +375,10 @@ export type ScheduledServiceRecurrence = RecurrenceType | "none" | "daily"
 export interface MonthlyRevenueData {
   month: string
   value: number
+  paidValue?: number
+  lateValue?: number
+  overdueValue?: number
+  lateOverdueValue?: number
 }
 
 export interface ServicesByPeriodData {

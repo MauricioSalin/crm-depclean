@@ -20,7 +20,7 @@ export function TeamCollaboration(period: DashboardAnalyticsParams = {}) {
 
   return (
     <Card
-      className="h-full p-4 transition-all duration-500 hover:shadow-xl"
+      className="flex h-full flex-col p-4 transition-all duration-500 hover:shadow-xl lg:min-h-[360px] lg:max-h-[460px]"
     >
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold text-foreground">Equipes</h2>
@@ -31,7 +31,7 @@ export function TeamCollaboration(period: DashboardAnalyticsParams = {}) {
           </Button>
         </Link>
       </div>
-      <div className="space-y-3">
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
         {isLoading ? (
           Array.from({ length: 4 }, (_, index) => (
             <div key={index} className="flex items-center gap-3 p-3">

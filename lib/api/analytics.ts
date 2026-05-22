@@ -3,6 +3,10 @@ import { api } from "@/lib/api/client"
 export type MonthlyRevenuePoint = {
   month: string
   value: number
+  paidValue: number
+  lateValue: number
+  overdueValue: number
+  lateOverdueValue: number
 }
 
 export type ServicesByPeriodPoint = {
@@ -34,6 +38,7 @@ export type ServicesSummaryPoint = {
 export type DashboardStatsRecord = {
   activeClients: number
   activeClientsChange: number
+  inactiveClients: number
   activeContracts: number
   inactiveContracts: number
   activeContractsGlobalValue: number

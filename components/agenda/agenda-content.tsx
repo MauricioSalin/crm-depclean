@@ -629,6 +629,8 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
           }
         }}
         schedule={selectedSchedule}
+        schedules={schedules}
+        teams={teams}
         isStartingAttendance={startMutation.isPending}
         onStartAttendance={async (schedule) => {
           await startMutation.mutateAsync(schedule)
@@ -645,7 +647,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
           }
         }}
       >
-        <DialogContent className="max-sm:left-0 max-sm:top-0 max-sm:h-[100dvh] max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:overflow-y-auto max-sm:rounded-none max-sm:border-0 sm:max-w-md">
+        <DialogContent className="max-sm:left-0 max-sm:top-3 max-sm:h-[calc(100dvh-1.5rem)] max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:overflow-y-auto max-sm:rounded-none max-sm:border-0 sm:max-w-md">
           {cancelStep === "reason" ? (
             <>
               <DialogHeader className="min-w-0 pr-6">
@@ -725,7 +727,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
           }
         }}
       >
-        <DialogContent className="max-h-[calc(100dvh-1rem)] min-w-0 content-start overflow-x-hidden overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+1.5rem)] max-sm:left-0 max-sm:top-0 max-sm:h-[100dvh] max-sm:max-h-none max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none max-sm:border-0 sm:max-w-lg">
+        <DialogContent className="max-h-[calc(100dvh-1rem)] min-w-0 content-start overflow-x-hidden overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+1.5rem)] max-sm:left-0 max-sm:top-3 max-sm:h-[calc(100dvh-1.5rem)] max-sm:max-h-none max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none max-sm:border-0 sm:max-w-lg">
           <DialogHeader className="min-w-0 pr-6">
             <DialogTitle>Concluir agendamento</DialogTitle>
             <DialogDescription>
@@ -858,7 +860,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
           if (!open) setAvailabilitySuggestion(null)
         }}
       >
-        <DialogContent className="max-sm:left-0 max-sm:top-0 max-sm:h-[100dvh] max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:overflow-y-auto max-sm:rounded-none max-sm:border-0 sm:max-w-md">
+        <DialogContent className="max-sm:left-0 max-sm:top-3 max-sm:h-[calc(100dvh-1.5rem)] max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:overflow-y-auto max-sm:rounded-none max-sm:border-0 sm:max-w-md">
           <DialogHeader className="min-w-0 pr-6">
             <DialogTitle>Horário indisponível</DialogTitle>
             <DialogDescription>

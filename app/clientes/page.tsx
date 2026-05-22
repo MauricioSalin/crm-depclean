@@ -36,20 +36,22 @@ export default function ClientesPage() {
           hasFilters
           viewToggle={toggle}
           actions={
-            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+            <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => setImportOpen(true)}
-                className="w-full sm:w-auto h-9 text-sm"
+                className="h-9 w-9 shrink-0 px-0 sm:w-auto sm:px-4"
+                aria-label="Importar clientes"
+                title="Importar clientes"
               >
-                <FileUp className="w-4 h-4 mr-2" />
-                Importar
+                <FileUp className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Importar</span>
               </Button>
-              <Link href="/clientes/novo">
-                <Button className="w-full sm:w-auto h-9 text-sm bg-primary text-primary-foreground hover:bg-primary/90">
-                  <Plus className="w-4 h-4 mr-2" />
-                  Novo Cliente
+              <Link href="/clientes/novo" className="min-w-0 flex-1 sm:flex-none">
+                <Button className="h-9 w-full min-w-0 text-sm bg-primary text-primary-foreground hover:bg-primary/90 sm:w-auto">
+                  <Plus className="h-4 w-4 shrink-0 sm:mr-2" />
+                  <span className="truncate">Novo Cliente</span>
                 </Button>
               </Link>
             </div>

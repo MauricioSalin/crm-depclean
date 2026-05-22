@@ -1,12 +1,9 @@
 "use client"
 
 import {
-  AlertTriangle,
   ArrowDownRight,
   ArrowRight,
   ArrowUpRight,
-  Calendar,
-  CheckCircle,
   DollarSign,
   FileCheck2,
   FileX2,
@@ -25,6 +22,7 @@ import { getColorFromClass } from "@/lib/utils"
 const emptyStats: DashboardStatsRecord = {
   activeClients: 0,
   activeClientsChange: 0,
+  inactiveClients: 0,
   activeContracts: 0,
   inactiveContracts: 0,
   activeContractsGlobalValue: 0,
@@ -58,16 +56,6 @@ export function StatsCards(period: DashboardPeriodProps = {}) {
 
   const stats = [
     {
-      title: "Clientes Ativos",
-      value: dashboardStats.activeClients.toString(),
-      change: `+${dashboardStats.activeClientsChange}%`,
-      isPositive: true,
-      icon: Users,
-      bgColor: "bg-card",
-      textColor: "text-foreground",
-      delay: "0ms",
-    },
-    {
       title: "Faturamento Mensal",
       value: formatCurrency(dashboardStats.monthlyRevenue),
       change: `+${dashboardStats.monthlyRevenueChange}%`,
@@ -76,6 +64,14 @@ export function StatsCards(period: DashboardPeriodProps = {}) {
       bgColor: "bg-card",
       textColor: "text-foreground",
       delay: "100ms",
+    },
+    {
+      title: "Valor Global Ativo",
+      value: formatCurrency(dashboardStats.activeContractsGlobalValue),
+      icon: WalletCards,
+      bgColor: "bg-card",
+      textColor: "text-foreground",
+      delay: "120ms",
     },
     {
       title: "Contratos Ativos",
@@ -93,48 +89,10 @@ export function StatsCards(period: DashboardPeriodProps = {}) {
       textColor: "text-foreground",
       delay: "180ms",
     },
-    {
-      title: "Valor Global Ativo",
-      value: formatCurrency(dashboardStats.activeContractsGlobalValue),
-      icon: WalletCards,
-      bgColor: "bg-card",
-      textColor: "text-foreground",
-      delay: "200ms",
-    },
-    {
-      title: "Serviços Agendados",
-      value: dashboardStats.scheduledServices.toString(),
-      change: `+${dashboardStats.scheduledServicesChange}%`,
-      isPositive: true,
-      icon: Calendar,
-      bgColor: "bg-card",
-      textColor: "text-foreground",
-      delay: "200ms",
-    },
-    {
-      title: "Serviços Realizados",
-      value: dashboardStats.completedServices.toString(),
-      change: `+${dashboardStats.completedServicesChange}%`,
-      isPositive: true,
-      icon: CheckCircle,
-      bgColor: "bg-card",
-      textColor: "text-foreground",
-      delay: "300ms",
-    },
-    {
-      title: "Parcelas Vencidas",
-      value: dashboardStats.overdueInstallments.toString(),
-      subtitle: formatCurrency(dashboardStats.overdueInstallmentsValue),
-      isPositive: false,
-      icon: AlertTriangle,
-      bgColor: "bg-card",
-      textColor: "text-foreground",
-      delay: "400ms",
-    },
   ]
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-8 gap-3">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
       {stats.map((stat, index) => {
         const Icon = stat.icon
         return (
@@ -143,10 +101,10 @@ export function StatsCards(period: DashboardPeriodProps = {}) {
             aria-busy={isLoading}
             onMouseEnter={() => setHoveredCard(index)}
             onMouseLeave={() => setHoveredCard(null)}
-            className={`${stat.bgColor} ${stat.textColor} p-3 transition-all duration-500 ease-out cursor-pointer ${hoveredCard === index ? "scale-105 shadow-2xl" : "shadow-lg"
+            className={`${stat.bgColor} ${stat.textColor} p-4 transition-all duration-500 ease-out cursor-pointer ${hoveredCard === index ? "scale-105 shadow-2xl" : "shadow-lg"
               }`}
           >
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center justify-between mb-3">
               <h3 className="text-xs font-medium opacity-90">{stat.title}</h3>
               <div
                 className={`w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center transition-transform duration-300 ${hoveredCard === index ? "scale-110" : ""
@@ -162,7 +120,7 @@ export function StatsCards(period: DashboardPeriodProps = {}) {
               </>
             ) : (
               <>
-                <p className="text-2xl font-bold mb-1">{stat.value}</p>
+                <p className="text-2xl font-bold mb-2">{stat.value}</p>
                 <div className="flex items-center gap-1.5 text-xs opacity-80">
                   {stat.change && (
                     <>
@@ -173,9 +131,6 @@ export function StatsCards(period: DashboardPeriodProps = {}) {
                       )}
                       <span className={stat.isPositive ? "text-green-500" : "text-red-500"}>{stat.change}</span>
                     </>
-                  )}
-                  {stat.subtitle && (
-                    <span className="text-destructive font-medium">{stat.subtitle}</span>
                   )}
                 </div>
               </>
@@ -198,7 +153,7 @@ export function ProductivityCards(period: DashboardPeriodProps = {}) {
   const teamColors = new Map((dashboardData?.teamsWithActivity ?? []).map((team) => [team.id, team.color] as const))
 
   return (
-    <Card className="p-4 transition-all duration-500 hover:shadow-xl">
+    <Card className="flex h-full flex-col p-4 transition-all duration-500 hover:shadow-xl lg:min-h-[360px] lg:max-h-[460px]">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold text-foreground">Produtividade das Equipes</h2>
         <Link href="/equipes">
@@ -208,7 +163,7 @@ export function ProductivityCards(period: DashboardPeriodProps = {}) {
           </Button>
         </Link>
       </div>
-      <div className="space-y-3">
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
         {isLoading ? (
           Array.from({ length: 3 }, (_, index) => (
             <div key={index} className="rounded-xl border bg-card p-4">

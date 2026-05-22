@@ -75,6 +75,10 @@ const emptyReports: ReportsAnalyticsRecord = {
   dashboardStats: {
     activeClients: 0,
     activeClientsChange: 0,
+    inactiveClients: 0,
+    activeContracts: 0,
+    inactiveContracts: 0,
+    activeContractsGlobalValue: 0,
     monthlyRevenue: 0,
     monthlyRevenueChange: 0,
     scheduledServices: 0,
@@ -90,9 +94,11 @@ const emptyReports: ReportsAnalyticsRecord = {
   financialSummary: {
     totalPaid: 0,
     totalPending: 0,
+    totalLate: 0,
     totalOverdue: 0,
     paidCount: 0,
     pendingCount: 0,
+    lateCount: 0,
     overdueCount: 0,
     totalCount: 0,
     adherenceRate: 0,
@@ -395,18 +401,26 @@ export function RelatoriosContent() {
 
     if (selectedReport === "financial") {
       return [
-        ["Relatorio", "Item", "Valor"],
-        ["Resumo financeiro", "Faturamento do mes", data.dashboardStats.monthlyRevenue],
-        ["Resumo financeiro", "Recebido", data.financialSummary.totalPaid],
-        ["Resumo financeiro", "A receber", data.financialSummary.totalPending],
-        ["Resumo financeiro", "Inadimplencia", data.financialSummary.totalOverdue],
-        ["Indicadores", "Taxa de adimplencia", `${data.financialSummary.adherenceRate}%`],
-        ["Indicadores", "Ticket medio", data.dashboardStats.activeClients > 0 ? data.dashboardStats.monthlyRevenue / data.dashboardStats.activeClients : 0],
-        ["Indicadores", "Contratos ativos", data.contracts.filter((contract) => ["signed", "active"].includes(contract.status)).length],
-        ...data.monthlyRevenueData.map((item) => ["Faturamento mensal", item.month, item.value]),
+        ["Relatorio", "Item", "Valor", "Pagas", "Em atraso", "Vencidas"],
+        ["Resumo financeiro", "Faturamento do mes", data.dashboardStats.monthlyRevenue, "", "", ""],
+        ["Resumo financeiro", "Recebido", data.financialSummary.totalPaid, "", "", ""],
+        ["Resumo financeiro", "A receber", data.financialSummary.totalPending, "", "", ""],
+        ["Resumo financeiro", "Em atraso", data.financialSummary.totalLate ?? 0, "", "", ""],
+        ["Resumo financeiro", "Vencidas", data.financialSummary.totalOverdue, "", "", ""],
+        ["Indicadores", "Taxa de adimplencia", `${data.financialSummary.adherenceRate}%`, "", "", ""],
+        ["Indicadores", "Ticket medio", data.dashboardStats.activeClients > 0 ? data.dashboardStats.monthlyRevenue / data.dashboardStats.activeClients : 0, "", "", ""],
+        ["Indicadores", "Contratos ativos", data.contracts.filter((contract) => ["signed", "active"].includes(contract.status)).length, "", "", ""],
+        ["Faturamento mensal", "Período", "Total", "Pagas", "Em atraso", "Vencidas"],
+        ...data.monthlyRevenueData.map((item) => [
+          "Faturamento mensal",
+          item.month,
+          item.value,
+          item.paidValue,
+          item.lateValue,
+          item.overdueValue,
+        ]),
       ]
     }
-
     if (selectedReport === "teams") {
       return [
         ["Equipe", "Servicos realizados", "Servicos agendados", "Servicos cancelados", "Taxa de conclusao"],
@@ -501,14 +515,7 @@ export function RelatoriosContent() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div
-            className={cn(
-              "grid items-end gap-x-3 gap-y-2",
-              selectedReport === "financial"
-                ? "sm:grid-cols-[auto_auto]"
-                : "sm:grid-cols-[auto_auto_minmax(420px,520px)]",
-            )}
-          >
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
             <div className="flex flex-col gap-2 w-full sm:w-auto shrink-0">
               <Label>Período</Label>
               <DateRangePicker
@@ -519,12 +526,8 @@ export function RelatoriosContent() {
               />
             </div>
 
-            <Button className="w-full sm:w-[170px] sm:justify-self-start h-10 px-4 shrink-0 bg-primary hover:bg-primary/90 text-primary-foreground" onClick={handleGenerateReport} disabled={reportsQuery.isFetching || isExporting}>
-              Gerar relatório
-            </Button>
-
             {selectedReport === "services" && (
-              <div className="flex flex-col gap-2 w-full sm:col-start-3">
+              <div className="flex w-full flex-col gap-2 sm:w-[420px] xl:w-[520px]">
                 <Label>Serviço</Label>
                 <MultiSelect
                   options={serviceOptions}
@@ -539,7 +542,7 @@ export function RelatoriosContent() {
             )}
 
             {selectedReport === "teams" && (
-              <div className="flex flex-col gap-2 w-full sm:col-start-3">
+              <div className="flex w-full flex-col gap-2 sm:w-[420px] xl:w-[520px]">
                 <Label>Equipe</Label>
                 <MultiSelect
                   options={teamOptions}
@@ -553,8 +556,12 @@ export function RelatoriosContent() {
               </div>
             )}
 
+            <Button className="h-10 w-full shrink-0 bg-primary px-4 text-primary-foreground hover:bg-primary/90 sm:w-[170px]" onClick={handleGenerateReport} disabled={reportsQuery.isFetching || isExporting}>
+              Gerar relatório
+            </Button>
+
             {selectedReport === "services" && selectedServiceOptions.length > 0 && (
-              <div className="flex flex-wrap gap-2 sm:col-start-3">
+              <div className="flex w-full flex-wrap gap-2">
                 {selectedServiceOptions.map((option) => (
                   <Badge
                     key={option.id}
@@ -575,7 +582,7 @@ export function RelatoriosContent() {
             )}
 
             {selectedReport === "teams" && selectedTeamOptions.length > 0 && (
-              <div className="flex flex-wrap gap-2 sm:col-start-3">
+              <div className="flex w-full flex-wrap gap-2">
                 {selectedTeamOptions.map((option) => (
                   <Badge
                     key={option.id}
@@ -656,11 +663,14 @@ export function RelatoriosContent() {
                 <CardDescription>Comparativo entre agenda prevista e serviços concluídos</CardDescription>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={servicesByPeriodChartData}>
+                <div className="-mx-1 overflow-x-auto px-1 pb-2">
+                <div className="h-[300px] min-w-[560px] sm:min-w-0">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={servicesByPeriodChartData} margin={{ top: 5, right: 8, left: 0, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                     <XAxis dataKey="period" className="text-xs" />
                     <YAxis
+                      width={34}
                       className="text-xs"
                       allowDecimals={false}
                       domain={[0, (dataMax: number) => Math.max(Number(dataMax) || 0, 1)]}
@@ -689,6 +699,8 @@ export function RelatoriosContent() {
                     />
                   </BarChart>
                 </ResponsiveContainer>
+                </div>
+                </div>
               </CardContent>
             </Card>
 
@@ -749,11 +761,14 @@ export function RelatoriosContent() {
               <CardDescription>Curvas semanais por status operacional</CardDescription>
             </CardHeader>
             <CardContent>
-              <ResponsiveContainer width="100%" height={320}>
-                <LineChart data={servicesByPeriodChartData} margin={{ top: 12, right: 24, left: 0, bottom: 24 }}>
+              <div className="-mx-1 overflow-x-auto px-1 pb-2">
+              <div className="h-[320px] min-w-[560px] sm:min-w-0">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={servicesByPeriodChartData} margin={{ top: 12, right: 16, left: 0, bottom: 24 }}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                   <XAxis dataKey="period" className="text-xs" />
                   <YAxis
+                    width={34}
                     allowDecimals={false}
                     domain={[0, (dataMax: number) => Math.max(Number(dataMax) || 0, 1)]}
                     className="text-xs"
@@ -805,6 +820,8 @@ export function RelatoriosContent() {
                   />
                 </LineChart>
               </ResponsiveContainer>
+              </div>
+              </div>
             </CardContent>
           </Card>
         </div>

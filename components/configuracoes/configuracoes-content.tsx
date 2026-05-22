@@ -5,6 +5,7 @@ import { Bell, Building, Copy, Edit, Eye, EyeOff, MessageCircle, MoreHorizontal,
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -29,7 +30,8 @@ import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
 import { MultiSelect } from "@/components/ui/multi-select"
 import { Switch } from "@/components/ui/switch"
 import { getApiErrorMessage } from "@/lib/api/errors"
-import { cn } from "@/lib/utils"
+import { cn, getInitials } from "@/lib/utils"
+import { resolveAvatarUrl } from "@/lib/avatar"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 import { formatCNPJ, formatCPF, formatPhone, isValidCNPJ, isValidCPF } from "@/lib/masks"
 import { listEmployees, type EmployeeRecord } from "@/lib/api/employees"
@@ -646,25 +648,25 @@ export function ConfiguracoesContent() {
 
       const payload = editingRule?.isDefault
         ? {
-            description: ruleForm.description,
-            daysBefore: ruleForm.daysBefore,
-            contractExpirationAlertDays: ruleForm.type === "contract_expiring" ? contractExpirationAlertDays : undefined,
-            time: ruleForm.time,
-            channels: ruleForm.channels,
-            isActive: ruleForm.isActive,
-          }
+          description: ruleForm.description,
+          daysBefore: ruleForm.daysBefore,
+          contractExpirationAlertDays: ruleForm.type === "contract_expiring" ? contractExpirationAlertDays : undefined,
+          time: ruleForm.time,
+          channels: ruleForm.channels,
+          isActive: ruleForm.isActive,
+        }
         : {
-            name: ruleForm.name,
-            description: ruleForm.description,
-            type: ruleForm.type,
-            daysBefore: ruleForm.daysBefore,
-            contractExpirationAlertDays: ruleForm.type === "contract_expiring" ? contractExpirationAlertDays : undefined,
-            time: ruleForm.time,
-            channels: ruleForm.channels,
-            targetTeamIds: ruleForm.targetTeamIds,
-            targetEmployeeIds: ruleForm.targetEmployeeIds,
-            isActive: ruleForm.isActive,
-      }
+          name: ruleForm.name,
+          description: ruleForm.description,
+          type: ruleForm.type,
+          daysBefore: ruleForm.daysBefore,
+          contractExpirationAlertDays: ruleForm.type === "contract_expiring" ? contractExpirationAlertDays : undefined,
+          time: ruleForm.time,
+          channels: ruleForm.channels,
+          targetTeamIds: ruleForm.targetTeamIds,
+          targetEmployeeIds: ruleForm.targetEmployeeIds,
+          isActive: ruleForm.isActive,
+        }
       const response = await updateNotificationRule(editingRule.id, payload)
       upsertNotificationRule(response.data)
       toast.success("Regra atualizada.", { id: toastId })
@@ -1337,9 +1339,19 @@ export function ConfiguracoesContent() {
                   paginatedUsers.map((item) => (
                     <TableRow key={item.id}>
                       <TableCell className="font-medium">
-                        <div className="flex items-center gap-2">
-                          {item.name}
-                          {item.mustChangePassword && <Badge variant="outline">Primeiro acesso</Badge>}
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-9 w-9 shrink-0 ring-2 ring-primary/10">
+                            <AvatarImage src={resolveAvatarUrl(item.avatar)} alt={item.name} />
+                            <AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">
+                              {getInitials(item.name)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="truncate">{item.name}</span>
+                              {item.mustChangePassword && <Badge variant="outline">Primeiro acesso</Badge>}
+                            </div>
+                          </div>
                         </div>
                       </TableCell>
                       <TableCell>{item.email}</TableCell>
@@ -1566,7 +1578,7 @@ export function ConfiguracoesContent() {
                           ? `Alertas: ${(item.contractExpirationAlertDays?.length ? item.contractExpirationAlertDays : [item.daysBefore]).join(" e ")} dia(s) antes`
                           : item.type === "payment_overdue"
                             ? `A cada ${item.daysBefore || 7} dia(s)`
-                          : item.daysBefore === 0 ? "No dia" : `${item.daysBefore} dia(s) antes`}
+                            : item.daysBefore === 0 ? "No dia" : `${item.daysBefore} dia(s) antes`}
                       </span>
                       <span className="mx-1">•</span>
                       <span>às {item.time}</span>
@@ -1663,7 +1675,6 @@ export function ConfiguracoesContent() {
                 </div>
                 {ruleForm.type === "contract_expiring" ? (
                   <div className="space-y-2">
-                    <p className="text-sm font-medium">Alertas de vencimento</p>
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div className="space-y-2">
                         <Label>Primeiro Alerta (dias antes)</Label>

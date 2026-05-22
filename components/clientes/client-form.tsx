@@ -16,7 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
-import { Plus, Trash2, Building2, MapPin, Save, Loader2, Users } from "lucide-react"
+import { Plus, Trash2, Building2, MapPin, Save, Loader2, Users, CalendarClock } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { formatCNPJ, formatCPF, formatPhone, isValidCNPJ, isValidCPF } from "@/lib/masks"
 import { toast } from "@/components/ui/use-toast"
@@ -631,43 +631,51 @@ export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
               </span>
             </span>
           </label>
-          <div className="grid gap-4 md:grid-cols-2 md:max-w-[640px]">
-            <div className="space-y-2">
-              <Label>Melhor dia para atendimento</Label>
-              <Select
-                value={formData.preferredServiceWeekday || "none"}
-                onValueChange={(value) => handleInputChange("preferredServiceWeekday", value === "none" ? "" : value)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Fluxo automático" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Fluxo automático</SelectItem>
-                  <SelectItem value="1">Segunda-feira</SelectItem>
-                  <SelectItem value="2">Terça-feira</SelectItem>
-                  <SelectItem value="3">Quarta-feira</SelectItem>
-                  <SelectItem value="4">Quinta-feira</SelectItem>
-                  <SelectItem value="5">Sexta-feira</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+        </div>
+      </Card>
 
-            <div className="space-y-2">
-              <Label>Melhor turno</Label>
-              <Select
-                value={formData.preferredServiceShift || "none"}
-                onValueChange={(value) => handleInputChange("preferredServiceShift", value === "none" ? "" : value)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Fluxo automático" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Fluxo automático</SelectItem>
-                  <SelectItem value="morning">Manhã</SelectItem>
-                  <SelectItem value="afternoon">Tarde</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+      <Card className="p-6">
+        <div className="mb-6 flex items-center gap-2">
+          <CalendarClock className="h-5 w-5 text-primary" />
+          <h3 className="text-lg font-semibold">Preferência de atendimento</h3>
+        </div>
+
+        <div className="flex flex-col gap-3 md:flex-row">
+          <div className="space-y-2 md:w-[220px]">
+            <Label>Melhor dia para atendimento</Label>
+            <Select
+              value={formData.preferredServiceWeekday || "none"}
+              onValueChange={(value) => handleInputChange("preferredServiceWeekday", value === "none" ? "" : value)}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Fluxo automático" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Fluxo automático</SelectItem>
+                <SelectItem value="1">Segunda-feira</SelectItem>
+                <SelectItem value="2">Terça-feira</SelectItem>
+                <SelectItem value="3">Quarta-feira</SelectItem>
+                <SelectItem value="4">Quinta-feira</SelectItem>
+                <SelectItem value="5">Sexta-feira</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2 md:w-[220px]">
+            <Label>Melhor turno</Label>
+            <Select
+              value={formData.preferredServiceShift || "none"}
+              onValueChange={(value) => handleInputChange("preferredServiceShift", value === "none" ? "" : value)}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Fluxo automático" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Fluxo automático</SelectItem>
+                <SelectItem value="morning">Manhã</SelectItem>
+                <SelectItem value="afternoon">Tarde</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
       </Card>

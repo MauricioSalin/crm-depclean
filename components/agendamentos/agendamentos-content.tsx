@@ -578,6 +578,8 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
           if (!open) setSelectedSchedule(null)
         }}
         schedule={selectedSchedule}
+        schedules={schedules}
+        teams={teams}
         isStartingAttendance={startMutation.isPending}
         onStartAttendance={async (schedule) => {
           await startMutation.mutateAsync(schedule)
@@ -594,7 +596,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
           }
         }}
       >
-        <DialogContent className="max-sm:left-0 max-sm:top-0 max-sm:h-[100dvh] max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:overflow-y-auto max-sm:rounded-none max-sm:border-0 sm:max-w-md">
+        <DialogContent className="max-w-[calc(100vw-2rem)] gap-5 sm:max-w-md">
           {cancelStep === "reason" ? (
             <>
               <DialogHeader className="min-w-0 pr-6">
@@ -670,7 +672,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
           }
         }}
       >
-        <DialogContent className="max-h-[calc(100dvh-1rem)] min-w-0 content-start overflow-x-hidden overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+1.5rem)] max-sm:left-0 max-sm:top-0 max-sm:h-[100dvh] max-sm:max-h-none max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none max-sm:border-0 sm:max-w-lg">
+        <DialogContent className="max-h-[calc(100dvh-1rem)] min-w-0 content-start overflow-x-hidden overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+1.5rem)] max-sm:left-0 max-sm:top-3 max-sm:h-[calc(100dvh-1.5rem)] max-sm:max-h-none max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none max-sm:border-0 sm:max-w-lg">
           <DialogHeader className="min-w-0 pr-6">
             <DialogTitle>Concluir agendamento</DialogTitle>
             <DialogDescription>
@@ -1065,61 +1067,64 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                         ))}
                       </div>
                     ) : null}
-                    <div className="mt-auto flex justify-end pt-3" onClick={(event) => event.stopPropagation()}>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" aria-label="Ações do agendamento">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          {!["in_progress", "cancelled"].includes(schedule.status) && (
-                            <DropdownMenuItem className="cursor-pointer" onClick={() => openEditSchedule(schedule)}>
-                              <Edit className="mr-2 h-4 w-4" />
-                              Editar
-                            </DropdownMenuItem>
+                    <div className="mt-auto grid grid-cols-2 gap-2 pt-3 [&>*:only-child]:col-span-2" onClick={(event) => event.stopPropagation()}>
+                      {!["in_progress", "cancelled"].includes(schedule.status) && (
+                        <Button type="button" variant="outline" size="sm" className="h-8 rounded-full" onClick={() => openEditSchedule(schedule)}>
+                          <Edit className="mr-2 h-4 w-4" />
+                          Editar
+                        </Button>
+                      )}
+                      {schedule.status === "in_progress" && (
+                        <Button type="button" variant="outline" size="sm" className="h-8 rounded-full" onClick={() => openCompletionDialog(schedule)}>
+                          <Check className="mr-2 h-4 w-4" />
+                          Concluir
+                        </Button>
+                      )}
+                      {schedule.status === "cancelled" && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-8 rounded-full"
+                          disabled={reactivateMutation.isPending && reactivateMutation.variables?.id === schedule.id}
+                          onClick={() => reactivateMutation.mutate(schedule)}
+                        >
+                          {reactivateMutation.isPending && reactivateMutation.variables?.id === schedule.id ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <RotateCcw className="mr-2 h-4 w-4" />
                           )}
-                          {schedule.status === "in_progress" && (
-                            <DropdownMenuItem className="cursor-pointer" onClick={() => openCompletionDialog(schedule)}>
-                              <Check className="mr-2 h-4 w-4" />
-                              Concluir
-                            </DropdownMenuItem>
-                          )}
-                          {schedule.status === "cancelled" && (
-                            <DropdownMenuItem
-                              className="cursor-pointer"
-                              disabled={reactivateMutation.isPending && reactivateMutation.variables?.id === schedule.id}
-                              onClick={() => reactivateMutation.mutate(schedule)}
-                            >
-                              {reactivateMutation.isPending && reactivateMutation.variables?.id === schedule.id ? (
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                              ) : (
-                                <RotateCcw className="mr-2 h-4 w-4" />
-                              )}
-                              Reativar
-                            </DropdownMenuItem>
-                          )}
-                          {canCancelSchedule(schedule) && (
-                            <DropdownMenuItem
-                              className="cursor-pointer"
-                              onClick={() => {
-                                setCancelTarget(schedule)
-                                setCancelReason(schedule.cancellationReason || "")
-                                setCancelStep("reason")
-                              }}
-                            >
-                              <X className="mr-2 h-4 w-4" />
-                              Cancelar
-                            </DropdownMenuItem>
-                          )}
-                          {canDeleteSchedule(schedule) && (
-                            <DropdownMenuItem className="cursor-pointer" onClick={() => setPendingDelete(schedule)}>
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Excluir
-                            </DropdownMenuItem>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                          Reativar
+                        </Button>
+                      )}
+                      {canCancelSchedule(schedule) && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-8 rounded-full"
+                          onClick={() => {
+                            setCancelTarget(schedule)
+                            setCancelReason(schedule.cancellationReason || "")
+                            setCancelStep("reason")
+                          }}
+                        >
+                          <X className="mr-2 h-4 w-4" />
+                          Cancelar
+                        </Button>
+                      )}
+                      {canDeleteSchedule(schedule) && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-8 rounded-full text-destructive hover:text-destructive"
+                          onClick={() => setPendingDelete(schedule)}
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Excluir
+                        </Button>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -1165,7 +1170,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
           if (!open) setAvailabilitySuggestion(null)
         }}
       >
-        <DialogContent className="max-sm:left-0 max-sm:top-0 max-sm:h-[100dvh] max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:overflow-y-auto max-sm:rounded-none max-sm:border-0 sm:max-w-md">
+        <DialogContent className="max-sm:left-0 max-sm:top-3 max-sm:h-[calc(100dvh-1.5rem)] max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:overflow-y-auto max-sm:rounded-none max-sm:border-0 sm:max-w-md">
           <DialogHeader className="min-w-0 pr-6">
             <DialogTitle>Horário indisponível</DialogTitle>
             <DialogDescription>

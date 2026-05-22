@@ -5,6 +5,20 @@ type ApiErrorBody = {
   error?: string
 }
 
+function normalizeTechnicalErrorMessage(message: string) {
+  const normalized = message.toLowerCase()
+
+  if (normalized.includes("reach files limit")) {
+    return "Não foi possível enviar o arquivo porque o limite de arquivos foi atingido. Tente novamente."
+  }
+
+  if (normalized.includes("file too large") || normalized.includes("request body is too large")) {
+    return "O arquivo enviado é muito grande. Escolha um arquivo menor e tente novamente."
+  }
+
+  return message
+}
+
 export function getApiErrorMessage(error: unknown, fallback: string) {
   const axiosError = error as AxiosError<ApiErrorBody>
   const status = axiosError.response?.status
@@ -18,15 +32,15 @@ export function getApiErrorMessage(error: unknown, fallback: string) {
   const message = responseData?.message
 
   if (Array.isArray(message) && message.length > 0) {
-    return message.join(" ")
+    return normalizeTechnicalErrorMessage(message.join(" "))
   }
 
   if (typeof message === "string" && message.trim().length > 0) {
-    return message
+    return normalizeTechnicalErrorMessage(message)
   }
 
   if (typeof responseData?.error === "string" && responseData.error.trim().length > 0) {
-    return responseData.error
+    return normalizeTechnicalErrorMessage(responseData.error)
   }
 
   if (axiosError.isAxiosError) {

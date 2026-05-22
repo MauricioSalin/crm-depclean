@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { ArrowLeft, CalendarDays, Clock3, Loader2, MapPin, OctagonX, Sparkles, Users } from "lucide-react"
 import { toast } from "sonner"
@@ -8,13 +8,16 @@ import { toast } from "sonner"
 import { AttendanceStartSlider } from "@/components/agendamentos/attendance-start-slider"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
+import { DatePicker } from "@/components/ui/date-picker"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { getScheduleRescheduleOptions, rescheduleSchedule, type ScheduleRecord } from "@/lib/api/schedules"
-import { formatCivilDate } from "@/lib/date-utils"
+import type { TeamRecord } from "@/lib/api/teams"
+import { formatCivilDate, toCivilDateKey } from "@/lib/date-utils"
+import { getAvailableRescheduleTimes, isRescheduleDateAvailable } from "@/lib/schedule-availability"
 import { formatConfiguredScheduleDuration } from "@/lib/schedule-duration"
 import { cn } from "@/lib/utils"
 
@@ -22,6 +25,8 @@ interface ScheduleDetailsDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   schedule: ScheduleRecord | null
+  schedules?: ScheduleRecord[]
+  teams?: TeamRecord[]
   onStartAttendance: (schedule: ScheduleRecord) => Promise<void> | void
   isStartingAttendance?: boolean
 }
@@ -53,6 +58,8 @@ export function ScheduleDetailsDialog({
   open,
   onOpenChange,
   schedule,
+  schedules = [],
+  teams = [],
   onStartAttendance,
   isStartingAttendance = false,
 }: ScheduleDetailsDialogProps) {
@@ -74,6 +81,33 @@ export function ScheduleDetailsDialog({
     queryFn: () => getScheduleRescheduleOptions(schedule!.id),
     enabled: open && mode === "reschedule" && Boolean(schedule?.id),
   })
+
+  const customDateValue = useMemo(() => {
+    if (!customDate) return null
+    return new Date(`${customDate}T00:00:00`)
+  }, [customDate])
+
+  const availableCustomTimes = useMemo(
+    () =>
+      getAvailableRescheduleTimes({
+        schedules,
+        teams,
+        schedule,
+        date: customDate,
+      }),
+    [customDate, schedule, schedules, teams],
+  )
+
+  useEffect(() => {
+    if (!open || mode !== "reschedule" || !schedule || !customDate) return
+    if (availableCustomTimes.length === 0) {
+      setCustomTime("")
+      return
+    }
+    if (!availableCustomTimes.includes(customTime)) {
+      setCustomTime(availableCustomTimes[0] ?? "")
+    }
+  }, [availableCustomTimes, customDate, customTime, mode, open, schedule])
 
   const rescheduleMutation = useMutation({
     mutationFn: (payload: { scheduledDate: string; scheduledTime?: string }) =>
@@ -113,9 +147,13 @@ export function ScheduleDetailsDialog({
   const showAttendanceAction = canStartAttendance || schedule.status === "draft"
   const rescheduleOptions = optionsQuery.data?.data ?? []
 
-  const submitReschedule = (date: string, time: string) => {
+  const submitReschedule = (date: string, time: string, validateAvailability = false) => {
     if (!date) {
       toast.error("Escolha uma data para reagendar.")
+      return
+    }
+    if (validateAvailability && !availableCustomTimes.includes(time)) {
+      toast.error("Escolha um horário disponível para esta data.")
       return
     }
 
@@ -128,36 +166,33 @@ export function ScheduleDetailsDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        showCloseButton={!isMobile}
         className={cn(
           "gap-0 p-0",
           isMobile
-            ? "top-0 left-0 h-[100dvh] max-w-none translate-x-0 translate-y-0 rounded-none border-0"
+            ? "left-0 top-3 h-[calc(100dvh-1.5rem)] max-w-none translate-x-0 translate-y-0 rounded-none border-0"
             : "sm:max-w-xl lg:max-w-2xl",
         )}
       >
         <div className={cn("flex flex-col", isMobile ? "h-full" : "")}>
-          <div className="flex-1 overflow-y-auto p-5 sm:p-6">
-            <DialogHeader className="relative items-center space-y-1.5 pb-2 text-center sm:pb-3">
+          {isMobile ? (
+            <DialogHeader className="sticky top-0 z-30 shrink-0 bg-background px-5 pb-2 pt-[calc(env(safe-area-inset-top)+1.75rem)] text-left">
               <DialogTitle className="sr-only">
                 Detalhes do agendamento de {schedule.clientName}
               </DialogTitle>
-              {isMobile ? (
-                <DialogClose asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="absolute left-0 top-0 h-9 gap-1 rounded-full px-2 text-sm font-medium"
-                  >
-                    <ArrowLeft className="h-4 w-4" />
-                    Voltar
-                  </Button>
-                </DialogClose>
-              ) : null}
             </DialogHeader>
+          ) : null}
+
+          <div className={cn("flex-1 overflow-y-auto", isMobile ? "px-5 pb-5 pt-2" : "p-6")}>
+            {!isMobile ? (
+              <DialogHeader className="relative items-center space-y-1.5 pb-2 text-center sm:pb-3">
+                <DialogTitle className="sr-only">
+                  Detalhes do agendamento de {schedule.clientName}
+                </DialogTitle>
+              </DialogHeader>
+            ) : null}
 
             {mode === "reschedule" ? (
-              <div className={cn("space-y-5", isMobile ? "mt-12" : "mt-2")}>
+              <div className="mt-2 space-y-5">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-lg font-semibold text-foreground">Reagendar atendimento</p>
@@ -219,28 +254,57 @@ export function ScheduleDetailsDialog({
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div className="space-y-2">
                       <Label htmlFor="reschedule-date">Data</Label>
-                      <Input
-                        id="reschedule-date"
-                        type="date"
-                        value={customDate}
-                        onChange={(event) => setCustomDate(event.target.value)}
+                      <DatePicker
+                        value={customDateValue}
+                        onChange={(date) => {
+                          setCustomDate(date ? toCivilDateKey(date) : "")
+                          setCustomTime("")
+                        }}
+                        placeholder="Escolha uma data"
+                        className="rounded-full"
+                        disabled={rescheduleMutation.isPending}
+                        disabledDates={(date) =>
+                          !isRescheduleDateAvailable({
+                            schedules,
+                            teams,
+                            schedule,
+                            date: toCivilDateKey(date),
+                          })
+                        }
                       />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="reschedule-time">Horário</Label>
-                      <Input
-                        id="reschedule-time"
-                        type="time"
+                      <Select
                         value={customTime}
-                        onChange={(event) => setCustomTime(event.target.value)}
-                      />
+                        onValueChange={setCustomTime}
+                        disabled={!customDate || availableCustomTimes.length === 0 || rescheduleMutation.isPending}
+                      >
+                        <SelectTrigger id="reschedule-time" className="h-9 w-full rounded-full">
+                          <SelectValue
+                            placeholder={customDate ? "Nenhum horário livre" : "Escolha uma data"}
+                          />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableCustomTimes.map((time) => (
+                            <SelectItem key={time} value={time}>
+                              {time}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    {customDate && availableCustomTimes.length === 0
+                      ? "Nenhum horário disponível para a duração deste atendimento nesta data."
+                      : "Os horários são validados de 30 em 30 minutos conforme a duração do atendimento."}
+                  </p>
                   <Button
                     type="button"
                     className="mt-4 w-full sm:w-auto"
-                    disabled={rescheduleMutation.isPending}
-                    onClick={() => submitReschedule(customDate, customTime)}
+                    disabled={rescheduleMutation.isPending || !customDate || !customTime}
+                    onClick={() => submitReschedule(customDate, customTime, true)}
                   >
                     {rescheduleMutation.isPending ? (
                       <>
@@ -255,7 +319,7 @@ export function ScheduleDetailsDialog({
               </div>
             ) : (
               <>
-            <div className={cn("flex justify-center", isMobile ? "mt-12" : "mt-4")}>
+            <div className={cn("flex justify-center", isMobile ? "mt-2" : "mt-4")}>
               <Badge variant={isRecurringSchedule ? "secondary" : "outline"}>
                 {isRecurringSchedule ? "Atendimento recorrente" : "Atendimento avulso"}
               </Badge>
@@ -328,7 +392,7 @@ export function ScheduleDetailsDialog({
 
               {showAttendanceAction && !isMobile ? (
                 <div className="pt-2 md:col-span-2">
-                  <div className="flex flex-col items-start gap-3 rounded-2xl border border-primary/15 bg-primary/5 p-4">
+                  <div className="flex flex-col items-start gap-3 rounded-2xl border p-4">
                     <div>
                       <p className="text-sm font-medium text-foreground">
                         {canStartAttendance ? "Pronto para iniciar o atendimento" : getStatusLabel(schedule.status)}
@@ -377,7 +441,7 @@ export function ScheduleDetailsDialog({
           </div>
 
           {showAttendanceAction && isMobile && mode === "details" ? (
-            <div className="space-y-3 bg-background p-4">
+            <div className="shrink-0 space-y-3 bg-background px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-4">
               {canReschedule ? (
                 <Button
                   type="button"

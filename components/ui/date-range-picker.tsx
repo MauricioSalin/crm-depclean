@@ -14,6 +14,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 interface DateRangePickerProps {
   value?: DateRange
   onChange?: (range: DateRange | undefined) => void
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
   placeholder?: string
   className?: string
 }
@@ -21,6 +23,8 @@ interface DateRangePickerProps {
 export function DateRangePicker({
   value,
   onChange,
+  open,
+  onOpenChange,
   placeholder = "Selecionar período",
   className,
 }: DateRangePickerProps) {
@@ -31,7 +35,7 @@ export function DateRangePicker({
   }
 
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
         <Button
           variant="outline"

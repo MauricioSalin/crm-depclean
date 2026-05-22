@@ -23,19 +23,19 @@ function formatCurrency(value: number) {
 }
 
 const EMPTY_MONTHLY_REVENUE_DATA = [
-  { month: "Mês 1", value: 0 },
-  { month: "Mês 2", value: 0 },
-  { month: "Mês 3", value: 0 },
-  { month: "Mês 4", value: 0 },
-  { month: "Mês 5", value: 0 },
-  { month: "Mês 6", value: 0 },
+  { month: "Mês 1", value: 0, paidValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
+  { month: "Mês 2", value: 0, paidValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
+  { month: "Mês 3", value: 0, paidValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
+  { month: "Mês 4", value: 0, paidValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
+  { month: "Mês 5", value: 0, paidValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
+  { month: "Mês 6", value: 0, paidValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
 ]
 
 const EMPTY_SERVICES_BY_PERIOD_DATA = [
-  { period: "Semana 1", completed: 0, scheduled: 0 },
-  { period: "Semana 2", completed: 0, scheduled: 0 },
-  { period: "Semana 3", completed: 0, scheduled: 0 },
-  { period: "Semana 4", completed: 0, scheduled: 0 },
+  { period: "Período 1", completed: 0, scheduled: 0, emergency: 0 },
+  { period: "Período 2", completed: 0, scheduled: 0, emergency: 0 },
+  { period: "Período 3", completed: 0, scheduled: 0, emergency: 0 },
+  { period: "Período 4", completed: 0, scheduled: 0, emergency: 0 },
 ]
 
 const EMPTY_CHART_COLOR = "#DDE7D5"
@@ -48,14 +48,14 @@ export function ProjectAnalytics(period: DashboardAnalyticsParams = {}) {
   const isLoading = dashboardQuery.isLoading || (dashboardQuery.isFetching && !dashboardQuery.data)
   const monthlyRevenueData = dashboardQuery.data?.data.monthlyRevenueData ?? []
   const servicesByPeriodData = dashboardQuery.data?.data.servicesByPeriodData ?? []
-  const hasMonthlyRevenueData = monthlyRevenueData.some((item) => item.value > 0)
+  const hasMonthlyRevenueData = monthlyRevenueData.some((item) => item.paidValue > 0 || item.lateValue > 0 || item.overdueValue > 0)
   const monthlyRevenueChartData = monthlyRevenueData.length > 0 ? monthlyRevenueData : EMPTY_MONTHLY_REVENUE_DATA
-  const hasServicesByPeriodData = servicesByPeriodData.some((item) => item.completed > 0 || item.scheduled > 0)
+  const hasServicesByPeriodData = servicesByPeriodData.some((item) => item.completed > 0 || item.scheduled > 0 || item.emergency > 0)
   const servicesByPeriodChartData = servicesByPeriodData.length > 0 ? servicesByPeriodData : EMPTY_SERVICES_BY_PERIOD_DATA
 
   return (
-    <Card className="h-full p-4 md:p-5">
-      <Tabs defaultValue="faturamento" className="w-full">
+    <Card className="flex h-full min-h-[360px] flex-col p-4 md:p-5">
+      <Tabs defaultValue="faturamento" className="flex h-full w-full flex-col">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
           <h3 className="font-semibold text-base">Análise Operacional</h3>
           <TabsList className="grid w-full sm:w-auto grid-cols-2">
@@ -65,7 +65,8 @@ export function ProjectAnalytics(period: DashboardAnalyticsParams = {}) {
         </div>
 
         <TabsContent value="faturamento" className="mt-0">
-          <div className="h-[280px] w-full">
+          <div className="-mx-1 overflow-x-auto px-1 pb-2">
+          <div className="h-[280px] min-w-[540px] sm:min-w-0">
             {isLoading ? (
               <div className="flex h-full items-end gap-3 px-4 pb-6 pt-10">
                 {[58, 82, 46, 72, 64, 88].map((height, index) => (
@@ -74,7 +75,7 @@ export function ProjectAnalytics(period: DashboardAnalyticsParams = {}) {
               </div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={monthlyRevenueChartData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
+                <BarChart data={monthlyRevenueChartData} margin={{ top: 5, right: 8, left: 0, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                   <XAxis 
                     dataKey="month" 
@@ -83,23 +84,29 @@ export function ProjectAnalytics(period: DashboardAnalyticsParams = {}) {
                     axisLine={{ stroke: 'var(--border)' }}
                   />
                   <YAxis 
+                    width={34}
                     tick={{ fontSize: 12 }} 
                     className="text-muted-foreground"
                     tickFormatter={(value) => `${(value / 1000).toFixed(0)}k`}
                     axisLine={{ stroke: 'var(--border)' }}
                     domain={[0, (dataMax: number) => Math.max(Number(dataMax) || 0, 1)]}
                   />
-                  <Tooltip 
+                  <Tooltip
                     contentStyle={{ 
                       backgroundColor: 'var(--card)',
                       border: '1px solid var(--border)',
                       borderRadius: '8px',
                       fontSize: '12px'
                     }}
-                    formatter={(value: number) => [formatCurrency(value), 'Faturamento']}
+                    formatter={(value: number, name: string) => [
+                      formatCurrency(value),
+                      name === "paidValue" ? "Pagas" : name === "lateValue" ? "Em atraso" : name === "overdueValue" ? "Vencidas" : "Faturamento",
+                    ]}
                   />
-                  <Bar 
-                    dataKey="value" 
+                  <Legend />
+                  <Bar
+                    dataKey="paidValue"
+                    name="Pagas"
                     fill={hasMonthlyRevenueData ? "var(--primary)" : EMPTY_CHART_COLOR}
                     minPointSize={hasMonthlyRevenueData ? 0 : 3}
                     radius={[4, 4, 0, 0]}
@@ -108,14 +115,38 @@ export function ProjectAnalytics(period: DashboardAnalyticsParams = {}) {
                     animationDuration={900}
                     animationEasing="ease-out"
                   />
+                  <Bar
+                    dataKey="lateValue"
+                    name="Em atraso"
+                    fill={hasMonthlyRevenueData ? "#F59E0B" : "#F6EFE4"}
+                    minPointSize={hasMonthlyRevenueData ? 0 : 3}
+                    radius={[4, 4, 0, 0]}
+                    isAnimationActive
+                    animationBegin={220}
+                    animationDuration={900}
+                    animationEasing="ease-out"
+                  />
+                  <Bar
+                    dataKey="overdueValue"
+                    name="Vencidas"
+                    fill={hasMonthlyRevenueData ? "#EF4444" : "#F3E7E7"}
+                    minPointSize={hasMonthlyRevenueData ? 0 : 3}
+                    radius={[4, 4, 0, 0]}
+                    isAnimationActive
+                    animationBegin={320}
+                    animationDuration={900}
+                    animationEasing="ease-out"
+                  />
                 </BarChart>
               </ResponsiveContainer>
             )}
           </div>
+          </div>
         </TabsContent>
 
         <TabsContent value="servicos" className="mt-0">
-          <div className="h-[280px] w-full">
+          <div className="-mx-1 overflow-x-auto px-1 pb-2">
+          <div className="h-[280px] min-w-[540px] sm:min-w-0">
             {isLoading ? (
               <div className="flex h-full flex-col justify-end gap-5 px-4 pb-8 pt-10">
                 <Skeleton className="h-3 w-11/12 rotate-[-6deg] rounded-full" />
@@ -128,15 +159,17 @@ export function ProjectAnalytics(period: DashboardAnalyticsParams = {}) {
               </div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={servicesByPeriodChartData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
+                <LineChart data={servicesByPeriodChartData} margin={{ top: 5, right: 8, left: 0, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                   <XAxis 
                     dataKey="period" 
                     tick={{ fontSize: 12 }} 
                     className="text-muted-foreground"
                     axisLine={{ stroke: 'var(--border)' }}
+                    interval={0}
                   />
                   <YAxis 
+                    width={34}
                     tick={{ fontSize: 12 }} 
                     className="text-muted-foreground"
                     axisLine={{ stroke: 'var(--border)' }}
@@ -176,9 +209,22 @@ export function ProjectAnalytics(period: DashboardAnalyticsParams = {}) {
                     animationDuration={950}
                     animationEasing="ease-out"
                   />
+                  <Line
+                    type="monotone"
+                    dataKey="emergency"
+                    name="Emergenciais"
+                    stroke={hasServicesByPeriodData ? "#ef4444" : "#F3E7E7"}
+                    strokeWidth={2}
+                    dot={{ fill: hasServicesByPeriodData ? "#ef4444" : "#F3E7E7" }}
+                    isAnimationActive
+                    animationBegin={320}
+                    animationDuration={950}
+                    animationEasing="ease-out"
+                  />
                 </LineChart>
               </ResponsiveContainer>
             )}
+          </div>
           </div>
         </TabsContent>
       </Tabs>

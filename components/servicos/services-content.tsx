@@ -274,11 +274,11 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
               key={type.id}
               role="button"
               tabIndex={0}
-              className="cursor-pointer overflow-hidden py-4 transition-shadow hover:shadow-lg"
+              className="h-full cursor-pointer overflow-hidden py-4 transition-shadow hover:shadow-lg"
               onClick={() => openServiceDetails(type)}
               onKeyDown={(event) => handleServiceKeyDown(event, type)}
             >
-              <CardContent className="px-4">
+              <CardContent className="flex h-full flex-col px-4">
                 <div className="mb-2 flex items-start justify-between">
                   <div className="flex min-w-0 items-center gap-3">
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
@@ -291,37 +291,6 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
                       </p>
                     </div>
                   </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 shrink-0 rounded-full"
-                        aria-label="Ações do serviço"
-                        onClick={(event) => event.stopPropagation()}
-                      >
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem asChild className="cursor-pointer">
-                        <Link href={`/servicos/${type.id}/editar`} onClick={(event) => event.stopPropagation()}>
-                          <Edit className="mr-2 h-4 w-4" />
-                          Editar
-                        </Link>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        className="cursor-pointer"
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          handleDeleteType(type.id)
-                        }}
-                      >
-                        <Trash2 className="mr-2 h-4 w-4" />
-                        Excluir
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
                 </div>
 
                 <div className="flex items-center gap-1 text-sm text-muted-foreground">
@@ -355,6 +324,24 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
                     })}
                   </div>
                 ) : null}
+                <div className="mt-auto grid grid-cols-2 gap-2 pt-3" onClick={(event) => event.stopPropagation()}>
+                  <Button variant="outline" size="sm" className="h-8 rounded-full" asChild>
+                    <Link href={`/servicos/${type.id}/editar`}>
+                      <Edit className="mr-2 h-4 w-4" />
+                      Editar
+                    </Link>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 rounded-full text-destructive hover:text-destructive"
+                    onClick={() => handleDeleteType(type.id)}
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Excluir
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           ))}

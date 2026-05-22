@@ -8,6 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -219,21 +220,22 @@ export function SchedulingFormDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger className="hidden" />
-      <DialogContent className="max-w-2xl max-h-[90dvh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[90dvh] max-w-2xl flex-col gap-0 overflow-hidden p-0">
+        <DialogHeader className="shrink-0 border-b px-6 py-5 pr-12 text-center sm:text-center">
           <DialogTitle>{dialogTitle}</DialogTitle>
-          <div className="mt-2 flex flex-col items-start gap-2">
-            <Badge variant={isRecurringSchedule ? "secondary" : "outline"} className="w-fit">
+        </DialogHeader>
+        <form id="schedule-form" autoComplete="off" onSubmit={handleSubmit} className="min-h-0 flex-1 space-y-6 overflow-y-auto px-6 py-5">
+          <div className="flex flex-col items-center gap-2 text-center">
+            <Badge variant={isRecurringSchedule ? "secondary" : "outline"} className="w-fit justify-center">
               {scheduleTypeLabel}
             </Badge>
             {isRecurringSchedule ? (
-              <p className="text-sm text-muted-foreground">
+              <p className="max-w-md text-sm text-muted-foreground">
                 Data, horário, duração, observações, equipes e funcionários avulsos podem ser alterados neste atendimento.
               </p>
             ) : null}
           </div>
-        </DialogHeader>
-        <form autoComplete="off" onSubmit={handleSubmit} className="space-y-6">
+
           {/* Client Selection */}
           <div className="space-y-2">
             <Label>Cliente *</Label>
@@ -577,15 +579,15 @@ export function SchedulingFormDialog({
             </div>
           )}
 
-          <div className="flex gap-2 justify-end">
-            <Button type="button" variant="outline" onClick={resetForm}>
-              Cancelar
-            </Button>
-            <Button type="submit" className="bg-primary hover:bg-primary/90 text-primary-foreground">
-              {editingSchedule ? "Salvar" : "Agendar"}
-            </Button>
-          </div>
         </form>
+        <DialogFooter className="shrink-0 border-t px-6 py-4">
+          <Button type="button" variant="outline" onClick={resetForm}>
+            Cancelar
+          </Button>
+          <Button type="submit" form="schedule-form" className="bg-primary hover:bg-primary/90 text-primary-foreground">
+            {editingSchedule ? "Salvar" : "Agendar"}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )

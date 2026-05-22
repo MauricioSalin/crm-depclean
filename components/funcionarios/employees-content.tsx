@@ -5,6 +5,7 @@ import { Copy, Edit, Eye, EyeOff, Mail, MoreHorizontal, Phone, Search, Shield, T
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Card, CardContent } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import {
@@ -26,10 +27,12 @@ import { TableEmptyState } from "@/components/ui/empty-state"
 import { CardSkeletonGrid, TableSkeletonRows } from "@/components/ui/table-skeleton"
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
 import { getApiErrorMessage } from "@/lib/api/errors"
+import { resolveAvatarUrl } from "@/lib/avatar"
 import { getStoredUser } from "@/lib/auth/session"
 import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 import { formatCPF, formatPhone, isValidCPF } from "@/lib/masks"
+import { getInitials } from "@/lib/utils"
 import { getSettings, type PermissionProfileRecord } from "@/lib/api/settings"
 import {
   createEmployee,
@@ -682,9 +685,12 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
                     <TableRow key={employee.id}>
                       <TableCell className="min-w-[180px]">
                         <div className="flex items-center gap-3">
-                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10">
-                            <User className="h-5 w-5 text-primary" />
-                          </div>
+                          <Avatar className="h-10 w-10 shrink-0 ring-2 ring-primary/10">
+                            <AvatarImage src={resolveAvatarUrl(employee.avatar)} alt={employee.name} />
+                            <AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">
+                              {getInitials(employee.name)}
+                            </AvatarFallback>
+                          </Avatar>
                           <div className="min-w-0">
                             <div className="font-medium">{employee.name}</div>
                             <div className="text-xs text-muted-foreground sm:hidden">{employee.role || "-"}</div>
@@ -784,13 +790,16 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
             {loading ? (
               <CardSkeletonGrid cards={4} />
             ) : paginatedEmployees.map((employee) => (
-              <Card key={employee.id} className="overflow-hidden">
-                <CardContent className="p-4">
+              <Card key={employee.id} className="h-full overflow-hidden">
+                <CardContent className="flex h-full flex-col p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-3">
-                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary/10">
-                        <User className="h-6 w-6 text-primary" />
-                      </div>
+                      <Avatar className="h-12 w-12 shrink-0 ring-2 ring-primary/10">
+                        <AvatarImage src={resolveAvatarUrl(employee.avatar)} alt={employee.name} />
+                        <AvatarFallback className="bg-primary/10 text-sm font-semibold text-primary">
+                          {getInitials(employee.name)}
+                        </AvatarFallback>
+                      </Avatar>
                       <div>
                         <h3 className="font-medium">{employee.name}</h3>
                         <p className="text-sm text-muted-foreground">{employee.role || "-"}</p>
@@ -822,41 +831,44 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
                     )}
                   </div>
 
-                  <div className="mt-4 flex justify-end">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="outline" size="icon" className="h-9 w-9 rounded-full" aria-label="Ações do funcionário">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        {!employee.isSystemUser ? (
-                          <DropdownMenuItem className="cursor-pointer" onClick={() => handleMakeSystemUser(employee)}>
-                            <UserCog className="mr-2 h-4 w-4" />
-                            Tornar usuário
-                          </DropdownMenuItem>
-                        ) : (
-                          <DropdownMenuItem
-                            className="cursor-pointer"
-                            onClick={() => setPendingAction({ kind: "revoke", id: employee.id, label: employee.name })}
-                          >
-                            <Shield className="mr-2 h-4 w-4" />
-                            Remover acesso
-                          </DropdownMenuItem>
-                        )}
-                        <DropdownMenuItem className="cursor-pointer" onClick={() => handleEdit(employee)}>
-                          <Edit className="mr-2 h-4 w-4" />
-                          Editar
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          className="cursor-pointer"
-                          onClick={() => setPendingAction({ kind: "deactivate", id: employee.id, label: employee.name })}
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Inativar
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                  <div className="mt-auto grid grid-cols-2 gap-2 pt-4">
+                    {!employee.isSystemUser ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="col-span-2 h-8 rounded-full"
+                        onClick={() => handleMakeSystemUser(employee)}
+                      >
+                        <UserCog className="mr-2 h-4 w-4" />
+                        Tornar usuário
+                      </Button>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="col-span-2 h-8 rounded-full"
+                        onClick={() => setPendingAction({ kind: "revoke", id: employee.id, label: employee.name })}
+                      >
+                        <Shield className="mr-2 h-4 w-4" />
+                        Remover acesso
+                      </Button>
+                    )}
+                    <Button type="button" variant="outline" size="sm" className="h-8 rounded-full" onClick={() => handleEdit(employee)}>
+                      <Edit className="mr-2 h-4 w-4" />
+                      Editar
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 rounded-full text-destructive hover:text-destructive"
+                      onClick={() => setPendingAction({ kind: "deactivate", id: employee.id, label: employee.name })}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Inativar
+                    </Button>
                   </div>
                 </CardContent>
               </Card>

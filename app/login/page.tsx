@@ -84,7 +84,7 @@ export default function LoginPage() {
     >
       <div className="absolute inset-0 bg-white/10 lg:bg-transparent" />
 
-      <div className="relative z-10 grid min-h-dvh grid-cols-1 px-5 py-7 sm:px-8 lg:h-full lg:min-h-0 lg:grid-cols-[minmax(500px,52vw)_1fr] lg:px-0 lg:py-0">
+      <div className="relative z-10 grid min-h-dvh grid-cols-1 px-5 pb-4 pt-6 sm:px-8 sm:py-6 lg:h-full lg:min-h-0 lg:grid-cols-[minmax(500px,52vw)_1fr] lg:px-0 lg:py-0">
         <section className="hidden h-full items-start justify-center px-8 pt-[clamp(2.75rem,7vh,5rem)] lg:flex">
           <div className="w-full max-w-[470px]">
             <Image
@@ -99,19 +99,19 @@ export default function LoginPage() {
               <h1 className="max-w-[430px] text-[clamp(2.65rem,3.7vw,4.35rem)] font-extrabold leading-[1.02] tracking-[0] text-[#101824]">
                 <span className="block whitespace-nowrap">Bem-vindo</span>
                 <span className="block whitespace-nowrap">
-                  de <span className="text-primary">volta</span>
+                  de <span className="text-primary">volta!</span>
                 </span>
               </h1>
               <div className="mt-[clamp(1.1rem,2.8vh,1.6rem)] h-[3px] w-[52px] bg-primary" />
-              <p className="mt-[clamp(1rem,2.5vh,1.35rem)] max-w-[300px] text-[clamp(0.98rem,1.05vw,1.14rem)] leading-[1.55] text-[#2f3a49]">
+              <p className="mt-[clamp(1rem,2.5vh,1.35rem)] max-w-[350px] text-[clamp(0.98rem,1.05vw,1.14rem)] leading-[1.55] text-[#2f3a49]">
                 Acesse o portal e conecte-se ao que transforma nosso futuro todos os dias.
               </p>
             </div>
           </div>
         </section>
 
-        <section className="flex min-h-[calc(100dvh-3.5rem)] flex-col items-center lg:h-full lg:min-h-0 lg:px-[4vw] xl:px-[5vw]">
-          <div className="w-full max-w-[430px] text-center lg:hidden">
+        <section className="flex min-h-[calc(100dvh-2rem)] flex-col items-center sm:min-h-[calc(100dvh-3rem)] lg:h-full lg:min-h-0 lg:px-[4vw] xl:px-[5vw]">
+          <div className="w-full max-w-[430px] shrink-0 text-center lg:hidden">
             <Image
               src="/logo-depclean.png"
               alt="Depclean"
@@ -122,12 +122,12 @@ export default function LoginPage() {
             />
           </div>
 
-          <div className="flex w-full flex-1 flex-col items-center justify-center gap-6 py-5 lg:gap-8 lg:py-6">
+          <div className="flex min-h-0 w-full flex-1 flex-col items-center justify-center gap-5 py-4 sm:gap-6 sm:py-5 lg:gap-8 lg:py-6">
             <Card className="w-full max-w-[400px] rounded-[24px] border border-[#dfe3df] bg-white/90 py-0 shadow-[0_20px_52px_rgba(15,23,42,0.10)] backdrop-blur-xl sm:max-w-[430px] sm:rounded-[28px] lg:max-w-[440px] xl:max-w-[470px] 2xl:max-w-[520px]">
               <CardContent className="px-5 pb-6 pt-8 sm:px-7 sm:pb-7 sm:pt-9 lg:px-8 lg:pb-7 lg:pt-10 xl:px-9 xl:pb-8 xl:pt-10 2xl:px-12 2xl:pb-10 2xl:pt-12">
-                <div className="mb-5 flex justify-center 2xl:mb-6">
+                {/* <div className="mb-5 flex justify-center 2xl:mb-6">
                   <UserRound className="h-7 w-7 text-muted-foreground 2xl:h-8 2xl:w-8" strokeWidth={1.8} />
-                </div>
+                </div> */}
                 <form autoComplete="off" onSubmit={handleSubmit} className="space-y-4 2xl:space-y-5">
                   <div className="space-y-2">
                     <Label htmlFor="email">Usuário</Label>
@@ -221,13 +221,13 @@ export default function LoginPage() {
               <div className="h-px flex-1 bg-border" />
               <div className="max-w-[330px]">
                 <UserRoundCog className="mx-auto mb-2 h-5 w-5 text-muted-foreground" />
-                <p>Caso não tenha conta, entre em contato com um Administrador.</p>
+                <p>Caso ainda não possua uma conta, entre em contato com um administrador.</p>
               </div>
               <div className="h-px flex-1 bg-border" />
             </div>
           </div>
 
-          <div className="flex w-full justify-center pb-4 lg:pb-7">
+          <div className="mt-auto flex w-full shrink-0 justify-center pb-1 pt-2 sm:pb-3 lg:pb-7">
             <Image
               src="/logo-depclean-d.png"
               alt="Depclean"

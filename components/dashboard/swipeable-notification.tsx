@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { motion, useMotionValue, useTransform, useAnimation, type PanInfo } from "framer-motion"
 import { CheckCheck } from "lucide-react"
 
@@ -8,27 +8,52 @@ interface SwipeableNotificationProps {
   children: React.ReactNode
   onMarkRead: () => void
   isRead: boolean
+  dismissOnMarkRead?: boolean
 }
 
 const SWIPE_THRESHOLD = 70
 const DISMISS_THRESHOLD = 140
 
-export function SwipeableNotification({ children, onMarkRead, isRead }: SwipeableNotificationProps) {
+export function SwipeableNotification({ children, onMarkRead, isRead, dismissOnMarkRead = true }: SwipeableNotificationProps) {
   const [dismissed, setDismissed] = useState(false)
   const [revealed, setRevealed] = useState(false)
+  const suppressClickRef = useRef(false)
+  const pointerStartRef = useRef<{ x: number; y: number } | null>(null)
+  const pointerMovedRef = useRef(false)
   const x = useMotionValue(0)
   const controls = useAnimation()
 
   const actionOpacity = useTransform(x, [-DISMISS_THRESHOLD, -SWIPE_THRESHOLD, -20, 0], [1, 1, 0.4, 0])
   const actionScale = useTransform(x, [-DISMISS_THRESHOLD, -SWIPE_THRESHOLD, 0], [1, 0.9, 0.5])
 
-  const handleDragEnd = async (_: any, info: PanInfo) => {
-    const offset = info.offset.x
+  const suppressNextClick = () => {
+    suppressClickRef.current = true
+    window.setTimeout(() => {
+      suppressClickRef.current = false
+    }, 350)
+  }
 
-    if (offset < -DISMISS_THRESHOLD) {
+  const markRead = async () => {
+    if (dismissOnMarkRead) {
       await controls.start({ x: -400, opacity: 0, transition: { duration: 0.25 } })
       setDismissed(true)
       onMarkRead()
+      return
+    }
+
+    onMarkRead()
+    setRevealed(false)
+    await controls.start({ x: 0, opacity: 1, transition: { type: "spring", stiffness: 500, damping: 30 } })
+  }
+
+  const handleDragEnd = async (_: any, info: PanInfo) => {
+    const offset = info.offset.x
+    if (Math.abs(offset) > 8 || pointerMovedRef.current) {
+      suppressNextClick()
+    }
+
+    if (offset < -DISMISS_THRESHOLD) {
+      await markRead()
     } else if (offset < -SWIPE_THRESHOLD) {
       setRevealed(true)
       controls.start({ x: -70, transition: { type: "spring", stiffness: 300, damping: 30 } })
@@ -39,9 +64,7 @@ export function SwipeableNotification({ children, onMarkRead, isRead }: Swipeabl
   }
 
   const handleClickAction = async () => {
-    await controls.start({ x: -400, opacity: 0, transition: { duration: 0.25 } })
-    setDismissed(true)
-    onMarkRead()
+    await markRead()
   }
 
   if (dismissed) return null
@@ -70,7 +93,39 @@ export function SwipeableNotification({ children, onMarkRead, isRead }: Swipeabl
         drag="x"
         dragConstraints={{ left: -200, right: 0 }}
         dragElastic={0.1}
+        onPointerDownCapture={(event) => {
+          pointerStartRef.current = { x: event.clientX, y: event.clientY }
+          pointerMovedRef.current = false
+        }}
+        onPointerMoveCapture={(event) => {
+          const start = pointerStartRef.current
+          if (!start) return
+
+          const deltaX = event.clientX - start.x
+          const deltaY = event.clientY - start.y
+
+          if (Math.abs(deltaX) > 8 && Math.abs(deltaX) > Math.abs(deltaY)) {
+            pointerMovedRef.current = true
+            suppressClickRef.current = true
+          }
+        }}
+        onPointerUpCapture={() => {
+          pointerStartRef.current = null
+        }}
+        onPointerCancelCapture={() => {
+          pointerStartRef.current = null
+          pointerMovedRef.current = false
+        }}
         onDragEnd={handleDragEnd}
+        onClickCapture={(event) => {
+          if (!suppressClickRef.current) return
+          event.preventDefault()
+          event.stopPropagation()
+          window.setTimeout(() => {
+            suppressClickRef.current = false
+            pointerMovedRef.current = false
+          }, 0)
+        }}
         animate={controls}
         style={{ x }}
         className="relative bg-popover cursor-grab active:cursor-grabbing touch-pan-y"
