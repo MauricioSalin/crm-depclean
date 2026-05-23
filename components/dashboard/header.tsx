@@ -19,12 +19,13 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { SwipeableNotification } from "./swipeable-notification"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import type { ReactNode } from "react"
 import { listNotifications, markNotificationAsRead } from "@/lib/api/notifications"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { clearSession, getStoredAccessToken, getStoredUser } from "@/lib/auth/session"
 import { resolveAvatarUrl } from "@/lib/avatar"
+import { buildPathWithSearchParams } from "@/lib/navigation"
 import { getNotificationHref } from "@/lib/notification-navigation"
 import { setMobileFiltersOpen as notifyMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 import { useSidebarCollapse } from "./sidebar-collapse-context"
@@ -61,6 +62,9 @@ const getNotificationDotColor = (type: string) => {
 
 export function Header({ title, description, titleAddon, headerActions, actions, viewToggle, filters, hasFilters = false, showDivider = false }: HeaderProps) {
   const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const currentHref = buildPathWithSearchParams(pathname, searchParams)
   const queryClient = useQueryClient()
   const { collapsed, toggleCollapsed } = useSidebarCollapse()
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
@@ -118,7 +122,7 @@ export function Header({ title, description, titleAddon, headerActions, actions,
     if (!notification.isRead) {
       markAsRead(notification.id)
     }
-    router.push(getNotificationHref(notification))
+    router.push(getNotificationHref(notification, currentHref))
   }
 
   const handleLogout = () => {

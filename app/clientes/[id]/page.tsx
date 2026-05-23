@@ -2,15 +2,20 @@ import { Sidebar } from "@/components/dashboard/sidebar"
 import { Header } from "@/components/dashboard/header"
 import { ClientProfile } from "@/components/clientes/client-profile"
 import { Button } from "@/components/ui/button"
+import { buildPathWithSearchRecord, getFirstSearchParam, getSafeReturnTo, withReturnTo } from "@/lib/navigation"
 import Link from "next/link"
 import { ArrowLeft, Edit } from "lucide-react"
 
 interface ClientPageProps {
   params: Promise<{ id: string }>
+  searchParams?: Promise<Record<string, string | string[] | undefined>>
 }
 
-export default async function ClientPage({ params }: ClientPageProps) {
+export default async function ClientPage({ params, searchParams }: ClientPageProps) {
   const { id } = await params
+  const resolvedSearchParams = await searchParams
+  const backHref = getSafeReturnTo(getFirstSearchParam(resolvedSearchParams?.returnTo), "/clientes")
+  const currentHref = buildPathWithSearchRecord(`/clientes/${id}`, resolvedSearchParams)
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -24,13 +29,13 @@ export default async function ClientPage({ params }: ClientPageProps) {
           description="Visualize e gerencie todas as informações do cliente"
           actions={
             <>
-              <Link href="/clientes">
+              <Link href={backHref}>
                 <Button variant="outline" className="w-full sm:w-auto h-9 text-sm bg-transparent">
                   <ArrowLeft className="w-4 h-4 mr-2" />
                   Voltar
                 </Button>
               </Link>
-              <Link href={`/clientes/${id}/editar`}>
+              <Link href={withReturnTo(`/clientes/${id}/editar`, currentHref)}>
                 <Button className="w-full sm:w-auto h-9 text-sm bg-primary text-primary-foreground hover:bg-primary/90">
                   <Edit className="w-4 h-4 mr-2" />
                   Editar

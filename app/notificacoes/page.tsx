@@ -2,7 +2,7 @@
 
 import { useMemo } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { useRouter } from "next/navigation"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { CheckCheck } from "lucide-react"
 import { toast } from "sonner"
 
@@ -19,10 +19,14 @@ import {
   type NotificationRecord,
 } from "@/lib/api/notifications"
 import { getApiErrorMessage } from "@/lib/api/errors"
+import { buildPathWithSearchParams } from "@/lib/navigation"
 import { getNotificationHref } from "@/lib/notification-navigation"
 
 export default function NotificacoesPage() {
   const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const currentHref = buildPathWithSearchParams(pathname, searchParams)
   const queryClient = useQueryClient()
   const notificationsQuery = useQuery({
     queryKey: ["notifications"],
@@ -93,7 +97,7 @@ export default function NotificacoesPage() {
     if (!notification.isRead) {
       markAsReadMutation.mutate(notification.id)
     }
-    router.push(getNotificationHref(notification))
+    router.push(getNotificationHref(notification, currentHref))
   }
 
   return (

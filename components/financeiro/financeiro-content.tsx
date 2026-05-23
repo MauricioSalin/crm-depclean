@@ -40,7 +40,9 @@ import { updateInstallment } from "@/lib/api/contracts"
 import { updateScheduleBilling } from "@/lib/api/schedules"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { formatCivilDate } from "@/lib/date-utils"
+import { buildPathWithSearchParams, withReturnTo } from "@/lib/navigation"
 import Link from "next/link"
+import { usePathname, useSearchParams } from "next/navigation"
 import { toast } from "sonner"
 import {
   BarChart,
@@ -102,6 +104,9 @@ function selectCurrentInstallment(installments: FinancialInstallmentRecord[]) {
 }
 
 export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: FinanceiroContentProps) {
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const currentHref = buildPathWithSearchParams(pathname, searchParams)
   const [searchTerm, setSearchTerm] = useUrlQueryState("q")
   const [tabFilter, setTabFilter] = useState("all")
   const [currentPage, setCurrentPage] = useState(1)
@@ -235,7 +240,7 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
   return (
     <div className="space-y-6">
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <Card className="p-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center">
@@ -255,6 +260,17 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
             <div>
               <p className="text-sm text-muted-foreground">A Receber</p>
               <p className="text-xl font-semibold text-amber-600/80">{formatCurrency(summary.totalPending)}</p>
+            </div>
+          </div>
+        </Card>
+        <Card className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-orange-50 flex items-center justify-center">
+              <AlertTriangle className="w-5 h-5 text-orange-500" />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Em atraso</p>
+              <p className="text-xl font-semibold text-orange-600/80">{formatCurrency(summary.totalLate)}</p>
             </div>
           </div>
         </Card>
@@ -464,13 +480,17 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
                     paginatedInstallments.map((installment) => (
                       <TableRow key={installment.id}>
                         <TableCell>
-                          <Link href={`/clientes/${installment.clientId}`} className="hover:text-primary">
+                          <Link href={withReturnTo(`/clientes/${installment.clientId}`, currentHref)} className="hover:text-primary">
                             <p className="font-medium truncate max-w-[140px] sm:max-w-[280px]">{installment.clientCompanyName}</p>
                           </Link>
                         </TableCell>
                         <TableCell className="hidden md:table-cell text-muted-foreground">
                           <Link
-                            href={installment.source === "schedule" ? "/agendamentos" : `/contratos/${installment.contractId}`}
+                            href={
+                              installment.source === "schedule"
+                                ? "/agendamentos"
+                                : withReturnTo(`/contratos/${installment.contractId}`, currentHref)
+                            }
                             className="hover:text-primary"
                           >
                             {installment.contractNumber}

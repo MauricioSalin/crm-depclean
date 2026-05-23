@@ -78,6 +78,7 @@ import {
   DollarSign,
 } from "lucide-react"
 import { cn, getColorFromClass } from "@/lib/utils"
+import { withReturnTo } from "@/lib/navigation"
 import { formatCivilDate, formatCivilLongDate, toCivilDateKey } from "@/lib/date-utils"
 import type { RecurrenceRule, RecurrenceRuleType, RecurrenceType } from "@/lib/types"
 import { useRouter } from "next/navigation"
@@ -164,6 +165,7 @@ function buildServiceSectionsHtml(
 interface ContractFormProps {
   contractId?: string
   isEditing?: boolean
+  returnTo?: string
 }
 
 interface ContractService {
@@ -202,9 +204,10 @@ const isContractSigned = (contract?: { status?: string; clicksign?: { status?: s
   return ["signed", "active"].includes(contract.status ?? "") || ["closed", "finished", "completed", "done"].includes(clicksignStatus)
 }
 
-export function ContractForm({ contractId, isEditing = false }: ContractFormProps) {
+export function ContractForm({ contractId, isEditing = false, returnTo }: ContractFormProps) {
   const router = useRouter()
   const queryClient = useQueryClient()
+  const formBackHref = returnTo || "/contratos"
 
   const clientsQuery = useQuery({
     queryKey: ["clients", "contract-form"],
@@ -1009,7 +1012,7 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
       try {
         await updateMutation.mutateAsync({ id: contractId, payload })
         toast.success("Contrato atualizado com sucesso.", { id: toastId })
-        router.push("/contratos")
+        router.push(formBackHref)
       } catch (error) {
         toast.error(getApiErrorMessage(error, "Não foi possível atualizar o contrato."), { id: toastId })
       }
@@ -1226,7 +1229,7 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
         <FileText className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
         <h2 className="text-lg font-semibold">Contrato não encontrado</h2>
         <p className="mt-1 text-sm text-muted-foreground">Não foi possível carregar os dados deste contrato.</p>
-        <Button className="mt-4" variant="outline" onClick={() => router.push("/contratos")}>
+        <Button className="mt-4" variant="outline" onClick={() => router.push(formBackHref)}>
           Voltar para contratos
         </Button>
       </Card>
@@ -1239,7 +1242,7 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
         <FileText className="mx-auto mb-3 h-8 w-8 text-primary" />
         <h2 className="text-lg font-semibold">Contrato assinado</h2>
         <p className="mt-1 text-sm text-muted-foreground">Contratos assinados não podem ser editados.</p>
-        <Button className="mt-4" variant="outline" onClick={() => router.push(contractId ? `/contratos/${contractId}` : "/contratos")}>
+        <Button className="mt-4" variant="outline" onClick={() => router.push(formBackHref)}>
           Voltar para o contrato
         </Button>
       </Card>
@@ -1267,11 +1270,11 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
             )}
           </p>
           <div className="flex flex-col sm:flex-row gap-2 mt-6 w-full justify-center">
-            <Button variant="outline" onClick={() => router.push("/contratos")} className="w-full sm:w-auto">
+            <Button variant="outline" onClick={() => router.push(formBackHref)} className="w-full sm:w-auto">
               Voltar para contratos
             </Button>
             <Button
-              onClick={() => router.push(createdContractId ? `/contratos/${createdContractId}` : "/contratos")}
+              onClick={() => router.push(createdContractId ? withReturnTo(`/contratos/${createdContractId}`, formBackHref) : formBackHref)}
               className="w-full sm:w-auto bg-primary hover:bg-primary/90"
             >
               Ver contrato
@@ -1877,7 +1880,7 @@ export function ContractForm({ contractId, isEditing = false }: ContractFormProp
               Remover
             </Button>
           ) : null}
-          <Button type="button" variant="outline" onClick={() => router.push("/contratos")} disabled={previewMutation.isPending || updateMutation.isPending || createMutation.isPending || isFinalizingCreate}>
+          <Button type="button" variant="outline" onClick={() => router.push(formBackHref)} disabled={previewMutation.isPending || updateMutation.isPending || createMutation.isPending || isFinalizingCreate}>
             Cancelar
           </Button>
           <Button type="submit" className="bg-primary hover:bg-primary/90" disabled={previewMutation.isPending || updateMutation.isPending || createMutation.isPending || isFinalizingCreate}>

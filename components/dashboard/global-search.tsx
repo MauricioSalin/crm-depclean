@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { usePathname, useRouter } from "next/navigation"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { ArrowRight, Bot, Building2, FileText, Loader2, Search, Wrench, X } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { listClients, type ClientRecord } from "@/lib/api/clients"
 import { listContracts, type ContractRecord } from "@/lib/api/contracts"
 import { listServices, type ServiceRecord } from "@/lib/api/services"
+import { buildPathWithSearchParams, withReturnTo } from "@/lib/navigation"
 import { cn } from "@/lib/utils"
 
 type SearchItemKind = "client" | "contract" | "service" | "view-all" | "depai"
@@ -78,6 +79,8 @@ function getServiceDescription(service: ServiceRecord) {
 export function GlobalSearch() {
   const router = useRouter()
   const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const currentHref = buildPathWithSearchParams(pathname, searchParams)
   const rootRef = useRef<HTMLDivElement | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const itemRefs = useRef<Array<HTMLButtonElement | null>>([])
@@ -149,7 +152,7 @@ export function GlobalSearch() {
           title: client.companyName,
           description: getClientDescription(client),
           meta: client.isActive ? "Ativo" : "Inativo",
-          href: `/clientes/${client.id}`,
+          href: withReturnTo(`/clientes/${client.id}`, currentHref),
           icon: <Building2 className="h-4 w-4" />,
           section: "Clientes",
         })),
@@ -163,7 +166,7 @@ export function GlobalSearch() {
           kind: "contract",
           title: contract.contractNumber,
           description: getContractDescription(contract),
-          href: `/contratos/${contract.id}`,
+          href: withReturnTo(`/contratos/${contract.id}`, currentHref),
           icon: <FileText className="h-4 w-4" />,
           section: "Contratos",
         })),
@@ -184,7 +187,7 @@ export function GlobalSearch() {
         })),
       },
     ]
-  }, [query, searchQuery.data])
+  }, [currentHref, query, searchQuery.data])
 
   const flatItems = useMemo(() => {
     const currentQuery = normalizeQuery(query)

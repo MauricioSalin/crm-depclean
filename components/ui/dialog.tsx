@@ -5,7 +5,6 @@ import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { XIcon } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
-import { useBodyScrollLock } from '@/components/ui/use-body-scroll-lock'
 
 function Dialog({
   ...props
@@ -55,8 +54,6 @@ function DialogContent({
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
 }) {
-  useBodyScrollLock()
-
   return (
     <DialogPortal data-slot="dialog-portal">
       <DialogOverlay />

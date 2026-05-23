@@ -49,7 +49,6 @@ export function ClientStatusChart(period: DashboardAnalyticsParams = {}) {
       <div className="mb-4 flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold text-foreground">Clientes por status</h2>
-          <p className="mt-1 text-xs text-muted-foreground">Ativos e inativos cadastrados</p>
         </div>
         <Link href="/clientes">
           <Button variant="ghost" size="sm" className="text-xs text-foreground hover:text-foreground/80">

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react"
 import Link from "next/link"
+import { usePathname, useSearchParams } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
 import {
   Building2,
@@ -34,6 +35,7 @@ import { listContracts, type ContractRecord } from "@/lib/api/contracts"
 import { formatCivilDate } from "@/lib/date-utils"
 import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
+import { buildPathWithSearchParams, withReturnTo } from "@/lib/navigation"
 
 interface ContractsContentProps {
   viewMode: "table" | "cards"
@@ -57,6 +59,8 @@ function formatDate(value: string) {
 }
 
 export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps) {
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const mobileFiltersOpen = useMobileFiltersOpen()
   const [searchTerm, setSearchTerm] = useUrlQueryState("q")
   const [statusFilter, setStatusFilter] = useState<string>("all")
@@ -69,6 +73,10 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
   })
 
   const contracts = contractsQuery.data?.data ?? []
+  const currentHref = buildPathWithSearchParams(pathname, searchParams)
+  const getContractProfileHref = (contractId: string) => withReturnTo(`/contratos/${contractId}`, currentHref)
+  const getContractEditHref = (contractId: string) => withReturnTo(`/contratos/${contractId}/editar`, getContractProfileHref(contractId))
+  const getClientProfileHref = (clientId: string) => withReturnTo(`/clientes/${clientId}`, currentHref)
   const filteredContracts = useMemo(() => {
     return contracts.filter((contract) => statusFilter === "all" || contract.status === statusFilter)
   }, [contracts, statusFilter])
@@ -176,7 +184,7 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
                   return (
                     <TableRow key={contract.id}>
                       <TableCell>
-                        <Link href={`/contratos/${contract.id}`} className="flex items-center gap-3">
+                        <Link href={getContractProfileHref(contract.id)} className="flex items-center gap-3">
                           <div className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 sm:flex">
                             <FileText className="h-5 w-5 text-primary" />
                           </div>
@@ -187,7 +195,7 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
                         </Link>
                       </TableCell>
                       <TableCell className="hidden sm:table-cell">
-                        <Link href={`/clientes/${contract.clientId}`} className="group flex items-center gap-2 hover:text-primary">
+                        <Link href={getClientProfileHref(contract.clientId)} className="group flex items-center gap-2 hover:text-primary">
                           <Building2 className="h-4 w-4 text-muted-foreground transition-colors group-hover:text-primary" />
                           <span className="max-w-[250px] truncate">{contract.clientCompanyName}</span>
                         </Link>
@@ -222,14 +230,14 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem asChild>
-                              <Link href={`/contratos/${contract.id}`}>
+                              <Link href={getContractProfileHref(contract.id)}>
                                 <Eye className="mr-2 h-4 w-4" />
                                 Ver Detalhes
                               </Link>
                             </DropdownMenuItem>
                             {!isContractSigned(contract) ? (
                               <DropdownMenuItem asChild>
-                                <Link href={`/contratos/${contract.id}/editar`}>
+                                <Link href={getContractEditHref(contract.id)}>
                                   <Edit className="mr-2 h-4 w-4" />
                                   Editar
                                 </Link>
@@ -267,7 +275,7 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
               return (
                 <Card key={contract.id} className="h-full overflow-hidden">
                   <CardContent className="flex h-full flex-col px-4 py-3">
-                    <Link href={`/contratos/${contract.id}`} className="flex-1">
+                    <Link href={getContractProfileHref(contract.id)} className="flex-1">
                       <div className="mb-2 flex items-center gap-3">
                         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
                           <FileText className="h-5 w-5 text-primary" />
@@ -293,7 +301,7 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
                       </div>
                     </Link>
                     <div className="mt-auto space-y-3 pt-3">
-                      <Link href={`/contratos/${contract.id}`} className="block">
+                      <Link href={getContractProfileHref(contract.id)} className="block">
                         <div className="mb-2 flex justify-between text-xs">
                           <span>
                             {paidInstallments}/{contract.installmentsCount} parcelas pagas
@@ -307,14 +315,14 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
                       <div className="flex gap-2">
                         {!isContractSigned(contract) ? (
                           <Button variant="outline" size="sm" className="flex-1" asChild>
-                            <Link href={`/contratos/${contract.id}/editar`}>
+                            <Link href={getContractEditHref(contract.id)}>
                               <Edit className="mr-1 h-4 w-4" />
                               Editar
                             </Link>
                           </Button>
                         ) : null}
                         <Button size="sm" className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90" asChild>
-                          <Link href={`/contratos/${contract.id}`}>
+                          <Link href={getContractProfileHref(contract.id)}>
                             <Eye className="mr-1 h-4 w-4" />
                             Ver
                           </Link>

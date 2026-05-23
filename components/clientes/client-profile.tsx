@@ -60,6 +60,7 @@ import { listTeams } from "@/lib/api/teams"
 import { listTemplates, type TemplateRecord } from "@/lib/api/templates"
 import { formatCivilDate } from "@/lib/date-utils"
 import { formatCPF } from "@/lib/masks"
+import { buildPathWithSearchParams, getSafeReturnTo, withReturnTo } from "@/lib/navigation"
 
 interface ClientProfileProps {
   clientId: string
@@ -350,9 +351,12 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
   const [attachmentsPage, setAttachmentsPage] = useState(1)
   const [attachmentsPageSize, setAttachmentsPageSize] = useState(10)
   const activeTab = getClientProfileTabFromUrl(searchParams.get("tab"))
-  const contractReturnPath = `${pathname}?tab=${clientProfileTabUrlValue.contratos}`
+  const backHref = getSafeReturnTo(searchParams.get("returnTo"), "/clientes")
+  const contractReturnPath = buildPathWithSearchParams(pathname, searchParams, {
+    tab: clientProfileTabUrlValue.contratos,
+  })
   const getContractProfileHref = (contractId: string) =>
-    `/contratos/${contractId}?returnTo=${encodeURIComponent(contractReturnPath)}`
+    withReturnTo(`/contratos/${contractId}`, contractReturnPath)
 
   const handleTabChange = (value: string) => {
     if (!isClientProfileTab(value)) return
@@ -627,7 +631,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
         <p className="mb-4 text-sm text-muted-foreground">
           O cliente solicitado não existe ou foi removido.
         </p>
-        <Link href="/clientes">
+        <Link href={backHref}>
           <Button>Voltar para clientes</Button>
         </Link>
       </Card>

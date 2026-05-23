@@ -48,6 +48,7 @@ import { listSchedules } from "@/lib/api/schedules"
 import { listServices, type ServiceRecurrenceRuleRecord } from "@/lib/api/services"
 import { listTeams } from "@/lib/api/teams"
 import { formatCivilDate } from "@/lib/date-utils"
+import { buildPathWithSearchParams, getSafeReturnTo, withReturnTo } from "@/lib/navigation"
 
 interface ContractDetailProps {
   contractId: string
@@ -304,6 +305,8 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
   const searchParams = useSearchParams()
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null)
   const activeTab = getContractDetailTabFromUrl(searchParams.get("tab"))
+  const backHref = getSafeReturnTo(searchParams.get("returnTo"), "/contratos")
+  const currentHref = buildPathWithSearchParams(pathname, searchParams)
 
   const handleTabChange = (value: string) => {
     if (!isContractDetailTab(value)) return
@@ -572,7 +575,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
         <p className="mb-4 text-sm text-muted-foreground">
           Não foi possível buscar os dados do contrato agora. Verifique a conexão com a API e tente novamente.
         </p>
-        <Link href="/contratos">
+        <Link href={backHref}>
           <Button>Voltar para contratos</Button>
         </Link>
       </Card>
@@ -585,7 +588,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
         <FileText className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
         <h3 className="mb-2 font-semibold">Contrato não encontrado</h3>
         <p className="mb-4 text-sm text-muted-foreground">O contrato solicitado não existe ou foi removido.</p>
-        <Link href="/contratos">
+        <Link href={backHref}>
           <Button>Voltar para contratos</Button>
         </Link>
       </Card>
@@ -606,7 +609,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                 {getStatusBadge(contract.status)}
               </div>
               <Link
-                href={`/clientes/${contract.clientId}`}
+                href={withReturnTo(`/clientes/${contract.clientId}`, currentHref)}
                 className="flex items-center gap-2 text-muted-foreground hover:text-primary"
               >
                 <Building2 className="h-4 w-4" />

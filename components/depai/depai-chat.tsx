@@ -1,6 +1,7 @@
 "use client"
 
-import { useMutation, useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { usePathname, useRouter } from "next/navigation"
 import {
   BarChart3,
   Bot,
@@ -101,6 +102,48 @@ function getConversationTitle(message: string) {
   const trimmed = message.trim()
   if (!trimmed) return "Nova conversa"
   return trimmed.length > 44 ? `${trimmed.slice(0, 44)}...` : trimmed
+}
+
+function conversationTime(conversation: DepAIConversation) {
+  const time = new Date(conversation.updatedAt).getTime()
+  return Number.isFinite(time) ? time : 0
+}
+
+function mergeConversations(
+  current: DepAIConversation[],
+  loaded: DepAIConversation[],
+  activeConversationId: string,
+) {
+  const byId = new Map<string, DepAIConversation>()
+
+  for (const conversation of current) {
+    if (conversation.messages.length > 0 || conversation.id === activeConversationId) {
+      byId.set(conversation.id, conversation)
+    }
+  }
+
+  for (const conversation of loaded) {
+    if (conversation.messages.length === 0) continue
+
+    const existing = byId.get(conversation.id)
+    if (!existing) {
+      byId.set(conversation.id, conversation)
+      continue
+    }
+
+    const loadedHasNewerContent =
+      conversation.messages.length > existing.messages.length ||
+      conversationTime(conversation) > conversationTime(existing)
+
+    byId.set(conversation.id, loadedHasNewerContent ? conversation : existing)
+  }
+
+  const activeConversation = byId.get(activeConversationId)
+  const ordered = Array.from(byId.values())
+    .filter((conversation) => conversation.id !== activeConversationId)
+    .sort((left, right) => conversationTime(right) - conversationTime(left))
+
+  return activeConversation ? [activeConversation, ...ordered] : ordered
 }
 
 type MarkdownSegment =
@@ -1196,9 +1239,11 @@ function MessageRow({ message }: { message: DepAIMessage }) {
 }
 
 export function DepAIChat({ compact = false }: { compact?: boolean }) {
+  const router = useRouter()
+  const pathname = usePathname()
+  const queryClient = useQueryClient()
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
-  const hydratedConversationsRef = useRef(false)
   const processedInitialAskRef = useRef(false)
   const [conversations, setConversations] = useState<DepAIConversation[]>(initialConversations)
   const [activeConversationId, setActiveConversationId] = useState(initialConversations[0].id)
@@ -1231,18 +1276,11 @@ export function DepAIChat({ compact = false }: { compact?: boolean }) {
   })
 
   useEffect(() => {
-    if (!conversationsQuery.data || hydratedConversationsRef.current) return
+    if (!conversationsQuery.data) return
 
-    hydratedConversationsRef.current = true
     setConversations((current) => {
-      if (current.some((conversation) => conversation.messages.length > 0)) return current
-
-      const activeConversation = current.find((conversation) => conversation.id === activeConversationId) ?? current[0] ?? createInitialConversation()
-      const loadedHistory = conversationsQuery.data.filter(
-        (conversation) => conversation.messages.length > 0 && conversation.id !== activeConversation.id,
-      )
-
-      return [activeConversation, ...loadedHistory]
+      const merged = mergeConversations(current, conversationsQuery.data, activeConversationId)
+      return merged.length > 0 ? merged : [createInitialConversation()]
     })
   }, [activeConversationId, conversationsQuery.data, conversationsQuery.dataUpdatedAt])
 
@@ -1330,11 +1368,15 @@ export function DepAIChat({ compact = false }: { compact?: boolean }) {
           return [response.conversation, ...remainingConversations]
         })
         setActiveConversationId(response.conversation.id)
+        queryClient.setQueryData<DepAIConversation[]>(["depai", "conversations"], (current) => (
+          mergeConversations([response.conversation], current ?? [], response.conversation.id)
+        ))
+        void queryClient.invalidateQueries({ queryKey: ["depai", "conversations"] })
       },
     })
 
     return true
-  }, [activeConversationId, files, messages, sendMutation])
+  }, [activeConversationId, files, messages, queryClient, sendMutation])
 
   const submit = (event?: FormEvent<HTMLFormElement>) => {
     event?.preventDefault()
@@ -1416,8 +1458,8 @@ export function DepAIChat({ compact = false }: { compact?: boolean }) {
     processedInitialAskRef.current = true
     const conversation = createConversation()
     sendMessage(ask, { conversationId: conversation.id, files: [], history: [] })
-    window.history.replaceState(null, "", window.location.pathname)
-  }, [compact, sendMessage])
+    router.replace(pathname, { scroll: false })
+  }, [compact, pathname, router, sendMessage])
 
   useEffect(() => {
     const handleNewConversation = () => startNewConversation()

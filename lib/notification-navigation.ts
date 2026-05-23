@@ -1,6 +1,7 @@
 import type { NotificationRecord } from "@/lib/api/notifications"
+import { withReturnTo } from "@/lib/navigation"
 
-export function getNotificationHref(notification: NotificationRecord) {
+export function getNotificationHref(notification: NotificationRecord, returnTo?: string) {
   if (notification.type === "certificate_ready") {
     return "/certificados"
   }
@@ -14,11 +15,11 @@ export function getNotificationHref(notification: NotificationRecord) {
   }
 
   if (notification.relatedContractId) {
-    return `/contratos/${encodeURIComponent(notification.relatedContractId)}`
+    return withReturnTo(`/contratos/${encodeURIComponent(notification.relatedContractId)}`, returnTo)
   }
 
   if (notification.relatedClientId) {
-    return `/clientes/${encodeURIComponent(notification.relatedClientId)}`
+    return withReturnTo(`/clientes/${encodeURIComponent(notification.relatedClientId)}`, returnTo)
   }
 
   return "/notificacoes"

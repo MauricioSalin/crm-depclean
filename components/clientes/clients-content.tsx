@@ -46,6 +46,8 @@ import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { toast } from "@/components/ui/use-toast"
 import Link from "next/link"
+import { usePathname, useSearchParams } from "next/navigation"
+import { buildPathWithSearchParams, withReturnTo } from "@/lib/navigation"
 
 interface ClientsContentProps {
   viewMode: "table" | "cards"
@@ -86,6 +88,8 @@ const CLIENT_IMPORT_FIELDS: CsvImportField[] = [
 
 export function ClientsContent({ viewMode, viewToggle, openImport = false, onImportChange }: ClientsContentProps) {
   const queryClient = useQueryClient()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const mobileFiltersOpen = useMobileFiltersOpen()
   const [searchTerm, setSearchTerm] = useUrlQueryState("q")
   const [typeFilter, setTypeFilter] = useState<string>("all")
@@ -111,6 +115,9 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
   const clients = clientsQuery.data?.data ?? []
   const contracts = contractsQuery.data?.data ?? []
   const clientTypes = clientTypesQuery.data?.data.items ?? []
+  const currentHref = buildPathWithSearchParams(pathname, searchParams)
+  const getClientProfileHref = (clientId: string) => withReturnTo(`/clientes/${clientId}`, currentHref)
+  const getClientEditHref = (clientId: string) => withReturnTo(`/clientes/${clientId}/editar`, getClientProfileHref(clientId))
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteClient(id),
     onSuccess: async () => {
@@ -270,7 +277,7 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
                   return (
                     <TableRow key={client.id}>
                       <TableCell>
-                        <Link href={`/clientes/${client.id}`} className="flex items-center gap-3">
+                        <Link href={getClientProfileHref(client.id)} className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 bg-primary/10">
                             <Building2 className="w-5 h-5 text-primary" />
                           </div>
@@ -312,13 +319,13 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem asChild>
-                              <Link href={`/clientes/${client.id}`}>
+                              <Link href={getClientProfileHref(client.id)}>
                                 <Eye className="w-4 h-4 mr-2" />
                                 Ver Detalhes
                               </Link>
                             </DropdownMenuItem>
                             <DropdownMenuItem asChild>
-                              <Link href={`/clientes/${client.id}/editar`}>
+                              <Link href={getClientEditHref(client.id)}>
                                 <Edit className="w-4 h-4 mr-2" />
                                 Editar
                               </Link>
@@ -354,7 +361,7 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
               return (
                 <Card key={client.id} className="h-full overflow-hidden">
                   <CardContent className="flex h-full flex-col px-4 py-3">
-                    <Link href={`/clientes/${client.id}`} className="flex-1">
+                    <Link href={getClientProfileHref(client.id)} className="flex-1">
                       <div className="flex items-center gap-3 mb-3">
                         <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 bg-primary/10">
                           <Building2 className="w-5 h-5 text-primary" />
@@ -389,13 +396,13 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
                     </Link>
                     <div className="mt-auto flex gap-2 pt-3">
                       <Button variant="outline" size="sm" className="flex-1" asChild>
-                        <Link href={`/clientes/${client.id}/editar`}>
+                        <Link href={getClientEditHref(client.id)}>
                           <Edit className="w-4 h-4 mr-1" />
                           Editar
                         </Link>
                       </Button>
                       <Button size="sm" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground" asChild>
-                        <Link href={`/clientes/${client.id}`}>
+                        <Link href={getClientProfileHref(client.id)}>
                           <Eye className="w-4 h-4 mr-1" />
                           Ver
                         </Link>

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
-import { Bell } from "lucide-react"
+import { Bell, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -30,47 +30,118 @@ export function PwaProvider() {
   const [showPrompt, setShowPrompt] = useState(false)
   const [dismissedThisSession, setDismissedThisSession] = useState(false)
   const [isEnabling, setIsEnabling] = useState(false)
-  const pullStartYRef = useRef<number | null>(null)
+  const [pullDistance, setPullDistance] = useState(0)
+  const [isPullRefreshing, setIsPullRefreshing] = useState(false)
+  const pullStartRef = useRef<{ x: number; y: number } | null>(null)
   const isPullRefreshingRef = useRef(false)
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+
+    const body = document.body
+    const documentElement = document.documentElement
+    const legacyLockedByCustomHook = body.style.position === "fixed" && body.style.top.startsWith("-")
+    const lockedByDialogLibrary = body.hasAttribute("data-scroll-locked")
+    if (!legacyLockedByCustomHook || lockedByDialogLibrary) return
+
+    const scrollY = Math.abs(Number.parseInt(body.style.top, 10) || 0)
+    documentElement.style.overflow = ""
+    body.style.overflow = ""
+    body.style.position = ""
+    body.style.top = ""
+    body.style.left = ""
+    body.style.right = ""
+    body.style.width = ""
+    body.style.paddingRight = ""
+
+    if (scrollY > 0) {
+      window.scrollTo(0, scrollY)
+    }
+  }, [])
 
   useEffect(() => {
     if (typeof window === "undefined") return
     if (!window.matchMedia("(pointer: coarse)").matches) return
 
+    const getScrollTop = () => document.scrollingElement?.scrollTop ?? window.scrollY
+
     const handleTouchStart = (event: TouchEvent) => {
-      if (window.scrollY > 0) {
-        pullStartYRef.current = null
+      if (getScrollTop() > 0 || isPullRefreshingRef.current) {
+        pullStartRef.current = null
         return
       }
-      pullStartYRef.current = event.touches[0]?.clientY ?? null
+
+      const touch = event.touches[0]
+      pullStartRef.current = touch ? { x: touch.clientX, y: touch.clientY } : null
+      setPullDistance(0)
+    }
+
+    const handleTouchMove = (event: TouchEvent) => {
+      const start = pullStartRef.current
+      const touch = event.touches[0]
+      if (!start || !touch || isPullRefreshingRef.current) return
+
+      if (getScrollTop() > 0) {
+        pullStartRef.current = null
+        setPullDistance(0)
+        return
+      }
+
+      const deltaY = touch.clientY - start.y
+      const deltaX = Math.abs(touch.clientX - start.x)
+
+      if (deltaY <= 0 || deltaX > deltaY) {
+        setPullDistance(0)
+        return
+      }
+
+      setPullDistance(Math.min(120, deltaY * 0.55))
     }
 
     const handleTouchEnd = async (event: TouchEvent) => {
-      const startY = pullStartYRef.current
-      pullStartYRef.current = null
-      if (startY === null || isPullRefreshingRef.current) return
+      const start = pullStartRef.current
+      pullStartRef.current = null
+      if (!start || isPullRefreshingRef.current) {
+        setPullDistance(0)
+        return
+      }
 
-      const endY = event.changedTouches[0]?.clientY ?? startY
-      if (endY - startY < 90 || window.scrollY > 0) return
+      const touch = event.changedTouches[0]
+      const endY = touch?.clientY ?? start.y
+      const endX = touch?.clientX ?? start.x
+      const deltaY = endY - start.y
+      const deltaX = Math.abs(endX - start.x)
+
+      if (deltaY < 90 || deltaX > deltaY || getScrollTop() > 0) {
+        setPullDistance(0)
+        return
+      }
 
       isPullRefreshingRef.current = true
-      const toastId = toast.loading("Atualizando dados...")
+      setIsPullRefreshing(true)
+      setPullDistance(96)
+
       try {
         await queryClient.invalidateQueries()
-        toast.success("Dados atualizados.", { id: toastId })
       } finally {
         window.setTimeout(() => {
           isPullRefreshingRef.current = false
+          setIsPullRefreshing(false)
+          setPullDistance(0)
         }, 600)
       }
     }
 
     window.addEventListener("touchstart", handleTouchStart, { passive: true })
+    window.addEventListener("touchmove", handleTouchMove, { passive: true })
     window.addEventListener("touchend", handleTouchEnd, { passive: true })
+    window.addEventListener("touchcancel", handleTouchEnd, { passive: true })
 
     return () => {
       window.removeEventListener("touchstart", handleTouchStart)
+      window.removeEventListener("touchmove", handleTouchMove)
       window.removeEventListener("touchend", handleTouchEnd)
+      window.removeEventListener("touchcancel", handleTouchEnd)
     }
   }, [queryClient])
 
@@ -173,8 +244,6 @@ export function PwaProvider() {
     }
   }, [dismissedThisSession])
 
-  if (!showPrompt || !publicKey) return null
-
   const enableNotifications = async () => {
     setIsEnabling(true)
 
@@ -193,37 +262,57 @@ export function PwaProvider() {
     setShowPrompt(false)
   }
 
-  return (
-    <Dialog
-      open={showPrompt}
-      onOpenChange={(open) => {
-        if (!open && !isEnabling) dismissPrompt()
-      }}
-    >
-      <DialogContent className="max-w-md gap-5 p-0" showCloseButton={!isEnabling}>
-        <div className="flex items-start gap-4 px-6 pt-6">
-          <div className="rounded-full bg-primary/10 p-3 text-primary">
-            <Bell className="size-5" aria-hidden="true" />
-          </div>
-          <DialogHeader className="min-w-0 gap-2 pr-6 text-left">
-            <DialogTitle className="text-base">Ativar notificações no celular</DialogTitle>
-            <DialogDescription className="leading-5">
-              Receba os avisos do sininho mesmo quando o app estiver fechado.
-            </DialogDescription>
-          </DialogHeader>
-        </div>
+  const showPullIndicator = pullDistance > 0 || isPullRefreshing
+  const pullIndicatorOffset = isPullRefreshing ? 44 : Math.min(44, Math.max(10, pullDistance * 0.35))
 
-        <DialogFooter className="px-6 pb-6 sm:justify-start">
-          <Button onClick={enableNotifications} disabled={isEnabling}>
-            <Bell className="size-4" aria-hidden="true" />
-            {isEnabling ? "Ativando..." : "Ativar"}
-          </Button>
-          <Button variant="ghost" onClick={dismissPrompt} disabled={isEnabling}>
-            Agora não
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+  return (
+    <>
+      {showPullIndicator && (
+        <div
+          className="pointer-events-none fixed left-1/2 top-0 z-[300] flex size-10 items-center justify-center rounded-full border border-border bg-background/95 text-primary shadow-lg shadow-black/10 backdrop-blur transition-[opacity,transform] duration-200"
+          style={{
+            opacity: isPullRefreshing ? 1 : Math.min(1, Math.max(0.3, pullDistance / 90)),
+            transform: `translate(-50%, ${pullIndicatorOffset}px)`,
+          }}
+          aria-hidden="true"
+        >
+          <Loader2 className={`size-5 ${isPullRefreshing ? "animate-spin" : ""}`} />
+        </div>
+      )}
+
+      {showPrompt && publicKey ? (
+        <Dialog
+          open={showPrompt}
+          onOpenChange={(open) => {
+            if (!open && !isEnabling) dismissPrompt()
+          }}
+        >
+          <DialogContent className="max-w-md gap-5 p-0" showCloseButton={!isEnabling}>
+            <div className="flex items-start gap-4 px-6 pt-6">
+              <div className="rounded-full bg-primary/10 p-3 text-primary">
+                <Bell className="size-5" aria-hidden="true" />
+              </div>
+              <DialogHeader className="min-w-0 gap-2 pr-6 text-left">
+                <DialogTitle className="text-base">Ativar notificações no celular</DialogTitle>
+                <DialogDescription className="leading-5">
+                  Receba os avisos do sininho mesmo quando o app estiver fechado.
+                </DialogDescription>
+              </DialogHeader>
+            </div>
+
+            <DialogFooter className="px-6 pb-6 sm:justify-start">
+              <Button onClick={enableNotifications} disabled={isEnabling}>
+                <Bell className="size-4" aria-hidden="true" />
+                {isEnabling ? "Ativando..." : "Ativar"}
+              </Button>
+              <Button variant="ghost" onClick={dismissPrompt} disabled={isEnabling}>
+                Agora não
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      ) : null}
+    </>
   )
 }
 

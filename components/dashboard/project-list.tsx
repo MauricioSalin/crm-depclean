@@ -7,10 +7,15 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useQuery } from "@tanstack/react-query"
 import { getDashboardAnalytics, type DashboardAnalyticsParams } from "@/lib/api/analytics"
+import { buildPathWithSearchParams, withReturnTo } from "@/lib/navigation"
 import { getColorFromClass } from "@/lib/utils"
 import Link from "next/link"
+import { usePathname, useSearchParams } from "next/navigation"
 
 export function ClientList(period: DashboardAnalyticsParams = {}) {
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const currentHref = buildPathWithSearchParams(pathname, searchParams)
   const dashboardQuery = useQuery({
     queryKey: ["analytics", "dashboard", period],
     queryFn: () => getDashboardAnalytics(period),
@@ -52,7 +57,7 @@ export function ClientList(period: DashboardAnalyticsParams = {}) {
           return (
             <Link 
               key={client.id}
-              href={`/clientes/${client.id}`}
+              href={withReturnTo(`/clientes/${client.id}`, currentHref)}
               className="block"
             >
               <div

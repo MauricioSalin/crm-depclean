@@ -28,6 +28,7 @@ import { getColorFromClass } from "@/lib/utils"
 interface ClientFormProps {
   clientId?: string
   isEditing?: boolean
+  returnTo?: string
 }
 
 type ClientUnitForm = {
@@ -46,9 +47,10 @@ type ClientUnitForm = {
   }
 }
 
-export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
+export function ClientForm({ clientId, isEditing = false, returnTo }: ClientFormProps) {
   const router = useRouter()
   const queryClient = useQueryClient()
+  const formBackHref = returnTo || "/clientes"
 
   const clientQuery = useQuery({
     queryKey: ["client", clientId],
@@ -360,7 +362,7 @@ export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
         title: isEditing ? "Cliente atualizado" : "Cliente criado",
         description: "Os dados foram salvos com sucesso.",
       })
-      router.push("/clientes")
+      router.push(formBackHref)
     },
     onError: (error: any) => {
       toast({
@@ -1087,7 +1089,7 @@ export function ClientForm({ clientId, isEditing = false }: ClientFormProps) {
         <Button
           type="button"
           variant="outline"
-          onClick={() => router.push("/clientes")}
+          onClick={() => router.push(formBackHref)}
           className="bg-transparent"
           disabled={saveMutation.isPending || deleteMutation.isPending}
         >

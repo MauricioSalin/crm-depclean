@@ -1,6 +1,7 @@
 "use client"
 
 import { Suspense, useState } from "react"
+import { usePathname, useSearchParams } from "next/navigation"
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { Header } from "@/components/dashboard/header"
 import { ClientsContent } from "@/components/clientes/clients-content"
@@ -9,10 +10,14 @@ import { ContentLoadingSkeleton } from "@/components/ui/content-loading-skeleton
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import Link from "next/link"
 import { FileUp, Plus, List, LayoutGrid } from "lucide-react"
+import { buildPathWithSearchParams, withReturnTo } from "@/lib/navigation"
 
 export default function ClientesPage() {
   const [viewMode, setViewMode] = useState<"table" | "cards">("table")
   const [importOpen, setImportOpen] = useState(false)
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const currentHref = buildPathWithSearchParams(pathname, searchParams)
 
   const toggle = (
     <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "table" | "cards")}>
@@ -48,7 +53,7 @@ export default function ClientesPage() {
                 <FileUp className="h-4 w-4 sm:mr-2" />
                 <span className="hidden sm:inline">Importar</span>
               </Button>
-              <Link href="/clientes/novo" className="min-w-0 flex-1 sm:flex-none">
+              <Link href={withReturnTo("/clientes/novo", currentHref)} className="min-w-0 flex-1 sm:flex-none">
                 <Button className="h-9 w-full min-w-0 text-sm bg-primary text-primary-foreground hover:bg-primary/90 sm:w-auto">
                   <Plus className="h-4 w-4 shrink-0 sm:mr-2" />
                   <span className="truncate">Novo Cliente</span>

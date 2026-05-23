@@ -1,6 +1,7 @@
 "use client"
 
 import { Suspense, useState } from "react"
+import { usePathname, useSearchParams } from "next/navigation"
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { Header } from "@/components/dashboard/header"
 import { ContractsContent } from "@/components/contratos/contracts-content"
@@ -9,9 +10,13 @@ import { ContentLoadingSkeleton } from "@/components/ui/content-loading-skeleton
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import Link from "next/link"
 import { Plus, List, LayoutGrid } from "lucide-react"
+import { buildPathWithSearchParams, withReturnTo } from "@/lib/navigation"
 
 export default function ContratosPage() {
   const [viewMode, setViewMode] = useState<"table" | "cards">("table")
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const currentHref = buildPathWithSearchParams(pathname, searchParams)
 
   const toggle = (
     <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "table" | "cards")}>
@@ -35,7 +40,7 @@ export default function ContratosPage() {
           hasFilters
           viewToggle={toggle}
           actions={
-            <Link href="/contratos/novo">
+            <Link href={withReturnTo("/contratos/novo", currentHref)}>
               <Button className="w-full sm:w-auto h-9 text-sm bg-primary text-primary-foreground hover:bg-primary/90">
                 <Plus className="w-4 h-4 mr-2" />
                 Novo Contrato

@@ -80,11 +80,11 @@ export type FinancialInstallmentRecord = {
 export type FinancialSummaryRecord = {
   totalPaid: number
   totalPending: number
-  totalLate?: number
+  totalLate: number
   totalOverdue: number
   paidCount: number
   pendingCount: number
-  lateCount?: number
+  lateCount: number
   overdueCount: number
   totalCount: number
   adherenceRate: number
