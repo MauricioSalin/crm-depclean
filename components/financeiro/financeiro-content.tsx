@@ -242,7 +242,7 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
   return (
     <div className="space-y-6">
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="p-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center">
@@ -284,17 +284,6 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
             <div>
               <p className="text-sm text-muted-foreground">Vencidas</p>
               <p className="text-xl font-semibold text-red-600/80">{formatCurrency(summary.totalOverdue)}</p>
-            </div>
-          </div>
-        </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-              <TrendingUp className="w-5 h-5 text-primary/80" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Taxa de Adimplência</p>
-              <p className="text-xl font-semibold text-primary/80">{summary.adherenceRate}%</p>
             </div>
           </div>
         </Card>
