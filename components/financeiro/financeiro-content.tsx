@@ -168,6 +168,7 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
   const allInstallments = financialQuery.data?.data.installments ?? []
   const summary = financialQuery.data?.data.summary ?? {
     totalPaid: 0,
+    totalReceivable: 0,
     totalPending: 0,
     totalLate: 0,
     totalOverdue: 0,
@@ -178,6 +179,7 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
     totalCount: 0,
     adherenceRate: 0,
   }
+  const totalReceivable = summary.totalReceivable ?? summary.totalPending + summary.totalLate + summary.totalOverdue
   const monthlyRevenueData = financialQuery.data?.data.monthlyRevenueData ?? []
   const financeHealthData = financialQuery.data?.data.financeHealthData ?? [
     { name: "Pagas", value: 0 },
@@ -254,12 +256,12 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
         </Card>
         <Card className="p-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center">
-              <Clock className="w-5 h-5 text-amber-500" />
+            <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
+              <Clock className="w-5 h-5 text-blue-500" />
             </div>
             <div>
               <p className="text-sm text-muted-foreground">A Receber</p>
-              <p className="text-xl font-semibold text-amber-600/80">{formatCurrency(summary.totalPending)}</p>
+              <p className="text-xl font-semibold text-blue-600/80">{formatCurrency(totalReceivable)}</p>
             </div>
           </div>
         </Card>

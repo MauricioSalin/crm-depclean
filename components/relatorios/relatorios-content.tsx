@@ -93,6 +93,7 @@ const emptyReports: ReportsAnalyticsRecord = {
   },
   financialSummary: {
     totalPaid: 0,
+    totalReceivable: 0,
     totalPending: 0,
     totalLate: 0,
     totalOverdue: 0,
@@ -404,7 +405,15 @@ export function RelatoriosContent() {
         ["Relatorio", "Item", "Valor", "Pagas", "Em atraso", "Vencidas"],
         ["Resumo financeiro", "Faturamento do mes", data.dashboardStats.monthlyRevenue, "", "", ""],
         ["Resumo financeiro", "Recebido", data.financialSummary.totalPaid, "", "", ""],
-        ["Resumo financeiro", "A receber", data.financialSummary.totalPending, "", "", ""],
+        [
+          "Resumo financeiro",
+          "A receber",
+          data.financialSummary.totalReceivable ??
+            data.financialSummary.totalPending + data.financialSummary.totalLate + data.financialSummary.totalOverdue,
+          "",
+          "",
+          "",
+        ],
         ["Resumo financeiro", "Em atraso", data.financialSummary.totalLate ?? 0, "", "", ""],
         ["Resumo financeiro", "Vencidas", data.financialSummary.totalOverdue, "", "", ""],
         ["Indicadores", "Taxa de adimplencia", `${data.financialSummary.adherenceRate}%`, "", "", ""],

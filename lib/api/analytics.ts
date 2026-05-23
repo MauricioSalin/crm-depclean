@@ -79,6 +79,7 @@ export type FinancialInstallmentRecord = {
 
 export type FinancialSummaryRecord = {
   totalPaid: number
+  totalReceivable: number
   totalPending: number
   totalLate: number
   totalOverdue: number
