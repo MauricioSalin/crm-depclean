@@ -1,6 +1,6 @@
 "use client"
 
-import { Suspense, useState } from "react"
+import { Suspense } from "react"
 import { usePathname, useSearchParams } from "next/navigation"
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { Header } from "@/components/dashboard/header"
@@ -11,9 +11,10 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import Link from "next/link"
 import { Plus, List, LayoutGrid } from "lucide-react"
 import { buildPathWithSearchParams, withReturnTo } from "@/lib/navigation"
+import { useResponsiveDefaultViewMode } from "@/hooks/use-responsive-default-view-mode"
 
 export default function ContratosPage() {
-  const [viewMode, setViewMode] = useState<"table" | "cards">("table")
+  const [viewMode, setViewMode] = useResponsiveDefaultViewMode("table", "cards")
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const currentHref = buildPathWithSearchParams(pathname, searchParams)

@@ -50,6 +50,11 @@ export async function markNotificationAsRead(id: string) {
   return response.data
 }
 
+export async function markNotificationAsUnread(id: string) {
+  const response = await api.post<{ success: true; data: NotificationRecord }>(`/notifications/${id}/unread`)
+  return response.data
+}
+
 export async function markAllNotificationsAsRead() {
   const response = await api.post<{ success: true; data: { updated: number } }>("/notifications/read-all")
   return response.data

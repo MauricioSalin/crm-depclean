@@ -20,6 +20,7 @@ import {
   Calendar,
   DollarSign,
   FileText,
+  Mail,
   MoreHorizontal,
   Trash2,
   MessageCircle,
@@ -50,12 +51,14 @@ const CHANNELS: { value: NotificationChannel; label: string; icon: typeof Bell }
 export function NotificacoesContent({
   notificationsList,
   onMarkAsRead,
+  onMarkAsUnread,
   onDelete,
   onOpenNotification,
   isLoading = false,
 }: {
   notificationsList: NotificationRecord[]
   onMarkAsRead: (id: string) => void
+  onMarkAsUnread: (id: string) => void
   onDelete: (id: string) => void
   onOpenNotification: (notification: NotificationRecord) => void
   isLoading?: boolean
@@ -162,7 +165,18 @@ export function NotificacoesContent({
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              {!notification.isRead && (
+                              {notification.isRead ? (
+                                <DropdownMenuItem
+                                  className="cursor-pointer"
+                                  onClick={(event) => {
+                                    event.stopPropagation()
+                                    onMarkAsUnread(notification.id)
+                                  }}
+                                >
+                                  <Mail className="h-4 w-4" />
+                                  Marcar como não lida
+                                </DropdownMenuItem>
+                              ) : (
                                 <DropdownMenuItem
                                   className="cursor-pointer"
                                   onClick={(event) => {
@@ -175,7 +189,7 @@ export function NotificacoesContent({
                                 </DropdownMenuItem>
                               )}
                               <DropdownMenuItem
-                                className="cursor-pointer text-destructive focus:text-destructive"
+                                className="cursor-pointer"
                                 onClick={(event) => {
                                   event.stopPropagation()
                                   onDelete(notification.id)

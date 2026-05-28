@@ -20,8 +20,8 @@ import {
   X,
 } from "lucide-react"
 
-import { listClients } from "@/lib/api/clients"
-import { listEmployees } from "@/lib/api/employees"
+import { listClients, type ClientRecord } from "@/lib/api/clients"
+import { listEmployees, type EmployeeRecord } from "@/lib/api/employees"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import {
   cancelSchedule,
@@ -31,18 +31,17 @@ import {
   listSchedules,
   reactivateSchedule,
   startSchedule,
+  type SchedulePayload,
   type ScheduleRecord,
   updateSchedule,
   uploadScheduleNa,
 } from "@/lib/api/schedules"
-import { listServices } from "@/lib/api/services"
-import { listTeams } from "@/lib/api/teams"
-import { getStoredUser } from "@/lib/auth/session"
-import type { AuthenticatedUser } from "@/lib/auth/types"
+import { listServices, type ServiceRecord } from "@/lib/api/services"
+import { listTeams, type TeamRecord } from "@/lib/api/teams"
 import { formatCivilDate, toCivilDateKey } from "@/lib/date-utils"
 import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
-import { formatConfiguredScheduleDuration, scheduleDurationToMinutes } from "@/lib/schedule-duration"
+import { formatConfiguredScheduleDuration, minutesToScheduleDuration, scheduleDurationToMinutes } from "@/lib/schedule-duration"
 import { checkScheduleAvailability, formatAvailabilitySlot } from "@/lib/schedule-availability"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -123,9 +122,263 @@ function canCancelSchedule(schedule: Pick<ScheduleRecord, "status">) {
   return !["in_progress", "completed", "cancelled"].includes(schedule.status)
 }
 
+function isRecurringSchedule(schedule: Pick<ScheduleRecord, "contractId" | "isManual">) {
+  return Boolean(schedule.contractId && !schedule.isManual)
+}
+
+function normalizeImportLookup(value: string | number | null | undefined) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ")
+}
+
+function normalizeImportCompact(value: string | number | null | undefined) {
+  return normalizeImportLookup(value).replace(/\s+/g, "")
+}
+
+function onlyDigits(value: string | number | null | undefined) {
+  return String(value ?? "").replace(/\D/g, "")
+}
+
+function splitImportList(value: string | undefined) {
+  return String(value ?? "")
+    .split(/[,|\n]+/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+function uniqueImportIds(ids: string[]) {
+  return Array.from(new Set(ids.map((id) => id.trim()).filter(Boolean)))
+}
+
+function getImportRowNumber(index: number) {
+  return index + 2
+}
+
+function findImportMatch<T>(
+  value: string,
+  items: T[],
+  getCandidates: (item: T) => Array<string | number | null | undefined>,
+) {
+  const normalized = normalizeImportLookup(value)
+  const compact = normalizeImportCompact(value)
+  const digits = onlyDigits(value)
+
+  if (!normalized) return null
+
+  const matches = items.filter((item) =>
+    getCandidates(item).some((candidate) => {
+      const candidateText = String(candidate ?? "").trim()
+      if (!candidateText) return false
+
+      return (
+        normalizeImportLookup(candidateText) === normalized ||
+        normalizeImportCompact(candidateText) === compact ||
+        (digits.length > 0 && onlyDigits(candidateText) === digits)
+      )
+    }),
+  )
+
+  return matches.length === 1 ? matches[0] : matches.length > 1 ? "ambiguous" : null
+}
+
+function resolveImportClient(value: string, clients: ClientRecord[], rowIndex: number) {
+  const client = findImportMatch(value, clients, (item) => [
+    item.id,
+    item.companyName,
+    item.cnpj,
+    item.email,
+    item.phone,
+    item.responsibleName,
+    item.responsibleCpf,
+    item.assessor?.name,
+    item.assessor?.cpf,
+    item.assessor?.email,
+    item.syndic?.name,
+    item.syndic?.cpf,
+    item.syndic?.email,
+  ])
+
+  if (client === "ambiguous") {
+    throw new Error(`Linha ${getImportRowNumber(rowIndex)}: cliente "${value}" encontrou mais de um cadastro. Use o CNPJ, e-mail ou ID do cliente.`)
+  }
+
+  if (!client) {
+    throw new Error(`Linha ${getImportRowNumber(rowIndex)}: cliente "${value}" não encontrado. Use nome, CNPJ, e-mail ou ID já cadastrado.`)
+  }
+
+  return client
+}
+
+function resolveImportUnit(value: string | undefined, client: ClientRecord, rowIndex: number) {
+  const unitValue = value?.trim()
+  if (!unitValue) {
+    const primaryUnit = client.units.find((unit) => unit.isPrimary) ?? client.units[0]
+    if (!primaryUnit) {
+      throw new Error(`Linha ${getImportRowNumber(rowIndex)}: cliente "${client.companyName}" não possui unidade cadastrada.`)
+    }
+
+    return primaryUnit
+  }
+
+  const unit = findImportMatch(unitValue, client.units, (item) => [
+    item.id,
+    item.name,
+    item.address?.zipCode,
+    item.address?.street,
+    item.address?.number,
+    item.address?.neighborhood,
+    `${item.address?.street ?? ""} ${item.address?.number ?? ""}`,
+    `${item.name} ${item.address?.street ?? ""} ${item.address?.number ?? ""}`,
+  ])
+
+  if (unit === "ambiguous") {
+    throw new Error(`Linha ${getImportRowNumber(rowIndex)}: unidade "${unitValue}" encontrou mais de um cadastro no cliente "${client.companyName}". Use o ID da unidade.`)
+  }
+
+  if (!unit) {
+    throw new Error(`Linha ${getImportRowNumber(rowIndex)}: unidade "${unitValue}" não encontrada no cliente "${client.companyName}".`)
+  }
+
+  return unit
+}
+
+function resolveImportService(value: string, services: ServiceRecord[], rowIndex: number) {
+  const service = findImportMatch(value, services, (item) => [item.id, item.name])
+
+  if (service === "ambiguous") {
+    throw new Error(`Linha ${getImportRowNumber(rowIndex)}: serviço "${value}" encontrou mais de um cadastro. Use o ID do serviço.`)
+  }
+
+  if (!service) {
+    throw new Error(`Linha ${getImportRowNumber(rowIndex)}: serviço "${value}" não encontrado. Use nome ou ID já cadastrado.`)
+  }
+
+  return service
+}
+
+function resolveImportTeams(value: string | undefined, teams: TeamRecord[], rowIndex: number) {
+  return uniqueImportIds(splitImportList(value).map((teamValue) => {
+    const team = findImportMatch(teamValue, teams, (item) => [item.id, item.name])
+
+    if (team === "ambiguous") {
+      throw new Error(`Linha ${getImportRowNumber(rowIndex)}: equipe "${teamValue}" encontrou mais de um cadastro. Use o ID da equipe.`)
+    }
+
+    if (!team) {
+      throw new Error(`Linha ${getImportRowNumber(rowIndex)}: equipe "${teamValue}" não encontrada. Use nome ou ID já cadastrado.`)
+    }
+
+    return team.id
+  }))
+}
+
+function resolveImportEmployees(value: string | undefined, employees: EmployeeRecord[], rowIndex: number) {
+  return uniqueImportIds(splitImportList(value).map((employeeValue) => {
+    const employee = findImportMatch(employeeValue, employees, (item) => [
+      item.id,
+      item.name,
+      item.email,
+      item.cpf,
+      item.phone,
+    ])
+
+    if (employee === "ambiguous") {
+      throw new Error(`Linha ${getImportRowNumber(rowIndex)}: funcionário "${employeeValue}" encontrou mais de um cadastro. Use CPF, e-mail ou ID.`)
+    }
+
+    if (!employee) {
+      throw new Error(`Linha ${getImportRowNumber(rowIndex)}: funcionário "${employeeValue}" não encontrado. Use nome, CPF, e-mail ou ID já cadastrado.`)
+    }
+
+    return employee.id
+  }))
+}
+
+function normalizeImportDate(value: string | undefined, rowIndex: number) {
+  const trimmed = String(value ?? "").trim()
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed
+
+  const brazilianDate = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  if (brazilianDate) {
+    const [, day, month, year] = brazilianDate
+    return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`
+  }
+
+  throw new Error(`Linha ${getImportRowNumber(rowIndex)}: data "${value}" inválida. Use dd/mm/aaaa ou aaaa-mm-dd.`)
+}
+
+function normalizeImportTime(value: string | undefined, rowIndex: number) {
+  const match = String(value ?? "").trim().match(/^(\d{1,2}):(\d{2})$/)
+  if (!match) {
+    throw new Error(`Linha ${getImportRowNumber(rowIndex)}: horário "${value}" inválido. Use HH:mm.`)
+  }
+
+  const hour = Number(match[1])
+  const minute = Number(match[2])
+  if (hour > 23 || minute > 59) {
+    throw new Error(`Linha ${getImportRowNumber(rowIndex)}: horário "${value}" inválido. Use HH:mm.`)
+  }
+
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`
+}
+
+function normalizeImportDuration(value: string | undefined, service: ServiceRecord, rowIndex: number) {
+  const normalized = String(value ?? "").trim().replace(",", ".")
+  const duration = normalized ? Number(normalized) : service.defaultDuration
+
+  if (!Number.isFinite(duration) || duration <= 0) {
+    throw new Error(`Linha ${getImportRowNumber(rowIndex)}: duração "${value}" inválida. Informe minutos acima de zero.`)
+  }
+
+  return Math.round(duration)
+}
+
+function buildScheduleImportPayload(
+  row: Record<string, string>,
+  rowIndex: number,
+  references: {
+    clients: ClientRecord[]
+    services: ServiceRecord[]
+    teams: TeamRecord[]
+    employees: EmployeeRecord[]
+  },
+): SchedulePayload {
+  const client = resolveImportClient(row.clientId, references.clients, rowIndex)
+  const unit = resolveImportUnit(row.unitId, client, rowIndex)
+  const service = resolveImportService(row.serviceTypeId, references.services, rowIndex)
+  const teamIds = row.teamIds?.trim()
+    ? resolveImportTeams(row.teamIds, references.teams, rowIndex)
+    : uniqueImportIds(service.teamIds ?? [])
+  const additionalEmployeeIds = row.additionalEmployeeIds?.trim()
+    ? resolveImportEmployees(row.additionalEmployeeIds, references.employees, rowIndex)
+    : uniqueImportIds(service.employeeIds ?? [])
+  const estimatedDuration = normalizeImportDuration(row.estimatedDuration, service, rowIndex)
+  const configuredDuration = minutesToScheduleDuration(estimatedDuration, service)
+
+  return {
+    clientId: client.id,
+    unitId: unit.id,
+    serviceTypeId: service.id,
+    teamIds,
+    additionalEmployeeIds,
+    scheduledDate: normalizeImportDate(row.scheduledDate, rowIndex),
+    scheduledTime: normalizeImportTime(row.scheduledTime, rowIndex),
+    estimatedDuration,
+    durationValue: configuredDuration.duration,
+    durationType: configuredDuration.durationType,
+    notes: row.notes?.trim() ?? "",
+  }
+}
+
 const SCHEDULE_IMPORT_FIELDS: CsvImportField[] = [
   { key: "clientId", label: "Cliente", required: true },
-  { key: "unitId", label: "Unidade", required: true },
+  { key: "unitId", label: "Unidade" },
   { key: "serviceTypeId", label: "Serviço", required: true },
   { key: "teamIds", label: "Equipes" },
   { key: "additionalEmployeeIds", label: "Funcionários avulsos" },
@@ -162,7 +415,6 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
     requested: { date: string; time: string }
     suggested: { date: string; time: string }
   } | null>(null)
-  const [currentUser, setCurrentUser] = useState<AuthenticatedUser | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
   const scheduleDialogResetTimeoutRef = useRef<number | null>(null)
@@ -193,8 +445,6 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
   const services = servicesQuery.data?.data ?? []
   const teams = teamsQuery.data?.data ?? []
   const employees = employeesQuery.data?.data ?? []
-  const isAdminUser = currentUser?.permissionProfileId === "profile-admin" || currentUser?.permissions.includes("settings_manage")
-
   useEffect(() => {
     if (openDialog) {
       clearScheduleDialogResetTimeout()
@@ -233,17 +483,6 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
 
     closeScheduleDialog()
   }
-
-  useEffect(() => {
-    const syncUser = () => setCurrentUser(getStoredUser())
-    syncUser()
-    window.addEventListener("storage", syncUser)
-    window.addEventListener("depclean:session", syncUser)
-    return () => {
-      window.removeEventListener("storage", syncUser)
-      window.removeEventListener("depclean:session", syncUser)
-    }
-  }, [])
 
   const invalidateSchedules = async () => {
     await queryClient.invalidateQueries({ queryKey: ["schedules"] })
@@ -339,18 +578,20 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
 
   const importSchedulesMutation = useMutation({
     mutationFn: async (rows: Array<Record<string, string>>) => {
-      for (const row of rows) {
-        await createSchedule({
-          clientId: row.clientId,
-          unitId: row.unitId,
-          serviceTypeId: row.serviceTypeId,
-          teamIds: row.teamIds ? row.teamIds.split(",").map((value) => value.trim()).filter(Boolean) : [],
-          additionalEmployeeIds: row.additionalEmployeeIds ? row.additionalEmployeeIds.split(",").map((value) => value.trim()).filter(Boolean) : [],
-          scheduledDate: row.scheduledDate,
-          scheduledTime: row.scheduledTime,
-          estimatedDuration: Number(row.estimatedDuration) || 60,
-          notes: row.notes,
-        })
+      if (clients.length === 0) throw new Error("Carregue os clientes antes de importar agendamentos.")
+      if (services.length === 0) throw new Error("Carregue os serviços antes de importar agendamentos.")
+
+      const payloads = rows.map((row, index) =>
+        buildScheduleImportPayload(row, index, {
+          clients,
+          services,
+          teams,
+          employees,
+        }),
+      )
+
+      for (const payload of payloads) {
+        await createSchedule(payload)
       }
     },
     onSuccess: async (_data, rows) => {
@@ -546,8 +787,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
   }
 
   const canDeleteSchedule = (schedule: ScheduleRecord) => {
-    if (schedule.status === "in_progress") return false
-    return schedule.status !== "completed" || Boolean(isAdminUser)
+    return schedule.status === "cancelled" && !isRecurringSchedule(schedule)
   }
 
   return (
@@ -556,7 +796,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
         open={openImport}
         onOpenChange={(open) => onImportChange?.(open)}
         title="Importar agendamentos"
-        description="Use ids existentes de cliente, unidade, serviço, equipes e funcionários para garantir a importação correta."
+        description="Mapeie as colunas do CSV antes de inserir os agendamentos."
         fields={SCHEDULE_IMPORT_FIELDS}
         onImport={(rows) => importSchedulesMutation.mutateAsync(rows)}
       />
@@ -1157,7 +1397,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
           if (!open) setPendingDelete(null)
         }}
         onConfirm={() => {
-          if (pendingDelete) {
+          if (pendingDelete && canDeleteSchedule(pendingDelete)) {
             deleteMutation.mutate(pendingDelete.id)
           }
         }}

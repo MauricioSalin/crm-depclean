@@ -220,8 +220,8 @@ export function SchedulingFormDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger className="hidden" />
-      <DialogContent className="flex max-h-[90dvh] max-w-2xl flex-col gap-0 overflow-hidden p-0">
-        <DialogHeader className="shrink-0 border-b px-6 py-5 pr-12 text-center sm:text-center">
+      <DialogContent className="flex max-h-[90dvh] max-w-2xl flex-col gap-0 overflow-hidden p-0 max-sm:left-0 max-sm:top-4 max-sm:h-[calc(100dvh-2rem)] max-sm:max-h-none max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none max-sm:border-0">
+        <DialogHeader className="shrink-0 px-6 pb-3 pt-6 pr-12 text-center sm:text-center">
           <DialogTitle>{dialogTitle}</DialogTitle>
         </DialogHeader>
         <form id="schedule-form" autoComplete="off" onSubmit={handleSubmit} className="min-h-0 flex-1 space-y-6 overflow-y-auto px-6 py-5">
@@ -580,7 +580,7 @@ export function SchedulingFormDialog({
           )}
 
         </form>
-        <DialogFooter className="shrink-0 border-t px-6 py-4">
+        <DialogFooter className="shrink-0 px-6 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-3">
           <Button type="button" variant="outline" onClick={resetForm}>
             Cancelar
           </Button>

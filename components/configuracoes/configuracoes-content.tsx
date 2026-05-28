@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react"
-import { Bell, Building, Copy, Edit, Eye, EyeOff, MessageCircle, MoreHorizontal, Plus, RefreshCcw, Save, Search, Shield, Trash2, Users } from "lucide-react"
+import { Bell, Building, Copy, Edit, Eye, EyeOff, Mail, MessageCircle, MoreHorizontal, RefreshCcw, Save, Search, Shield, Trash2, Users } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -45,6 +45,7 @@ import {
   getOrganizationSettings,
   getSettings,
   resetUserPassword,
+  sendFirstAccessEmail,
   updateClientType,
   updateNotificationRule,
   updateOrganizationSettings,
@@ -58,9 +59,13 @@ import {
 } from "@/lib/api/settings"
 import { listTeams, type TeamRecord } from "@/lib/api/teams"
 import { getStoredUser } from "@/lib/auth/session"
+import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 
 type SettingsSection = "empresa" | "tipos-cliente" | "permissoes" | "usuarios" | "notificações"
 type ContractExpirationAlertDay = number | ""
+export type SettingsCreateAction = "client-type" | "profile" | "user"
+
+export const SETTINGS_CREATE_ACTION_EVENT = "depclean:settings-create-action"
 
 const SETTINGS_CARDS = [
   { id: "empresa" as SettingsSection, label: "Empresa", icon: Building, description: "Configure os dados da Depclean nos documentos", adminOnly: true },
@@ -162,6 +167,7 @@ export function ConfiguracoesContent() {
   const userDialogResetTimeoutRef = useRef<number | null>(null)
   const ruleDialogResetTimeoutRef = useRef<number | null>(null)
   const [activeSection, setActiveSection] = useUrlQueryState("section", "tipos-cliente")
+  const mobileFiltersOpen = useMobileFiltersOpen()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
@@ -450,19 +456,18 @@ export function ConfiguracoesContent() {
     clearDialogResetTimeout(userDialogResetTimeoutRef)
     if (record) {
       setEditingUser(record)
-      const cachedTemporaryPassword = record.temporaryPassword ?? temporaryPasswords[record.id] ?? ""
       setUserForm({
         name: record.name,
         email: record.email,
         phone: record.phone,
         cpf: formatCPF(record.cpf),
         role: record.role,
-        password: record.mustChangePassword ? cachedTemporaryPassword : "",
+        password: "",
         permissionProfileId: record.permissionProfileId,
         isActive: record.isActive,
         mustChangePassword: record.mustChangePassword,
       })
-      setShowTemporaryPassword(!record.mustChangePassword)
+      setShowTemporaryPassword(false)
     } else {
       resetUserFormFields()
     }
@@ -490,6 +495,29 @@ export function ConfiguracoesContent() {
     }
     setIsRuleDialogOpen(true)
   }
+
+  useEffect(() => {
+    const handleCreateAction = (event: Event) => {
+      const action = (event as CustomEvent<{ action?: SettingsCreateAction }>).detail?.action
+
+      if (action === "client-type") {
+        openTypeDialog()
+        return
+      }
+
+      if (action === "profile") {
+        openProfileDialog()
+        return
+      }
+
+      if (action === "user") {
+        openUserDialog()
+      }
+    }
+
+    window.addEventListener(SETTINGS_CREATE_ACTION_EVENT, handleCreateAction)
+    return () => window.removeEventListener(SETTINGS_CREATE_ACTION_EVENT, handleCreateAction)
+  }, [openProfileDialog, openTypeDialog, openUserDialog])
 
   const handleOrganizationSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -576,7 +604,17 @@ export function ConfiguracoesContent() {
       toast.error("Selecione um perfil de permissão.")
       return
     }
-    if (!editingUser && !userForm.password.trim()) {
+    const normalizedPassword = userForm.password.trim()
+    const currentTemporaryPassword = editingUser?.mustChangePassword
+      ? editingUser.temporaryPassword ?? temporaryPasswords[editingUser.id] ?? ""
+      : ""
+    const shouldSubmitPassword = Boolean(normalizedPassword) && (
+      !editingUser ||
+      !editingUser.mustChangePassword ||
+      normalizedPassword !== currentTemporaryPassword
+    )
+
+    if (!editingUser && !normalizedPassword) {
       toast.error("Informe uma senha ou gere uma nova senha.")
       return
     }
@@ -593,7 +631,7 @@ export function ConfiguracoesContent() {
           role: userForm.role,
           permissionProfileId: userForm.permissionProfileId,
           isActive: userForm.isActive,
-          ...(userForm.password.trim() ? { password: userForm.password } : {}),
+          ...(shouldSubmitPassword ? { password: normalizedPassword } : {}),
         })
         upsertUser(response.data)
         if (response.data.temporaryPassword) {
@@ -610,7 +648,7 @@ export function ConfiguracoesContent() {
           phone: userForm.phone,
           cpf: userForm.cpf,
           role: userForm.role,
-          password: userForm.password,
+          password: normalizedPassword,
           permissionProfileId: userForm.permissionProfileId,
           isActive: userForm.isActive,
         })
@@ -795,6 +833,36 @@ export function ConfiguracoesContent() {
     }
   }
 
+  const handleSendFirstAccessEmail = async () => {
+    if (!editingUser) return
+    if (saving) return
+
+    setSaving(true)
+    const toastId = toast.loading("Enviando e-mail de acesso...")
+    try {
+      const response = await sendFirstAccessEmail(editingUser.id)
+      upsertUser(response.data)
+      setEditingUser(response.data)
+      if (response.data.temporaryPassword) {
+        setTemporaryPasswords((current) => ({
+          ...current,
+          [response.data.id]: response.data.temporaryPassword ?? "",
+        }))
+      }
+      setUserForm((current) => ({
+        ...current,
+        password: response.data.temporaryPassword ?? current.password,
+        mustChangePassword: true,
+      }))
+      setShowTemporaryPassword(false)
+      toast.success("E-mail de primeiro acesso enviado.", { id: toastId })
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Não foi possível enviar o e-mail de acesso."), { id: toastId })
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const upsertClientType = (record: ClientTypeRecord) => {
     setClientTypes((current) => current.some((item) => item.id === record.id)
       ? current.map((item) => (item.id === record.id ? record : item))
@@ -870,6 +938,54 @@ export function ConfiguracoesContent() {
     await handleDeleteRule(target.id)
   }
 
+  const renderActiveSectionFilters = (className: string) => {
+    if (activeSection === "tipos-cliente") {
+      return (
+        <div className={className}>
+          <div className="relative w-full sm:max-w-md">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input placeholder="Buscar tipos..." value={typeSearch} onChange={(event) => { setTypeSearch(event.target.value); setTypePage(1) }} className="pl-10" />
+          </div>
+        </div>
+      )
+    }
+
+    if (activeSection === "permissoes") {
+      return (
+        <div className={className}>
+          <div className="relative w-full sm:max-w-md">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input placeholder="Buscar perfis..." value={profileSearch} onChange={(event) => { setProfileSearch(event.target.value); setProfilePage(1) }} className="pl-10" />
+          </div>
+        </div>
+      )
+    }
+
+    if (activeSection === "usuarios") {
+      return (
+        <div className={className}>
+          <div className="relative w-full sm:max-w-md">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input placeholder="Buscar usuários..." value={userSearch} onChange={(event) => { setUserSearch(event.target.value); setUserPage(1) }} className="pl-10" />
+          </div>
+        </div>
+      )
+    }
+
+    if (activeSection === "notificações") {
+      return (
+        <div className={className}>
+          <div className="relative w-full sm:max-w-md">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input placeholder="Buscar regras..." value={ruleSearch} onChange={(event) => { setRuleSearch(event.target.value); setRulePage(1) }} className="pl-10" />
+          </div>
+        </div>
+      )
+    }
+
+    return null
+  }
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -889,6 +1005,8 @@ export function ConfiguracoesContent() {
 
   return (
     <div className="space-y-6">
+      {renderActiveSectionFilters(`${mobileFiltersOpen ? "flex" : "hidden"} flex-col gap-3 sm:hidden`)}
+
       <div className="flex gap-2 overflow-x-auto pb-2 sm:hidden">
         {settingsCards.map((card) => (
           <button
@@ -1063,15 +1181,11 @@ export function ConfiguracoesContent() {
 
       {activeSection === "tipos-cliente" && (
         <div className="space-y-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="hidden flex-col gap-3 sm:flex sm:flex-row sm:items-center">
             <div className="relative w-full sm:max-w-md">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input placeholder="Buscar tipos..." value={typeSearch} onChange={(event) => { setTypeSearch(event.target.value); setTypePage(1) }} className="pl-10" />
             </div>
-            <Button onClick={() => openTypeDialog()} className="bg-primary text-primary-foreground hover:bg-primary/90">
-              <Plus className="mr-2 h-4 w-4" />
-              Novo Tipo
-            </Button>
           </div>
 
           <div className="overflow-x-auto rounded-md">
@@ -1158,15 +1272,11 @@ export function ConfiguracoesContent() {
 
       {activeSection === "permissoes" && (
         <div className="space-y-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="hidden flex-col gap-3 sm:flex sm:flex-row sm:items-center">
             <div className="relative w-full sm:max-w-md">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input placeholder="Buscar perfis..." value={profileSearch} onChange={(event) => { setProfileSearch(event.target.value); setProfilePage(1) }} className="pl-10" />
             </div>
-            <Button onClick={() => openProfileDialog()} className="bg-primary text-primary-foreground hover:bg-primary/90">
-              <Plus className="mr-2 h-4 w-4" />
-              Novo Perfil
-            </Button>
           </div>
 
           <div className="overflow-x-auto rounded-md">
@@ -1309,15 +1419,11 @@ export function ConfiguracoesContent() {
 
       {activeSection === "usuarios" && (
         <div className="space-y-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="hidden flex-col gap-3 sm:flex sm:flex-row sm:items-center">
             <div className="relative w-full sm:max-w-md">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input placeholder="Buscar usuários..." value={userSearch} onChange={(event) => { setUserSearch(event.target.value); setUserPage(1) }} className="pl-10" />
             </div>
-            <Button onClick={() => openUserDialog()} className="bg-primary text-primary-foreground hover:bg-primary/90">
-              <Plus className="mr-2 h-4 w-4" />
-              Novo Usuário
-            </Button>
           </div>
 
           <div className="overflow-x-auto rounded-md">
@@ -1501,12 +1607,17 @@ export function ConfiguracoesContent() {
                 </div>
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    {editingUser && !userForm.mustChangePassword && (
+                    {editingUser && userForm.mustChangePassword ? (
+                      <Button type="button" variant="outline" onClick={handleSendFirstAccessEmail} disabled={saving}>
+                        <Mail className="mr-2 h-4 w-4" />
+                        Enviar para e-mail
+                      </Button>
+                    ) : editingUser ? (
                       <Button type="button" variant="outline" onClick={handleResetUserPassword} disabled={saving}>
                         <RefreshCcw className="mr-2 h-4 w-4" />
                         Resetar senha
                       </Button>
-                    )}
+                    ) : null}
                   </div>
                   <div className="flex justify-end gap-2">
                     <Button type="button" variant="outline" onClick={closeUserDialog}>Cancelar</Button>
@@ -1521,7 +1632,7 @@ export function ConfiguracoesContent() {
 
       {activeSection === "notificações" && (
         <div className="space-y-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="hidden flex-col gap-3 sm:flex sm:flex-row sm:items-center">
             <div className="relative w-full sm:max-w-md">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input placeholder="Buscar regras..." value={ruleSearch} onChange={(event) => { setRuleSearch(event.target.value); setRulePage(1) }} className="pl-10" />

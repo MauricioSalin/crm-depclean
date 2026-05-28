@@ -99,6 +99,7 @@ function SelectContent({
   className,
   children,
   position = 'popper',
+  updatePositionStrategy = 'always',
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Content>) {
   return (
@@ -112,6 +113,7 @@ function SelectContent({
           className,
         )}
         position={position}
+        {...(position === 'popper' ? { updatePositionStrategy } : {})}
         {...props}
       >
         <SelectScrollUpButton />

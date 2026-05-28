@@ -27,6 +27,7 @@ import { toast } from "@/components/ui/use-toast"
 import { listEmployees, type EmployeeRecord } from "@/lib/api/employees"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { createTeam, deleteTeam, listTeams, updateTeam, type TeamRecord } from "@/lib/api/teams"
+import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 import { cn } from "@/lib/utils"
 
@@ -43,6 +44,7 @@ interface TeamsContentProps {
 
 export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle }: TeamsContentProps) {
   const queryClient = useQueryClient()
+  const mobileFiltersOpen = useMobileFiltersOpen()
   const [searchTerm, setSearchTerm] = useUrlQueryState("q")
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingTeam, setEditingTeam] = useState<TeamView | null>(null)
@@ -350,11 +352,11 @@ export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle 
               )}
             </div>
 
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={closeDialog} disabled={busy}>
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:justify-end">
+              <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={closeDialog} disabled={busy}>
                 Cancelar
               </Button>
-              <Button type="submit" disabled={busy}>
+              <Button type="submit" className="w-full sm:w-auto" disabled={busy}>
                 {busy ? "Salvando..." : editingTeam ? "Salvar" : "Criar"}
               </Button>
             </div>
@@ -375,7 +377,7 @@ export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle 
       />
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-visible md:overflow-hidden">
-        <div className="flex shrink-0 items-center gap-2">
+        <div className={`${mobileFiltersOpen ? "flex" : "hidden"} shrink-0 items-center gap-2 sm:flex`}>
           <div className="relative w-full sm:max-w-sm">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -452,7 +454,7 @@ export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle 
             <Table containerClassName="md:h-full">
               <TableHeader>
                 <TableRow>
-                  <TableHead>Equipe / Funcionários</TableHead>
+                  <TableHead>Equipe</TableHead>
                   <TableHead className="hidden sm:table-cell">Membros</TableHead>
                   <TableHead className="hidden md:table-cell">Integrantes</TableHead>
                   <TableHead className="text-right">Ações</TableHead>

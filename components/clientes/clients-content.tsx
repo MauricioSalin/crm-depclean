@@ -68,6 +68,20 @@ const resolveColor = (color?: string) => {
   return "#84CC16"
 }
 
+const parseCsvBoolean = (value?: string, fallback = false) => {
+  const normalized = String(value ?? "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+
+  if (!normalized) return fallback
+  if (["sim", "s", "true", "1", "yes", "y", "ativo", "recebe"].includes(normalized)) return true
+  if (["nao", "n", "false", "0", "no", "inativo", "nao recebe"].includes(normalized)) return false
+
+  return fallback
+}
+
 const CLIENT_IMPORT_FIELDS: CsvImportField[] = [
   { key: "companyName", label: "Razão social", required: true },
   { key: "cnpj", label: "CNPJ", required: true },
@@ -75,6 +89,16 @@ const CLIENT_IMPORT_FIELDS: CsvImportField[] = [
   { key: "responsibleCpf", label: "CPF do responsável", required: true },
   { key: "phone", label: "Telefone" },
   { key: "email", label: "E-mail", required: true },
+  { key: "assessorName", label: "Assessor" },
+  { key: "assessorCpf", label: "CPF do assessor" },
+  { key: "assessorEmail", label: "E-mail do assessor" },
+  { key: "assessorPhone", label: "Telefone do assessor" },
+  { key: "assessorReceivesNotifications", label: "Assessor recebe notificações" },
+  { key: "syndicName", label: "Síndico" },
+  { key: "syndicCpf", label: "CPF do síndico" },
+  { key: "syndicEmail", label: "E-mail do síndico" },
+  { key: "syndicPhone", label: "Telefone do síndico" },
+  { key: "syndicReceivesNotifications", label: "Síndico recebe notificações" },
   { key: "clientTypeId", label: "Tipo", required: true },
   { key: "unitName", label: "Unidade", required: true },
   { key: "unitCount", label: "Quantidade de unidades", required: true },
@@ -152,6 +176,16 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
           phone: row.phone,
           email: row.email,
           clientTypeId: row.clientTypeId,
+          assessorName: row.assessorName,
+          assessorCpf: row.assessorCpf,
+          assessorEmail: row.assessorEmail,
+          assessorPhone: row.assessorPhone,
+          assessorReceivesNotifications: parseCsvBoolean(row.assessorReceivesNotifications),
+          syndicName: row.syndicName,
+          syndicCpf: row.syndicCpf,
+          syndicEmail: row.syndicEmail,
+          syndicPhone: row.syndicPhone,
+          syndicReceivesNotifications: parseCsvBoolean(row.syndicReceivesNotifications),
           responsibleReceivesNotifications: true,
           copyNotificationsToOwner: false,
           isActive: true,
@@ -278,8 +312,11 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
                     <TableRow key={client.id}>
                       <TableCell>
                         <Link href={getClientProfileHref(client.id)} className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 bg-primary/10">
-                            <Building2 className="w-5 h-5 text-primary" />
+                          <div
+                            className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                            style={{ backgroundColor: `${clientTypeColor}1A` }}
+                          >
+                            <Building2 className="w-5 h-5" style={{ color: clientTypeColor }} />
                           </div>
                           <div className="min-w-0">
                             <p className="truncate font-semibold text-foreground">{client.companyName}</p>
@@ -360,11 +397,14 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
 
               return (
                 <Card key={client.id} className="h-full overflow-hidden">
-                  <CardContent className="flex h-full flex-col px-4 py-3">
+                  <CardContent className="flex h-full flex-col px-6">
                     <Link href={getClientProfileHref(client.id)} className="flex-1">
                       <div className="flex items-center gap-3 mb-3">
-                        <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 bg-primary/10">
-                          <Building2 className="w-5 h-5 text-primary" />
+                        <div
+                          className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                          style={{ backgroundColor: `${clientTypeColor}1A` }}
+                        >
+                          <Building2 className="w-5 h-5" style={{ color: clientTypeColor }} />
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-start justify-between gap-x-2 gap-y-1">

@@ -8,10 +8,11 @@ import { Button } from "@/components/ui/button"
 import { ContentLoadingSkeleton } from "@/components/ui/content-loading-skeleton"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Plus, List, LayoutGrid } from "lucide-react"
+import { useResponsiveDefaultViewMode } from "@/hooks/use-responsive-default-view-mode"
 
 export default function EquipesPage() {
   const [openDialog, setOpenDialog] = useState(false)
-  const [viewMode, setViewMode] = useState<"grid" | "table">("grid")
+  const [viewMode, setViewMode] = useResponsiveDefaultViewMode("table", "grid")
 
   const toggle = (
     <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "grid" | "table")}>
@@ -32,6 +33,7 @@ export default function EquipesPage() {
         <Header
           title="Equipes"
           description="Gerencie as equipes de serviço da Depclean."
+          hasFilters
           viewToggle={toggle}
           actions={
             <Button

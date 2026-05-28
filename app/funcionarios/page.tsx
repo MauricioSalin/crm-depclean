@@ -8,11 +8,12 @@ import { Button } from "@/components/ui/button"
 import { ContentLoadingSkeleton } from "@/components/ui/content-loading-skeleton"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { FileUp, Plus, List, LayoutGrid } from "lucide-react"
+import { useResponsiveDefaultViewMode } from "@/hooks/use-responsive-default-view-mode"
 
 export default function FuncionariosPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
-  const [viewMode, setViewMode] = useState<"table" | "cards">("table")
+  const [viewMode, setViewMode] = useResponsiveDefaultViewMode("table", "cards")
 
   const toggle = (
     <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "table" | "cards")}>

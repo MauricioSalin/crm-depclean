@@ -30,6 +30,21 @@ type ImageSize = {
   height: number
 }
 
+type GestureState =
+  | {
+      mode: "drag"
+      pointerId: number
+      start: Point
+      offset: Point
+    }
+  | {
+      mode: "pinch"
+      startDistance: number
+      startZoom: number
+      startOffset: Point
+      startCenter: Point
+    }
+
 interface AvatarUploadDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -53,6 +68,17 @@ function formatFileSize(bytes: number) {
   return `${Math.max(1, Math.round(bytes / 1024))} KB`
 }
 
+function distanceBetween(a: Point, b: Point) {
+  return Math.hypot(a.x - b.x, a.y - b.y)
+}
+
+function centerBetween(a: Point, b: Point): Point {
+  return {
+    x: (a.x + b.x) / 2,
+    y: (a.y + b.y) / 2,
+  }
+}
+
 export function AvatarUploadDialog({
   open,
   onOpenChange,
@@ -61,7 +87,10 @@ export function AvatarUploadDialog({
 }: AvatarUploadDialogProps) {
   const inputRef = useRef<HTMLInputElement | null>(null)
   const imageRef = useRef<HTMLImageElement | null>(null)
-  const dragRef = useRef<{ pointerId: number; start: Point; offset: Point } | null>(null)
+  const activePointersRef = useRef<Map<number, Point>>(new Map())
+  const gestureRef = useRef<GestureState | null>(null)
+  const zoomRef = useRef(1)
+  const offsetRef = useRef<Point>({ x: 0, y: 0 })
   const [imageUrl, setImageUrl] = useState("")
   const [naturalSize, setNaturalSize] = useState<ImageSize | null>(null)
   const [zoom, setZoom] = useState(1)
@@ -74,6 +103,10 @@ export function AvatarUploadDialog({
       if (current) URL.revokeObjectURL(current)
       return ""
     })
+    activePointersRef.current.clear()
+    gestureRef.current = null
+    zoomRef.current = 1
+    offsetRef.current = { x: 0, y: 0 }
     setNaturalSize(null)
     setZoom(1)
     setOffset({ x: 0, y: 0 })
@@ -131,50 +164,136 @@ export function AvatarUploadDialog({
       if (current) URL.revokeObjectURL(current)
       return URL.createObjectURL(file)
     })
+    activePointersRef.current.clear()
+    gestureRef.current = null
+    zoomRef.current = 1
+    offsetRef.current = { x: 0, y: 0 }
     setNaturalSize(null)
     setZoom(1)
     setOffset({ x: 0, y: 0 })
     setErrorMessage("")
   }
 
+  const getRelativePoint = (element: HTMLDivElement, point: Point) => {
+    const rect = element.getBoundingClientRect()
+    return {
+      x: point.x - rect.left - rect.width / 2,
+      y: point.y - rect.top - rect.height / 2,
+    }
+  }
+
+  const updateZoomAndOffset = (nextZoom: number, nextOffset = offsetRef.current) => {
+    const clampedZoom = clamp(nextZoom, 1, 3)
+    const clampedOffset = clampOffset(nextOffset, clampedZoom)
+
+    zoomRef.current = clampedZoom
+    offsetRef.current = clampedOffset
+    setZoom(clampedZoom)
+    setOffset(clampedOffset)
+  }
+
   const handleZoomChange = (value: number) => {
-    setZoom(value)
-    setOffset((current) => clampOffset(current, value))
+    updateZoomAndOffset(value)
+  }
+
+  const startPinchGesture = (element: HTMLDivElement) => {
+    const points = Array.from(activePointersRef.current.values()).slice(0, 2)
+    if (points.length < 2) return
+
+    const center = centerBetween(points[0], points[1])
+    gestureRef.current = {
+      mode: "pinch",
+      startDistance: Math.max(1, distanceBetween(points[0], points[1])),
+      startZoom: zoomRef.current,
+      startOffset: offsetRef.current,
+      startCenter: getRelativePoint(element, center),
+    }
   }
 
   const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
     if (!imageUrl || !displaySize) return
-    dragRef.current = {
+
+    event.preventDefault()
+    activePointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY })
+    event.currentTarget.setPointerCapture(event.pointerId)
+
+    if (activePointersRef.current.size >= 2) {
+      startPinchGesture(event.currentTarget)
+      return
+    }
+
+    gestureRef.current = {
+      mode: "drag",
       pointerId: event.pointerId,
       start: { x: event.clientX, y: event.clientY },
-      offset,
+      offset: offsetRef.current,
     }
-    event.currentTarget.setPointerCapture(event.pointerId)
   }
 
   const handlePointerMove = (event: PointerEvent<HTMLDivElement>) => {
-    const drag = dragRef.current
-    if (!drag || drag.pointerId !== event.pointerId) return
+    if (!activePointersRef.current.has(event.pointerId)) return
+    activePointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY })
 
-    setOffset(
-      clampOffset({
-        x: drag.offset.x + event.clientX - drag.start.x,
-        y: drag.offset.y + event.clientY - drag.start.y,
-      }),
-    )
+    const gesture = gestureRef.current
+    if (!gesture) return
+
+    event.preventDefault()
+
+    if (gesture.mode === "pinch" && activePointersRef.current.size >= 2) {
+      const points = Array.from(activePointersRef.current.values()).slice(0, 2)
+      const nextDistance = Math.max(1, distanceBetween(points[0], points[1]))
+      const nextZoom = clamp(gesture.startZoom * (nextDistance / gesture.startDistance), 1, 3)
+      const zoomRatio = nextZoom / gesture.startZoom
+      const center = getRelativePoint(event.currentTarget, centerBetween(points[0], points[1]))
+
+      updateZoomAndOffset(nextZoom, {
+        x: center.x - (gesture.startCenter.x - gesture.startOffset.x) * zoomRatio,
+        y: center.y - (gesture.startCenter.y - gesture.startOffset.y) * zoomRatio,
+      })
+      return
+    }
+
+    if (gesture.mode !== "drag" || gesture.pointerId !== event.pointerId || activePointersRef.current.size > 1) return
+
+    const nextOffset = clampOffset({
+      x: gesture.offset.x + event.clientX - gesture.start.x,
+      y: gesture.offset.y + event.clientY - gesture.start.y,
+    })
+    offsetRef.current = nextOffset
+    setOffset(nextOffset)
   }
 
   const handlePointerEnd = (event: PointerEvent<HTMLDivElement>) => {
-    if (dragRef.current?.pointerId === event.pointerId) {
-      dragRef.current = null
+    activePointersRef.current.delete(event.pointerId)
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
     }
+
+    if (activePointersRef.current.size === 1) {
+      const [remainingPointerId, remainingPoint] = Array.from(activePointersRef.current.entries())[0]
+      gestureRef.current = {
+        mode: "drag",
+        pointerId: remainingPointerId,
+        start: remainingPoint,
+        offset: offsetRef.current,
+      }
+      return
+    }
+
+    if (activePointersRef.current.size >= 2) {
+      startPinchGesture(event.currentTarget)
+      return
+    }
+
+    gestureRef.current = null
   }
 
   const handleWheel = (event: WheelEvent<HTMLDivElement>) => {
     if (!imageUrl || !displaySize) return
 
     event.preventDefault()
-    const nextZoom = clamp(zoom + (event.deltaY < 0 ? 0.08 : -0.08), 1, 3)
+    const nextZoom = clamp(zoomRef.current + (event.deltaY < 0 ? 0.08 : -0.08), 1, 3)
     handleZoomChange(nextZoom)
   }
 
@@ -282,6 +401,8 @@ export function AvatarUploadDialog({
                       width: target.naturalWidth,
                       height: target.naturalHeight,
                     })
+                    zoomRef.current = 1
+                    offsetRef.current = { x: 0, y: 0 }
                     setOffset({ x: 0, y: 0 })
                     setZoom(1)
                   }}

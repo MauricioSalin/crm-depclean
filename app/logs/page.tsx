@@ -15,6 +15,7 @@ export default function LogsPage() {
         <Header
           title="Logs do Sistema"
           description="Histórico completo de ações realizadas no sistema"
+          hasFilters
         />
 
         <div className="mt-4 md:mt-5">

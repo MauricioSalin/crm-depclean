@@ -274,16 +274,18 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
 
               return (
                 <Card key={contract.id} className="h-full overflow-hidden">
-                  <CardContent className="flex h-full flex-col px-4 py-3">
+                  <CardContent className="flex h-full flex-col px-6">
                     <Link href={getContractProfileHref(contract.id)} className="flex-1">
                       <div className="mb-2 flex items-center gap-3">
                         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
                           <FileText className="h-5 w-5 text-primary" />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-start justify-between gap-x-2 gap-y-1">
+                          <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
                             <h3 className="min-w-0 flex-1 break-words text-sm font-semibold">{contract.contractNumber}</h3>
-                            {getStatusBadge(contract.status)}
+                            <span className="inline-flex shrink-0 translate-y-[2px]">
+                              {getStatusBadge(contract.status)}
+                            </span>
                           </div>
                           <p className="truncate text-xs text-muted-foreground">{contract.clientCompanyName}</p>
                         </div>

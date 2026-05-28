@@ -16,6 +16,7 @@ import {
   listNotifications,
   markAllNotificationsAsRead,
   markNotificationAsRead,
+  markNotificationAsUnread,
   type NotificationRecord,
 } from "@/lib/api/notifications"
 import { getApiErrorMessage } from "@/lib/api/errors"
@@ -54,6 +55,23 @@ export default function NotificacoesPage() {
     },
     onError: (error, _variables, context) => {
       toast.error(getApiErrorMessage(error, "Não foi possível marcar a notificação como lida."), {
+        id: context?.toastId,
+      })
+    },
+  })
+
+  const markAsUnreadMutation = useMutation({
+    mutationFn: markNotificationAsUnread,
+    onMutate: () => {
+      const toastId = toast.loading("Marcando notificação como não lida...")
+      return { toastId }
+    },
+    onSuccess: (_data, _variables, context) => {
+      void invalidateNotifications()
+      toast.success("Notificação marcada como não lida.", { id: context?.toastId })
+    },
+    onError: (error, _variables, context) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível marcar a notificação como não lida."), {
         id: context?.toastId,
       })
     },
@@ -138,6 +156,7 @@ export default function NotificacoesPage() {
             notificationsList={notificationsList}
             isLoading={notificationsQuery.isLoading}
             onMarkAsRead={(id) => markAsReadMutation.mutate(id)}
+            onMarkAsUnread={(id) => markAsUnreadMutation.mutate(id)}
             onDelete={(id) => deleteMutation.mutate(id)}
             onOpenNotification={openNotification}
           />

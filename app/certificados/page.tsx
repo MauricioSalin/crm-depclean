@@ -9,9 +9,10 @@ import { Sidebar } from "@/components/dashboard/sidebar"
 import { Button } from "@/components/ui/button"
 import { ContentLoadingSkeleton } from "@/components/ui/content-loading-skeleton"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useResponsiveDefaultViewMode } from "@/hooks/use-responsive-default-view-mode"
 
 export default function CertificadosPage() {
-  const [viewMode, setViewMode] = useState<"table" | "cards">("table")
+  const [viewMode, setViewMode] = useResponsiveDefaultViewMode("table", "cards")
   const [createOpen, setCreateOpen] = useState(false)
 
   const toggle = (

@@ -20,6 +20,7 @@ import {
   MapPin,
   MoreHorizontal,
   RefreshCw,
+  Wrench,
 } from "lucide-react"
 
 import { AssignmentBadges } from "@/components/ui/assignment-badges"
@@ -49,6 +50,7 @@ import { listServices, type ServiceRecurrenceRuleRecord } from "@/lib/api/servic
 import { listTeams } from "@/lib/api/teams"
 import { formatCivilDate } from "@/lib/date-utils"
 import { buildPathWithSearchParams, getSafeReturnTo, withReturnTo } from "@/lib/navigation"
+import { cn } from "@/lib/utils"
 
 interface ContractDetailProps {
   contractId: string
@@ -439,6 +441,20 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
     () => (contract?.recurrenceRules ?? []) as ServiceRecurrenceRuleRecord[],
     [contract?.recurrenceRules],
   )
+  const totalUnitCount = useMemo(
+    () => units.reduce((sum, unit) => sum + Number(unit.unitCount ?? 0), 0),
+    [units],
+  )
+  const selectedRecurrenceRuleIndex = useMemo(() => {
+    if (totalUnitCount === 0) return -1
+    return recurrenceRules.findIndex((rule) => {
+      if (rule.type === "range") {
+        return totalUnitCount >= rule.minUnits && totalUnitCount <= rule.maxUnits
+      }
+
+      return totalUnitCount > rule.minUnits
+    })
+  }, [recurrenceRules, totalUnitCount])
 
   const installmentMutation = useMutation({
     mutationFn: ({
@@ -604,7 +620,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
               <FileText className="h-6 w-6 text-primary" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="mb-1 flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+              <div className="mb-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
                 <h2 className="min-w-0 flex-1 break-words text-xl font-bold">{contract.contractNumber}</h2>
                 {getStatusBadge(contract.status)}
               </div>
@@ -732,7 +748,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <ExternalLink className="h-5 w-5 text-primary" />
           <h3 className="font-semibold">ClickSign</h3>
-          <Badge variant="secondary" className="ml-auto">
+          <Badge variant="secondary">
             {getClicksignStatusLabel(contract.clicksign?.status)}
           </Badge>
         </div>
@@ -795,10 +811,10 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
       </Card>
 
       <Card className="p-6">
-        <div className="mb-4 flex items-center gap-2">
+        <div className="mb-4 flex flex-wrap items-center gap-2">
           <RefreshCw className="h-5 w-5 text-primary" />
           <h3 className="font-semibold">Recorrência das visitas</h3>
-          <Badge variant="secondary" className="ml-auto">
+          <Badge variant="secondary">
             {getRecurrenceLabel(contract.recurrence)}
           </Badge>
         </div>
@@ -806,7 +822,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
         <p className="mb-4 text-sm text-muted-foreground">
           Total de unidades vinculadas:{" "}
           <span className="font-medium text-foreground">
-            {units.reduce((sum, unit) => sum + Number(unit.unitCount ?? 0), 0)}
+            {totalUnitCount}
           </span>
         </p>
 
@@ -820,19 +836,28 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {recurrenceRules.map((rule, index) => (
-                <TableRow key={`${rule.type}-${index}`}>
-                  <TableCell>
-                    <Badge variant="outline">{rule.type === "range" ? "De - Até" : "Acima de"}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    {rule.type === "range"
-                      ? `${rule.minUnits} até ${rule.maxUnits} unidades`
-                      : `Acima de ${rule.minUnits} unidades`}
-                  </TableCell>
-                  <TableCell>{getRecurrenceLabel(rule.recurrence)}</TableCell>
-                </TableRow>
-              ))}
+              {recurrenceRules.map((rule, index) => {
+                const isSelectedRule = index === selectedRecurrenceRuleIndex
+
+                return (
+                  <TableRow
+                    key={`${rule.type}-${index}`}
+                    className={cn(
+                      isSelectedRule && "bg-primary/10 hover:bg-primary/10 [&>td]:font-semibold",
+                    )}
+                  >
+                    <TableCell>
+                      <Badge variant={isSelectedRule ? "secondary" : "outline"}>{rule.type === "range" ? "De - Até" : "Acima de"}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      {rule.type === "range"
+                        ? `${rule.minUnits} até ${rule.maxUnits} unidades`
+                        : `Acima de ${rule.minUnits} unidades`}
+                    </TableCell>
+                    <TableCell>{getRecurrenceLabel(rule.recurrence)}</TableCell>
+                  </TableRow>
+                )
+              })}
             </TableBody>
           </Table>
         </div>
@@ -846,6 +871,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
               value="services"
               className={contractDetailTabTriggerClassName}
             >
+              <Wrench className="h-4 w-4" />
               <span className="font-semibold">Serviços ({contract.services.length})</span>
             </TabsTrigger>
             <TabsTrigger
@@ -853,6 +879,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
               value="installments"
               className={contractDetailTabTriggerClassName}
             >
+              <DollarSign className="h-4 w-4" />
               <span className="font-semibold">Parcelas ({contract.installmentsCount})</span>
             </TabsTrigger>
             <TabsTrigger
@@ -860,6 +887,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
               value="units"
               className={contractDetailTabTriggerClassName}
             >
+              <Building2 className="h-4 w-4" />
               <span className="font-semibold">Filiais ({units.length})</span>
             </TabsTrigger>
             <TabsTrigger
@@ -867,6 +895,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
               value="schedule"
               className={contractDetailTabTriggerClassName}
             >
+              <CalendarCheck className="h-4 w-4" />
               <span className="font-semibold">Agenda ({contractSchedules.length})</span>
             </TabsTrigger>
           </TabsList>

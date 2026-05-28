@@ -23,6 +23,7 @@ import {
   Phone,
   Trash2,
   Upload,
+  Wrench,
 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -153,10 +154,13 @@ const formatCNPJ = (value: string) => {
   return digits.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5")
 }
 
+const fallbackClientTypeColor = "#64748B"
+
 const resolveColor = (color?: string) => {
-  if (!color) return "#84CC16"
-  if (color.startsWith("#")) return color
-  return "#84CC16"
+  const normalizedColor = color?.trim()
+  if (!normalizedColor) return fallbackClientTypeColor
+  if (/^#[0-9a-f]{3,8}$/i.test(normalizedColor)) return normalizedColor
+  return fallbackClientTypeColor
 }
 
 const getScheduleStatusBadge = (status: ScheduleRecord["status"]) => {
@@ -173,6 +177,23 @@ const getScheduleStatusBadge = (status: ScheduleRecord["status"]) => {
       return <Badge className="bg-red-100 text-red-800">Cancelado</Badge>
     case "rescheduled":
       return <Badge className="bg-purple-100 text-purple-800">Reagendado</Badge>
+  }
+}
+
+const getInstallmentStatusBadge = (status: ContractInstallmentRecord["status"]) => {
+  switch (status) {
+    case "paid":
+      return <Badge className="bg-green-100 text-green-700 hover:bg-green-100">Paga</Badge>
+    case "pending":
+      return <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">Pendente</Badge>
+    case "late":
+      return <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100">Atrasada</Badge>
+    case "overdue":
+      return <Badge className="bg-red-100 text-red-700 hover:bg-red-100">Vencida</Badge>
+    case "cancelled":
+      return <Badge variant="secondary">Cancelada</Badge>
+    default:
+      return <Badge variant="secondary">{status}</Badge>
   }
 }
 
@@ -607,7 +628,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
   const totalOverdue = overdueInstallments.reduce((accumulator, installment) => accumulator + installment.value, 0)
   const totalPending = pendingInstallments.reduce((accumulator, installment) => accumulator + installment.value, 0)
 
-  if (clientQuery.isLoading) {
+  if (clientQuery.isLoading || clientTypesQuery.isLoading) {
     return (
       <Card className="p-6">
         <div className="flex items-start gap-4">
@@ -650,6 +671,23 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
         return "Contrato"
       default:
         return "Outro"
+    }
+  }
+
+  const getAttachmentTypeBadge = (type: ClientAttachmentRecord["type"]) => {
+    const label = getAttachmentTypeLabel(type)
+
+    switch (type) {
+      case "contract":
+        return <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">{label}</Badge>
+      case "certificate":
+        return <Badge className="bg-green-100 text-green-700 hover:bg-green-100">{label}</Badge>
+      case "service_na":
+        return <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100">{label}</Badge>
+      case "informative":
+        return <Badge className="bg-purple-100 text-purple-700 hover:bg-purple-100">{label}</Badge>
+      default:
+        return <Badge className="bg-slate-100 text-slate-700 hover:bg-slate-100">{label}</Badge>
     }
   }
 
@@ -831,6 +869,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
               value="dados"
               className={clientProfileTabTriggerClassName}
             >
+              <Building2 className="h-4 w-4" />
               <span className="font-semibold">Dados</span>
             </TabsTrigger>
             <TabsTrigger
@@ -838,6 +877,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
               value="contratos"
               className={clientProfileTabTriggerClassName}
             >
+              <FileText className="h-4 w-4" />
               <span className="font-semibold">Contratos</span>
             </TabsTrigger>
             <TabsTrigger
@@ -845,6 +885,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
               value="parcelas"
               className={clientProfileTabTriggerClassName}
             >
+              <DollarSign className="h-4 w-4" />
               <span className="font-semibold">Parcelas</span>
             </TabsTrigger>
             <TabsTrigger
@@ -852,6 +893,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
               value="servicos"
               className={clientProfileTabTriggerClassName}
             >
+              <Wrench className="h-4 w-4" />
               <span className="font-semibold">Serviços</span>
             </TabsTrigger>
             <TabsTrigger
@@ -859,6 +901,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
               value="agenda"
               className={clientProfileTabTriggerClassName}
             >
+              <Calendar className="h-4 w-4" />
               <span className="font-semibold">Agenda</span>
             </TabsTrigger>
             <TabsTrigger
@@ -866,6 +909,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
               value="anexos"
               className={clientProfileTabTriggerClassName}
             >
+              <Paperclip className="h-4 w-4" />
               <span className="font-semibold">Anexos</span>
             </TabsTrigger>
           </TabsList>
@@ -1099,27 +1143,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                         </TableCell>
                         <TableCell className="font-medium">{formatCurrency(installment.value)}</TableCell>
                         <TableCell className="hidden md:table-cell text-sm">{formatDate(installment.dueDate)}</TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={
-                              installment.status === "paid"
-                                ? "default"
-                                : installment.status === "late"
-                                  ? "secondary"
-                                : installment.status === "overdue"
-                                  ? "destructive"
-                                  : "secondary"
-                            }
-                          >
-                            {installment.status === "paid"
-                              ? "Paga"
-                              : installment.status === "late"
-                                ? "Atrasada"
-                              : installment.status === "overdue"
-                                ? "Vencida"
-                                : "Pendente"}
-                          </Badge>
-                        </TableCell>
+                        <TableCell>{getInstallmentStatusBadge(installment.status)}</TableCell>
                         <TableCell className="text-right">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -1307,7 +1331,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                   {paginatedAttachments.map((attachment) => (
                     <TableRow key={attachment.id}>
                       <TableCell>
-                        <Badge variant="secondary">{getAttachmentTypeLabel(attachment.type)}</Badge>
+                        {getAttachmentTypeBadge(attachment.type)}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-3">

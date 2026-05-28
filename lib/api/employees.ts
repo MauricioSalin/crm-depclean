@@ -52,6 +52,11 @@ export async function deactivateEmployee(id: string) {
   return response.data
 }
 
+export async function deleteEmployee(id: string) {
+  const response = await api.delete<{ success: true; data: null }>(`/employees/${id}/permanent`)
+  return response.data
+}
+
 export async function makeEmployeeSystemUser(id: string, payload: CreateSystemUserPayload) {
   const response = await api.post<{ success: true; data: EmployeeRecord }>(`/employees/${id}/system-user`, payload)
   return response.data

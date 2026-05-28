@@ -1073,12 +1073,12 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
       </Card>
 
       {/* Actions */}
-      <div className="flex flex-col sm:flex-row gap-3 justify-end">
+      <div className="grid grid-cols-2 gap-3 sm:flex sm:justify-end">
         {isEditing && clientId ? (
           <Button
             type="button"
             variant="outline"
-            className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+            className="max-sm:col-span-2 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
             onClick={() => setRemoveDialogOpen(true)}
             disabled={deleteMutation.isPending || saveMutation.isPending}
           >
@@ -1090,12 +1090,12 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
           type="button"
           variant="outline"
           onClick={() => router.push(formBackHref)}
-          className="bg-transparent"
+          className="w-full bg-transparent sm:w-auto"
           disabled={saveMutation.isPending || deleteMutation.isPending}
         >
           Cancelar
         </Button>
-        <Button type="submit" disabled={saveMutation.isPending || cnpjLoading || cepLoading !== null}>
+        <Button type="submit" className="w-full sm:w-auto" disabled={saveMutation.isPending || cnpjLoading || cepLoading !== null}>
           <Save className="w-4 h-4 mr-2" />
           {saveMutation.isPending ? "Salvando..." : isEditing ? "Salvar Alterações" : "Cadastrar Cliente"}
         </Button>

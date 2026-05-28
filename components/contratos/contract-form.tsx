@@ -1351,7 +1351,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
 
             return (
               <>
-              <div className="rounded-lg bg-muted/50 p-4 lg:col-span-2">
+              <div className="w-fit max-w-full rounded-lg bg-muted/50 p-4 lg:col-span-2">
                 <div className="flex items-start gap-3">
                   <div
                     className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
@@ -1829,8 +1829,8 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
           <DollarSign className="w-5 h-5 text-primary" />
           Valor do Contrato
         </h3>
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(260px,420px)_1fr] lg:items-stretch">
-          <div className="space-y-2">
+        <div className="max-w-2xl space-y-4">
+          <div className="max-w-[420px] space-y-2">
             <Label>Valor do Contrato *</Label>
             <CurrencyInput
               value={contractValue}
@@ -1841,7 +1841,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
             </p>
           </div>
 
-          <div className="rounded-2xl border border-primary/20 bg-primary/5 p-5 lg:justify-self-end lg:min-w-[360px]">
+          <div className="rounded-lg bg-muted/30 p-4">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Total do contrato</p>
@@ -1852,11 +1852,11 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
               </div>
             </div>
             <div className="mt-5 grid grid-cols-1 gap-2 text-sm text-muted-foreground sm:grid-cols-2">
-              <div className="rounded-xl bg-background/70 p-3">
+              <div className="rounded-lg bg-background/70 p-3">
                 <span className="block text-xs">Parcelas</span>
                 <strong className="text-foreground">{installmentsCount}x</strong>
               </div>
-              <div className="rounded-xl bg-background/70 p-3">
+              <div className="rounded-lg bg-background/70 p-3">
                 <span className="block text-xs">Valor por parcela</span>
                 <strong className="text-foreground">{formatCurrency(installmentsCount > 0 ? totalValue / installmentsCount : totalValue)}</strong>
               </div>
@@ -1866,13 +1866,13 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
       </Card>
 
       {/* Actions */}
-      <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-end">
-        <div className="flex justify-end gap-3">
+      <div className="flex justify-end">
+        <div className="grid w-full grid-cols-2 gap-3 sm:flex sm:w-auto sm:justify-end">
           {isEditing && contractId ? (
             <Button
               type="button"
               variant="outline"
-              className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+              className="max-sm:col-span-2 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
               onClick={() => setRemoveDialogOpen(true)}
               disabled={deleteMutation.isPending || updateMutation.isPending}
             >
@@ -1880,10 +1880,10 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
               Remover
             </Button>
           ) : null}
-          <Button type="button" variant="outline" onClick={() => router.push(formBackHref)} disabled={previewMutation.isPending || updateMutation.isPending || createMutation.isPending || isFinalizingCreate}>
+          <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => router.push(formBackHref)} disabled={previewMutation.isPending || updateMutation.isPending || createMutation.isPending || isFinalizingCreate}>
             Cancelar
           </Button>
-          <Button type="submit" className="bg-primary hover:bg-primary/90" disabled={previewMutation.isPending || updateMutation.isPending || createMutation.isPending || isFinalizingCreate}>
+          <Button type="submit" className="w-full bg-primary hover:bg-primary/90 sm:w-auto" disabled={previewMutation.isPending || updateMutation.isPending || createMutation.isPending || isFinalizingCreate}>
             <Save className="w-4 h-4 mr-2" />
             {previewMutation.isPending || updateMutation.isPending ? "Salvando..." : isEditing ? "Salvar Alterações" : "Criar Contrato"}
           </Button>

@@ -1,6 +1,6 @@
 "use client"
 
-import { type DragEvent, useMemo, useRef, useState } from "react"
+import { type DragEvent, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Download, FileCheck2, FileSpreadsheet, FileUp, Loader2, UploadCloud } from "lucide-react"
 import { toast } from "sonner"
 
@@ -31,7 +31,7 @@ type CsvImportDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   title: string
-  description: string
+  description?: string
   fields: CsvImportField[]
   onImport: (rows: Array<Record<string, string>>) => Promise<void>
 }
@@ -110,6 +110,7 @@ function toSlug(value: string) {
 
 export function CsvImportDialog({ open, onOpenChange, title, description, fields, onImport }: CsvImportDialogProps) {
   const inputRef = useRef<HTMLInputElement | null>(null)
+  const closeResetTimeoutRef = useRef<number | null>(null)
   const [fileName, setFileName] = useState("")
   const [headers, setHeaders] = useState<string[]>([])
   const [rows, setRows] = useState<Array<Record<string, string>>>([])
@@ -119,7 +120,7 @@ export function CsvImportDialog({ open, onOpenChange, title, description, fields
 
   const requiredFields = useMemo(() => fields.filter((field) => field.required), [fields])
 
-  const reset = () => {
+  const reset = useCallback(() => {
     setFileName("")
     setHeaders([])
     setRows([])
@@ -127,7 +128,27 @@ export function CsvImportDialog({ open, onOpenChange, title, description, fields
     setIsImporting(false)
     setIsDragging(false)
     if (inputRef.current) inputRef.current.value = ""
-  }
+  }, [])
+
+  const clearCloseResetTimeout = useCallback(() => {
+    if (closeResetTimeoutRef.current === null) return
+    window.clearTimeout(closeResetTimeoutRef.current)
+    closeResetTimeoutRef.current = null
+  }, [])
+
+  useEffect(() => {
+    if (open) {
+      clearCloseResetTimeout()
+      return
+    }
+
+    closeResetTimeoutRef.current = window.setTimeout(() => {
+      reset()
+      closeResetTimeoutRef.current = null
+    }, 220)
+
+    return clearCloseResetTimeout
+  }, [clearCloseResetTimeout, open, reset])
 
   const handleFileChange = async (file?: File | null) => {
     if (!file) return
@@ -201,7 +222,6 @@ export function CsvImportDialog({ open, onOpenChange, title, description, fields
     setIsImporting(true)
     try {
       await onImport(mappedRows)
-      reset()
       onOpenChange(false)
     } finally {
       setIsImporting(false)
@@ -211,10 +231,7 @@ export function CsvImportDialog({ open, onOpenChange, title, description, fields
   return (
     <Dialog
       open={open}
-      onOpenChange={(nextOpen) => {
-        if (!nextOpen) reset()
-        onOpenChange(nextOpen)
-      }}
+      onOpenChange={onOpenChange}
     >
       <DialogContent className="flex max-h-[min(82dvh,680px)] flex-col gap-0 overflow-hidden p-0 sm:max-w-xl">
         <DialogHeader className="shrink-0 gap-3 px-6 pb-4 pt-6 sm:flex-row sm:items-start sm:gap-4 sm:space-y-0">
@@ -305,7 +322,7 @@ export function CsvImportDialog({ open, onOpenChange, title, description, fields
           ) : null}
         </div>
 
-        <DialogFooter className="shrink-0 border-t bg-background px-6 py-4">
+        <DialogFooter className="shrink-0 bg-background px-6 py-4">
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Bell, User, FileText, LogOut, ChevronDown, PanelLeftClose, PanelLeftOpen, Settings } from "lucide-react"
+import { Bell, User, FileText, History, LogOut, ChevronDown, PanelLeftClose, PanelLeftOpen, Settings } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -84,6 +84,11 @@ export function Header({ title, description, titleAddon, headerActions, actions,
   const notifs = notificationsQuery.data?.data ?? []
   const unreadNotifications = notifs.filter((n) => !n.isRead)
   const effectiveHeaderActions = headerActions ?? actions
+  const canViewLogs = Boolean(
+    currentUser?.permissions?.includes("logs_view") ||
+    currentUser?.permissions?.includes("logs_manage") ||
+    currentUser?.permissions?.includes("settings_manage"),
+  )
   const markAsReadMutation = useMutation({
     mutationFn: markNotificationAsRead,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notifications"] }),
@@ -274,6 +279,14 @@ export function Header({ title, description, titleAddon, headerActions, actions,
                         Configurações
                       </DropdownMenuItem>
                     </Link>
+                    {canViewLogs ? (
+                      <Link href="/logs">
+                        <DropdownMenuItem className="cursor-pointer">
+                          <History className="mr-2 h-4 w-4" />
+                          Logs
+                        </DropdownMenuItem>
+                      </Link>
+                    ) : null}
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                       className="cursor-pointer"

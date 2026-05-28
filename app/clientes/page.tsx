@@ -11,9 +11,10 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import Link from "next/link"
 import { FileUp, Plus, List, LayoutGrid } from "lucide-react"
 import { buildPathWithSearchParams, withReturnTo } from "@/lib/navigation"
+import { useResponsiveDefaultViewMode } from "@/hooks/use-responsive-default-view-mode"
 
 export default function ClientesPage() {
-  const [viewMode, setViewMode] = useState<"table" | "cards">("table")
+  const [viewMode, setViewMode] = useResponsiveDefaultViewMode("table", "cards")
   const [importOpen, setImportOpen] = useState(false)
   const pathname = usePathname()
   const searchParams = useSearchParams()

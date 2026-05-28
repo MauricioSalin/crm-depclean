@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { useIsMobile } from "@/hooks/use-mobile"
 
 interface DateRangePickerProps {
   value?: DateRange
@@ -28,6 +29,8 @@ export function DateRangePicker({
   placeholder = "Selecionar período",
   className,
 }: DateRangePickerProps) {
+  const isMobile = useIsMobile()
+
   const formatDateRange = () => {
     if (!value?.from) return placeholder
     if (!value.to) return format(value.from, "dd/MM/yyyy", { locale: ptBR })
@@ -55,7 +58,7 @@ export function DateRangePicker({
           defaultMonth={value?.from}
           selected={value}
           onSelect={onChange}
-          numberOfMonths={2}
+          numberOfMonths={isMobile ? 1 : 2}
           showOutsideDays={false}
           locale={ptBR}
         />

@@ -214,8 +214,8 @@ export function PerfilContent() {
         <Card>
           <CardContent>
             <div className="flex items-center gap-6">
-              <Skeleton className="h-20 w-20 rounded-full" />
-              <div className="flex-1 space-y-3">
+              <Skeleton className="size-24 shrink-0 rounded-full" />
+              <div className="min-w-0 flex-1 space-y-3">
                 <Skeleton className="h-5 w-56" />
                 <Skeleton className="h-4 w-72 max-w-full" />
                 <Skeleton className="h-6 w-32 rounded-full" />
@@ -375,12 +375,12 @@ export function PerfilContent() {
               </div>
             </div>
 
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" className="h-9 gap-2" onClick={() => setPasswordDialog(true)} disabled={saving}>
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:justify-end">
+              <Button type="button" variant="outline" className="h-9 w-full gap-2 sm:w-auto" onClick={() => setPasswordDialog(true)} disabled={saving}>
                 <Lock className="h-4 w-4" />
                 Alterar Senha
               </Button>
-              <Button type="submit" className="h-9 gap-2 bg-primary text-primary-foreground hover:bg-primary/90" disabled={saving}>
+              <Button type="submit" className="h-9 w-full gap-2 bg-primary text-primary-foreground hover:bg-primary/90 sm:w-auto" disabled={saving}>
                 <Save className="h-4 w-4" />
                 {saving ? "Salvando..." : "Salvar"}
               </Button>

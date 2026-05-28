@@ -307,7 +307,7 @@ export function GlobalSearch() {
         onFocus={() => setOpen(true)}
         onKeyDown={handleKeyDown}
         placeholder="Pesquise por clientes, contratos ou serviços"
-        className="h-9 bg-card pl-9 pr-20 text-base transition-all duration-300 focus:shadow-lg focus:shadow-primary/10 md:text-sm"
+        className="h-9 bg-card pl-9 pr-9 text-base transition-all duration-300 focus:shadow-lg focus:shadow-primary/10 md:pr-20 md:text-sm"
         role="combobox"
         aria-expanded={showResults}
         aria-controls="global-search-results"
@@ -335,7 +335,7 @@ export function GlobalSearch() {
       {showResults && (
         <div
           id="global-search-results"
-          className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-50 overflow-hidden rounded-2xl border border-border bg-popover shadow-xl shadow-black/10"
+          className="fixed left-3 right-3 top-[3.75rem] z-50 overflow-hidden rounded-2xl border border-border bg-popover shadow-xl shadow-black/10 md:absolute md:left-0 md:right-0 md:top-[calc(100%+0.5rem)]"
         >
           <div className="max-h-[min(70vh,34rem)] overflow-y-auto p-2">
             {searchQuery.isLoading && (

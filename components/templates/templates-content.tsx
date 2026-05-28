@@ -1,8 +1,8 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Braces, Copy, Download, Edit, Eye, FileText, ImageIcon, MoreHorizontal, PenTool, Plus, Search, Trash2, Upload, X } from "lucide-react"
+import { Braces, Copy, Download, Edit, Eye, FileText, ImageIcon, MoreHorizontal, PenTool, Search, Trash2, Upload, X } from "lucide-react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { toast as sonnerToast } from "sonner"
 
@@ -51,6 +51,7 @@ import {
 } from "@/lib/api/templates"
 import { buildApiFileUrl } from "@/lib/api/client"
 import { getApiErrorMessage } from "@/lib/api/errors"
+import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 import { cn } from "@/lib/utils"
 
@@ -128,6 +129,7 @@ interface TemplatesContentProps {
   openImport?: boolean
   onImportChange?: (open: boolean) => void
   onEditorStateChange?: (state: EditorState) => void
+  mobileTabs?: ReactNode
 }
 
 function getErrorMessage(error: unknown) {
@@ -525,11 +527,12 @@ function buildPreviewVariables(params: {
   }
 }
 
-export function TemplatesContent({ kind, openImport, onImportChange, onEditorStateChange }: TemplatesContentProps) {
+export function TemplatesContent({ kind, openImport, onImportChange, onEditorStateChange, mobileTabs }: TemplatesContentProps) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const queryClient = useQueryClient()
+  const mobileFiltersOpen = useMobileFiltersOpen()
   const config = TEMPLATE_CONFIG[kind]
   const docxEditorRef = useRef<DocxTemplateEditorRef | null>(null)
   const closingEditorRef = useRef(false)
@@ -790,11 +793,6 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
     setIsImportOpen(true)
     onImportChange?.(false)
   }, [onImportChange, openImport])
-
-  function handleOpenImportDialog() {
-    prepareNewTemplateForm()
-    setIsImportOpen(true)
-  }
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -1140,7 +1138,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
     }
   }
 
-  const getSignerName = (id: string) => employees.find((employee) => employee.id === id)?.name || "-"
+  const getSignerName = (id?: string, fallback?: string | null) => fallback || employees.find((employee) => employee.id === id)?.name || "-"
 
   if (isEditorOpen) {
     return (
@@ -1710,7 +1708,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
       />
 
       <div className="flex flex-col gap-4 md:min-h-0 md:flex-1 md:overflow-hidden">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className={`${mobileFiltersOpen ? "flex" : "hidden"} flex-col gap-3 sm:flex sm:flex-row sm:items-center`}>
           <div className="relative w-full sm:max-w-md">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -1723,11 +1721,9 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
               className="pl-10"
             />
           </div>
-          <Button onClick={handleOpenImportDialog} className="h-9 w-full bg-primary text-primary-foreground hover:bg-primary/90 sm:w-auto">
-            <Plus className="mr-2 h-4 w-4" />
-            Novo Template
-          </Button>
         </div>
+
+        {mobileTabs ? <div className="sm:hidden">{mobileTabs}</div> : null}
 
         <div className="rounded-md md:min-h-0 md:flex-1 md:overflow-hidden">
           <Table containerClassName="md:h-full">
@@ -1735,6 +1731,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
               <TableRow>
                 <TableHead>Template</TableHead>
                 {config.requiresSigner ? <TableHead className="hidden md:table-cell">Assinante</TableHead> : null}
+                {config.requiresSigner ? <TableHead className="hidden md:table-cell">Testemunha</TableHead> : null}
                 <TableHead className="hidden lg:table-cell">Atualizado</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Ações</TableHead>
@@ -1747,13 +1744,14 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
                   columns={[
                     { withIcon: true, width: "w-44" },
                     ...(config.requiresSigner ? [{ className: "hidden md:table-cell", width: "w-32" }] : []),
+                    ...(config.requiresSigner ? [{ className: "hidden md:table-cell", width: "w-32" }] : []),
                     { className: "hidden lg:table-cell", width: "w-24" },
                     { width: "w-20" },
                     { align: "right", width: "w-16" },
                   ]}
                 />
               ) : paginatedTemplates.length === 0 ? (
-                <TableEmptyState colSpan={config.requiresSigner ? 5 : 4} icon={FileText} title="Nenhum template encontrado." />
+                <TableEmptyState colSpan={config.requiresSigner ? 6 : 4} icon={FileText} title="Nenhum template encontrado." />
               ) : (
                 paginatedTemplates.map((template) => (
                   <TableRow key={template.id}>
@@ -1771,7 +1769,13 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
 
                     {config.requiresSigner ? (
                       <TableCell className="hidden md:table-cell">
-                        {getSignerName(template.signerId)}
+                        {getSignerName(template.signerId, template.signerName)}
+                      </TableCell>
+                    ) : null}
+
+                    {config.requiresSigner ? (
+                      <TableCell className="hidden md:table-cell">
+                        {getSignerName(template.witnessSignerId, template.witnessSignerName)}
                       </TableCell>
                     ) : null}
 

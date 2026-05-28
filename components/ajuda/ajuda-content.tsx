@@ -1,7 +1,9 @@
 "use client"
 
-import { useState, type FormEvent } from "react"
+import { useRef, useState, type ChangeEvent, type FormEvent } from "react"
 import { useRouter } from "next/navigation"
+import { useMutation, useQuery } from "@tanstack/react-query"
+import { toast } from "sonner"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -13,7 +15,12 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion"
-import { Bot, HelpCircle, MessageCircle, Mail, Send, WandSparkles } from "lucide-react"
+import { Bot, HelpCircle, Loader2, MessageCircle, Mail, Paperclip, Send, WandSparkles, X } from "lucide-react"
+import { getApiErrorMessage } from "@/lib/api/errors"
+import { getSupportContact, sendSupportMessage } from "@/lib/api/support"
+
+const MAX_ATTACHMENTS = 5
+const MAX_ATTACHMENTS_TOTAL_SIZE = 35 * 1024 * 1024
 
 const FAQ_ITEMS = [
   {
@@ -68,14 +75,38 @@ const FAQ_ITEMS = [
   },
 ]
 
+function formatFileSize(bytes: number) {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
 export function AjudaContent() {
   const router = useRouter()
+  const attachmentInputRef = useRef<HTMLInputElement | null>(null)
   const [depAIQuestion, setDepAIQuestion] = useState("")
   const [contactForm, setContactForm] = useState({
     name: "",
     email: "",
     subject: "",
     message: "",
+  })
+  const [attachments, setAttachments] = useState<File[]>([])
+  const supportContactQuery = useQuery({
+    queryKey: ["support", "contact"],
+    queryFn: getSupportContact,
+  })
+  const supportContact = supportContactQuery.data?.data
+  const sendMessageMutation = useMutation({
+    mutationFn: sendSupportMessage,
+    onSuccess: () => {
+      toast.success("Mensagem enviada com sucesso.")
+      setContactForm({ name: "", email: "", subject: "", message: "" })
+      setAttachments([])
+      if (attachmentInputRef.current) attachmentInputRef.current.value = ""
+    },
+    onError: (error) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível enviar a mensagem."))
+    },
   })
 
   const handleDepAIQuestionSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -89,8 +120,35 @@ export function AjudaContent() {
 
   const handleContactSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    alert("Mensagem enviada! Em breve nossa equipe entrará em contato.")
-    setContactForm({ name: "", email: "", subject: "", message: "" })
+    sendMessageMutation.mutate({
+      ...contactForm,
+      attachments,
+    })
+  }
+
+  const handleAttachmentChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = Array.from(event.target.files ?? [])
+    if (selectedFiles.length === 0) return
+
+    const nextAttachments = [...attachments, ...selectedFiles].slice(0, MAX_ATTACHMENTS)
+    const totalSize = nextAttachments.reduce((total, file) => total + file.size, 0)
+
+    if (attachments.length + selectedFiles.length > MAX_ATTACHMENTS) {
+      toast.warning(`Envie até ${MAX_ATTACHMENTS} anexos por mensagem.`)
+    }
+
+    if (totalSize > MAX_ATTACHMENTS_TOTAL_SIZE) {
+      toast.error("Os anexos ultrapassam o limite permitido. Envie arquivos menores.")
+      event.target.value = ""
+      return
+    }
+
+    setAttachments(nextAttachments)
+    event.target.value = ""
+  }
+
+  const removeAttachment = (index: number) => {
+    setAttachments((current) => current.filter((_, currentIndex) => currentIndex !== index))
   }
 
   return (
@@ -98,19 +156,19 @@ export function AjudaContent() {
       <form
         autoComplete="off"
         onSubmit={handleDepAIQuestionSubmit}
-        className="flex w-full flex-col gap-2 sm:w-1/2 sm:flex-row sm:items-center"
+        className="grid w-full gap-2 sm:flex sm:max-w-2xl sm:items-center"
       >
-        <div className="flex h-12 flex-1 items-center gap-2 rounded-xl border border-border bg-card px-6">
-          <Bot className="h-5 w-5 shrink-0 text-primary" />
+        <div className="relative min-w-0 sm:flex-1">
+          <Bot className="absolute left-2.5 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Pergunte para DepAI sobre o sistema!"
             value={depAIQuestion}
             onChange={(event) => setDepAIQuestion(event.target.value)}
-            className="h-auto border-0 bg-transparent p-0 text-base shadow-none focus-visible:ring-0"
+            className="h-9 bg-card pl-9 pr-3 text-base md:text-sm"
           />
         </div>
-        <Button type="submit" className="h-11 shrink-0 px-5" disabled={!depAIQuestion.trim()}>
-          <WandSparkles className="mr-2 h-4 w-4" />
+        <Button type="submit" className="w-full sm:w-auto" disabled={!depAIQuestion.trim()}>
+          <WandSparkles className="h-4 w-4" />
           Perguntar a DepAI
         </Button>
       </form>
@@ -148,16 +206,20 @@ export function AjudaContent() {
             <CardContent className="space-y-3">
               <div className="flex items-center gap-3 rounded-lg bg-muted/50 p-3">
                 <MessageCircle className="h-5 w-5 text-primary" />
-                <div>
+                <div className="min-w-0">
                   <p className="text-sm font-medium">WhatsApp</p>
-                  <p className="text-sm text-muted-foreground">(51) 99923-1401</p>
+                  <p className="truncate text-sm text-muted-foreground">
+                    {supportContactQuery.isLoading ? "Carregando..." : supportContact?.whatsapp || "Não informado"}
+                  </p>
                 </div>
               </div>
               <div className="flex items-center gap-3 rounded-lg bg-muted/50 p-3">
                 <Mail className="h-5 w-5 text-primary" />
-                <div>
+                <div className="min-w-0">
                   <p className="text-sm font-medium">E-mail</p>
-                  <p className="text-sm text-muted-foreground">mauricio.salin0@gmail.com</p>
+                  <p className="truncate text-sm text-muted-foreground">
+                    {supportContactQuery.isLoading ? "Carregando..." : supportContact?.email || "Não informado"}
+                  </p>
                 </div>
               </div>
             </CardContent>
@@ -166,23 +228,23 @@ export function AjudaContent() {
           <Card>
             <CardHeader className="mb-3">
               <CardTitle>Enviar Mensagem</CardTitle>
-              <CardDescription>Nos envie sua dúvida ou sugestão.</CardDescription>
+              <CardDescription>Nos envie sua dúvida, sugestão ou report de bug.</CardDescription>
             </CardHeader>
             <CardContent>
               <form autoComplete="off" onSubmit={handleContactSubmit} className="space-y-6">
                 <div className="space-y-2">
-                  <Label htmlFor="name">Nome</Label>
+                  <Label htmlFor="support-name">Nome</Label>
                   <Input
-                    id="name"
+                    id="support-name"
                     value={contactForm.name}
                     onChange={(event) => setContactForm({ ...contactForm, name: event.target.value })}
                     required
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="email">E-mail</Label>
+                  <Label htmlFor="support-email">E-mail</Label>
                   <Input
-                    id="email"
+                    id="support-email"
                     type="email"
                     autoComplete="off"
                     value={contactForm.email}
@@ -191,27 +253,80 @@ export function AjudaContent() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="subject">Assunto</Label>
+                  <Label htmlFor="support-subject">Assunto</Label>
                   <Input
-                    id="subject"
+                    id="support-subject"
+                    placeholder="Ex: Bug na tela de contratos"
                     value={contactForm.subject}
                     onChange={(event) => setContactForm({ ...contactForm, subject: event.target.value })}
                     required
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="message">Mensagem</Label>
+                  <Label htmlFor="support-message">Mensagem</Label>
                   <Textarea
-                    id="message"
+                    id="support-message"
                     value={contactForm.message}
                     onChange={(event) => setContactForm({ ...contactForm, message: event.target.value })}
                     rows={4}
                     required
                   />
                 </div>
-                <Button type="submit" className="w-full bg-primary text-primary-foreground hover:bg-primary/90">
-                  <Send className="mr-2 h-4 w-4" />
-                  Enviar Mensagem
+                <div className="space-y-2">
+                  <Label htmlFor="support-attachments">Anexos</Label>
+                  <Input
+                    ref={attachmentInputRef}
+                    id="support-attachments"
+                    type="file"
+                    multiple
+                    accept="image/*,.pdf,.txt,.log,.csv,.doc,.docx,.xls,.xlsx"
+                    className="hidden"
+                    onChange={handleAttachmentChange}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => attachmentInputRef.current?.click()}
+                  >
+                    <Paperclip className="h-4 w-4" />
+                    Adicionar anexos
+                  </Button>
+                  {attachments.length > 0 ? (
+                    <div className="space-y-2">
+                      {attachments.map((file, index) => (
+                        <div key={`${file.name}-${file.size}-${index}`} className="flex items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2">
+                          <Paperclip className="h-4 w-4 shrink-0 text-muted-foreground" />
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium">{file.name}</p>
+                            <p className="text-xs text-muted-foreground">{formatFileSize(file.size)}</p>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            className="shrink-0"
+                            onClick={() => removeAttachment(index)}
+                            aria-label={`Remover ${file.name}`}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+                <Button
+                  type="submit"
+                  className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
+                  disabled={sendMessageMutation.isPending}
+                >
+                  {sendMessageMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Send className="h-4 w-4" />
+                  )}
+                  {sendMessageMutation.isPending ? "Enviando..." : "Enviar Mensagem"}
                 </Button>
               </form>
             </CardContent>

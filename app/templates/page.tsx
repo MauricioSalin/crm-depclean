@@ -1,7 +1,7 @@
 "use client"
 
 import { Suspense, useCallback, useEffect, useRef, useState } from "react"
-import { Award, FileText, Newspaper, Save } from "lucide-react"
+import { Award, FileText, Newspaper, Plus, Save } from "lucide-react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 
 import { Header } from "@/components/dashboard/header"
@@ -112,6 +112,22 @@ function TemplatesPageContent() {
   const pageDescription = editorOpen
     ? editorDescription
     : "Gerencie os modelos de contratos, informativos e certificados usados nas automações."
+  const mobileTemplateTabs = !editorOpen ? (
+    <Tabs value={activeTab} onValueChange={(value) => handleTemplateTabChange(value as TemplateTab)}>
+      <TabsList className="flex h-auto w-full justify-start gap-2 overflow-x-auto bg-transparent p-0 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&_[data-slot=tabs-indicator]]:hidden">
+        {TEMPLATE_TABS.map((tab) => (
+          <TabsTrigger
+            key={tab.value}
+            value={tab.value}
+            className="h-9 w-auto shrink-0 rounded-full bg-muted px-4 py-2 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+          >
+            <tab.icon className="h-4 w-4" />
+            {tab.label}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+    </Tabs>
+  ) : null
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -128,6 +144,7 @@ function TemplatesPageContent() {
         <Header
           title={pageTitle}
           description={pageDescription}
+          hasFilters={!editorOpen}
           actions={
             editorOpen ? (
               <>
@@ -148,7 +165,14 @@ function TemplatesPageContent() {
                 </Button>
               </>
             ) : (
-              null
+              <Button
+                type="button"
+                className="h-9 w-full min-w-0 bg-primary text-sm text-primary-foreground hover:bg-primary/90 sm:w-auto"
+                onClick={() => setImportOpen(true)}
+              >
+                <Plus className="h-4 w-4 shrink-0 sm:mr-2" />
+                <span className="truncate">Novo Template</span>
+              </Button>
             )
           }
         />
@@ -161,20 +185,6 @@ function TemplatesPageContent() {
         >
           {!editorOpen ? (
             <>
-              <Tabs value={activeTab} onValueChange={(value) => handleTemplateTabChange(value as TemplateTab)}>
-                <TabsList className="grid w-full grid-cols-3 gap-2 bg-transparent p-0 sm:hidden">
-                  {TEMPLATE_TABS.map((tab) => (
-                    <TabsTrigger
-                      key={tab.value}
-                      value={tab.value}
-                      className="rounded-full bg-muted px-4 py-2 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-                    >
-                      {tab.label}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-              </Tabs>
-
               <div className="hidden gap-4 sm:grid sm:grid-cols-3">
                 {TEMPLATE_TABS.map((tab) => (
                   <Card
@@ -217,6 +227,7 @@ function TemplatesPageContent() {
               openImport={importOpen}
               onImportChange={setImportOpen}
               onEditorStateChange={handleEditorStateChange}
+              mobileTabs={mobileTemplateTabs}
             />
           </Suspense>
         </div>

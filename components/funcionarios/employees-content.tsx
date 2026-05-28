@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react"
-import { Copy, Edit, Eye, EyeOff, Mail, MoreHorizontal, Phone, Search, Shield, Trash2, User, UserCog } from "lucide-react"
+import { Copy, Edit, Eye, EyeOff, Mail, MoreHorizontal, Phone, Search, Shield, Trash2, User, UserCog, UserX } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -37,6 +37,7 @@ import { getSettings, type PermissionProfileRecord } from "@/lib/api/settings"
 import {
   createEmployee,
   deactivateEmployee,
+  deleteEmployee,
   listEmployees,
   makeEmployeeSystemUser,
   revokeEmployeeSystemUser,
@@ -74,6 +75,7 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
   const mobileFiltersOpen = useMobileFiltersOpen()
   const [employees, setEmployees] = useState<EmployeeRecord[]>([])
   const [permissionProfiles, setPermissionProfiles] = useState<PermissionProfileRecord[]>([])
+  const [currentUser, setCurrentUser] = useState<ReturnType<typeof getStoredUser>>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [searchTerm, setSearchTerm] = useUrlQueryState("q")
@@ -83,6 +85,7 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
   const [systemUserEmployee, setSystemUserEmployee] = useState<EmployeeRecord | null>(null)
   const [pendingAction, setPendingAction] = useState<
     | { kind: "deactivate"; id: string; label: string }
+    | { kind: "delete"; id: string; label: string }
     | { kind: "revoke"; id: string; label: string }
     | null
   >(null)
@@ -114,8 +117,9 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
     try {
       const employeesResponse = await listEmployees(searchTerm)
       setEmployees(employeesResponse.data)
-      const currentUser = getStoredUser()
-      if (currentUser?.permissions.includes("settings_manage")) {
+      const storedUser = getStoredUser()
+      setCurrentUser(storedUser)
+      if (storedUser?.permissions.includes("settings_manage")) {
         const settingsResponse = await getSettings()
         setPermissionProfiles(settingsResponse.data.permissionProfiles)
       } else {
@@ -229,6 +233,10 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
     return filteredEmployees.slice(start, start + pageSize)
   }, [filteredEmployees, currentPage, pageSize])
 
+  const canDeleteEmployees = Boolean(
+    currentUser?.permissions.includes("employees_delete") || currentUser?.permissions.includes("settings_manage"),
+  )
+
   const upsertEmployee = (record: EmployeeRecord) => {
     setEmployees((current) => current.some((item) => item.id === record.id)
       ? current.map((item) => (item.id === record.id ? record : item))
@@ -277,6 +285,11 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
 
     if (target.kind === "deactivate") {
       await handleDeactivate(target.id)
+      return
+    }
+
+    if (target.kind === "delete") {
+      await handleDelete(target.id)
       return
     }
 
@@ -368,6 +381,21 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
       toast.success("Funcionário inativado.", { id: toastId })
     } catch (error) {
       toast.error(getApiErrorMessage(error, "Não foi possível inativar o funcionário."), { id: toastId })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDelete = async (id: string) => {
+    if (saving) return
+    setSaving(true)
+    const toastId = toast.loading("Excluindo funcionário...")
+    try {
+      await deleteEmployee(id)
+      setEmployees((current) => current.filter((item) => item.id !== id))
+      toast.success("Funcionário excluído.", { id: toastId })
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Não foi possível excluir o funcionário."), { id: toastId })
     } finally {
       setSaving(false)
     }
@@ -620,35 +648,35 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-visible md:overflow-hidden">
         <div className={`${mobileFiltersOpen ? "grid" : "hidden"} shrink-0 grid-cols-2 gap-2 sm:flex sm:items-center`}>
-            <div className="relative sm:w-80">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Buscar por nome, e-mail, CPF ou cargo..."
-                value={searchTerm}
-                onChange={(event) => {
-                  setSearchTerm(event.target.value)
-                  setCurrentPage(1)
-                }}
-                className="pl-10"
-              />
-            </div>
-            <SearchableSelect
-              value={statusFilter}
-              onValueChange={(value) => {
-                setStatusFilter(value)
+          <div className="relative sm:w-80">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Buscar por nome, e-mail, CPF ou cargo..."
+              value={searchTerm}
+              onChange={(event) => {
+                setSearchTerm(event.target.value)
                 setCurrentPage(1)
               }}
-              options={[
-                { value: "active", label: "Ativos" },
-                { value: "inactive", label: "Inativos" },
-              ]}
-              placeholder="Status"
-              searchPlaceholder="Buscar status..."
-              allLabel="Todos"
-              className="sm:w-[140px]"
+              className="pl-10"
             />
-            {viewToggle && <div className="hidden shrink-0 sm:block">{viewToggle}</div>}
           </div>
+          <SearchableSelect
+            value={statusFilter}
+            onValueChange={(value) => {
+              setStatusFilter(value)
+              setCurrentPage(1)
+            }}
+            options={[
+              { value: "active", label: "Ativos" },
+              { value: "inactive", label: "Inativos" },
+            ]}
+            placeholder="Status"
+            searchPlaceholder="Buscar status..."
+            allLabel="Todos"
+            className="sm:w-[140px]"
+          />
+          {viewToggle && <div className="hidden shrink-0 sm:block">{viewToggle}</div>}
+        </div>
 
         {viewMode === "table" ? (
           <div className="rounded-md md:min-h-0 md:flex-1 md:overflow-hidden">
@@ -765,16 +793,30 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
                               <Edit className="mr-2 h-4 w-4" />
                               Editar
                             </DropdownMenuItem>
-                            <DropdownMenuItem
-                              className="cursor-pointer"
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                setPendingAction({ kind: "deactivate", id: employee.id, label: employee.name })
-                              }}
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Inativar
-                            </DropdownMenuItem>
+                            {employee.status === "active" ? (
+                              <DropdownMenuItem
+                                className="cursor-pointer"
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  setPendingAction({ kind: "deactivate", id: employee.id, label: employee.name })
+                                }}
+                              >
+                                <UserX className="mr-2 h-4 w-4" />
+                                Inativar
+                              </DropdownMenuItem>
+                            ) : null}
+                            {canDeleteEmployees && currentUser?.employeeId !== employee.id ? (
+                              <DropdownMenuItem
+                                className="cursor-pointer text-destructive focus:text-destructive"
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  setPendingAction({ kind: "delete", id: employee.id, label: employee.name })
+                                }}
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Excluir
+                              </DropdownMenuItem>
+                            ) : null}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
@@ -787,128 +829,156 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
         ) : (
           <div className="md:min-h-0 md:flex-1 md:overflow-y-auto md:pr-1">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 2xl:grid-cols-3">
-            {loading ? (
-              <CardSkeletonGrid cards={4} />
-            ) : paginatedEmployees.map((employee) => (
-              <Card key={employee.id} className="h-full overflow-hidden">
-                <CardContent className="flex h-full flex-col p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <Avatar className="h-12 w-12 shrink-0 ring-2 ring-primary/10">
-                        <AvatarImage src={resolveAvatarUrl(employee.avatar)} alt={employee.name} />
-                        <AvatarFallback className="bg-primary/10 text-sm font-semibold text-primary">
-                          {getInitials(employee.name)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <h3 className="font-medium">{employee.name}</h3>
-                        <p className="text-sm text-muted-foreground">{employee.role || "-"}</p>
+              {loading ? (
+                <CardSkeletonGrid cards={4} />
+              ) : paginatedEmployees.map((employee) => (
+                <Card key={employee.id} className="h-full overflow-hidden">
+                  <CardContent className="flex h-full flex-col px-6">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <Avatar className="h-12 w-12 shrink-0 ring-2 ring-primary/10">
+                          <AvatarImage src={resolveAvatarUrl(employee.avatar)} alt={employee.name} />
+                          <AvatarFallback className="bg-primary/10 text-sm font-semibold text-primary">
+                            {getInitials(employee.name)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <h3 className="font-medium">{employee.name}</h3>
+                          <p className="text-sm text-muted-foreground">{employee.role || "-"}</p>
+                        </div>
+                      </div>
+                      {getStatusBadge(employee.status)}
+                    </div>
+
+                    <div className="mt-4 space-y-2 text-sm">
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <User className="h-4 w-4 shrink-0" />
+                        <span className="font-mono">{formatCPF(employee.cpf)}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <Phone className="h-4 w-4 shrink-0" />
+                        <span>{employee.phone || "-"}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <Mail className="h-4 w-4 shrink-0" />
+                        <span className="truncate">{employee.email}</span>
                       </div>
                     </div>
-                    {getStatusBadge(employee.status)}
-                  </div>
 
-                  <div className="mt-4 space-y-2 text-sm">
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <User className="h-4 w-4 shrink-0" />
-                      <span className="font-mono">{formatCPF(employee.cpf)}</span>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {employee.isSystemUser ? (
+                        <Badge className="bg-primary/10 text-primary hover:bg-primary/10">Usuário do sistema</Badge>
+                      ) : (
+                        <Badge variant="outline">Somente funcionário</Badge>
+                      )}
                     </div>
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Phone className="h-4 w-4 shrink-0" />
-                      <span>{employee.phone || "-"}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Mail className="h-4 w-4 shrink-0" />
-                      <span className="truncate">{employee.email}</span>
-                    </div>
-                  </div>
 
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {employee.isSystemUser ? (
-                      <Badge className="bg-primary/10 text-primary hover:bg-primary/10">Usuário do sistema</Badge>
-                    ) : (
-                      <Badge variant="outline">Somente funcionário</Badge>
-                    )}
-                  </div>
-
-                  <div className="mt-auto grid grid-cols-2 gap-2 pt-4">
-                    {!employee.isSystemUser ? (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="col-span-2 h-8 rounded-full"
-                        onClick={() => handleMakeSystemUser(employee)}
-                      >
-                        <UserCog className="mr-2 h-4 w-4" />
-                        Tornar usuário
+                    <div className="mt-auto grid grid-cols-2 gap-2 pt-4">
+                      {!employee.isSystemUser ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="col-span-2 h-8 rounded-full"
+                          onClick={() => handleMakeSystemUser(employee)}
+                        >
+                          <UserCog className="mr-2 h-4 w-4" />
+                          Tornar usuário
+                        </Button>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="col-span-2 h-8 rounded-full"
+                          onClick={() => setPendingAction({ kind: "revoke", id: employee.id, label: employee.name })}
+                        >
+                          <Shield className="mr-2 h-4 w-4" />
+                          Remover acesso
+                        </Button>
+                      )}
+                      <Button type="button" variant="outline" size="sm" className="h-8 rounded-full" onClick={() => handleEdit(employee)}>
+                        <Edit className="mr-2 h-4 w-4" />
+                        Editar
                       </Button>
-                    ) : (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="col-span-2 h-8 rounded-full"
-                        onClick={() => setPendingAction({ kind: "revoke", id: employee.id, label: employee.name })}
-                      >
-                        <Shield className="mr-2 h-4 w-4" />
-                        Remover acesso
-                      </Button>
-                    )}
-                    <Button type="button" variant="outline" size="sm" className="h-8 rounded-full" onClick={() => handleEdit(employee)}>
-                      <Edit className="mr-2 h-4 w-4" />
-                      Editar
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-8 rounded-full text-destructive hover:text-destructive"
-                      onClick={() => setPendingAction({ kind: "deactivate", id: employee.id, label: employee.name })}
-                    >
-                      <Trash2 className="mr-2 h-4 w-4" />
-                      Inativar
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                      {employee.status === "active" ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-8 rounded-full"
+                          onClick={() => setPendingAction({ kind: "deactivate", id: employee.id, label: employee.name })}
+                        >
+                          <UserX className="mr-2 h-4 w-4" />
+                          Inativar
+                        </Button>
+                      ) : null}
+                      {canDeleteEmployees && currentUser?.employeeId !== employee.id ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="col-span-2 h-8 rounded-full text-destructive hover:text-destructive"
+                          onClick={() => setPendingAction({ kind: "delete", id: employee.id, label: employee.name })}
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Excluir
+                        </Button>
+                      ) : null}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
           </div>
         )}
 
-      {!loading ? (
-        <DataPagination
-          currentPage={currentPage}
-          totalPages={totalPages}
-          pageSize={pageSize}
-          totalItems={filteredEmployees.length}
-          onPageChange={setCurrentPage}
-          onPageSizeChange={(size) => {
-            setPageSize(size)
-            setCurrentPage(1)
-          }}
-        />
-      ) : null}
+        {!loading ? (
+          <DataPagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            pageSize={pageSize}
+            totalItems={filteredEmployees.length}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={(size) => {
+              setPageSize(size)
+              setCurrentPage(1)
+            }}
+          />
+        ) : null}
 
-      <ConfirmActionDialog
-        open={Boolean(pendingAction)}
-        onOpenChange={(open) => {
-          if (!open) {
-            setPendingAction(null)
+        <ConfirmActionDialog
+          open={Boolean(pendingAction)}
+          onOpenChange={(open) => {
+            if (!open) {
+              setPendingAction(null)
+            }
+          }}
+          title={
+            pendingAction?.kind === "deactivate"
+              ? "Inativar funcionário"
+              : pendingAction?.kind === "delete"
+                ? "Excluir funcionário"
+                : "Remover acesso de usuário"
           }
-        }}
-        title={pendingAction?.kind === "deactivate" ? "Inativar funcionário" : "Remover acesso de usuário"}
-        description={
-          pendingAction?.kind === "deactivate"
-            ? `Esta ação vai inativar o funcionário "${pendingAction.label}".`
-            : `Esta ação vai remover o acesso de usuário de "${pendingAction?.label}".`
-        }
-        confirmLabel={pendingAction?.kind === "deactivate" ? "Inativar" : "Remover acesso"}
-        onConfirm={confirmPendingAction}
-        busy={saving}
-      />
-    </div>
-  </>
-)
+          description={
+            pendingAction?.kind === "deactivate"
+              ? `Esta ação vai inativar o funcionário "${pendingAction.label}".`
+              : pendingAction?.kind === "delete"
+                ? `Esta ação vai excluir definitivamente o funcionário "${pendingAction.label}" e remover o acesso de usuário vinculado.`
+                : `Esta ação vai remover o acesso de usuário de "${pendingAction?.label}".`
+          }
+          confirmLabel={
+            pendingAction?.kind === "deactivate"
+              ? "Inativar"
+              : pendingAction?.kind === "delete"
+                ? "Excluir"
+                : "Remover acesso"
+          }
+          onConfirm={confirmPendingAction}
+          busy={saving}
+        />
+      </div>
+    </>
+  )
 }
