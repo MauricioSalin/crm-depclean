@@ -29,6 +29,7 @@ interface ScheduleDetailsDialogProps {
   teams?: TeamRecord[]
   onStartAttendance: (schedule: ScheduleRecord) => Promise<void> | void
   isStartingAttendance?: boolean
+  canManage?: boolean
 }
 
 function getStatusLabel(status: ScheduleRecord["status"]) {
@@ -62,6 +63,7 @@ export function ScheduleDetailsDialog({
   teams = [],
   onStartAttendance,
   isStartingAttendance = false,
+  canManage = true,
 }: ScheduleDetailsDialogProps) {
   const isMobile = useIsMobile()
   const queryClient = useQueryClient()
@@ -79,7 +81,7 @@ export function ScheduleDetailsDialog({
   const optionsQuery = useQuery({
     queryKey: ["schedule", "reschedule-options", schedule?.id],
     queryFn: () => getScheduleRescheduleOptions(schedule!.id),
-    enabled: open && mode === "reschedule" && Boolean(schedule?.id),
+    enabled: canManage && open && mode === "reschedule" && Boolean(schedule?.id),
   })
 
   const customDateValue = useMemo(() => {
@@ -142,9 +144,9 @@ export function ScheduleDetailsDialog({
   ]
 
   const isRecurringSchedule = Boolean(schedule.contractId && !schedule.isManual)
-  const canStartAttendance = schedule.status === "scheduled" || schedule.status === "rescheduled"
-  const canReschedule = ["draft", "scheduled", "rescheduled"].includes(schedule.status)
-  const showAttendanceAction = canStartAttendance || schedule.status === "draft"
+  const canStartAttendance = canManage && (schedule.status === "scheduled" || schedule.status === "rescheduled")
+  const canReschedule = canManage && ["draft", "scheduled", "rescheduled"].includes(schedule.status)
+  const showAttendanceAction = canManage && (canStartAttendance || schedule.status === "draft")
   const rescheduleOptions = optionsQuery.data?.data ?? []
 
   const submitReschedule = (date: string, time: string, validateAvailability = false) => {
@@ -175,7 +177,7 @@ export function ScheduleDetailsDialog({
       >
         <div className={cn("flex flex-col", isMobile ? "h-full" : "")}>
           {isMobile ? (
-            <DialogHeader className="sticky top-0 z-30 shrink-0 bg-background px-5 pb-2 pt-[calc(env(safe-area-inset-top)+1.75rem)] text-left">
+            <DialogHeader className="shrink-0 bg-background px-5 pb-2 pt-[calc(env(safe-area-inset-top)+1.75rem)] text-left">
               <DialogTitle className="sr-only">
                 Detalhes do agendamento de {schedule.clientName}
               </DialogTitle>

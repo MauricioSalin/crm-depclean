@@ -1,6 +1,6 @@
 "use client"
 
-import { Suspense, useState } from "react"
+import { Suspense, useEffect, useState } from "react"
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { Header } from "@/components/dashboard/header"
 import { Button } from "@/components/ui/button"
@@ -9,11 +9,26 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { FileUp, Plus, List, LayoutGrid } from "lucide-react"
 import { AgendamentosContent } from "@/components/agendamentos/agendamentos-content"
 import { useResponsiveDefaultViewMode } from "@/hooks/use-responsive-default-view-mode"
+import { hasAnyPermission } from "@/lib/auth/permissions"
+import { getStoredUser } from "@/lib/auth/session"
 
 export default function AgendamentosPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
   const [viewMode, setViewMode] = useResponsiveDefaultViewMode("table", "cards")
+  const [currentUser, setCurrentUser] = useState<ReturnType<typeof getStoredUser>>(null)
+  const canManageAgenda = hasAnyPermission(currentUser, ["agenda_manage"])
+
+  useEffect(() => {
+    const sync = () => setCurrentUser(getStoredUser())
+    sync()
+    window.addEventListener("storage", sync)
+    window.addEventListener("depclean:session", sync)
+    return () => {
+      window.removeEventListener("storage", sync)
+      window.removeEventListener("depclean:session", sync)
+    }
+  }, [])
 
   const toggle = (
     <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "table" | "cards")}>
@@ -36,7 +51,7 @@ export default function AgendamentosPage() {
           description="Gerencie todos os agendamentos de serviços."
           hasFilters
           viewToggle={toggle}
-          actions={
+          actions={canManageAgenda ? (
             <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
               <Button
                 type="button"
@@ -57,15 +72,15 @@ export default function AgendamentosPage() {
                 <span className="truncate">Novo Agendamento</span>
               </Button>
             </div>
-          }
+          ) : undefined}
         />
         <Suspense fallback={<ContentLoadingSkeleton className="mt-4 md:mt-5" />}>
           <AgendamentosContent
             viewMode={viewMode}
             viewToggle={toggle}
-            openDialog={dialogOpen}
+            openDialog={canManageAgenda && dialogOpen}
             onDialogChange={setDialogOpen}
-            openImport={importOpen}
+            openImport={canManageAgenda && importOpen}
             onImportChange={setImportOpen}
           />
         </Suspense>

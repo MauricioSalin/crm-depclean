@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react"
 import { Bell, Building, Copy, Edit, Eye, EyeOff, Mail, MessageCircle, MoreHorizontal, RefreshCcw, Save, Search, Shield, Trash2, Users } from "lucide-react"
 import { toast } from "sonner"
 
@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -77,6 +77,8 @@ const SETTINGS_CARDS = [
 
 const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
   new_schedule: "Novo Agendamento",
+  schedule_assigned: "Agendamento Atribuído",
+  schedule_unassigned: "Remoção de Agendamento",
   schedule_change: "Alteração de Agendamento",
   schedule_cancel: "Cancelamento",
   emergency: "Emergência",
@@ -98,6 +100,12 @@ const CHANNELS = [
 const DEFAULT_RULES_WITH_CONFIGURABLE_RECIPIENTS = new Set(["certificate_ready"])
 
 const DEFAULT_COLOR = "#84CC16"
+const DEFAULT_CONTRACT_SIGNER_ROLE: ClientTypeRecord["contractSignerRole"] = "owner"
+const CONTRACT_SIGNER_ROLE_LABELS: Record<ClientTypeRecord["contractSignerRole"], string> = {
+  owner: "Proprietário",
+  assessor: "Assessor",
+  syndic: "Síndico",
+}
 const DEFAULT_CONTRACT_EXPIRATION_ALERT_DAYS: ContractExpirationAlertDay[] = [60, 30]
 const EMPTY_ORGANIZATION_ADDRESS = {
   street: "",
@@ -136,19 +144,26 @@ type PermissionModule = {
   key: string
   title: string
   description: string
+  permissionKeys?: string[]
 }
 
 const PERMISSION_MODULES: PermissionModule[] = [
+  { key: "dashboard", title: "Dashboard", description: "Acesso aos indicadores e à visão geral da operação" },
   { key: "clients", title: "Clientes", description: "Acesso ao cadastro e à gestão de clientes" },
   { key: "contracts", title: "Contratos", description: "Acesso ao fluxo de contratos e aditivos" },
   { key: "employees", title: "Funcionários", description: "Acesso ao cadastro de funcionários" },
   { key: "teams", title: "Equipes", description: "Acesso ao gerenciamento de equipes" },
   { key: "services", title: "Serviços", description: "Acesso ao cadastro e edição de serviços" },
   { key: "agenda", title: "Agenda", description: "Acesso aos agendamentos e à operação diária" },
-  { key: "financial", title: "Financeiro", description: "Acesso ao financeiro e às parcelas" },
-  { key: "reports", title: "Relatórios", description: "Acesso à consulta e exportação de relatórios" },
+  {
+    key: "reports",
+    title: "Relatórios",
+    description: "Acesso à consulta, exportação e financeiro dentro de relatórios",
+    permissionKeys: ["financial_view", "financial_manage", "reports_view", "reports_export"],
+  },
   { key: "certificates", title: "Certificados", description: "Acesso à emissão e envio de certificados" },
   { key: "settings", title: "Configurações", description: "Acesso à administração do sistema" },
+  { key: "depai", title: "DepAI", description: "Acesso ao assistente de IA da plataforma" },
   { key: "templates", title: "Templates", description: "Acesso aos modelos de contratos" },
   { key: "logs", title: "Logs", description: "Acesso ao histórico de ações" },
 ]
@@ -205,7 +220,12 @@ export function ConfiguracoesContent() {
 
   const [isTypeDialogOpen, setIsTypeDialogOpen] = useState(false)
   const [editingType, setEditingType] = useState<ClientTypeRecord | null>(null)
-  const [typeForm, setTypeForm] = useState({ name: "", description: "", color: DEFAULT_COLOR })
+  const [typeForm, setTypeForm] = useState({
+    name: "",
+    description: "",
+    color: DEFAULT_COLOR,
+    contractSignerRole: DEFAULT_CONTRACT_SIGNER_ROLE,
+  })
 
   const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false)
   const [editingProfile, setEditingProfile] = useState<PermissionProfileRecord | null>(null)
@@ -375,7 +395,7 @@ export function ConfiguracoesContent() {
 
   const resetTypeFormFields = () => {
     setEditingType(null)
-    setTypeForm({ name: "", description: "", color: DEFAULT_COLOR })
+    setTypeForm({ name: "", description: "", color: DEFAULT_COLOR, contractSignerRole: DEFAULT_CONTRACT_SIGNER_ROLE })
   }
 
   const closeTypeDialog = () => {
@@ -434,7 +454,12 @@ export function ConfiguracoesContent() {
     clearDialogResetTimeout(typeDialogResetTimeoutRef)
     if (record) {
       setEditingType(record)
-      setTypeForm({ name: record.name, description: record.description, color: record.color })
+      setTypeForm({
+        name: record.name,
+        description: record.description,
+        color: record.color,
+        contractSignerRole: record.contractSignerRole ?? DEFAULT_CONTRACT_SIGNER_ROLE,
+      })
     } else {
       resetTypeFormFields()
     }
@@ -889,15 +914,24 @@ export function ConfiguracoesContent() {
 
   const shouldShowPasswordFields = !editingUser || userForm.mustChangePassword
 
+  const getModulePermissions = useCallback((module: PermissionModule) => {
+    if (module.permissionKeys) {
+      return permissionCatalog.filter((permission) => module.permissionKeys?.includes(permission.key))
+    }
+
+    return permissionCatalog.filter((permission) => permission.key.startsWith(`${module.key}_`))
+  }, [permissionCatalog])
+
   const groupedPermissions = useMemo(() => {
     return PERMISSION_MODULES.map((module) => ({
       ...module,
-      permissions: permissionCatalog.filter((permission) => permission.key.startsWith(`${module.key}_`)),
+      permissions: getModulePermissions(module),
     }))
-  }, [permissionCatalog])
+  }, [getModulePermissions])
 
   const getModuleSelectionState = (moduleKey: string) => {
-    const modulePermissions = permissionCatalog.filter((permission) => permission.key.startsWith(`${moduleKey}_`))
+    const module = PERMISSION_MODULES.find((item) => item.key === moduleKey)
+    const modulePermissions = module ? getModulePermissions(module) : []
     const selectedCount = modulePermissions.filter((permission) => profileForm.permissions.includes(permission.key)).length
     const allSelected = modulePermissions.length > 0 && selectedCount === modulePermissions.length
     const partialSelected = selectedCount > 0 && !allSelected
@@ -1195,18 +1229,24 @@ export function ConfiguracoesContent() {
                   <TableHead>Cor</TableHead>
                   <TableHead>Nome</TableHead>
                   <TableHead>Descrição</TableHead>
+                  <TableHead>Assina contrato</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {paginatedTypes.length === 0 ? (
-                  <TableEmptyState colSpan={4} icon={Building} title="Nenhum tipo encontrado." />
+                  <TableEmptyState colSpan={5} icon={Building} title="Nenhum tipo encontrado." />
                 ) : (
                   paginatedTypes.map((item) => (
                     <TableRow key={item.id}>
                       <TableCell><span className="inline-flex h-5 w-5 rounded-full" style={{ backgroundColor: item.color }} /></TableCell>
                       <TableCell className="font-medium">{item.name}</TableCell>
                       <TableCell>{item.description || "Sem descrição"}</TableCell>
+                      <TableCell>
+                        <Badge variant="secondary">
+                          {CONTRACT_SIGNER_ROLE_LABELS[item.contractSignerRole ?? DEFAULT_CONTRACT_SIGNER_ROLE]}
+                        </Badge>
+                      </TableCell>
                       <TableCell className="text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -1259,6 +1299,25 @@ export function ConfiguracoesContent() {
                 <div className="space-y-2">
                   <Label htmlFor="type-color">Cor</Label>
                   <Input id="type-color" type="color" value={typeForm.color} onChange={(event) => setTypeForm({ ...typeForm, color: event.target.value })} className="h-11 w-24 p-1" />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="type-contract-signer">Quem assina o contrato</Label>
+                  <Select
+                    value={typeForm.contractSignerRole}
+                    onValueChange={(value) => setTypeForm({
+                      ...typeForm,
+                      contractSignerRole: value as ClientTypeRecord["contractSignerRole"],
+                    })}
+                  >
+                    <SelectTrigger id="type-contract-signer" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="owner">Proprietário</SelectItem>
+                      <SelectItem value="assessor">Assessor</SelectItem>
+                      <SelectItem value="syndic">Síndico</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="flex justify-end gap-2">
                   <Button type="button" variant="outline" onClick={closeTypeDialog}>Cancelar</Button>
@@ -1343,74 +1402,78 @@ export function ConfiguracoesContent() {
           />
 
           <Dialog open={isProfileDialogOpen} onOpenChange={(open) => (open ? setIsProfileDialogOpen(true) : closeProfileDialog())}>
-            <DialogContent className="max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
+            <DialogContent className="flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-0">
+              <DialogHeader className="px-6 pb-4 pt-6">
                 <DialogTitle>{editingProfile ? "Editar Permissão" : "Nova Permissão"}</DialogTitle>
               </DialogHeader>
-              <form autoComplete="off" onSubmit={handleProfileSubmit} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="profile-name">Nome</Label>
-                  <Input id="profile-name" value={profileForm.name} onChange={(event) => setProfileForm({ ...profileForm, name: event.target.value })} required />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="profile-description">Descrição</Label>
-                  <Textarea id="profile-description" value={profileForm.description} onChange={(event) => setProfileForm({ ...profileForm, description: event.target.value })} />
-                </div>
-                <div className="space-y-3">
-                  <Label>Permissões</Label>
-                  <Accordion type="multiple" className="rounded-xl border">
-                    {groupedPermissions.map((module) => {
-                      if (module.permissions.length === 0) return null
+              <form autoComplete="off" onSubmit={handleProfileSubmit} className="flex min-h-0 flex-1 flex-col">
+                <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-4">
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="profile-name">Nome</Label>
+                      <Input id="profile-name" value={profileForm.name} onChange={(event) => setProfileForm({ ...profileForm, name: event.target.value })} required />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="profile-description">Descrição</Label>
+                      <Textarea id="profile-description" value={profileForm.description} onChange={(event) => setProfileForm({ ...profileForm, description: event.target.value })} />
+                    </div>
+                    <div className="space-y-3">
+                      <Label>Permissões</Label>
+                      <Accordion type="multiple" className="rounded-xl border">
+                        {groupedPermissions.map((module) => {
+                          if (module.permissions.length === 0) return null
 
-                      const moduleState = getModuleSelectionState(module.key)
+                          const moduleState = getModuleSelectionState(module.key)
 
-                      return (
-                        <AccordionItem key={module.key} value={module.key} className="px-4">
-                          <div className="flex items-center gap-3 py-4">
-                            <Checkbox
-                              className="cursor-pointer"
-                              checked={moduleState.allSelected ? true : moduleState.partialSelected ? "indeterminate" : false}
-                              onCheckedChange={() => toggleModulePermissions(module.key)}
-                            />
-                            <AccordionTrigger
-                              headerClassName="min-w-0 flex-1"
-                              className="grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_3rem_1rem] items-center gap-3 py-0 no-underline hover:no-underline [&>svg]:col-start-3 [&>svg]:self-center [&>svg]:justify-self-center [&>svg]:translate-y-0"
-                            >
-                              <div className="min-w-0 space-y-1 text-left">
-                                <div className="truncate font-medium">{module.title}</div>
-                                <div className="truncate text-xs text-muted-foreground">{module.description}</div>
-                              </div>
-                              <Badge variant="secondary" className="w-10 justify-center justify-self-center self-center px-0">
-                                {moduleState.modulePermissions.filter((permission) => profileForm.permissions.includes(permission.key)).length}/{moduleState.modulePermissions.length}
-                              </Badge>
-                            </AccordionTrigger>
-                          </div>
-                          <AccordionContent>
-                            <div className="grid gap-3 sm:grid-cols-2">
-                              {module.permissions.map((permission) => (
-                                <label key={permission.key} className="flex cursor-pointer items-start gap-3 rounded-lg border bg-card p-3">
-                                  <Checkbox
-                                    className="cursor-pointer"
-                                    checked={profileForm.permissions.includes(permission.key)}
-                                    onCheckedChange={() => togglePermission(permission.key)}
-                                  />
-                                  <div>
-                                    <div className="font-medium">{permission.label}</div>
-                                    <div className="text-xs text-muted-foreground">{permission.description}</div>
+                          return (
+                            <AccordionItem key={module.key} value={module.key} className="px-4">
+                              <div className="flex items-center gap-3 py-4">
+                                <Checkbox
+                                  className="cursor-pointer"
+                                  checked={moduleState.allSelected ? true : moduleState.partialSelected ? "indeterminate" : false}
+                                  onCheckedChange={() => toggleModulePermissions(module.key)}
+                                />
+                                <AccordionTrigger
+                                  headerClassName="min-w-0 flex-1"
+                                  className="grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_3rem_1rem] items-center gap-3 py-0 no-underline hover:no-underline [&>svg]:col-start-3 [&>svg]:self-center [&>svg]:justify-self-center [&>svg]:translate-y-0"
+                                >
+                                  <div className="min-w-0 space-y-1 text-left">
+                                    <div className="truncate font-medium">{module.title}</div>
+                                    <div className="truncate text-xs text-muted-foreground">{module.description}</div>
                                   </div>
-                                </label>
-                              ))}
-                            </div>
-                          </AccordionContent>
-                        </AccordionItem>
-                      )
-                    })}
-                  </Accordion>
+                                  <Badge variant="secondary" className="w-10 justify-center justify-self-center self-center px-0">
+                                    {moduleState.modulePermissions.filter((permission) => profileForm.permissions.includes(permission.key)).length}/{moduleState.modulePermissions.length}
+                                  </Badge>
+                                </AccordionTrigger>
+                              </div>
+                              <AccordionContent>
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                  {module.permissions.map((permission) => (
+                                    <label key={permission.key} className="flex cursor-pointer items-start gap-3 rounded-lg border bg-card p-3">
+                                      <Checkbox
+                                        className="cursor-pointer"
+                                        checked={profileForm.permissions.includes(permission.key)}
+                                        onCheckedChange={() => togglePermission(permission.key)}
+                                      />
+                                      <div>
+                                        <div className="font-medium">{permission.label}</div>
+                                        <div className="text-xs text-muted-foreground">{permission.description}</div>
+                                      </div>
+                                    </label>
+                                  ))}
+                                </div>
+                              </AccordionContent>
+                            </AccordionItem>
+                          )
+                        })}
+                      </Accordion>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex justify-end gap-2">
+                <DialogFooter className="px-6 pb-6 pt-3">
                   <Button type="button" variant="outline" onClick={closeProfileDialog}>Cancelar</Button>
                   <Button type="submit" disabled={saving}>{editingProfile ? "Salvar" : "Criar"}</Button>
-                </div>
+                </DialogFooter>
               </form>
             </DialogContent>
           </Dialog>
@@ -1506,11 +1569,13 @@ export function ConfiguracoesContent() {
           />
 
           <Dialog open={isUserDialogOpen} onOpenChange={(open) => (open ? setIsUserDialogOpen(true) : closeUserDialog())}>
-            <DialogContent className="max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
+            <DialogContent className="flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-0">
+              <DialogHeader className="px-6 pb-4 pt-6">
                 <DialogTitle>{editingUser ? "Editar Usuário do Sistema" : "Novo Usuário do Sistema"}</DialogTitle>
               </DialogHeader>
-              <form autoComplete="off" onSubmit={handleUserSubmit} className="space-y-4">
+              <form autoComplete="off" onSubmit={handleUserSubmit} className="flex min-h-0 flex-1 flex-col">
+                <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-4">
+                  <div className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="user-name">Nome</Label>
                   <Input id="user-name" placeholder="Nome completo" value={userForm.name} onChange={(event) => setUserForm({ ...userForm, name: event.target.value })} required />
@@ -1605,7 +1670,9 @@ export function ConfiguracoesContent() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  </div>
+                </div>
+                <DialogFooter className="px-6 pb-6 pt-3 sm:items-center sm:justify-between">
                   <div>
                     {editingUser && userForm.mustChangePassword ? (
                       <Button type="button" variant="outline" onClick={handleSendFirstAccessEmail} disabled={saving}>
@@ -1623,7 +1690,7 @@ export function ConfiguracoesContent() {
                     <Button type="button" variant="outline" onClick={closeUserDialog}>Cancelar</Button>
                     <Button type="submit" disabled={saving}>{editingUser ? "Salvar" : "Criar"}</Button>
                   </div>
-                </div>
+                </DialogFooter>
               </form>
             </DialogContent>
           </Dialog>
@@ -1754,11 +1821,13 @@ export function ConfiguracoesContent() {
           />
 
           <Dialog open={isRuleDialogOpen} onOpenChange={(open) => (open ? setIsRuleDialogOpen(true) : closeRuleDialog())}>
-            <DialogContent className="max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
+            <DialogContent className="flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-0">
+              <DialogHeader className="px-6 pb-4 pt-6">
                 <DialogTitle>Editar Notificação Padrão</DialogTitle>
               </DialogHeader>
-              <form autoComplete="off" onSubmit={handleRuleSubmit} className="space-y-4">
+              <form autoComplete="off" onSubmit={handleRuleSubmit} className="flex min-h-0 flex-1 flex-col">
+                <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-4">
+                  <div className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="rule-name">Nome</Label>
                   <Input id="rule-name" value={ruleForm.name} onChange={(event) => setRuleForm({ ...ruleForm, name: event.target.value })} disabled={Boolean(editingRule?.isDefault)} required />
@@ -1886,10 +1955,12 @@ export function ConfiguracoesContent() {
                   <Switch checked={ruleForm.isActive} onCheckedChange={(checked) => setRuleForm({ ...ruleForm, isActive: checked })} />
                   <Label>Regra ativa</Label>
                 </div>
-                <div className="flex justify-end gap-2">
+                  </div>
+                </div>
+                <DialogFooter className="px-6 pb-6 pt-3">
                   <Button type="button" variant="outline" onClick={closeRuleDialog}>Cancelar</Button>
                   <Button type="submit" disabled={saving}>{editingRule ? "Salvar" : "Criar"}</Button>
-                </div>
+                </DialogFooter>
               </form>
             </DialogContent>
           </Dialog>

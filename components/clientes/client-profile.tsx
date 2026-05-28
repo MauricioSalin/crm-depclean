@@ -878,7 +878,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
               className={clientProfileTabTriggerClassName}
             >
               <FileText className="h-4 w-4" />
-              <span className="font-semibold">Contratos</span>
+              <span className="font-semibold">Contratos ({clientContracts.length})</span>
             </TabsTrigger>
             <TabsTrigger
               onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
@@ -886,7 +886,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
               className={clientProfileTabTriggerClassName}
             >
               <DollarSign className="h-4 w-4" />
-              <span className="font-semibold">Parcelas</span>
+              <span className="font-semibold">Parcelas ({allInstallments.length})</span>
             </TabsTrigger>
             <TabsTrigger
               onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
@@ -894,7 +894,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
               className={clientProfileTabTriggerClassName}
             >
               <Wrench className="h-4 w-4" />
-              <span className="font-semibold">Serviços</span>
+              <span className="font-semibold">Serviços ({completedServices.length})</span>
             </TabsTrigger>
             <TabsTrigger
               onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
@@ -902,7 +902,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
               className={clientProfileTabTriggerClassName}
             >
               <Calendar className="h-4 w-4" />
-              <span className="font-semibold">Agenda</span>
+              <span className="font-semibold">Agenda ({scheduledServices.length})</span>
             </TabsTrigger>
             <TabsTrigger
               onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
@@ -910,7 +910,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
               className={clientProfileTabTriggerClassName}
             >
               <Paperclip className="h-4 w-4" />
-              <span className="font-semibold">Anexos</span>
+              <span className="font-semibold">Anexos ({clientAttachments.length})</span>
             </TabsTrigger>
           </TabsList>
         </div>

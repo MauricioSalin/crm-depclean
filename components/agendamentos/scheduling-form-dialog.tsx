@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useDeferredValue, useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -126,22 +126,39 @@ export function SchedulingFormDialog({
   const [clientSearchTerm, setClientSearchTerm] = useState("")
   const [teamSearchTerm, setTeamSearchTerm] = useState("")
   const [employeeSearchTerm, setEmployeeSearchTerm] = useState("")
+  const deferredClientSearchTerm = useDeferredValue(clientSearchTerm)
+  const deferredTeamSearchTerm = useDeferredValue(teamSearchTerm)
+  const deferredEmployeeSearchTerm = useDeferredValue(employeeSearchTerm)
 
-  const filteredClients = clients.filter(c =>
-    c.companyName.toLowerCase().includes(clientSearchTerm.toLowerCase()) ||
-    c.cnpj.includes(clientSearchTerm)
-  )
+  const filteredClients = useMemo(() => {
+    const term = deferredClientSearchTerm.trim().toLowerCase()
+    if (!term) return clients
+    return clients.filter(c =>
+      c.companyName.toLowerCase().includes(term) ||
+      c.cnpj.includes(term)
+    )
+  }, [clients, deferredClientSearchTerm])
 
-  const filteredTeams = teams.filter(t =>
-    t.name.toLowerCase().includes(teamSearchTerm.toLowerCase())
-  )
+  const filteredTeams = useMemo(() => {
+    const term = deferredTeamSearchTerm.trim().toLowerCase()
+    if (!term) return teams
+    return teams.filter(t => t.name.toLowerCase().includes(term))
+  }, [teams, deferredTeamSearchTerm])
 
-  const filteredEmployees = employees.filter(e =>
-    e.name.toLowerCase().includes(employeeSearchTerm.toLowerCase()) ||
-    e.role.toLowerCase().includes(employeeSearchTerm.toLowerCase())
-  )
+  const filteredEmployees = useMemo(() => {
+    const term = deferredEmployeeSearchTerm.trim().toLowerCase()
+    if (!term) return employees
+    return employees.filter(e =>
+      e.name.toLowerCase().includes(term) ||
+      e.role.toLowerCase().includes(term)
+    )
+  }, [employees, deferredEmployeeSearchTerm])
 
-  const selectedClient = clients.find(c => c.id === formData.clientId)
+  const clientById = useMemo(() => new Map(clients.map((client) => [client.id, client])), [clients])
+  const teamById = useMemo(() => new Map(teams.map((team) => [team.id, team])), [teams])
+  const employeeById = useMemo(() => new Map(employees.map((employee) => [employee.id, employee])), [employees])
+  const serviceOptions = useMemo(() => serviceTypes.map((st) => ({ value: st.id, label: st.name })), [serviceTypes])
+  const selectedClient = clientById.get(formData.clientId)
   const isEditing = Boolean(editingSchedule)
   const isRecurringSchedule = Boolean(editingSchedule?.contractId && !editingSchedule?.isManual)
   const scheduleTypeLabel = isRecurringSchedule ? "Atendimento recorrente" : "Atendimento avulso"
@@ -221,7 +238,7 @@ export function SchedulingFormDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger className="hidden" />
       <DialogContent className="flex max-h-[90dvh] max-w-2xl flex-col gap-0 overflow-hidden p-0 max-sm:left-0 max-sm:top-4 max-sm:h-[calc(100dvh-2rem)] max-sm:max-h-none max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none max-sm:border-0">
-        <DialogHeader className="shrink-0 px-6 pb-3 pt-6 pr-12 text-center sm:text-center">
+        <DialogHeader className="shrink-0 px-6 pb-3 pt-6 pr-12 text-left sm:text-left">
           <DialogTitle>{dialogTitle}</DialogTitle>
         </DialogHeader>
         <form id="schedule-form" autoComplete="off" onSubmit={handleSubmit} className="min-h-0 flex-1 space-y-6 overflow-y-auto px-6 py-5">
@@ -303,7 +320,7 @@ export function SchedulingFormDialog({
                   value: formData.createContract ? serviceType?.baseValue ?? formData.value : 0,
                 })
               }}
-              options={serviceTypes.map((st) => ({ value: st.id, label: st.name }))}
+              options={serviceOptions}
               placeholder="Selecione o serviço"
               searchPlaceholder="Buscar serviço..."
               emptyMessage="Nenhum serviço encontrado."
@@ -361,7 +378,7 @@ export function SchedulingFormDialog({
             {formData.teamIds.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {formData.teamIds.map(teamId => {
-                  const team = teams.find(t => t.id === teamId)
+                  const team = teamById.get(teamId)
                   return team ? (
                     <Badge
                       key={teamId}
@@ -441,7 +458,7 @@ export function SchedulingFormDialog({
             {formData.employeeIds.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {formData.employeeIds.map(empId => {
-                  const emp = employees.find(e => e.id === empId)
+                  const emp = employeeById.get(empId)
                   return emp ? (
                     <Badge key={empId} variant="outline" className="px-3 py-1 flex items-center gap-2">
                       <span>{emp.name}</span>

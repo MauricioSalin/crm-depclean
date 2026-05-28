@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useDeferredValue, useState, useMemo } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -120,6 +120,7 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [clientToRemove, setClientToRemove] = useState<ClientRecord | null>(null)
+  const deferredSearchTerm = useDeferredValue(searchTerm)
 
   const clientsQuery = useQuery({
     queryKey: ["clients", "content"],
@@ -139,6 +140,15 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
   const clients = clientsQuery.data?.data ?? []
   const contracts = contractsQuery.data?.data ?? []
   const clientTypes = clientTypesQuery.data?.data.items ?? []
+  const clientTypeOptions = useMemo(() => clientTypes.map(t => ({ value: t.id, label: t.name })), [clientTypes])
+  const clientTypeById = useMemo(() => new Map(clientTypes.map((type) => [type.id, type])), [clientTypes])
+  const contractsByClientId = useMemo(() => {
+    const grouped = new Map<string, number>()
+    contracts.forEach((contract) => {
+      grouped.set(contract.clientId, (grouped.get(contract.clientId) ?? 0) + 1)
+    })
+    return grouped
+  }, [contracts])
   const currentHref = buildPathWithSearchParams(pathname, searchParams)
   const getClientProfileHref = (clientId: string) => withReturnTo(`/clientes/${clientId}`, currentHref)
   const getClientEditHref = (clientId: string) => withReturnTo(`/clientes/${clientId}/editar`, getClientProfileHref(clientId))
@@ -219,20 +229,22 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
       })
     },
   })
-  const getClientTypeById = (id: string) => clientTypes.find((type) => type.id === id)
+  const getClientTypeById = (id: string) => clientTypeById.get(id)
   const isClientListLoading = clientsQuery.isLoading || clientTypesQuery.isLoading
 
   const filteredClients = useMemo(() => {
+    const term = deferredSearchTerm.trim().toLowerCase()
     return clients.filter(client => {
-      const matchesSearch = client.companyName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        client.responsibleName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (client.assessor?.name ?? "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (client.syndic?.name ?? "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-        client.cnpj.includes(searchTerm)
+      const matchesSearch = !term ||
+        client.companyName.toLowerCase().includes(term) ||
+        client.responsibleName.toLowerCase().includes(term) ||
+        (client.assessor?.name ?? "").toLowerCase().includes(term) ||
+        (client.syndic?.name ?? "").toLowerCase().includes(term) ||
+        client.cnpj.includes(term)
       const matchesType = typeFilter === "all" || client.clientTypeId === typeFilter
       return matchesSearch && matchesType
     })
-  }, [clients, searchTerm, typeFilter])
+  }, [clients, deferredSearchTerm, typeFilter])
 
   const totalPages = Math.max(1, Math.ceil(filteredClients.length / pageSize))
   const paginatedClients = useMemo(() => {
@@ -264,7 +276,7 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
           <SearchableSelect
             value={typeFilter}
             onValueChange={(value) => { setTypeFilter(value); setCurrentPage(1) }}
-            options={clientTypes.map(t => ({ value: t.id, label: t.name }))}
+            options={clientTypeOptions}
             placeholder="Tipo"
             searchPlaceholder="Buscar tipo..."
             allLabel="Todos os tipos"
@@ -305,8 +317,7 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
                 paginatedClients.map((client) => {
                   const clientType = getClientTypeById(client.clientTypeId)
                   const clientTypeColor = resolveColor(clientType?.color)
-                  const clientContracts = contracts.filter(c => c.clientId === client.id)
-                  const totalContracts = clientContracts.length
+                  const totalContracts = contractsByClientId.get(client.id) ?? 0
 
                   return (
                     <TableRow key={client.id}>
@@ -392,8 +403,7 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
             ) : paginatedClients.map((client) => {
               const clientType = getClientTypeById(client.clientTypeId)
               const clientTypeColor = resolveColor(clientType?.color)
-              const clientContracts = contracts.filter(c => c.clientId === client.id)
-              const totalContracts = clientContracts.length
+              const totalContracts = contractsByClientId.get(client.id) ?? 0
 
               return (
                 <Card key={client.id} className="h-full overflow-hidden">

@@ -2,12 +2,13 @@
 
 import { useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { AlertTriangle, CheckCircle2, Clock, Database, Search, SlidersHorizontal, UserRound, X } from "lucide-react"
+import { AlertTriangle, CheckCircle2, Clock, Database, Search, UserRound, X } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { DataPagination } from "@/components/ui/data-pagination"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { EmptyState, TableEmptyState } from "@/components/ui/empty-state"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -101,8 +102,31 @@ function getTypeBadge(log: AuditLogRecord) {
   )
 }
 
+function getFailureReason(log: AuditLogRecord) {
+  if (log.failureReason) return log.failureReason
+
+  const error = log.metadata?.error
+  if (typeof error === "string") return error
+  if (error && typeof error === "object" && "message" in error) {
+    const message = (error as { message?: unknown }).message
+    if (Array.isArray(message)) return message.filter(Boolean).join(" | ")
+    if (typeof message === "string") return message
+  }
+
+  return ""
+}
+
+function formatLogJson(value: unknown) {
+  if (!value || (typeof value === "object" && Object.keys(value as Record<string, unknown>).length === 0)) {
+    return "{}"
+  }
+
+  return JSON.stringify(value, null, 2)
+}
+
 export function LogsContent() {
   const mobileFiltersOpen = useMobileFiltersOpen()
+  const [selectedLog, setSelectedLog] = useState<AuditLogRecord | null>(null)
   const [search, setSearch] = useState("")
   const [from, setFrom] = useState("")
   const [to, setTo] = useState("")
@@ -164,84 +188,80 @@ export function LogsContent() {
   }
 
   const filters = (
-    <Card className="overflow-visible">
-      <CardContent className="space-y-4">
-        <div className="flex items-center gap-2 font-semibold">
-          <SlidersHorizontal className="h-4 w-4" />
-          Filtros
+    <div className="overflow-visible">
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="w-full space-y-1 sm:w-[280px]">
+          <Label>Busca</Label>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(event) => {
+                setSearch(event.target.value)
+                resetPage()
+              }}
+              placeholder="Buscar ação, usuário, cliente..."
+              className="pl-10"
+            />
+          </div>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(220px,1.2fr)_minmax(170px,0.8fr)_minmax(170px,0.8fr)_minmax(180px,1fr)_minmax(180px,1fr)_150px_130px_auto]">
-          <div className="space-y-1.5 sm:col-span-2 xl:col-span-1">
-            <Label>Busca</Label>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={search}
-                onChange={(event) => {
-                  setSearch(event.target.value)
-                  resetPage()
-                }}
-                placeholder="Buscar ação, usuário, cliente..."
-                className="pl-10"
-              />
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <Label>De</Label>
-            <Input
-              type="datetime-local"
-              value={from}
-              onChange={(event) => {
-                setFrom(event.target.value)
-                resetPage()
-              }}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Até</Label>
-            <Input
-              type="datetime-local"
-              value={to}
-              onChange={(event) => {
-                setTo(event.target.value)
-                resetPage()
-              }}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Cliente</Label>
-            <SearchableSelect
-              value={clientId}
-              onValueChange={(value) => {
-                setClientId(value)
-                resetPage()
-              }}
-              options={clientOptions}
-              allLabel="Todos os clientes"
-              placeholder="Cliente"
-              searchPlaceholder="Buscar cliente..."
-              className="w-full"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Funcionário</Label>
-            <SearchableSelect
-              value={employeeId}
-              onValueChange={(value) => {
-                setEmployeeId(value)
-                resetPage()
-              }}
-              options={employeeOptions}
-              allLabel="Todos"
-              placeholder="Funcionário"
-              searchPlaceholder="Buscar funcionário..."
-              className="w-full"
-            />
-          </div>
-          <div className="space-y-1.5">
+        <div className="w-full space-y-1 sm:w-[190px]">
+          <Label>De</Label>
+          <Input
+            type="datetime-local"
+            value={from}
+            onChange={(event) => {
+              setFrom(event.target.value)
+              resetPage()
+            }}
+          />
+        </div>
+        <div className="w-full space-y-1 sm:w-[190px]">
+          <Label>Até</Label>
+          <Input
+            type="datetime-local"
+            value={to}
+            onChange={(event) => {
+              setTo(event.target.value)
+              resetPage()
+            }}
+          />
+        </div>
+        <div className="w-full space-y-1 sm:w-[230px]">
+          <Label>Cliente</Label>
+          <SearchableSelect
+            value={clientId}
+            onValueChange={(value) => {
+              setClientId(value)
+              resetPage()
+            }}
+            options={clientOptions}
+            allLabel="Todos os clientes"
+            placeholder="Cliente"
+            searchPlaceholder="Buscar cliente..."
+            className="w-full"
+          />
+        </div>
+        <div className="w-full space-y-1 sm:w-[230px]">
+          <Label>Funcionário</Label>
+          <SearchableSelect
+            value={employeeId}
+            onValueChange={(value) => {
+              setEmployeeId(value)
+              resetPage()
+            }}
+            options={employeeOptions}
+            allLabel="Todos"
+            placeholder="Funcionário"
+            searchPlaceholder="Buscar funcionário..."
+            className="w-full"
+          />
+        </div>
+        <div className="flex w-full flex-wrap items-end gap-x-0 gap-y-2 sm:w-auto">
+          <div className="w-[152px] shrink-0 space-y-1">
             <Label>Tipo</Label>
             <Select value={type} onValueChange={(value) => { setType(value); resetPage() }}>
-              <SelectTrigger>
+              <SelectTrigger className="w-full rounded-r-none">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -252,10 +272,10 @@ export function LogsContent() {
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-1.5">
+          <div className="w-[124px] shrink-0 space-y-1">
             <Label>Status</Label>
             <Select value={status} onValueChange={(value) => { setStatus(value as "all" | "success" | "error"); resetPage() }}>
-              <SelectTrigger>
+              <SelectTrigger className="w-full rounded-none border-l-0">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -265,15 +285,13 @@ export function LogsContent() {
               </SelectContent>
             </Select>
           </div>
-          <div className="flex items-end">
-            <Button type="button" variant="outline" className="w-full gap-2" onClick={clearFilters} disabled={!hasActiveFilters}>
-              <X className="h-4 w-4" />
-              Limpar
-            </Button>
-          </div>
+          <Button type="button" variant="outline" className="w-[112px] shrink-0 gap-2 rounded-l-none border-l-0" onClick={clearFilters} disabled={!hasActiveFilters}>
+            <X className="h-4 w-4" />
+            Limpar
+          </Button>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 
   if (logsQuery.isError) {
@@ -319,7 +337,19 @@ export function LogsContent() {
               ) : logs.length === 0 ? (
                 <TableEmptyState colSpan={6} icon={Database} title="Nenhum log encontrado." />
               ) : logs.map((log) => (
-                <TableRow key={log.id}>
+                <TableRow
+                  key={log.id}
+                  role="button"
+                  tabIndex={0}
+                  className="cursor-pointer hover:bg-muted/40"
+                  onClick={() => setSelectedLog(log)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault()
+                      setSelectedLog(log)
+                    }
+                  }}
+                >
                   <TableCell className="text-sm text-muted-foreground">
                     {formatDateTime(log.createdAt)}
                   </TableCell>
@@ -357,7 +387,19 @@ export function LogsContent() {
           ) : logs.length === 0 ? (
             <EmptyState icon={Database} title="Nenhum log encontrado." />
           ) : logs.map((log) => (
-            <Card key={log.id}>
+            <Card
+              key={log.id}
+              role="button"
+              tabIndex={0}
+              className="cursor-pointer transition-colors hover:bg-muted/30"
+              onClick={() => setSelectedLog(log)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault()
+                  setSelectedLog(log)
+                }
+              }}
+            >
               <CardContent className="space-y-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -400,6 +442,76 @@ export function LogsContent() {
           setPage(1)
         }}
       />
+
+      <Dialog open={Boolean(selectedLog)} onOpenChange={(open) => !open && setSelectedLog(null)}>
+        <DialogContent className="max-h-[90dvh] max-w-3xl overflow-hidden p-0">
+          <DialogHeader className="px-6 pb-3 pt-6">
+            <DialogTitle>Detalhes do log</DialogTitle>
+            <DialogDescription>
+              {selectedLog?.title ?? "Registro de auditoria"}
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedLog ? (
+            <div className="min-h-0 space-y-4 overflow-y-auto px-6 pb-6">
+              {selectedLog.status === "error" ? (
+                <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+                  <p className="font-semibold">Motivo da falha</p>
+                  <p className="mt-1">{getFailureReason(selectedLog) || "Motivo não registrado para este log."}</p>
+                </div>
+              ) : null}
+
+              <div className="grid gap-3 text-sm sm:grid-cols-2">
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground">Data e hora</p>
+                  <p>{formatDateTime(selectedLog.createdAt)}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground">Status</p>
+                  <div className="mt-1">{getLogStatusBadge(selectedLog)}</div>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground">Tipo</p>
+                  <div className="mt-1">{getTypeBadge(selectedLog)}</div>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground">Módulo</p>
+                  <p>{selectedLog.moduleLabel || "-"}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground">Usuário</p>
+                  <p>{selectedLog.actorName || "-"}</p>
+                  {selectedLog.actorEmail ? <p className="text-xs text-muted-foreground">{selectedLog.actorEmail}</p> : null}
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground">Cliente</p>
+                  <p>{selectedLog.clientName || "-"}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground">Rota</p>
+                  <p className="break-all font-mono text-xs">{selectedLog.method} {selectedLog.path}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground">HTTP</p>
+                  <p>{selectedLog.statusCode || "-"} · {selectedLog.durationMs} ms</p>
+                </div>
+              </div>
+
+              <div className="space-y-1 text-sm">
+                <p className="text-xs font-medium text-muted-foreground">Descrição</p>
+                <p>{selectedLog.description || "-"}</p>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">Detalhes técnicos</p>
+                <pre className="max-h-[260px] overflow-auto rounded-md bg-muted p-3 text-xs leading-relaxed text-foreground">
+                  {formatLogJson(selectedLog.metadata)}
+                </pre>
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

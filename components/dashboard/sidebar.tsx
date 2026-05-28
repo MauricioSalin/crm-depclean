@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import Image from "next/image"
+import { hasAnyPermission } from "@/lib/auth/permissions"
 import { getStoredUser } from "@/lib/auth/session"
 import { listCertificates } from "@/lib/api/certificates"
 import { listNotifications } from "@/lib/api/notifications"
@@ -29,23 +30,33 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useSidebarCollapse } from "./sidebar-collapse-context"
 
 const menuItems = [
-  { icon: LayoutDashboard, label: "Dashboard", href: "/" },
-  { icon: Users, label: "Clientes", href: "/clientes" },
-  { icon: FileText, label: "Contratos", href: "/contratos" },
-  { icon: Wrench, label: "Serviços", href: "/servicos" },
-  { icon: UsersRound, label: "Equipes", href: "/equipes" },
-  { icon: Users, label: "Funcionários", href: "/funcionarios" },
-  { icon: Calendar, label: "Agenda", href: "/agenda" },
-  { icon: CalendarClock, label: "Agendamentos", href: "/agendamentos" },
-  { icon: Award, label: "Certificados", href: "/certificados", permission: "certificates_view" },
-  { icon: BarChart3, label: "Relatórios", href: "/relatorios" },
+  { icon: LayoutDashboard, label: "Dashboard", href: "/", permissions: ["dashboard_view"] },
+  { icon: Users, label: "Clientes", href: "/clientes", permissions: ["clients_view", "clients_create", "clients_edit", "clients_delete"] },
+  { icon: FileText, label: "Contratos", href: "/contratos", permissions: ["contracts_view", "contracts_create", "contracts_edit", "contracts_delete"] },
+  { icon: Wrench, label: "Serviços", href: "/servicos", permissions: ["services_view", "services_manage"] },
+  { icon: UsersRound, label: "Equipes", href: "/equipes", permissions: ["teams_view", "teams_manage"] },
+  { icon: Users, label: "Funcionários", href: "/funcionarios", permissions: ["employees_view", "employees_create", "employees_edit", "employees_delete"] },
+  { icon: Calendar, label: "Agenda", href: "/agenda", permissions: ["agenda_own_view", "agenda_view", "agenda_manage"] },
+  { icon: CalendarClock, label: "Agendamentos", href: "/agendamentos", permissions: ["agenda_own_view", "agenda_view", "agenda_manage"] },
+  { icon: Award, label: "Certificados", href: "/certificados", permissions: ["certificates_view", "certificates_manage"] },
+  { icon: BarChart3, label: "Relatórios", href: "/relatorios", permissions: ["reports_view", "reports_export", "financial_view", "financial_manage"] },
 ]
 
 const generalItems = [
-  { icon: Bell, label: "Notificações", href: "/notificacoes" },
-  { icon: Bot, label: "DepAI", href: "/depai" },
-  { icon: HelpCircle, label: "Ajuda", href: "/ajuda" },
+  { icon: Bell, label: "Notificações", href: "/notificacoes", permissions: [] },
+  { icon: Bot, label: "DepAI", href: "/depai", permissions: ["depai_access"] },
+  { icon: HelpCircle, label: "Ajuda", href: "/ajuda", permissions: [] },
 ]
+
+const ACTIVE_AGENDA_BADGE_STATUSES = new Set(["scheduled", "in_progress", "rescheduled"])
+
+function getTodayDateKey() {
+  const today = new Date()
+  const year = today.getFullYear()
+  const month = String(today.getMonth() + 1).padStart(2, "0")
+  const day = String(today.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
+}
 
 interface SidebarProps {
   onNavigate?: () => void
@@ -57,6 +68,7 @@ export function Sidebar({ onNavigate, forceExpanded = false }: SidebarProps) {
   const { collapsed: storedCollapsed } = useSidebarCollapse()
   const collapsed = forceExpanded ? false : storedCollapsed
   const showFullLogo = !collapsed
+  const todayDateKey = getTodayDateKey()
   const [currentUser, setCurrentUser] = useState<ReturnType<typeof getStoredUser>>(null)
 
   useEffect(() => {
@@ -70,32 +82,27 @@ export function Sidebar({ onNavigate, forceExpanded = false }: SidebarProps) {
     }
   }, [])
 
-  const canAccessPermission = (permission?: string) => {
-    if (!permission) return true
-    if (!currentUser) return true
-    return (
-      currentUser.permissions.includes(permission) ||
-      currentUser.permissions.includes("certificates_manage") ||
-      currentUser.permissions.includes("settings_manage")
-    )
+  const canAccessPermissions = (permissions?: string[]) => {
+    if (!permissions || permissions.length === 0) return true
+    return hasAnyPermission(currentUser, permissions)
   }
 
   const schedulesQuery = useQuery({
-    queryKey: ["schedules", "sidebar-agenda-count"],
-    queryFn: () => listSchedules(),
-    enabled: Boolean(currentUser?.employeeId),
+    queryKey: ["schedules", "sidebar-agenda-count", todayDateKey],
+    queryFn: () => listSchedules({ dateFrom: todayDateKey, dateTo: todayDateKey }),
+    enabled: Boolean(currentUser?.employeeId && hasAnyPermission(currentUser, ["agenda_own_view", "agenda_view", "agenda_manage"])),
   })
 
   const teamsQuery = useQuery({
     queryKey: ["teams", "sidebar-agenda-count"],
     queryFn: () => listTeams(),
-    enabled: Boolean(currentUser?.employeeId),
+    enabled: Boolean(currentUser?.employeeId && hasAnyPermission(currentUser, ["teams_view", "teams_manage"])),
   })
 
   const certificatesQuery = useQuery({
     queryKey: ["certificates", "sidebar-pending-count"],
     queryFn: () => listCertificates(),
-    enabled: Boolean(currentUser && canAccessPermission("certificates_view")),
+    enabled: Boolean(currentUser && hasAnyPermission(currentUser, ["certificates_view", "certificates_manage"])),
   })
 
   const notificationsQuery = useQuery({
@@ -111,23 +118,34 @@ export function Sidebar({ onNavigate, forceExpanded = false }: SidebarProps) {
     const employeeId = currentUser?.employeeId
     if (!employeeId) return null
 
+    const activeSchedules = (schedulesQuery.data?.data ?? []).filter(
+      (schedule) => schedule.date === todayDateKey && ACTIVE_AGENDA_BADGE_STATUSES.has(schedule.status),
+    )
+    const permissions = currentUser?.permissions ?? []
+    const isScopedAgendaOnly =
+      permissions.includes("agenda_own_view") &&
+      !permissions.includes("agenda_view") &&
+      !permissions.includes("agenda_manage") &&
+      !permissions.includes("settings_manage")
+
+    if (isScopedAgendaOnly) {
+      return activeSchedules.length > 0 ? String(activeSchedules.length) : null
+    }
+
     const userTeamIds = new Set(
       (teamsQuery.data?.data ?? [])
         .filter((team) => team.memberIds.includes(employeeId))
         .map((team) => team.id),
     )
 
-    const assignedCount = (schedulesQuery.data?.data ?? []).filter((schedule) => {
-      const isActiveSchedule = schedule.status === "scheduled" || schedule.status === "in_progress"
-      if (!isActiveSchedule) return false
-
+    const assignedCount = activeSchedules.filter((schedule) => {
       const assignedAsEmployee = schedule.additionalEmployees.some((employee) => employee.id === employeeId)
       const assignedByTeam = schedule.teams.some((team) => userTeamIds.has(team.id))
       return assignedAsEmployee || assignedByTeam
     }).length
 
     return assignedCount > 0 ? String(assignedCount) : null
-  }, [currentUser?.employeeId, schedulesQuery.data?.data, teamsQuery.data?.data])
+  }, [currentUser?.employeeId, currentUser?.permissions, schedulesQuery.data?.data, teamsQuery.data?.data, todayDateKey])
 
   const certificatesBadge = useMemo(() => {
     const pendingCount = (certificatesQuery.data?.data ?? []).filter((certificate) => certificate.status === "pending").length
@@ -265,7 +283,7 @@ export function Sidebar({ onNavigate, forceExpanded = false }: SidebarProps) {
           </p>
           <nav className="space-y-0.5">
             {menuItems.map((item) => {
-              if (!canAccessPermission(item.permission)) return null
+              if (!canAccessPermissions(item.permissions)) return null
               const badge =
                 item.label === "Agenda"
                   ? agendaBadge
@@ -290,6 +308,7 @@ export function Sidebar({ onNavigate, forceExpanded = false }: SidebarProps) {
           </p>
           <nav className="space-y-0.5">
             {generalItems.map((item) => {
+              if (!canAccessPermissions(item.permissions)) return null
               const badge = item.label === "Notificações" ? notificationsBadge : null
               return renderNavItem(item, badge)
             })}

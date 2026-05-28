@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { format } from "date-fns"
 import type { DateRange } from "react-day-picker"
@@ -38,6 +38,8 @@ import {
 } from "@/lib/api/schedules"
 import { listServices, type ServiceRecord } from "@/lib/api/services"
 import { listTeams, type TeamRecord } from "@/lib/api/teams"
+import { hasAnyPermission } from "@/lib/auth/permissions"
+import { getStoredUser } from "@/lib/auth/session"
 import { formatCivilDate, toCivilDateKey } from "@/lib/date-utils"
 import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
@@ -392,6 +394,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
   const queryClient = useQueryClient()
   const mobileFiltersOpen = useMobileFiltersOpen()
   const [searchTerm, setSearchTerm] = useUrlQueryState("q")
+  const deferredSearchTerm = useDeferredValue(searchTerm)
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [dateRange, setDateRange] = useState<DateRange | undefined>()
   const [currentPage, setCurrentPage] = useState(1)
@@ -418,6 +421,19 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
   const scheduleDialogResetTimeoutRef = useRef<number | null>(null)
+  const [currentUser, setCurrentUser] = useState<ReturnType<typeof getStoredUser>>(null)
+  const canManageAgenda = hasAnyPermission(currentUser, ["agenda_manage"])
+
+  useEffect(() => {
+    const sync = () => setCurrentUser(getStoredUser())
+    sync()
+    window.addEventListener("storage", sync)
+    window.addEventListener("depclean:session", sync)
+    return () => {
+      window.removeEventListener("storage", sync)
+      window.removeEventListener("depclean:session", sync)
+    }
+  }, [])
 
   const schedulesQuery = useQuery({
     queryKey: ["schedules"],
@@ -426,18 +442,22 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
   const clientsQuery = useQuery({
     queryKey: ["clients"],
     queryFn: () => listClients(),
+    enabled: canManageAgenda,
   })
   const servicesQuery = useQuery({
     queryKey: ["services"],
     queryFn: () => listServices(),
+    enabled: canManageAgenda,
   })
   const teamsQuery = useQuery({
     queryKey: ["teams"],
     queryFn: () => listTeams(),
+    enabled: canManageAgenda,
   })
   const employeesQuery = useQuery({
     queryKey: ["employees"],
     queryFn: () => listEmployees(),
+    enabled: canManageAgenda,
   })
 
   const schedules = schedulesQuery.data?.data ?? []
@@ -446,13 +466,18 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
   const teams = teamsQuery.data?.data ?? []
   const employees = employeesQuery.data?.data ?? []
   useEffect(() => {
+    if (openDialog && !canManageAgenda) {
+      onDialogChange?.(false)
+      return
+    }
+
     if (openDialog) {
       clearScheduleDialogResetTimeout()
       setEditingSchedule(null)
       setIsDialogOpen(true)
       onDialogChange?.(false)
     }
-  }, [openDialog, onDialogChange])
+  }, [canManageAgenda, openDialog, onDialogChange])
 
   useEffect(() => {
     return () => clearScheduleDialogResetTimeout()
@@ -475,6 +500,8 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
   }
 
   function handleScheduleDialogChange(open: boolean) {
+    if (open && !canManageAgenda) return
+
     if (open) {
       clearScheduleDialogResetTimeout()
       setIsDialogOpen(true)
@@ -704,7 +731,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
   })
 
   const filteredSchedules = useMemo(() => {
-    const term = searchTerm.toLowerCase()
+    const term = deferredSearchTerm.toLowerCase()
     return schedules.filter((item) => {
       const matchesSearch =
         !term ||
@@ -721,13 +748,15 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
 
       return matchesSearch && matchesStatus && matchesDateFrom && matchesDateTo
     })
-  }, [dateRange, schedules, searchTerm, statusFilter])
+  }, [dateRange, schedules, deferredSearchTerm, statusFilter])
 
   const totalItems = filteredSchedules.length
   const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage))
   const paginatedSchedules = filteredSchedules.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
 
   const handleFormSubmit = (formData: SchedulingFormData, isEditing: boolean) => {
+    if (!canManageAgenda) return
+
     const scheduleId = isEditing ? editingSchedule?.id : undefined
     const availability = checkScheduleAvailability({
       schedules,
@@ -756,6 +785,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
   }
 
   const openEditSchedule = (schedule: ScheduleRecord) => {
+    if (!canManageAgenda) return
     if (schedule.status === "cancelled") return
 
     clearScheduleDialogResetTimeout()
@@ -767,6 +797,8 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
   }
 
   const openCompletionDialog = (schedule: ScheduleRecord) => {
+    if (!canManageAgenda) return
+
     const now = currentCompletionDateTime()
     const defaultDate = schedule.date || now.date
     setCompletionTarget(schedule)
@@ -778,7 +810,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
   }
 
   const openSchedule = (schedule: ScheduleRecord) => {
-    if (schedule.status === "in_progress") {
+    if (canManageAgenda && schedule.status === "in_progress") {
       openCompletionDialog(schedule)
       return
     }
@@ -787,18 +819,18 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
   }
 
   const canDeleteSchedule = (schedule: ScheduleRecord) => {
-    return schedule.status === "cancelled" && !isRecurringSchedule(schedule)
+    return canManageAgenda && schedule.status === "cancelled" && !isRecurringSchedule(schedule)
   }
 
   return (
     <>
       <CsvImportDialog
-        open={openImport}
+        open={canManageAgenda && openImport}
         onOpenChange={(open) => onImportChange?.(open)}
         title="Importar agendamentos"
         description="Mapeie as colunas do CSV antes de inserir os agendamentos."
         fields={SCHEDULE_IMPORT_FIELDS}
-        onImport={(rows) => importSchedulesMutation.mutateAsync(rows)}
+        onImport={(rows) => canManageAgenda ? importSchedulesMutation.mutateAsync(rows) : Promise.resolve()}
       />
 
       <SchedulingFormDialog
@@ -821,7 +853,9 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
         schedules={schedules}
         teams={teams}
         isStartingAttendance={startMutation.isPending}
+        canManage={canManageAgenda}
         onStartAttendance={async (schedule) => {
+          if (!canManageAgenda) return
           await startMutation.mutateAsync(schedule)
         }}
       />
@@ -1169,6 +1203,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                       </TableCell>
                       <TableCell>{getStatusBadge(schedule.status)}</TableCell>
                       <TableCell className="text-right">
+                        {canManageAgenda ? (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="icon" onClick={(event) => event.stopPropagation()}>
@@ -1245,6 +1280,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                             )}
                           </DropdownMenuContent>
                         </DropdownMenu>
+                        ) : null}
                       </TableCell>
                     </TableRow>
                   ))
@@ -1307,6 +1343,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                         ))}
                       </div>
                     ) : null}
+                    {canManageAgenda ? (
                     <div className="mt-auto grid grid-cols-2 gap-2 pt-3 [&>*:only-child]:col-span-2" onClick={(event) => event.stopPropagation()}>
                       {!["in_progress", "cancelled"].includes(schedule.status) && (
                         <Button type="button" variant="outline" size="sm" className="h-8 rounded-full" onClick={() => openEditSchedule(schedule)}>
@@ -1366,6 +1403,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                         </Button>
                       )}
                     </div>
+                    ) : null}
                   </CardContent>
                 </Card>
               ))}

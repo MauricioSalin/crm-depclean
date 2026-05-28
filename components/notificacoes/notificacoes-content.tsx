@@ -30,6 +30,8 @@ import type { NotificationRecord } from "@/lib/api/notifications"
 
 const NOTIFICATION_TYPES: { value: NotificationType; label: string; icon: typeof Bell }[] = [
   { value: "new_schedule", label: "Novo Agendamento", icon: Calendar },
+  { value: "schedule_assigned", label: "Agendamento Atribuído", icon: Calendar },
+  { value: "schedule_unassigned", label: "Removido do Agendamento", icon: AlertTriangle },
   { value: "schedule_change", label: "Alteração de Agendamento", icon: Clock },
   { value: "schedule_cancel", label: "Cancelamento", icon: AlertTriangle },
   { value: "emergency", label: "Emergência", icon: AlertTriangle },
@@ -79,8 +81,11 @@ export function NotificacoesContent({
       case "payment_due":
         return "text-yellow-500 bg-yellow-50"
       case "new_schedule":
+      case "schedule_assigned":
       case "daily_services":
         return "text-blue-500 bg-blue-50"
+      case "schedule_unassigned":
+        return "text-gray-500 bg-gray-50"
       case "contract_signature":
       case "informative":
       case "certificate":

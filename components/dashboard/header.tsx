@@ -23,6 +23,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import type { ReactNode } from "react"
 import { listNotifications, markNotificationAsRead } from "@/lib/api/notifications"
 import { getApiErrorMessage } from "@/lib/api/errors"
+import { hasAnyPermission } from "@/lib/auth/permissions"
 import { clearSession, getStoredAccessToken, getStoredUser } from "@/lib/auth/session"
 import { resolveAvatarUrl } from "@/lib/avatar"
 import { buildPathWithSearchParams } from "@/lib/navigation"
@@ -49,6 +50,8 @@ const getNotificationDotColor = (type: string) => {
     payment_due: "bg-yellow-500",
     contract_expiring: "bg-purple-500",
     new_schedule: "bg-blue-500",
+    schedule_assigned: "bg-blue-500",
+    schedule_unassigned: "bg-gray-500",
     schedule_change: "bg-blue-500",
     schedule_cancel: "bg-gray-500",
     daily_services: "bg-blue-500",
@@ -84,11 +87,9 @@ export function Header({ title, description, titleAddon, headerActions, actions,
   const notifs = notificationsQuery.data?.data ?? []
   const unreadNotifications = notifs.filter((n) => !n.isRead)
   const effectiveHeaderActions = headerActions ?? actions
-  const canViewLogs = Boolean(
-    currentUser?.permissions?.includes("logs_view") ||
-    currentUser?.permissions?.includes("logs_manage") ||
-    currentUser?.permissions?.includes("settings_manage"),
-  )
+  const canViewTemplates = hasAnyPermission(currentUser, ["templates_view", "templates_manage"])
+  const canViewSettings = hasAnyPermission(currentUser, ["settings_view", "settings_manage"])
+  const canViewLogs = hasAnyPermission(currentUser, ["logs_view", "logs_manage"])
   const markAsReadMutation = useMutation({
     mutationFn: markNotificationAsRead,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notifications"] }),
@@ -267,18 +268,22 @@ export function Header({ title, description, titleAddon, headerActions, actions,
                         Perfil
                       </DropdownMenuItem>
                     </Link>
-                    <Link href="/templates">
-                      <DropdownMenuItem className="cursor-pointer">
-                        <FileText className="mr-2 h-4 w-4" />
-                        Templates
-                      </DropdownMenuItem>
-                    </Link>
-                    <Link href="/configuracoes">
-                      <DropdownMenuItem className="cursor-pointer">
-                        <Settings className="mr-2 h-4 w-4" />
-                        Configurações
-                      </DropdownMenuItem>
-                    </Link>
+                    {canViewTemplates ? (
+                      <Link href="/templates">
+                        <DropdownMenuItem className="cursor-pointer">
+                          <FileText className="mr-2 h-4 w-4" />
+                          Templates
+                        </DropdownMenuItem>
+                      </Link>
+                    ) : null}
+                    {canViewSettings ? (
+                      <Link href="/configuracoes">
+                        <DropdownMenuItem className="cursor-pointer">
+                          <Settings className="mr-2 h-4 w-4" />
+                          Configurações
+                        </DropdownMenuItem>
+                      </Link>
+                    ) : null}
                     {canViewLogs ? (
                       <Link href="/logs">
                         <DropdownMenuItem className="cursor-pointer">

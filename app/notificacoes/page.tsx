@@ -45,18 +45,11 @@ export default function NotificacoesPage() {
 
   const markAsReadMutation = useMutation({
     mutationFn: markNotificationAsRead,
-    onMutate: () => {
-      const toastId = toast.loading("Marcando notificação como lida...")
-      return { toastId }
-    },
-    onSuccess: (_data, _variables, context) => {
+    onSuccess: () => {
       void invalidateNotifications()
-      toast.success("Notificação marcada como lida.", { id: context?.toastId })
     },
-    onError: (error, _variables, context) => {
-      toast.error(getApiErrorMessage(error, "Não foi possível marcar a notificação como lida."), {
-        id: context?.toastId,
-      })
+    onError: (error) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível marcar a notificação como lida."))
     },
   })
 
@@ -79,18 +72,11 @@ export default function NotificacoesPage() {
 
   const markAllMutation = useMutation({
     mutationFn: markAllNotificationsAsRead,
-    onMutate: () => {
-      const toastId = toast.loading("Marcando notificações como lidas...")
-      return { toastId }
-    },
-    onSuccess: (_data, _variables, context) => {
+    onSuccess: () => {
       void invalidateNotifications()
-      toast.success("Notificações marcadas como lidas.", { id: context?.toastId })
     },
-    onError: (error, _variables, context) => {
-      toast.error(getApiErrorMessage(error, "Não foi possível marcar as notificações como lidas."), {
-        id: context?.toastId,
-      })
+    onError: (error) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível marcar as notificações como lidas."))
     },
   })
 

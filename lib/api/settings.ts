@@ -6,6 +6,7 @@ export type ClientTypeRecord = {
   name: string
   description: string
   color: string
+  contractSignerRole: "owner" | "assessor" | "syndic"
   createdAt: string
   updatedAt: string
 }
@@ -99,12 +100,12 @@ export async function listClientTypes(search = "") {
   return response.data
 }
 
-export async function createClientType(payload: Pick<ClientTypeRecord, "name" | "description" | "color">) {
+export async function createClientType(payload: Pick<ClientTypeRecord, "name" | "description" | "color" | "contractSignerRole">) {
   const response = await api.post<{ success: true; data: ClientTypeRecord }>("/settings/client-types", payload)
   return response.data
 }
 
-export async function updateClientType(id: string, payload: Partial<Pick<ClientTypeRecord, "name" | "description" | "color">>) {
+export async function updateClientType(id: string, payload: Partial<Pick<ClientTypeRecord, "name" | "description" | "color" | "contractSignerRole">>) {
   const response = await api.patch<{ success: true; data: ClientTypeRecord }>(`/settings/client-types/${id}`, payload)
   return response.data
 }

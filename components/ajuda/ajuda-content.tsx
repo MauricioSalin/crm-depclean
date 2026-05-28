@@ -69,6 +69,16 @@ const FAQ_ITEMS = [
       "Em Configurações, ajuste regras de notificação, canais de envio, perfis de permissão e usuários do sistema. A página Notificações concentra os avisos recebidos dentro da plataforma. Revise permissões com cuidado, pois elas afetam o acesso às páginas e ações.",
   },
   {
+    question: "Como funciona a permissão de ver somente meus agendamentos?",
+    answer:
+      "A permissão Ver somente seus Agendamentos libera Agenda e Agendamentos, mas mostra apenas registros em que o usuário está mencionado como funcionário avulso ou faz parte de uma equipe mencionada no agendamento. Para ver todos os registros, o perfil precisa de Visualizar Agenda, Gerenciar Agenda ou permissão administrativa.",
+  },
+  {
+    question: "Quais documentos são enviados ao cliente?",
+    answer:
+      "Contratos assinados, informativos e certificados devem priorizar PDF. Informativos enviados ao cliente usam a mesma versão com marca d'água que aparece nos anexos do cliente. DOCX fica como formato interno de edição quando aplicável.",
+  },
+  {
     question: "Minha dúvida não está aqui. O que eu faço?",
     answer:
       "Use a DepAI. No campo acima, escreva sua pergunta e clique em Perguntar a DepAI. Ela pode ajudar com dúvidas sobre uso do sistema, clientes, contratos, agenda, relatórios, financeiro, certificados, configurações, informações internas, documentos e análises. Para decisões importantes, confira os dados nas telas oficiais antes de executar a ação.",

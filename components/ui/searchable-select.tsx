@@ -45,8 +45,14 @@ export function SearchableSelect({
 }: SearchableSelectProps) {
   const [open, setOpen] = React.useState(false)
 
-  const allOptions = includeAll ? [{ value: "all", label: allLabel }, ...options] : options
-  const selectedOption = allOptions.find(o => o.value === value)
+  const allOptions = React.useMemo(
+    () => includeAll ? [{ value: "all", label: allLabel }, ...options] : options,
+    [allLabel, includeAll, options],
+  )
+  const selectedOption = React.useMemo(
+    () => allOptions.find(o => o.value === value),
+    [allOptions, value],
+  )
 
   return (
     <Popover open={disabled ? false : open} onOpenChange={disabled ? undefined : setOpen}>

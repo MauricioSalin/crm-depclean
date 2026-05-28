@@ -99,7 +99,7 @@ export async function updateScheduleBilling(
   id: string,
   payload: Pick<SchedulePayload, "billingStatus" | "paidDate" | "paidValue" | "paymentMethod" | "billingNotes">,
 ) {
-  const response = await api.patch<{ success: true; data: ScheduleRecord }>(`/schedules/${id}`, payload)
+  const response = await api.patch<{ success: true; data: ScheduleRecord }>(`/schedules/${id}/billing`, payload)
   return response.data
 }
 

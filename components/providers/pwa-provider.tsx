@@ -20,7 +20,7 @@ import {
   savePushSubscription,
   type PushSubscriptionPayload,
 } from "@/lib/api/notifications"
-import { getStoredAccessToken } from "@/lib/auth/session"
+import { getStoredAccessToken, getStoredUser } from "@/lib/auth/session"
 
 export function PwaProvider() {
   const queryClient = useQueryClient()
@@ -121,6 +121,10 @@ export function PwaProvider() {
       if (isSyncingRef.current) return
       if (!canUsePush()) return
       if (!getStoredAccessToken()) return
+      if (getStoredUser()?.mustChangePassword) {
+        setShowPrompt(false)
+        return
+      }
       if (isIosBrowserWithoutStandalone()) return
 
       isSyncingRef.current = true

@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useMemo, useRef, useState } from "react"
+import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -198,6 +198,10 @@ const recurrenceOptions = [
   { value: "annual", label: "Anual" },
 ]
 
+function isPresent<T>(value: T | null | undefined): value is T {
+  return value != null
+}
+
 const isContractSigned = (contract?: { status?: string; clicksign?: { status?: string } } | null) => {
   if (!contract) return false
   const clicksignStatus = contract.clicksign?.status?.toLowerCase() ?? ""
@@ -355,11 +359,22 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
   const [employeesPopoverOpen, setEmployeesPopoverOpen] = useState(false)
   const [teamSearchTerm, setTeamSearchTerm] = useState("")
   const [employeeSearchTerm, setEmployeeSearchTerm] = useState("")
+  const deferredTeamSearchTerm = useDeferredValue(teamSearchTerm)
+  const deferredEmployeeSearchTerm = useDeferredValue(employeeSearchTerm)
+  const clientById = useMemo(() => new Map(clients.map((client) => [client.id, client])), [clients])
+  const templateById = useMemo(() => new Map(templates.map((template) => [template.id, template])), [templates])
+  const employeeById = useMemo(() => new Map(employees.map((employee) => [employee.id, employee])), [employees])
+  const teamById = useMemo(() => new Map(teams.map((team) => [team.id, team])), [teams])
+  const serviceTypeById = useMemo(() => new Map(serviceTypes.map((serviceType) => [serviceType.id, serviceType])), [serviceTypes])
 
-  const selectedClient = clients.find(c => c.id === selectedClientId)
-  const selectedTemplate = templates.find((template) => template.id === selectedTemplateId)
-  const selectedTemplateSigner = employees.find((employee) => employee.id === selectedTemplate?.signerId)
+  const selectedClient = clientById.get(selectedClientId)
+  const selectedTemplate = templateById.get(selectedTemplateId)
+  const selectedTemplateSigner = selectedTemplate?.signerId ? employeeById.get(selectedTemplate.signerId) : undefined
   const totalValue = contractValue / 100
+  const activeContractTemplates = useMemo(
+    () => templates.filter((template) => template.isActive),
+    [templates],
+  )
   const activeInformativeTemplates = useMemo(
     () => informativeTemplates.filter((template) => template.isActive && template.format === "docx"),
     [informativeTemplates],
@@ -367,7 +382,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
   const editingService = services.find(s => s.id === editingServiceId)
   const clausesEditingService = services.find((service) => service.id === clausesServiceId) ?? null
   const clausesEditingServiceType = clausesEditingService
-    ? serviceTypes.find((serviceType) => serviceType.id === clausesEditingService.serviceTypeId) ?? null
+    ? serviceTypeById.get(clausesEditingService.serviceTypeId) ?? null
     : null
 
   const clearClausesDialogCloseTimeout = () => {
@@ -883,8 +898,8 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
         return {
           ...s,
           [field]: value as string,
-          teamIds: serviceType?.teamIds || [],
-          employeeIds: serviceType?.employeeIds || [],
+          teamIds: [],
+          employeeIds: [],
           recurrence: serviceType?.defaultRecurrence || "monthly",
           duration: Number(serviceType?.defaultDuration ?? 1),
           durationType: serviceType?.durationType || "hours",
@@ -953,14 +968,20 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
     updateService(editingService.id, "employeeIds", newEmployeeIds)
   }
 
-  const filteredTeams = teams.filter(t =>
-    t.name.toLowerCase().includes(teamSearchTerm.toLowerCase())
-  )
+  const filteredTeams = useMemo(() => {
+    const term = deferredTeamSearchTerm.trim().toLowerCase()
+    if (!term) return teams
+    return teams.filter(t => t.name.toLowerCase().includes(term))
+  }, [deferredTeamSearchTerm, teams])
 
-  const filteredEmployees = employees.filter(e =>
-    e.name.toLowerCase().includes(employeeSearchTerm.toLowerCase()) ||
-    e.role.toLowerCase().includes(employeeSearchTerm.toLowerCase())
-  )
+  const filteredEmployees = useMemo(() => {
+    const term = deferredEmployeeSearchTerm.trim().toLowerCase()
+    if (!term) return employees
+    return employees.filter(e =>
+      e.name.toLowerCase().includes(term) ||
+      e.role.toLowerCase().includes(term)
+    )
+  }, [deferredEmployeeSearchTerm, employees])
 
   const toggleUnit = (unitId: string) => {
     setSelectedUnitIds(prev =>
@@ -1294,7 +1315,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
           Cliente
         </h3>
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <div className="space-y-2 lg:col-span-2 lg:max-w-[420px]">
+          <div className="space-y-2 md:w-[340px] lg:col-span-2">
             <Label>Selecionar Cliente *</Label>
             <Popover open={clientPopoverOpen} onOpenChange={setClientPopoverOpen}>
               <PopoverTrigger asChild>
@@ -1305,7 +1326,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
                   disabled={isEditing}
                 >
                   {selectedClientId
-                    ? clients.find(c => c.id === selectedClientId)?.companyName
+                    ? selectedClient?.companyName
                     : "Selecione um cliente"}
                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
@@ -1499,7 +1520,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
                   className="w-full justify-between font-normal"
                 >
                   {selectedTemplateId
-                    ? templates.find(t => t.id === selectedTemplateId)?.name
+                    ? selectedTemplate?.name
                     : "Selecione um template"}
                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
@@ -1510,7 +1531,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
                   <CommandList>
                     <CommandEmpty>Nenhum template encontrado.</CommandEmpty>
                     <CommandGroup>
-                      {templates.filter(t => t.isActive).map((t) => (
+                      {activeContractTemplates.map((t) => (
                         <CommandItem
                           key={t.id}
                           value={t.name}
@@ -1531,7 +1552,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
             </Popover>
           </div>
           {selectedTemplateId && (() => {
-            const template = templates.find(t => t.id === selectedTemplateId)
+            const template = selectedTemplate
             if (!template) return null
             return (
               <div className="p-3 rounded-lg bg-muted/50 flex items-start gap-3 md:max-w-[520px]">
@@ -1691,9 +1712,8 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
               </TableHeader>
               <TableBody>
                 {services.map((service) => {
-                  const serviceType = serviceTypes.find((item) => item.id === service.serviceTypeId)
-                  const serviceTeams = teams.filter(t => service.teamIds.includes(t.id))
-                  const serviceEmployees = employees.filter(e => service.employeeIds.includes(e.id))
+                  const serviceTeams = service.teamIds.map((id) => teamById.get(id)).filter(isPresent)
+                  const serviceEmployees = service.employeeIds.map((id) => employeeById.get(id)).filter(isPresent)
                   return (
                     <TableRow key={service.id} className="hover:bg-muted/20">
                       <TableCell className="w-[300px] py-3 align-top">
@@ -1829,8 +1849,8 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
           <DollarSign className="w-5 h-5 text-primary" />
           Valor do Contrato
         </h3>
-        <div className="max-w-2xl space-y-4">
-          <div className="max-w-[420px] space-y-2">
+        <div className="w-full max-w-[380px] space-y-4">
+          <div className="space-y-2">
             <Label>Valor do Contrato *</Label>
             <CurrencyInput
               value={contractValue}
@@ -1842,14 +1862,9 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
           </div>
 
           <div className="rounded-lg bg-muted/30 p-4">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Total do contrato</p>
-                <p className="mt-2 text-3xl font-bold text-primary">{formatCurrency(totalValue)}</p>
-              </div>
-              <div className="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-                <DollarSign className="w-5 h-5 text-primary" />
-              </div>
+            <div>
+              <p className="text-sm font-medium text-muted-foreground">Total do contrato</p>
+              <p className="mt-2 text-3xl font-bold text-primary">{formatCurrency(totalValue)}</p>
             </div>
             <div className="mt-5 grid grid-cols-1 gap-2 text-sm text-muted-foreground sm:grid-cols-2">
               <div className="rounded-lg bg-background/70 p-3">

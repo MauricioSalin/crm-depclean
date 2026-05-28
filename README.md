@@ -4,7 +4,7 @@ Frontend web da plataforma Depclean CRM.
 
 ## Visão Geral
 
-O Depclean CRM centraliza clientes, contratos, agendamentos, equipes, funcionários, financeiro, certificados, templates e notificações em uma aplicação operacional.
+O Depclean CRM centraliza clientes, contratos, agendamentos, equipes, funcionários, relatórios com financeiro, certificados, templates e notificações em uma aplicação operacional.
 
 ## Stack
 
@@ -50,10 +50,21 @@ npm run build
 
 ## Integrações Ativas
 
-- Clientes, contratos, serviços, equipes, funcionários, agenda, agendamentos, financeiro, certificados, templates e notificações usam a API.
+- Clientes, contratos, serviços, equipes, funcionários, agenda, agendamentos, relatórios com financeiro, certificados, templates e notificações usam a API.
 - Arquivos e anexos são abertos via `buildApiFileUrl`, que resolve caminhos como `/api/v1/files/...`.
 - A aba `Anexos` do cliente consolida documentos vindos de contratos, NAs, informativos, certificados e anexos manuais.
 - Anexos manuais do cliente são enviados por multipart para `POST /clients/:id/attachments`.
+- O controle de acesso do frontend fica em `lib/auth/permissions.ts` e deve acompanhar o catálogo do backend em `api-depclean/src/database/constants/permissions.ts`.
+- Agenda e Agendamentos aceitam `agenda_own_view`; nesse caso, o backend retorna somente registros em que o usuário ou uma de suas equipes está mencionado.
+
+## DepAI e documentação
+
+A DepAI usa a base operacional do backend em `api-depclean/src/modules/depai/depai-business-knowledge.ts`.
+
+Ao alterar fluxo de tela, regra de permissão, envio de documento, ClickSign, WhatsApp ou anexos, atualize também:
+
+- `api-depclean/src/modules/depai/depai-business-knowledge.ts`
+- `api-depclean/docs/agenda-clicksign-teste.md`
 
 ## Estrutura
 

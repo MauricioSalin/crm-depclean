@@ -48,6 +48,7 @@ import { getApiErrorMessage } from "@/lib/api/errors"
 import { listSchedules } from "@/lib/api/schedules"
 import { listServices, type ServiceRecurrenceRuleRecord } from "@/lib/api/services"
 import { listTeams } from "@/lib/api/teams"
+import { getContractClicksignSigningUrl } from "@/lib/clicksign"
 import { formatCivilDate } from "@/lib/date-utils"
 import { buildPathWithSearchParams, getSafeReturnTo, withReturnTo } from "@/lib/navigation"
 import { cn } from "@/lib/utils"
@@ -421,10 +422,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
   }, [clientAttachments, contract])
 
   const clicksignUrl = useMemo(() => {
-    const directUrl = contract?.signatureUrl?.trim()
-    if (directUrl && /^https?:\/\//i.test(directUrl)) return directUrl
-
-    return contract?.clicksign?.signers?.find((signer) => /^https?:\/\//i.test(signer.signUrl))?.signUrl ?? ""
+    return getContractClicksignSigningUrl(contract)
   }, [contract])
 
   const units = useMemo(() => {
@@ -908,6 +906,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                 <TableRow>
                   <TableHead>Serviço</TableHead>
                   <TableHead>Descrição</TableHead>
+                  <TableHead>Recorrência</TableHead>
                   <TableHead>Equipe / Funcionários</TableHead>
                   <TableHead>Duração</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
@@ -934,6 +933,11 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                       </TableCell>
                       <TableCell className="text-muted-foreground">
                         {serviceType?.description || "Sem descrição cadastrada."}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="secondary">
+                          {getRecurrenceLabel(service.recurrence || serviceType?.defaultRecurrence || contract.recurrence)}
+                        </Badge>
                       </TableCell>
                       <TableCell>
                         <AssignmentBadges teams={serviceTeams} employees={serviceEmployees} className="gap-2" />

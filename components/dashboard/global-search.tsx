@@ -10,6 +10,8 @@ import { Input } from "@/components/ui/input"
 import { listClients, type ClientRecord } from "@/lib/api/clients"
 import { listContracts, type ContractRecord } from "@/lib/api/contracts"
 import { listServices, type ServiceRecord } from "@/lib/api/services"
+import { hasAnyPermission } from "@/lib/auth/permissions"
+import { getStoredUser } from "@/lib/auth/session"
 import { buildPathWithSearchParams, withReturnTo } from "@/lib/navigation"
 import { cn } from "@/lib/utils"
 
@@ -88,6 +90,22 @@ export function GlobalSearch() {
   const [debouncedQuery, setDebouncedQuery] = useState("")
   const [open, setOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(0)
+  const [currentUser, setCurrentUser] = useState<ReturnType<typeof getStoredUser>>(null)
+  const canSearchClients = hasAnyPermission(currentUser, ["clients_view", "clients_create", "clients_edit", "clients_delete"])
+  const canSearchContracts = hasAnyPermission(currentUser, ["contracts_view", "contracts_create", "contracts_edit", "contracts_delete"])
+  const canSearchServices = hasAnyPermission(currentUser, ["services_view", "services_manage"])
+  const canAskDepAI = hasAnyPermission(currentUser, ["depai_access"])
+
+  useEffect(() => {
+    const sync = () => setCurrentUser(getStoredUser())
+    sync()
+    window.addEventListener("storage", sync)
+    window.addEventListener("depclean:session", sync)
+    return () => {
+      window.removeEventListener("storage", sync)
+      window.removeEventListener("depclean:session", sync)
+    }
+  }, [])
 
   useEffect(() => {
     const handleKeyDown = (event: globalThis.KeyboardEvent) => {
@@ -119,14 +137,14 @@ export function GlobalSearch() {
   }, [])
 
   const searchQuery = useQuery({
-    queryKey: ["global-search", debouncedQuery],
-    enabled: open && debouncedQuery.length >= MIN_QUERY_LENGTH,
+    queryKey: ["global-search", debouncedQuery, canSearchClients, canSearchContracts, canSearchServices],
+    enabled: open && debouncedQuery.length >= MIN_QUERY_LENGTH && Boolean(currentUser),
     staleTime: 20_000,
     queryFn: async () => {
       const [clients, contracts, services] = await Promise.all([
-        listClients(debouncedQuery),
-        listContracts(debouncedQuery),
-        listServices(debouncedQuery),
+        canSearchClients ? listClients(debouncedQuery) : Promise.resolve({ data: [] as ClientRecord[] }),
+        canSearchContracts ? listContracts(debouncedQuery) : Promise.resolve({ data: [] as ContractRecord[] }),
+        canSearchServices ? listServices(debouncedQuery) : Promise.resolve({ data: [] as ServiceRecord[] }),
       ])
 
       return {
@@ -142,7 +160,7 @@ export function GlobalSearch() {
     const data = searchQuery.data
 
     return [
-      {
+      canSearchClients ? {
         key: "clients",
         title: "Clientes",
         viewAllHref: listUrl("/clientes", currentQuery),
@@ -156,8 +174,8 @@ export function GlobalSearch() {
           icon: <Building2 className="h-4 w-4" />,
           section: "Clientes",
         })),
-      },
-      {
+      } : null,
+      canSearchContracts ? {
         key: "contracts",
         title: "Contratos",
         viewAllHref: listUrl("/contratos", currentQuery),
@@ -170,8 +188,8 @@ export function GlobalSearch() {
           icon: <FileText className="h-4 w-4" />,
           section: "Contratos",
         })),
-      },
-      {
+      } : null,
+      canSearchServices ? {
         key: "services",
         title: "Serviços",
         viewAllHref: listUrl("/servicos", currentQuery),
@@ -185,9 +203,9 @@ export function GlobalSearch() {
           icon: <Wrench className="h-4 w-4" />,
           section: "Serviços",
         })),
-      },
-    ]
-  }, [currentHref, query, searchQuery.data])
+      } : null,
+    ].filter((section): section is NonNullable<typeof section> => Boolean(section))
+  }, [canSearchClients, canSearchContracts, canSearchServices, currentHref, query, searchQuery.data])
 
   const flatItems = useMemo(() => {
     const currentQuery = normalizeQuery(query)
@@ -208,7 +226,7 @@ export function GlobalSearch() {
       }
     })
 
-    if (currentQuery) {
+    if (currentQuery && canAskDepAI) {
       items.push({
         id: "ask-depai",
         kind: "depai",
@@ -219,7 +237,7 @@ export function GlobalSearch() {
     }
 
     return items
-  }, [query, sections])
+  }, [canAskDepAI, query, sections])
 
   useEffect(() => {
     setActiveIndex(flatItems.length > 0 ? 0 : -1)
@@ -235,6 +253,7 @@ export function GlobalSearch() {
   const askDepAI = () => {
     const currentQuery = normalizeQuery(query)
     if (!currentQuery) return
+    if (!canAskDepAI) return
 
     closeSearch()
     setQuery("")
@@ -293,6 +312,11 @@ export function GlobalSearch() {
   const currentQuery = normalizeQuery(query)
   const totalResults = sections.reduce((total, section) => total + section.items.length, 0)
   const showResults = open && currentQuery.length >= MIN_QUERY_LENGTH
+  const searchableLabels = [
+    canSearchClients ? "clientes" : null,
+    canSearchContracts ? "contratos" : null,
+    canSearchServices ? "serviços" : null,
+  ].filter(Boolean)
 
   return (
     <div ref={rootRef} className="relative flex-1 max-w-md">
@@ -306,7 +330,7 @@ export function GlobalSearch() {
         }}
         onFocus={() => setOpen(true)}
         onKeyDown={handleKeyDown}
-        placeholder="Pesquise por clientes, contratos ou serviços"
+        placeholder={searchableLabels.length > 0 ? `Pesquise por ${searchableLabels.join(", ")}` : "Pesquise no sistema"}
         className="h-9 bg-card pl-9 pr-9 text-base transition-all duration-300 focus:shadow-lg focus:shadow-primary/10 md:pr-20 md:text-sm"
         role="combobox"
         aria-expanded={showResults}
@@ -413,6 +437,7 @@ export function GlobalSearch() {
               </div>
             ))}
 
+            {canAskDepAI ? (
             <div className="border-t border-border pt-2">
               <button
                 type="button"
@@ -437,6 +462,7 @@ export function GlobalSearch() {
                 <ArrowRight className="h-4 w-4 text-muted-foreground" />
               </button>
             </div>
+            ) : null}
           </div>
         </div>
       )}

@@ -11,6 +11,7 @@ export type AuditLogRecord = {
   moduleLabel: string
   title: string
   description: string
+  failureReason: string
   method: string
   path: string
   statusCode: number

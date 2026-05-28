@@ -1,13 +1,13 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react"
-import { Copy, Edit, Eye, EyeOff, Mail, MoreHorizontal, Phone, Search, Shield, Trash2, User, UserCog, UserX } from "lucide-react"
+import { useDeferredValue, useEffect, useMemo, useRef, useState, type FormEvent } from "react"
+import { Copy, Edit, Eye, EyeOff, Mail, MoreHorizontal, Phone, Search, Shield, Trash2, User, UserCog, UserX, X } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Card, CardContent } from "@/components/ui/card"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -92,6 +92,7 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
 
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
+  const deferredSearchTerm = useDeferredValue(searchTerm)
   const dialogResetTimeoutRef = useRef<number | null>(null)
   const systemUserDialogResetTimeoutRef = useRef<number | null>(null)
   const [isSystemUserDialogOpen, setIsSystemUserDialogOpen] = useState(false)
@@ -220,12 +221,13 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
   }
 
   const filteredEmployees = useMemo(() => {
+    const term = deferredSearchTerm.trim().toLowerCase()
     return employees.filter((employee) => {
-      const matchesSearch = [employee.name, employee.email, employee.cpf, employee.role].join(" ").toLowerCase().includes(searchTerm.toLowerCase())
+      const matchesSearch = !term || [employee.name, employee.email, employee.cpf, employee.role].join(" ").toLowerCase().includes(term)
       const matchesStatus = statusFilter === "all" || employee.status === statusFilter
       return matchesSearch && matchesStatus
     })
-  }, [employees, searchTerm, statusFilter])
+  }, [employees, deferredSearchTerm, statusFilter])
 
   const totalPages = Math.max(1, Math.ceil(filteredEmployees.length / pageSize))
   const paginatedEmployees = useMemo(() => {
@@ -532,12 +534,30 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
       />
 
       <Dialog open={isDialogOpen} onOpenChange={handleDialogChange}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto max-w-lg">
-          <DialogHeader>
-            <DialogTitle>{editingEmployee ? "Editar Funcionário" : "Novo Funcionário"}</DialogTitle>
-          </DialogHeader>
-          <form autoComplete="off" onSubmit={handleSubmit} className="space-y-5">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <DialogContent
+          showCloseButton={false}
+          className="flex max-h-[min(90dvh,720px)] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg"
+        >
+          <form autoComplete="off" onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+            <DialogHeader className="shrink-0 px-6 py-4">
+              <div className="flex items-center justify-between gap-4">
+                <DialogTitle>{editingEmployee ? "Editar Funcionário" : "Novo Funcionário"}</DialogTitle>
+                <DialogClose asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    className="-mr-2 rounded-full text-muted-foreground hover:text-foreground"
+                    aria-label="Fechar"
+                    disabled={saving}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </DialogClose>
+              </div>
+            </DialogHeader>
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="sm:col-span-2 space-y-2">
                 <Label htmlFor="employee-name">Nome Completo</Label>
                 <Input
@@ -612,12 +632,15 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
                   {createSystemUser && renderSystemUserFields("employee-system-user-password")}
                 </div>
               )}
+              </div>
             </div>
-            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-              <Button type="button" variant="outline" onClick={() => handleDialogChange(false)} disabled={saving}>Cancelar</Button>
-              <Button type="submit" className="bg-primary text-primary-foreground hover:bg-primary/90" disabled={saving}>
-                {saving ? "Salvando..." : editingEmployee ? "Salvar" : "Cadastrar"}
-              </Button>
+            <div className="shrink-0 bg-background px-6 py-4">
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <Button type="button" variant="outline" onClick={() => handleDialogChange(false)} disabled={saving}>Cancelar</Button>
+                <Button type="submit" className="bg-primary text-primary-foreground hover:bg-primary/90" disabled={saving}>
+                  {saving ? "Salvando..." : editingEmployee ? "Salvar" : "Cadastrar"}
+                </Button>
+              </div>
             </div>
           </form>
         </DialogContent>

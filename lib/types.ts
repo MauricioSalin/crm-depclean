@@ -8,6 +8,7 @@ export interface ClientType {
   id: string
   name: string // Condomínio, Casa, Apartamento, Prédio, etc.
   color: string // Badge color
+  contractSignerRole?: "owner" | "assessor" | "syndic"
   createdAt: Date
 }
 
@@ -267,17 +268,21 @@ export interface ServiceHistory {
 // Notification Type
 export type NotificationType = 
   | "new_schedule" 
+  | "schedule_assigned"
+  | "schedule_unassigned"
   | "schedule_change" 
   | "schedule_cancel" 
   | "emergency" 
   | "daily_services"
   | "contract_signature"
+  | "contract_signed"
   | "informative"
   | "certificate"
   | "certificate_ready"
   | "payment_due"
   | "payment_overdue"
   | "contract_expiring"
+  | "schedule_confirmed"
 
 export type NotificationChannel = "system" | "whatsapp"
 
@@ -338,16 +343,18 @@ export interface DashboardStats {
 
 // Permission Profile Types for Settings
 export type PermissionKey =
+  | "dashboard_view"
   | "clients_view" | "clients_create" | "clients_edit" | "clients_delete"
   | "contracts_view" | "contracts_create" | "contracts_edit" | "contracts_delete"
   | "employees_view" | "employees_create" | "employees_edit" | "employees_delete"
   | "teams_view" | "teams_manage"
   | "services_view" | "services_manage"
-  | "agenda_view" | "agenda_manage"
+  | "agenda_own_view" | "agenda_view" | "agenda_manage"
   | "financial_view" | "financial_manage"
   | "reports_view" | "reports_export"
   | "certificates_view" | "certificates_manage"
   | "settings_view" | "settings_manage"
+  | "depai_access"
   | "templates_view" | "templates_manage"
   | "logs_view" | "logs_manage"
 

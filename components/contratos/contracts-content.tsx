@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useDeferredValue, useMemo, useState } from "react"
 import Link from "next/link"
 import { usePathname, useSearchParams } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { listContracts, type ContractRecord } from "@/lib/api/contracts"
+import { getContractClicksignSigningUrl } from "@/lib/clicksign"
 import { formatCivilDate } from "@/lib/date-utils"
 import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
@@ -66,10 +67,11 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
+  const deferredSearchTerm = useDeferredValue(searchTerm)
 
   const contractsQuery = useQuery({
-    queryKey: ["contracts", searchTerm],
-    queryFn: () => listContracts(searchTerm),
+    queryKey: ["contracts", deferredSearchTerm],
+    queryFn: () => listContracts(deferredSearchTerm),
   })
 
   const contracts = contractsQuery.data?.data ?? []
@@ -181,6 +183,7 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
               ) : (
                 paginatedContracts.map((contract) => {
                   const paidInstallments = contract.installments.filter((item) => item.status === "paid").length
+                  const clicksignUrl = getContractClicksignSigningUrl(contract)
                   return (
                     <TableRow key={contract.id}>
                       <TableCell>
@@ -243,9 +246,9 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
                                 </Link>
                               </DropdownMenuItem>
                             ) : null}
-                            {contract.signatureUrl ? (
+                            {clicksignUrl ? (
                               <DropdownMenuItem asChild>
-                                <a href={contract.signatureUrl} target="_blank" rel="noreferrer">
+                                <a href={clicksignUrl} target="_blank" rel="noreferrer">
                                   <ExternalLink className="mr-2 h-4 w-4" />
                                   Ver no ClickSign
                                 </a>

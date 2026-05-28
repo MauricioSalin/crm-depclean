@@ -66,16 +66,16 @@ function DialogContent({
         )}
         {...props}
       >
-        {children}
         {showCloseButton && (
           <DialogPrimitive.Close
             data-slot="dialog-close"
-            className="ring-offset-background focus-visible:ring-ring absolute right-3 top-3 z-50 inline-flex size-8 cursor-pointer items-center justify-center rounded-full text-muted-foreground opacity-100 transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-hidden disabled:pointer-events-none sm:right-4 sm:top-4 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
+            className="ring-offset-background focus-visible:ring-ring absolute top-4 right-4 z-20 inline-flex size-8 cursor-pointer items-center justify-center rounded-full bg-transparent text-muted-foreground opacity-100 transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-hidden disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
           >
             <XIcon />
-            <span className="sr-only">Close</span>
+            <span className="sr-only">Fechar</span>
           </DialogPrimitive.Close>
         )}
+        {children}
       </DialogPrimitive.Content>
     </DialogPortal>
   )
@@ -85,7 +85,10 @@ function DialogHeader({ className, ...props }: React.ComponentProps<'div'>) {
   return (
     <div
       data-slot="dialog-header"
-      className={cn('sticky top-0 z-40 flex flex-col gap-2 bg-background text-center sm:text-left', className)}
+      className={cn(
+        'shrink-0 flex flex-col gap-2 bg-background text-center sm:text-left',
+        className,
+      )}
       {...props}
     />
   )
@@ -96,7 +99,7 @@ function DialogFooter({ className, ...props }: React.ComponentProps<'div'>) {
     <div
       data-slot="dialog-footer"
       className={cn(
-        'sticky bottom-0 z-40 flex flex-col-reverse gap-2 bg-background sm:flex-row sm:justify-end',
+        'shrink-0 flex flex-col-reverse gap-2 bg-background sm:flex-row sm:justify-end',
         className,
       )}
       {...props}

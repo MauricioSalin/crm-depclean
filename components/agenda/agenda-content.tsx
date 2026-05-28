@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useRouter, useSearchParams } from "next/navigation"
 import { toast } from "sonner"
@@ -27,6 +27,8 @@ import { getApiErrorMessage } from "@/lib/api/errors"
 import { listSchedules, createSchedule, updateSchedule, startSchedule, completeSchedule, cancelSchedule, reactivateSchedule, uploadScheduleNa, type ScheduleRecord } from "@/lib/api/schedules"
 import { listServices } from "@/lib/api/services"
 import { listTeams } from "@/lib/api/teams"
+import { hasAnyPermission } from "@/lib/auth/permissions"
+import { getStoredUser } from "@/lib/auth/session"
 import { toCivilDateKey } from "@/lib/date-utils"
 import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
@@ -143,6 +145,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   const [currentDate, setCurrentDate] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState<Date | null>(new Date())
   const [searchTerm, setSearchTerm] = useUrlQueryState("q")
+  const deferredSearchTerm = useDeferredValue(searchTerm)
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [viewMode, setViewMode] = useState<"month" | "week">("month")
   const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -167,6 +170,19 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
   const scheduleDialogResetTimeoutRef = useRef<number | null>(null)
+  const [currentUser, setCurrentUser] = useState<ReturnType<typeof getStoredUser>>(null)
+  const canManageAgenda = hasAnyPermission(currentUser, ["agenda_manage"])
+
+  useEffect(() => {
+    const sync = () => setCurrentUser(getStoredUser())
+    sync()
+    window.addEventListener("storage", sync)
+    window.addEventListener("depclean:session", sync)
+    return () => {
+      window.removeEventListener("storage", sync)
+      window.removeEventListener("depclean:session", sync)
+    }
+  }, [])
 
   const schedulesQuery = useQuery({
     queryKey: ["schedules", "agenda"],
@@ -175,18 +191,22 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   const clientsQuery = useQuery({
     queryKey: ["clients", "agenda"],
     queryFn: () => listClients(),
+    enabled: canManageAgenda,
   })
   const serviceTypesQuery = useQuery({
     queryKey: ["services", "agenda"],
     queryFn: () => listServices(),
+    enabled: canManageAgenda,
   })
   const teamsQuery = useQuery({
     queryKey: ["teams", "agenda"],
     queryFn: () => listTeams(),
+    enabled: canManageAgenda,
   })
   const employeesQuery = useQuery({
     queryKey: ["employees", "agenda"],
     queryFn: () => listEmployees(),
+    enabled: canManageAgenda,
   })
 
   const schedules = useMemo(
@@ -462,7 +482,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   }, [currentMonth, currentYear])
 
   const filteredServices = useMemo(() => {
-    const term = searchTerm.toLowerCase().trim()
+    const term = deferredSearchTerm.toLowerCase().trim()
     return schedules.filter((service) => {
       const matchesSearch =
         !term ||
@@ -474,7 +494,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       const matchesStatus = statusFilter === "all" || service.status === statusFilter
       return matchesSearch && matchesStatus
     })
-  }, [schedules, searchTerm, statusFilter])
+  }, [schedules, deferredSearchTerm, statusFilter])
 
   const getServicesForDate = (date: Date) => {
     const dateStr = toCivilDateKey(date)
@@ -491,6 +511,8 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   }
 
   const handleFormSubmit = (formData: SchedulingFormData, isEditing: boolean) => {
+    if (!canManageAgenda) return
+
     const scheduleId = isEditing ? editingService?.id : undefined
     const availability = checkScheduleAvailability({
       schedules,
@@ -520,6 +542,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   }
 
   const handleEditService = (service: AgendaScheduledServiceRow) => {
+    if (!canManageAgenda) return
     if (service.status === "cancelled") return
 
     clearScheduleDialogResetTimeout()
@@ -533,6 +556,8 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   }
 
   const openScheduleFormAtSlot = (date: Date, time: string) => {
+    if (!canManageAgenda) return
+
     clearScheduleDialogResetTimeout()
     setSelectedDate(date)
     setEditingService(null)
@@ -547,6 +572,8 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   }
 
   const openCompletionDialog = (schedule: AgendaScheduledServiceRow) => {
+    if (!canManageAgenda) return
+
     const now = currentCompletionDateTime()
     const defaultDate = schedule.date || now.date
     setCompletionTarget(schedule)
@@ -632,7 +659,9 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
         schedules={schedules}
         teams={teams}
         isStartingAttendance={startMutation.isPending}
+        canManage={canManageAgenda}
         onStartAttendance={async (schedule) => {
+          if (!canManageAgenda) return
           await startMutation.mutateAsync(schedule)
         }}
       />
@@ -1104,6 +1133,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                               </div>
                             ) : null}
 
+                            {canManageAgenda ? (
                             <div className="mt-2 flex gap-1" onClick={(event) => event.stopPropagation()}>
                               {!["in_progress", "cancelled"].includes(service.status) && (
                                 <Button
@@ -1161,6 +1191,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                                 </Button>
                               )}
                             </div>
+                            ) : null}
                           </CardContent>
                         </Card>
                       ))}
@@ -1283,6 +1314,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                               </div>
                             ) : null}
 
+                            {canManageAgenda ? (
                             <div className="mt-2 flex gap-1" onClick={(event) => event.stopPropagation()}>
                               {!["in_progress", "cancelled"].includes(service.status) && (
                                 <Button
@@ -1340,6 +1372,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                                 </Button>
                               )}
                             </div>
+                            ) : null}
                           </CardContent>
                         </Card>
                       ))}

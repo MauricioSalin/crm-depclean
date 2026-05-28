@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import type { Worksheet } from "exceljs"
 import { useQuery } from "@tanstack/react-query"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -26,6 +26,8 @@ import {
   X,
 } from "lucide-react"
 import { getReportsAnalytics, type ReportsAnalyticsRecord } from "@/lib/api/analytics"
+import { hasAnyPermission } from "@/lib/auth/permissions"
+import { getStoredUser } from "@/lib/auth/session"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 import { cn } from "@/lib/utils"
 import {
@@ -816,15 +818,46 @@ export function RelatoriosContent() {
   const [selectedReportQuery, setSelectedReportQuery] = useUrlQueryState("tab", "financial")
   const [selectedServiceIdsQuery, setSelectedServiceIdsQuery] = useUrlQueryState("services", "all")
   const [selectedTeamIdsQuery, setSelectedTeamIdsQuery] = useUrlQueryState("teams", "all")
-  const selectedReport: ReportId = REPORT_IDS.includes(selectedReportQuery as ReportId)
+  const [currentUser, setCurrentUser] = useState<ReturnType<typeof getStoredUser>>(null)
+  const [hasSyncedUser, setHasSyncedUser] = useState(false)
+  const canViewFinancial = hasAnyPermission(currentUser, ["financial_view", "financial_manage"])
+  const canViewReports = hasAnyPermission(currentUser, ["reports_view", "reports_export"])
+  const canExportReports = hasAnyPermission(currentUser, ["reports_export"])
+  const visibleReportTypes = useMemo(
+    () => REPORT_TYPES.filter((type) => type.id === "financial" ? canViewFinancial : canViewReports),
+    [canViewFinancial, canViewReports],
+  )
+  const visibleReportIds = visibleReportTypes.map((type) => type.id)
+  const selectedReport: ReportId = visibleReportIds.includes(selectedReportQuery as ReportId)
     ? selectedReportQuery as ReportId
-    : "financial"
+    : visibleReportIds[0] ?? "services"
   const setSelectedReport = (value: string) => setSelectedReportQuery(value)
   const selectedServiceIds = parseUrlIds(selectedServiceIdsQuery)
   const selectedTeamIds = parseUrlIds(selectedTeamIdsQuery)
   const [financialViewMode, setFinancialViewMode] = useState<"table" | "cards">("table")
   const [dateRange, setDateRange] = useState<DateRange | undefined>(() => getCurrentMonthRange())
   const [isExporting, setIsExporting] = useState(false)
+
+  useEffect(() => {
+    const sync = () => {
+      setCurrentUser(getStoredUser())
+      setHasSyncedUser(true)
+    }
+    sync()
+    window.addEventListener("storage", sync)
+    window.addEventListener("depclean:session", sync)
+    return () => {
+      window.removeEventListener("storage", sync)
+      window.removeEventListener("depclean:session", sync)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (visibleReportIds.length > 0 && !visibleReportIds.includes(selectedReportQuery as ReportId)) {
+      setSelectedReportQuery(visibleReportIds[0])
+    }
+  }, [selectedReportQuery, setSelectedReportQuery, visibleReportIds])
+
   const reportsQuery = useQuery({
     queryKey: ["analytics", "reports", selectedReport, selectedServiceIdsQuery, selectedTeamIdsQuery, formatDateParam(dateRange?.from), formatDateParam(dateRange?.to)],
     queryFn: () =>
@@ -834,6 +867,7 @@ export function RelatoriosContent() {
         serviceIds: selectedReport === "services" ? formatUrlIds(selectedServiceIds) : undefined,
         teamIds: selectedReport === "teams" ? formatUrlIds(selectedTeamIds) : undefined,
       }),
+    enabled: selectedReport !== "financial" && canViewReports,
   })
   const reports = reportsQuery.data?.data ?? emptyReports
   const {
@@ -981,12 +1015,26 @@ export function RelatoriosContent() {
     }
   }
 
+  if (!hasSyncedUser) {
+    return null
+  }
+
+  if (visibleReportTypes.length === 0) {
+    return (
+      <Card>
+        <CardContent className="py-8 text-sm text-muted-foreground">
+          Sua conta não tem permissão para acessar relatórios.
+        </CardContent>
+      </Card>
+    )
+  }
+
 
   return (
     <div className="space-y-6">
       {/* Report Type Selection - tabs on mobile, cards on sm+ */}
       <div className="flex gap-2 overflow-x-auto pb-2 sm:hidden">
-        {REPORT_TYPES.map((type) => (
+        {visibleReportTypes.map((type) => (
           <button
             key={type.id}
             className={cn(
@@ -1002,7 +1050,7 @@ export function RelatoriosContent() {
       </div>
 
       <div className="hidden gap-4 sm:grid sm:grid-cols-2 lg:grid-cols-3">
-        {REPORT_TYPES.map((type) => (
+        {visibleReportTypes.map((type) => (
           <Card
             key={type.id}
             className={cn("min-h-[132px] cursor-pointer gap-2 py-4 transition-all hover:shadow-md", selectedReport === type.id && "ring-2 ring-primary bg-primary/5")}
@@ -1113,9 +1161,11 @@ export function RelatoriosContent() {
               </div>
             )}
 
+            {selectedReport !== "financial" && canExportReports ? (
             <Button className="h-10 w-full shrink-0 bg-primary px-4 text-primary-foreground hover:bg-primary/90 sm:mt-[1.625rem] sm:w-[170px]" onClick={handleGenerateReport} disabled={reportsQuery.isFetching || isExporting}>
               {isExporting ? "Gerando Excel..." : "Gerar relatório"}
             </Button>
+            ) : null}
           </div>
         </CardContent>
       </Card>

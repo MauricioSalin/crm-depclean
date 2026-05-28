@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Card } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
 import { Input } from "@/components/ui/input"
@@ -18,8 +19,8 @@ import {
 import { Separator } from "@/components/ui/separator"
 import { Plus, Trash2, Building2, MapPin, Save, Loader2, Users, CalendarClock } from "lucide-react"
 import { useRouter } from "next/navigation"
-import { formatCNPJ, formatCPF, formatPhone, isValidCNPJ, isValidCPF } from "@/lib/masks"
-import { toast } from "@/components/ui/use-toast"
+import { formatCNPJ, formatCPF, formatPhone, isValidCNPJ, isValidCPF, onlyDigits } from "@/lib/masks"
+import { toast } from "sonner"
 import { createClient, deleteClient, getClientById, updateClient, type ClientPayload } from "@/lib/api/clients"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { listClientTypes } from "@/lib/api/settings"
@@ -45,6 +46,50 @@ type ClientUnitForm = {
     state?: string
     zipCode?: string
   }
+}
+
+type ClientFormIssue = {
+  message: string
+  label?: string
+}
+
+const BRAZILIAN_STATES = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"]
+
+function hasText(value: string | undefined) {
+  return Boolean(value?.trim())
+}
+
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
+}
+
+function isValidPhone(value: string) {
+  const digits = onlyDigits(value)
+  return digits.length === 10 || digits.length === 11
+}
+
+function formatIssueSummary(issues: ClientFormIssue[]) {
+  const [first, ...remaining] = issues
+  if (!first) return null
+
+  const labels = remaining
+    .map((issue) => issue.label ?? issue.message.replace(/\.$/, ""))
+    .slice(0, 4)
+
+  return {
+    title: first.message,
+    description: labels.length
+      ? `Também revise: ${labels.join(", ")}${remaining.length > labels.length ? ` e mais ${remaining.length - labels.length} campo(s)` : ""}.`
+      : undefined,
+  }
+}
+
+function ContractSignerBadge() {
+  return (
+    <Badge className="bg-primary/10 text-primary hover:bg-primary/10">
+      Assina o contrato
+    </Badge>
+  )
 }
 
 export function ClientForm({ clientId, isEditing = false, returnTo }: ClientFormProps) {
@@ -90,6 +135,10 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
     preferredServiceShift: "",
   })
   const selectedClientType = clientTypes.find((type) => type.id === formData.clientTypeId)
+  const contractSignerRole = selectedClientType?.contractSignerRole ?? "owner"
+  const ownerSignsContract = contractSignerRole === "owner"
+  const assessorSignsContract = contractSignerRole === "assessor"
+  const syndicSignsContract = contractSignerRole === "syndic"
 
   const [units, setUnits] = useState<ClientUnitForm[]>(
     client?.units || [
@@ -305,6 +354,215 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
     return numbers.replace(/^(\d{5})(\d)/, "$1-$2").slice(0, 9)
   }
 
+  const validateUnit = (unit: ClientUnitForm | undefined, index: number): ClientFormIssue[] => {
+    const issues: ClientFormIssue[] = []
+    const unitLabel = index === 0 ? "matriz" : `filial ${index}`
+    const labelSuffix = index === 0 ? "da matriz" : `da filial ${index}`
+
+    if (!unit) {
+      issues.push({ message: `Informe os dados ${labelSuffix}.`, label: `Dados ${labelSuffix}` })
+      return issues
+    }
+
+    if (index > 0 && !hasText(unit.name)) {
+      issues.push({ message: `Informe o nome ${labelSuffix}.`, label: `Nome ${labelSuffix}` })
+    }
+
+    if (Number(unit.unitCount) < 1) {
+      issues.push({ message: `Informe a quantidade de unidades ${labelSuffix}.`, label: `Unidades ${labelSuffix}` })
+    }
+
+    const zipCode = unit.address?.zipCode ?? ""
+    if (!hasText(zipCode)) {
+      issues.push({ message: `Informe o CEP ${labelSuffix}.`, label: `CEP ${labelSuffix}` })
+    } else if (onlyDigits(zipCode).length !== 8) {
+      issues.push({ message: `Informe um CEP válido para a ${unitLabel}.`, label: `CEP ${labelSuffix}` })
+    }
+
+    if (!hasText(unit.address?.street)) {
+      issues.push({ message: `Informe o logradouro ${labelSuffix}.`, label: `Logradouro ${labelSuffix}` })
+    }
+
+    if (!hasText(unit.address?.number)) {
+      issues.push({ message: `Informe o número ${labelSuffix}.`, label: `Número ${labelSuffix}` })
+    }
+
+    if (!hasText(unit.address?.neighborhood)) {
+      issues.push({ message: `Informe o bairro ${labelSuffix}.`, label: `Bairro ${labelSuffix}` })
+    }
+
+    if (!hasText(unit.address?.city)) {
+      issues.push({ message: `Informe a cidade ${labelSuffix}.`, label: `Cidade ${labelSuffix}` })
+    }
+
+    const state = unit.address?.state ?? ""
+    if (!hasText(state)) {
+      issues.push({ message: `Selecione o estado ${labelSuffix}.`, label: `Estado ${labelSuffix}` })
+    } else if (!BRAZILIAN_STATES.includes(state)) {
+      issues.push({ message: `Selecione um estado válido para a ${unitLabel}.`, label: `Estado ${labelSuffix}` })
+    }
+
+    return issues
+  }
+
+  const validateClientForm = (): ClientFormIssue[] => {
+    const issues: ClientFormIssue[] = []
+
+    if (!hasText(formData.cnpj)) {
+      issues.push({ message: "Informe o CNPJ.", label: "CNPJ" })
+    } else if (!isValidCNPJ(formData.cnpj)) {
+      issues.push({ message: "Informe um CNPJ válido.", label: "CNPJ" })
+    }
+
+    if (!hasText(formData.companyName)) {
+      issues.push({ message: "Informe a razão social.", label: "Razão social" })
+    }
+
+    if (!hasText(formData.clientTypeId)) {
+      issues.push({ message: "Selecione o tipo de cliente.", label: "Tipo de cliente" })
+    } else if (clientTypes.length > 0 && !selectedClientType) {
+      issues.push({ message: "Selecione um tipo de cliente válido.", label: "Tipo de cliente" })
+    }
+
+    if (!hasText(formData.responsibleName)) {
+      issues.push({ message: "Informe o nome do responsável.", label: "Nome do responsável" })
+    }
+
+    if (!hasText(formData.phone)) {
+      issues.push({ message: "Informe o telefone do cliente.", label: "Telefone" })
+    } else if (!isValidPhone(formData.phone)) {
+      issues.push({ message: "Informe um telefone válido para o cliente.", label: "Telefone" })
+    }
+
+    if (!hasText(formData.responsibleCpf)) {
+      issues.push({ message: "Informe o CPF do responsável.", label: "CPF do responsável" })
+    } else if (!isValidCPF(formData.responsibleCpf)) {
+      issues.push({ message: "Informe um CPF válido para o responsável.", label: "CPF do responsável" })
+    }
+
+    if (!hasText(formData.email)) {
+      issues.push({ message: "Informe o e-mail do cliente.", label: "E-mail" })
+    } else if (!isValidEmail(formData.email)) {
+      issues.push({ message: "Informe um e-mail válido para o cliente.", label: "E-mail" })
+    }
+
+    issues.push(...validateUnit(units[0], 0))
+
+    const hasAssessor = Boolean(
+      formData.assessorName.trim() ||
+      formData.assessorCpf.trim() ||
+      formData.assessorEmail.trim() ||
+      formData.assessorPhone.trim() ||
+      formData.assessorReceivesNotifications,
+    )
+
+    if (assessorSignsContract) {
+      if (!hasText(formData.assessorName)) {
+        issues.push({ message: "Informe o nome do assessor que assina o contrato.", label: "Nome do assessor" })
+      }
+      if (!hasText(formData.assessorCpf)) {
+        issues.push({ message: "Informe o CPF do assessor que assina o contrato.", label: "CPF do assessor" })
+      }
+      if (!hasText(formData.assessorEmail)) {
+        issues.push({ message: "Informe o e-mail do assessor que assina o contrato.", label: "E-mail do assessor" })
+      }
+      if (!hasText(formData.assessorPhone)) {
+        issues.push({ message: "Informe o telefone do assessor que assina o contrato.", label: "Telefone do assessor" })
+      }
+    } else if (formData.assessorReceivesNotifications) {
+      if (!hasText(formData.assessorName)) {
+        issues.push({ message: "Informe o nome do assessor para receber notificações.", label: "Nome do assessor" })
+      }
+      if (!hasText(formData.assessorPhone)) {
+        issues.push({ message: "Informe o telefone do assessor para receber notificações.", label: "Telefone do assessor" })
+      }
+    }
+
+    if (hasText(formData.assessorEmail) && !isValidEmail(formData.assessorEmail)) {
+      issues.push({ message: "Informe um e-mail válido para o assessor.", label: "E-mail do assessor" })
+    }
+
+    if (hasText(formData.assessorPhone) && !isValidPhone(formData.assessorPhone)) {
+      issues.push({ message: "Informe um telefone válido para o assessor.", label: "Telefone do assessor" })
+    }
+
+    if (hasAssessor && !assessorSignsContract && !hasText(formData.assessorCpf)) {
+      issues.push({ message: "Informe o CPF do assessor.", label: "CPF do assessor" })
+    } else if (hasText(formData.assessorCpf) && !isValidCPF(formData.assessorCpf)) {
+      issues.push({ message: "Informe um CPF válido para o assessor.", label: "CPF do assessor" })
+    }
+
+    const hasSyndic = Boolean(
+      formData.syndicName.trim() ||
+      formData.syndicCpf.trim() ||
+      formData.syndicEmail.trim() ||
+      formData.syndicPhone.trim() ||
+      formData.syndicReceivesNotifications,
+    )
+
+    if (syndicSignsContract) {
+      if (!hasText(formData.syndicName)) {
+        issues.push({ message: "Informe o nome do síndico que assina o contrato.", label: "Nome do síndico" })
+      }
+      if (!hasText(formData.syndicCpf)) {
+        issues.push({ message: "Informe o CPF do síndico que assina o contrato.", label: "CPF do síndico" })
+      }
+      if (!hasText(formData.syndicEmail)) {
+        issues.push({ message: "Informe o e-mail do síndico que assina o contrato.", label: "E-mail do síndico" })
+      }
+      if (!hasText(formData.syndicPhone)) {
+        issues.push({ message: "Informe o telefone do síndico que assina o contrato.", label: "Telefone do síndico" })
+      }
+    } else if (formData.syndicReceivesNotifications) {
+      if (!hasText(formData.syndicName)) {
+        issues.push({ message: "Informe o nome do síndico para receber notificações.", label: "Nome do síndico" })
+      }
+      if (!hasText(formData.syndicPhone)) {
+        issues.push({ message: "Informe o telefone do síndico para receber notificações.", label: "Telefone do síndico" })
+      }
+    }
+
+    if (hasText(formData.syndicEmail) && !isValidEmail(formData.syndicEmail)) {
+      issues.push({ message: "Informe um e-mail válido para o síndico.", label: "E-mail do síndico" })
+    }
+
+    if (hasText(formData.syndicPhone) && !isValidPhone(formData.syndicPhone)) {
+      issues.push({ message: "Informe um telefone válido para o síndico.", label: "Telefone do síndico" })
+    }
+
+    if (hasSyndic && !syndicSignsContract && !hasText(formData.syndicCpf)) {
+      issues.push({ message: "Informe o CPF do síndico.", label: "CPF do síndico" })
+    } else if (hasText(formData.syndicCpf) && !isValidCPF(formData.syndicCpf)) {
+      issues.push({ message: "Informe um CPF válido para o síndico.", label: "CPF do síndico" })
+    }
+
+    if (!formData.responsibleReceivesNotifications && !formData.assessorReceivesNotifications && !formData.syndicReceivesNotifications) {
+      issues.push({ message: "Selecione ao menos um contato para receber notificações.", label: "Contato para notificações" })
+    }
+
+    if (formData.preferredServiceWeekday !== "") {
+      const weekday = Number(formData.preferredServiceWeekday)
+      if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6) {
+        issues.push({ message: "Selecione um melhor dia de atendimento válido.", label: "Melhor dia para atendimento" })
+      }
+    }
+
+    if (formData.preferredServiceShift && !["morning", "afternoon"].includes(formData.preferredServiceShift)) {
+      issues.push({ message: "Selecione um melhor turno válido.", label: "Melhor turno" })
+    }
+
+    units.slice(1).forEach((unit, i) => {
+      issues.push(...validateUnit(unit, i + 1))
+    })
+
+    const primaryCount = units.filter((unit) => unit.isPrimary).length
+    if (primaryCount !== 1) {
+      issues.push({ message: "Defina exatamente uma matriz para o cliente.", label: "Matriz" })
+    }
+
+    return issues
+  }
+
   const saveMutation = useMutation({
     mutationFn: async () => {
       const payload: ClientPayload = {
@@ -358,17 +616,13 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
       if (clientId) {
         await queryClient.invalidateQueries({ queryKey: ["client", clientId] })
       }
-      toast({
-        title: isEditing ? "Cliente atualizado" : "Cliente criado",
+      toast.success(isEditing ? "Cliente atualizado." : "Cliente criado.", {
         description: "Os dados foram salvos com sucesso.",
       })
       router.push(formBackHref)
     },
     onError: (error: any) => {
-      toast({
-        title: getApiErrorMessage(error, "Não foi possível salvar o cliente."),
-        variant: "destructive",
-      })
+      toast.error(getApiErrorMessage(error, "Não foi possível salvar o cliente."))
     },
   })
 
@@ -382,97 +636,54 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
         queryClient.invalidateQueries({ queryKey: ["certificates"] }),
         queryClient.invalidateQueries({ queryKey: ["analytics"] }),
       ])
-      toast({
-        title: "Cliente excluído",
+      toast.success("Cliente excluído.", {
         description: "Agendamentos, contratos, anexos, informativos e certificados vinculados também foram removidos.",
       })
       router.push("/clientes")
     },
     onError: (error: any) => {
-      toast({
-        title: getApiErrorMessage(error, "Não foi possível remover o cliente."),
-        variant: "destructive",
-      })
+      toast.error(getApiErrorMessage(error, "Não foi possível remover o cliente."))
     },
   })
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (saveMutation.isPending || cnpjLoading || cepLoading !== null) return
-    if (!isValidCNPJ(formData.cnpj)) {
-      setCnpjError("Informe um CNPJ válido")
-      toast({
-        title: "Informe um CNPJ válido.",
-        variant: "destructive",
-      })
+    if (saveMutation.isPending) return
+
+    if (cnpjLoading || cepLoading !== null) {
+      toast.warning("Aguarde a busca automática terminar antes de salvar.")
       return
     }
-    if (!isValidCPF(formData.responsibleCpf)) {
-      toast({
-        title: "Informe um CPF válido para o responsável.",
-        variant: "destructive",
-      })
+
+    const issues = validateClientForm()
+    if (issues.length > 0) {
+      if (!hasText(formData.cnpj)) {
+        setCnpjError("Informe o CNPJ")
+      } else if (!isValidCNPJ(formData.cnpj)) {
+        setCnpjError("Informe um CNPJ válido")
+      }
+
+      const summary = formatIssueSummary(issues)
+      if (summary) {
+        toast.error(summary.title, {
+          description: summary.description,
+        })
+      }
       return
     }
-    const hasAssessor = Boolean(
-      formData.assessorName.trim() ||
-      formData.assessorCpf.trim() ||
-      formData.assessorEmail.trim() ||
-      formData.assessorPhone.trim() ||
-      formData.assessorReceivesNotifications,
-    )
-    if (formData.assessorReceivesNotifications && (!formData.assessorName.trim() || !formData.assessorPhone.trim())) {
-      toast({
-        title: "Informe nome e telefone do assessor para receber notificações.",
-        variant: "destructive",
-      })
-      return
-    }
-    if (hasAssessor && !isValidCPF(formData.assessorCpf)) {
-      toast({
-        title: "Informe um CPF válido para o assessor.",
-        variant: "destructive",
-      })
-      return
-    }
-    const hasSyndic = Boolean(
-      formData.syndicName.trim() ||
-      formData.syndicCpf.trim() ||
-      formData.syndicEmail.trim() ||
-      formData.syndicPhone.trim() ||
-      formData.syndicReceivesNotifications,
-    )
-    if (formData.syndicReceivesNotifications && (!formData.syndicName.trim() || !formData.syndicPhone.trim())) {
-      toast({
-        title: "Informe nome e telefone do síndico para receber notificações.",
-        variant: "destructive",
-      })
-      return
-    }
-    if (hasSyndic && !isValidCPF(formData.syndicCpf)) {
-      toast({
-        title: "Informe um CPF válido para o síndico.",
-        variant: "destructive",
-      })
-      return
-    }
-    if (!formData.responsibleReceivesNotifications && !formData.assessorReceivesNotifications && !formData.syndicReceivesNotifications) {
-      toast({
-        title: "Selecione ao menos um contato para receber notificações.",
-        variant: "destructive",
-      })
-      return
-    }
+
+    setCnpjError("")
     saveMutation.mutate()
   }
 
   return (
-    <form autoComplete="off" onSubmit={handleSubmit} className="space-y-6">
+    <form autoComplete="off" noValidate onSubmit={handleSubmit} className="space-y-6">
       {/* Client Data */}
       <Card className="p-6">
-        <div className="flex items-center gap-2 mb-6">
-          <Building2 className="w-5 h-5 text-primary" />
-          <h3 className="font-semibold text-lg">Dados do Cliente</h3>
+        <div className="mb-6 flex flex-wrap items-center gap-2">
+          <Building2 className="h-5 w-5 text-primary" />
+          <h3 className="text-lg font-semibold">Dados do Cliente</h3>
+          {ownerSignsContract ? <ContractSignerBadge /> : null}
         </div>
 
         <div className="space-y-5">
@@ -686,21 +897,23 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
         <div className="flex items-center gap-2 mb-6">
           <Users className="w-5 h-5 text-primary" />
           <h3 className="font-semibold text-lg">Assessor</h3>
+          {assessorSignsContract ? <ContractSignerBadge /> : null}
         </div>
 
         <div className="space-y-5">
           <div className="flex flex-col md:flex-row gap-3">
             <div className="space-y-2 md:w-[320px]">
-              <Label htmlFor="assessorName">Nome</Label>
+              <Label htmlFor="assessorName">Nome{assessorSignsContract ? " *" : ""}</Label>
               <Input
                 id="assessorName"
                 value={formData.assessorName}
                 onChange={(e) => handleInputChange("assessorName", e.target.value)}
                 placeholder="Nome do assessor"
+                required={assessorSignsContract}
               />
             </div>
             <div className="space-y-2 md:w-[320px]">
-              <Label htmlFor="assessorEmail">E-mail</Label>
+              <Label htmlFor="assessorEmail">E-mail{assessorSignsContract ? " *" : ""}</Label>
               <Input
                 id="assessorEmail"
                 type="email"
@@ -708,27 +921,30 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
                 value={formData.assessorEmail}
                 onChange={(e) => handleInputChange("assessorEmail", e.target.value)}
                 placeholder="email@empresa.com.br"
+                required={assessorSignsContract}
               />
             </div>
           </div>
 
           <div className="flex flex-col md:flex-row gap-3">
             <div className="space-y-2 md:w-[320px]">
-              <Label htmlFor="assessorPhone">Telefone</Label>
+              <Label htmlFor="assessorPhone">Telefone{assessorSignsContract ? " *" : ""}</Label>
               <Input
                 id="assessorPhone"
                 value={formData.assessorPhone}
                 onChange={(e) => handleInputChange("assessorPhone", formatPhone(e.target.value))}
                 placeholder="(00) 00000-0000"
+                required={assessorSignsContract}
               />
             </div>
             <div className="space-y-2 md:w-[320px]">
-              <Label htmlFor="assessorCpf">CPF</Label>
+              <Label htmlFor="assessorCpf">CPF{assessorSignsContract ? " *" : ""}</Label>
               <Input
                 id="assessorCpf"
                 value={formData.assessorCpf}
                 onChange={(e) => handleInputChange("assessorCpf", formatCPF(e.target.value))}
                 placeholder="000.000.000-00"
+                required={assessorSignsContract}
               />
             </div>
           </div>
@@ -754,21 +970,23 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
         <div className="flex items-center gap-2 mb-6">
           <Users className="w-5 h-5 text-primary" />
           <h3 className="font-semibold text-lg">Síndico</h3>
+          {syndicSignsContract ? <ContractSignerBadge /> : null}
         </div>
 
         <div className="space-y-5">
           <div className="flex flex-col md:flex-row gap-3">
             <div className="space-y-2 md:w-[320px]">
-              <Label htmlFor="syndicName">Nome</Label>
+              <Label htmlFor="syndicName">Nome{syndicSignsContract ? " *" : ""}</Label>
               <Input
                 id="syndicName"
                 value={formData.syndicName}
                 onChange={(e) => handleInputChange("syndicName", e.target.value)}
                 placeholder="Nome do síndico"
+                required={syndicSignsContract}
               />
             </div>
             <div className="space-y-2 md:w-[320px]">
-              <Label htmlFor="syndicEmail">E-mail</Label>
+              <Label htmlFor="syndicEmail">E-mail{syndicSignsContract ? " *" : ""}</Label>
               <Input
                 id="syndicEmail"
                 type="email"
@@ -776,27 +994,30 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
                 value={formData.syndicEmail}
                 onChange={(e) => handleInputChange("syndicEmail", e.target.value)}
                 placeholder="email@empresa.com.br"
+                required={syndicSignsContract}
               />
             </div>
           </div>
 
           <div className="flex flex-col md:flex-row gap-3">
             <div className="space-y-2 md:w-[320px]">
-              <Label htmlFor="syndicPhone">Telefone</Label>
+              <Label htmlFor="syndicPhone">Telefone{syndicSignsContract ? " *" : ""}</Label>
               <Input
                 id="syndicPhone"
                 value={formData.syndicPhone}
                 onChange={(e) => handleInputChange("syndicPhone", formatPhone(e.target.value))}
                 placeholder="(00) 00000-0000"
+                required={syndicSignsContract}
               />
             </div>
             <div className="space-y-2 md:w-[320px]">
-              <Label htmlFor="syndicCpf">CPF</Label>
+              <Label htmlFor="syndicCpf">CPF{syndicSignsContract ? " *" : ""}</Label>
               <Input
                 id="syndicCpf"
                 value={formData.syndicCpf}
                 onChange={(e) => handleInputChange("syndicCpf", formatCPF(e.target.value))}
                 placeholder="000.000.000-00"
+                required={syndicSignsContract}
               />
             </div>
           </div>
@@ -907,7 +1128,7 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
                 <SelectValue placeholder="UF" />
               </SelectTrigger>
               <SelectContent>
-                {["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"].map((uf) => (
+                {BRAZILIAN_STATES.map((uf) => (
                   <SelectItem key={uf} value={uf}>{uf}</SelectItem>
                 ))}
               </SelectContent>
@@ -1058,7 +1279,7 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
                           <SelectValue placeholder="UF" />
                         </SelectTrigger>
                         <SelectContent>
-                          {["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"].map((uf) => (
+                          {BRAZILIAN_STATES.map((uf) => (
                             <SelectItem key={uf} value={uf}>{uf}</SelectItem>
                           ))}
                         </SelectContent>

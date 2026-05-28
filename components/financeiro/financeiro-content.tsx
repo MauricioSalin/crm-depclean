@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -41,6 +41,8 @@ import { updateScheduleBilling } from "@/lib/api/schedules"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { formatCivilDate } from "@/lib/date-utils"
 import { buildPathWithSearchParams, withReturnTo } from "@/lib/navigation"
+import { hasAnyPermission } from "@/lib/auth/permissions"
+import { getStoredUser } from "@/lib/auth/session"
 import Link from "next/link"
 import { usePathname, useSearchParams } from "next/navigation"
 import { toast } from "sonner"
@@ -111,7 +113,20 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
   const [tabFilter, setTabFilter] = useState("all")
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
+  const [currentUser, setCurrentUser] = useState<ReturnType<typeof getStoredUser>>(null)
   const queryClient = useQueryClient()
+  const canManageFinancial = hasAnyPermission(currentUser, ["financial_manage"])
+
+  useEffect(() => {
+    const sync = () => setCurrentUser(getStoredUser())
+    sync()
+    window.addEventListener("storage", sync)
+    window.addEventListener("depclean:session", sync)
+    return () => {
+      window.removeEventListener("storage", sync)
+      window.removeEventListener("depclean:session", sync)
+    }
+  }, [])
 
   const FINANCE_COLORS = ["#22C55E", "#F59E0B", "#EF4444"]
 
@@ -161,6 +176,7 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
   })
 
   const setInstallmentStatus = (installment: FinancialInstallmentRecord, status: InstallmentStatusAction) => {
+    if (!canManageFinancial) return
     if (installmentStatusMutation.isPending) return
     installmentStatusMutation.mutate({ installment, status })
   }
@@ -346,11 +362,6 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
                 />
               </BarChart>
             </ResponsiveContainer>
-            {!hasMonthlyRevenueData ? (
-              <div className="pointer-events-none absolute inset-x-0 bottom-1 text-center text-xs text-muted-foreground">
-                Sem faturamento no período.
-              </div>
-            ) : null}
           </div>
           </div>
         </Card>
@@ -503,6 +514,7 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
                           {getStatusBadge(installment.status)}
                         </TableCell>
                         <TableCell className="text-right">
+                          {canManageFinancial ? (
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button variant="ghost" size="icon" disabled={installmentStatusMutation.isPending}>
@@ -521,6 +533,7 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
+                          ) : null}
                         </TableCell>
                       </TableRow>
                     ))
@@ -560,6 +573,7 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
                       </div>
                     </div>
                     <div className="mt-4 pt-4 border-t">
+                      {canManageFinancial ? (
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="outline" size="sm" className="w-full" disabled={installmentStatusMutation.isPending}>
@@ -579,6 +593,7 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
+                      ) : null}
                     </div>
                   </CardContent>
                 </Card>

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { flushSync } from "react-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { Award, Calendar, Edit, ExternalLink, Eye, FileText, Send, UserRound } from "lucide-react"
@@ -117,7 +118,10 @@ export function CertificateEditorContent({ scheduleId }: { scheduleId: string })
         throw new Error("Selecione um template de certificado.")
       }
 
-      const file = await editorRef.current?.saveToFile()
+      flushSync(() => setEditorTab("preview"))
+      await new Promise((resolve) => window.requestAnimationFrame(resolve))
+
+      const file = await editorRef.current?.generatePreviewPdf({ download: false })
       if (!file) {
         throw new Error("O documento ainda não está pronto para envio.")
       }
