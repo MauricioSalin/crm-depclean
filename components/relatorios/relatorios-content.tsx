@@ -128,6 +128,38 @@ const emptyReports: ReportsAnalyticsRecord = {
   employees: [],
 }
 
+function normalizeReports(data?: Partial<ReportsAnalyticsRecord> | null): ReportsAnalyticsRecord {
+  const dashboardStats = {
+    ...emptyReports.dashboardStats,
+    ...(data?.dashboardStats ?? {}),
+    teamProductivity: Array.isArray(data?.dashboardStats?.teamProductivity)
+      ? data.dashboardStats.teamProductivity
+      : emptyReports.dashboardStats.teamProductivity,
+    employeeProductivity: Array.isArray(data?.dashboardStats?.employeeProductivity)
+      ? data.dashboardStats.employeeProductivity
+      : emptyReports.dashboardStats.employeeProductivity,
+  }
+
+  return {
+    ...emptyReports,
+    ...(data ?? {}),
+    dashboardStats,
+    financialSummary: {
+      ...emptyReports.financialSummary,
+      ...(data?.financialSummary ?? {}),
+    },
+    monthlyRevenueData: Array.isArray(data?.monthlyRevenueData) ? data.monthlyRevenueData : [],
+    servicesByPeriodData: Array.isArray(data?.servicesByPeriodData) ? data.servicesByPeriodData : [],
+    servicesByTeamData: Array.isArray(data?.servicesByTeamData) ? data.servicesByTeamData : [],
+    servicesSummaryData: Array.isArray(data?.servicesSummaryData) ? data.servicesSummaryData : [],
+    services: Array.isArray(data?.services) ? data.services : [],
+    clients: Array.isArray(data?.clients) ? data.clients : [],
+    contracts: Array.isArray(data?.contracts) ? data.contracts : [],
+    teams: Array.isArray(data?.teams) ? data.teams : [],
+    employees: Array.isArray(data?.employees) ? data.employees : [],
+  }
+}
+
 const EMPTY_SERVICES_BY_PERIOD_DATA = [
   { period: "Semana 1", completed: 0, scheduled: 0, cancelled: 0, emergency: 0 },
   { period: "Semana 2", completed: 0, scheduled: 0, cancelled: 0, emergency: 0 },
@@ -907,7 +939,7 @@ export function RelatoriosContent() {
       }),
     enabled: selectedReport !== "financial" && canViewReports,
   })
-  const reports = reportsQuery.data?.data ?? emptyReports
+  const reports = normalizeReports(reportsQuery.data?.data)
   const {
     dashboardStats,
     servicesByPeriodData,

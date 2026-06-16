@@ -135,8 +135,10 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
     preferredServiceShift: "",
   })
   const selectedClientType = clientTypes.find((type) => type.id === formData.clientTypeId)
-  const assessorSignsContract = false
-  const syndicSignsContract = true
+  const contractSignerRole = selectedClientType?.contractSignerRole ?? "owner"
+  const ownerSignsContract = contractSignerRole === "owner"
+  const assessorSignsContract = contractSignerRole === "assessor"
+  const syndicSignsContract = contractSignerRole === "syndic"
 
   const [units, setUnits] = useState<ClientUnitForm[]>(
     client?.units || [
@@ -681,6 +683,7 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
         <div className="mb-6 flex flex-wrap items-center gap-2">
           <Building2 className="h-5 w-5 text-primary" />
           <h3 className="text-lg font-semibold">Dados do Cliente</h3>
+          {ownerSignsContract ? <ContractSignerBadge /> : null}
         </div>
 
         <div className="space-y-5">
@@ -894,6 +897,7 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
         <div className="flex items-center gap-2 mb-6">
           <Users className="w-5 h-5 text-primary" />
           <h3 className="font-semibold text-lg">Assessor</h3>
+          {assessorSignsContract ? <ContractSignerBadge /> : null}
         </div>
 
         <div className="space-y-5">
@@ -966,7 +970,7 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
         <div className="flex items-center gap-2 mb-6">
           <Users className="w-5 h-5 text-primary" />
           <h3 className="font-semibold text-lg">Síndico</h3>
-          <ContractSignerBadge />
+          {syndicSignsContract ? <ContractSignerBadge /> : null}
         </div>
 
         <div className="space-y-5">
