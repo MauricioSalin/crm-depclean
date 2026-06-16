@@ -1,5 +1,15 @@
 import { api } from "@/lib/api/client"
 
+export type ScheduleNaAttachmentRecord = {
+  type?: string
+  title?: string
+  fileName: string
+  mimeType?: string
+  fileSize?: number
+  documentUrl: string
+  uploadedAt?: string
+}
+
 export type ScheduleRecord = {
   id: string
   contractId: string | null
@@ -42,6 +52,7 @@ export type ScheduleRecord = {
   serviceReport?: string
   naFileName?: string
   naDocumentUrl?: string
+  naAttachments: ScheduleNaAttachmentRecord[]
   createdAt: string
   updatedAt: string
 }

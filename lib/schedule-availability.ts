@@ -1,5 +1,6 @@
 import type { ScheduleRecord } from "@/lib/api/schedules"
 import type { TeamRecord } from "@/lib/api/teams"
+import { addCivilDaysKey, minutesFromBrasiliaDate, toCivilDateKey } from "@/lib/date-utils"
 import { scheduleDurationToMinutes, type ScheduleDurationType } from "@/lib/schedule-duration"
 
 type AvailabilityFormData = {
@@ -9,6 +10,7 @@ type AvailabilityFormData = {
   time: string
   durationType: ScheduleDurationType
   duration: number
+  isEmergency?: boolean
 }
 
 type AvailabilityResult = {
@@ -24,11 +26,12 @@ type AvailabilityResult = {
   }
 }
 
-const DAY_START_MINUTES = 0
 const DAY_END_MINUTES = 24 * 60
+const WORKDAY_START_MINUTES = 8 * 60
+const WORKDAY_END_MINUTES = 17 * 60
 const LUNCH_START_MINUTES = 12 * 60
 const LUNCH_END_MINUTES = 13 * 60
-const MAX_SINGLE_SIDE_LUNCH_DURATION = 5 * 60
+const MAX_SINGLE_SIDE_LUNCH_DURATION = 4 * 60
 const SLOT_STEP_MINUTES = 30
 
 export function checkScheduleAvailability(params: {
@@ -55,7 +58,7 @@ export function checkScheduleAvailability(params: {
 
   const conflicts = params.schedules
     .filter((schedule) => schedule.id !== params.ignoreScheduleId)
-    .filter((schedule) => !["cancelled"].includes(schedule.status))
+    .filter((schedule) => !["cancelled", "completed"].includes(schedule.status))
     .map((schedule) => ({
       date: schedule.date,
       startMinutes: minutesFromTime(schedule.time || "08:00"),
@@ -70,7 +73,10 @@ export function checkScheduleAvailability(params: {
 
   const requestedStart = minutesFromTime(requested.time)
   const requestedEnd = requestedStart + requested.durationMinutes
+  const respectsBusinessHours = params.formData.isEmergency !== true
+  const outsideWorkday = respectsBusinessHours && (requestedStart < WORKDAY_START_MINUTES || requestedEnd > WORKDAY_END_MINUTES)
   const lunchConflict =
+    respectsBusinessHours &&
     requested.durationMinutes <= MAX_SINGLE_SIDE_LUNCH_DURATION &&
     requestedStart < LUNCH_END_MINUTES &&
     requestedEnd > LUNCH_START_MINUTES
@@ -78,7 +84,7 @@ export function checkScheduleAvailability(params: {
     schedule.date === requested.date &&
     requestedStart < schedule.endMinutes &&
     requestedEnd > schedule.startMinutes,
-  ) || lunchConflict
+  ) || lunchConflict || outsideWorkday
 
   if (!hasConflict) {
     return { available: true, requested }
@@ -89,6 +95,7 @@ export function checkScheduleAvailability(params: {
     startMinutes: requestedStart,
     durationMinutes: requested.durationMinutes,
     conflicts,
+    isEmergency: params.formData.isEmergency === true,
   })
 
   return {
@@ -120,15 +127,15 @@ export function getAvailableRescheduleTimes(params: {
   const durationConfig = getScheduleDurationConfig(schedule)
   const durationMinutes = scheduleDurationToMinutes(durationConfig.duration, durationConfig.durationType)
   const stepMinutes = params.stepMinutes ?? SLOT_STEP_MINUTES
-  const startMinutes = params.startMinutes ?? 8 * 60
-  const endMinutes = params.endMinutes ?? 18 * 60
-  const todayKey = dateKeyFromLocalDate(params.now ?? new Date())
+  const startMinutes = params.startMinutes ?? WORKDAY_START_MINUTES
+  const endMinutes = params.endMinutes ?? WORKDAY_END_MINUTES
+  const todayKey = toCivilDateKey(params.now ?? new Date())
 
   if (date < todayKey || durationMinutes <= 0 || durationMinutes > endMinutes - startMinutes) {
     return []
   }
 
-  const nowMinutes = minutesFromDate(params.now ?? new Date())
+  const nowMinutes = minutesFromBrasiliaDate(params.now ?? new Date())
   const firstSlot = date === todayKey ? Math.max(startMinutes, roundToNextStep(nowMinutes)) : startMinutes
   const slots: string[] = []
   const baseFormData = {
@@ -174,12 +181,15 @@ function findNextAvailableSlot(params: {
   startMinutes: number
   durationMinutes: number
   conflicts: Array<{ date: string; startMinutes: number; endMinutes: number }>
+  isEmergency?: boolean
 }) {
+  const dayStartMinutes = params.isEmergency ? 0 : WORKDAY_START_MINUTES
+  const dayEndMinutes = params.isEmergency ? DAY_END_MINUTES : WORKDAY_END_MINUTES
   let currentDate = params.date
-  let startMinutes = roundToNextStep(params.startMinutes)
+  let startMinutes = Math.max(dayStartMinutes, roundToNextStep(params.startMinutes))
 
   for (let dayOffset = 0; dayOffset < 60; dayOffset += 1) {
-    const lunchBlocks = params.durationMinutes <= MAX_SINGLE_SIDE_LUNCH_DURATION
+    const lunchBlocks = !params.isEmergency && params.durationMinutes <= MAX_SINGLE_SIDE_LUNCH_DURATION
       ? [{ date: currentDate, startMinutes: LUNCH_START_MINUTES, endMinutes: LUNCH_END_MINUTES }]
       : []
     const dayConflicts = [
@@ -187,7 +197,7 @@ function findNextAvailableSlot(params: {
       ...params.conflicts.filter((item) => item.date === currentDate),
     ].sort((a, b) => a.startMinutes - b.startMinutes)
 
-    while (startMinutes + params.durationMinutes <= DAY_END_MINUTES) {
+    while (startMinutes + params.durationMinutes <= dayEndMinutes) {
       const endMinutes = startMinutes + params.durationMinutes
       const conflict = dayConflicts.find((item) => startMinutes < item.endMinutes && endMinutes > item.startMinutes)
 
@@ -198,8 +208,8 @@ function findNextAvailableSlot(params: {
       startMinutes = roundToNextStep(conflict.endMinutes)
     }
 
-    currentDate = addDays(currentDate, 1)
-    startMinutes = DAY_START_MINUTES
+    currentDate = addCivilDaysKey(currentDate, 1)
+    startMinutes = dayStartMinutes
   }
 
   return undefined
@@ -266,27 +276,4 @@ function getScheduleDurationConfig(schedule: ScheduleRecord) {
     duration: Number.isFinite(durationMinutes) && durationMinutes > 0 ? durationMinutes / 60 : 1,
     durationType: "hours" as ScheduleDurationType,
   }
-}
-
-function dateKeyFromLocalDate(date: Date) {
-  return [
-    date.getFullYear(),
-    String(date.getMonth() + 1).padStart(2, "0"),
-    String(date.getDate()).padStart(2, "0"),
-  ].join("-")
-}
-
-function minutesFromDate(date: Date) {
-  return date.getHours() * 60 + date.getMinutes()
-}
-
-function addDays(dateKey: string, days: number) {
-  const [year, month, day] = dateKey.split("-").map((value) => Number(value))
-  const date = new Date(year, (month || 1) - 1, day || 1)
-  date.setDate(date.getDate() + days)
-  return [
-    date.getFullYear(),
-    String(date.getMonth() + 1).padStart(2, "0"),
-    String(date.getDate()).padStart(2, "0"),
-  ].join("-")
 }

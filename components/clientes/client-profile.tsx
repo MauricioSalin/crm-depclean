@@ -578,7 +578,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
     [clientServices],
   )
   const scheduledServices = useMemo(
-    () => clientServices.filter((service) => ["draft", "scheduled", "in_progress", "rescheduled"].includes(service.status)),
+    () => clientServices,
     [clientServices],
   )
   const installmentsTotalPages = Math.max(1, Math.ceil(allInstallments.length / installmentsPageSize))

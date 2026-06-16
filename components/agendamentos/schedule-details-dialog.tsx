@@ -16,7 +16,7 @@ import { useIsMobile } from "@/hooks/use-mobile"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { getScheduleRescheduleOptions, rescheduleSchedule, type ScheduleRecord } from "@/lib/api/schedules"
 import type { TeamRecord } from "@/lib/api/teams"
-import { formatCivilDate, toCivilDateKey } from "@/lib/date-utils"
+import { formatCivilDate, parseCivilDate, toCivilDateKey } from "@/lib/date-utils"
 import { getAvailableRescheduleTimes, isRescheduleDateAvailable } from "@/lib/schedule-availability"
 import { formatConfiguredScheduleDuration } from "@/lib/schedule-duration"
 import { cn } from "@/lib/utils"
@@ -86,7 +86,7 @@ export function ScheduleDetailsDialog({
 
   const customDateValue = useMemo(() => {
     if (!customDate) return null
-    return new Date(`${customDate}T00:00:00`)
+    return parseCivilDate(customDate)
   }, [customDate])
 
   const availableCustomTimes = useMemo(

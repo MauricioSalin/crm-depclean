@@ -3,7 +3,8 @@
 import { useDeferredValue, useMemo, useState } from "react"
 import Link from "next/link"
 import { usePathname, useSearchParams } from "next/navigation"
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
 import {
   Building2,
   Calendar,
@@ -30,8 +31,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { CsvImportDialog, type CsvImportField } from "@/components/ui/csv-import-dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { listContracts, type ContractRecord } from "@/lib/api/contracts"
+import { getApiErrorMessage } from "@/lib/api/errors"
+import { importSignedContracts, listContracts, type ContractImportRow, type ContractRecord } from "@/lib/api/contracts"
 import { getContractClicksignSigningUrl } from "@/lib/clicksign"
 import { formatCivilDate } from "@/lib/date-utils"
 import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
@@ -41,7 +44,40 @@ import { buildPathWithSearchParams, withReturnTo } from "@/lib/navigation"
 interface ContractsContentProps {
   viewMode: "table" | "cards"
   viewToggle?: React.ReactNode
+  openImport?: boolean
+  onImportChange?: (open: boolean) => void
 }
+
+const CONTRACT_IMPORT_FIELDS: CsvImportField[] = [
+  { key: "contractNumber", label: "Número do contrato", required: true },
+  { key: "clientId", label: "ID do cliente", required: true },
+  { key: "templateId", label: "ID do template", required: true },
+  { key: "unitIds", label: "IDs das unidades (vírgula)" },
+  { key: "serviceTypeIds", label: "IDs dos serviços (vírgula)", required: true },
+  { key: "serviceValues", label: "Valores dos serviços (vírgula)" },
+  { key: "totalValue", label: "Valor total", required: true },
+  { key: "downPaymentValue", label: "Valor de entrada" },
+  { key: "duration", label: "Duração em meses", required: true },
+  { key: "startDate", label: "Data inicial", required: true },
+  { key: "endDate", label: "Data final" },
+  { key: "firstVisitDate", label: "Data da primeira visita" },
+  { key: "firstVisitTime", label: "Horário da primeira visita" },
+  { key: "paymentDay", label: "Dia de pagamento", required: true },
+  { key: "installmentsCount", label: "Parcelas", required: true },
+  { key: "recurrence", label: "Recorrência" },
+  { key: "signedAt", label: "Assinado em" },
+  { key: "signatureUrl", label: "URL de assinatura" },
+  { key: "documentUrl", label: "URL do documento" },
+  { key: "documentFileName", label: "Nome do documento" },
+  { key: "clicksignEnvelopeId", label: "Clicksign envelope ID" },
+  { key: "clicksignDocumentKey", label: "Clicksign document key" },
+  { key: "clicksignDocumentId", label: "Clicksign document ID" },
+  { key: "clicksignWebhookId", label: "Clicksign webhook ID" },
+  { key: "clicksignStatus", label: "Clicksign status" },
+  { key: "clicksignLastSyncedAt", label: "Clicksign sincronizado em" },
+  { key: "clicksignSigners", label: "Clicksign assinantes" },
+  { key: "notes", label: "Observações" },
+]
 
 const isContractSigned = (contract: Pick<ContractRecord, "status" | "clicksign">) => {
   const clicksignStatus = contract.clicksign?.status?.toLowerCase() ?? ""
@@ -59,7 +95,8 @@ function formatDate(value: string) {
   return formatCivilDate(value)
 }
 
-export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps) {
+export function ContractsContent({ viewMode, viewToggle, openImport = false, onImportChange }: ContractsContentProps) {
+  const queryClient = useQueryClient()
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const mobileFiltersOpen = useMobileFiltersOpen()
@@ -72,6 +109,24 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
   const contractsQuery = useQuery({
     queryKey: ["contracts", deferredSearchTerm],
     queryFn: () => listContracts(deferredSearchTerm),
+  })
+
+  const importContractsMutation = useMutation({
+    mutationFn: (rows: ContractImportRow[]) => importSignedContracts(rows),
+    onSuccess: async (response) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["contracts"] }),
+        queryClient.invalidateQueries({ queryKey: ["financial"] }),
+        queryClient.invalidateQueries({ queryKey: ["analytics"] }),
+      ])
+      onImportChange?.(false)
+      toast.success("Contratos importados.", {
+        description: `${response.data.importedCount} registro(s) assinados foram inseridos no banco de dados.`,
+      })
+    },
+    onError: (error: unknown) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível importar os contratos."))
+    },
   })
 
   const contracts = contractsQuery.data?.data ?? []
@@ -111,14 +166,60 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
     }
   }
 
+  const importContracts = async (rows: Array<Record<string, string>>) => {
+    const contracts = rows.map((row) => ({
+      contractNumber: row.contractNumber,
+      clientId: row.clientId,
+      templateId: row.templateId,
+      unitIds: row.unitIds,
+      serviceTypeIds: row.serviceTypeIds,
+      serviceValues: row.serviceValues,
+      totalValue: row.totalValue,
+      downPaymentValue: row.downPaymentValue,
+      duration: row.duration,
+      startDate: row.startDate,
+      endDate: row.endDate,
+      firstVisitDate: row.firstVisitDate,
+      firstVisitTime: row.firstVisitTime,
+      paymentDay: row.paymentDay,
+      installmentsCount: row.installmentsCount,
+      recurrence: row.recurrence,
+      signedAt: row.signedAt,
+      signatureUrl: row.signatureUrl,
+      documentUrl: row.documentUrl,
+      documentFileName: row.documentFileName,
+      clicksignEnvelopeId: row.clicksignEnvelopeId,
+      clicksignDocumentKey: row.clicksignDocumentKey,
+      clicksignDocumentId: row.clicksignDocumentId,
+      clicksignWebhookId: row.clicksignWebhookId,
+      clicksignStatus: row.clicksignStatus,
+      clicksignLastSyncedAt: row.clicksignLastSyncedAt,
+      clicksignSigners: row.clicksignSigners,
+      notes: row.notes,
+    }))
+
+    await importContractsMutation.mutateAsync(contracts)
+  }
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-visible md:overflow-hidden">
-      <div className={`${mobileFiltersOpen ? "grid" : "hidden"} shrink-0 grid-cols-2 gap-2 sm:flex sm:items-center`}>
-        <div className="relative sm:w-80 sm:flex-none">
+    <>
+      <CsvImportDialog
+        open={openImport}
+        onOpenChange={(open) => onImportChange?.(open)}
+        title="Importar contratos assinados"
+        description="Anexe um CSV com contrato, parcelas, documento e dados Clicksign para registrar contratos já assinados."
+        fields={CONTRACT_IMPORT_FIELDS}
+        onImport={importContracts}
+      />
+
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-visible md:overflow-hidden">
+      <div className={`${mobileFiltersOpen ? "grid" : "hidden"} -m-1 shrink-0 grid-cols-2 gap-2 overflow-visible p-1 sm:flex sm:items-center`}>
+        <div className="relative focus-within:z-20 sm:w-80 sm:flex-none">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Buscar por número ou cliente..."
             value={searchTerm}
+            spellCheck={false}
             onChange={(event) => {
               setSearchTerm(event.target.value)
               setCurrentPage(1)
@@ -356,6 +457,7 @@ export function ContractsContent({ viewMode, viewToggle }: ContractsContentProps
         />
       ) : null}
 
-    </div>
+      </div>
+    </>
   )
 }

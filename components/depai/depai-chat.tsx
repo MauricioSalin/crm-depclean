@@ -433,10 +433,16 @@ function downloadBlob(content: BlobPart, fileName: string, type: string) {
   const blob = new Blob([content], { type })
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement("a")
-  anchor.href = url
-  anchor.download = fileName
-  anchor.click()
-  URL.revokeObjectURL(url)
+  try {
+    anchor.href = url
+    anchor.download = fileName
+    anchor.style.display = "none"
+    document.body.appendChild(anchor)
+    anchor.click()
+  } finally {
+    anchor.remove()
+    window.setTimeout(() => URL.revokeObjectURL(url), 0)
+  }
 }
 
 function normalizeExcelFileName(fileName?: string) {
@@ -557,11 +563,139 @@ function sanitizeUnsupportedCanvasColors(root: HTMLElement) {
   }
 }
 
+const SVG_INLINE_STYLE_PROPERTIES = [
+  "color",
+  "font",
+  "fontFamily",
+  "fontSize",
+  "fontStyle",
+  "fontWeight",
+  "letterSpacing",
+  "opacity",
+  "textAnchor",
+  "dominantBaseline",
+  "fill",
+  "fillOpacity",
+  "stroke",
+  "strokeWidth",
+  "strokeOpacity",
+  "strokeDasharray",
+  "strokeLinecap",
+  "strokeLinejoin",
+  "paintOrder",
+] as const
+
+function normalizeCanvasColor(value: string | null | undefined, fallback = "#0f172a") {
+  if (!value || value === "none") return value ?? ""
+  if (value === "currentColor" || UNSUPPORTED_CANVAS_COLOR_FUNCTION.test(value)) return fallback
+  return value
+}
+
+function inlineSvgComputedStyles(source: SVGElement, target: SVGElement) {
+  const view = source.ownerDocument.defaultView
+  if (!view) return
+
+  const sourceElements = [source, ...Array.from(source.querySelectorAll<SVGElement>("*"))]
+  const targetElements = [target, ...Array.from(target.querySelectorAll<SVGElement>("*"))]
+
+  sourceElements.forEach((sourceElement, index) => {
+    const targetElement = targetElements[index]
+    if (!targetElement) return
+
+    const computed = view.getComputedStyle(sourceElement)
+    SVG_INLINE_STYLE_PROPERTIES.forEach((property) => {
+      const cssName = property.replace(/[A-Z]/g, "-$&").toLowerCase()
+      const fallback = property === "fill" || property === "stroke" || property === "color" ? "#0f172a" : ""
+      const value = normalizeCanvasColor(computed[property], fallback)
+      if (value) targetElement.style.setProperty(cssName, value)
+    })
+  })
+}
+
+function resolveSvgExportSize(svg: SVGSVGElement, container: HTMLElement) {
+  const svgRect = svg.getBoundingClientRect()
+  const containerRect = container.getBoundingClientRect()
+  const viewBox = svg.viewBox?.baseVal
+  const width = Math.max(1, Math.ceil(svgRect.width || containerRect.width || viewBox?.width || 800))
+  const height = Math.max(1, Math.ceil(svgRect.height || containerRect.height || viewBox?.height || 420))
+  return { width, height }
+}
+
+function canvasToBlob(canvas: HTMLCanvasElement, type: string) {
+  return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type))
+}
+
+function loadImage(source: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image()
+    image.onload = () => resolve(image)
+    image.onerror = () => reject(new Error("Não foi possível carregar o gráfico para download."))
+    image.src = source
+  })
+}
+
+async function downloadSvgElementPng(element: HTMLElement, fileName: string) {
+  const svg = element.querySelector<SVGSVGElement>("svg")
+
+  if (!svg) {
+    throw new Error("Prévia do gráfico não encontrada.")
+  }
+
+  const { width, height } = resolveSvgExportSize(svg, element)
+  const clone = svg.cloneNode(true) as SVGSVGElement
+  clone.setAttribute("xmlns", "http://www.w3.org/2000/svg")
+  clone.setAttribute("xmlns:xlink", "http://www.w3.org/1999/xlink")
+  clone.setAttribute("width", String(width))
+  clone.setAttribute("height", String(height))
+  if (!clone.getAttribute("viewBox")) clone.setAttribute("viewBox", `0 0 ${width} ${height}`)
+  inlineSvgComputedStyles(svg, clone)
+
+  const background = document.createElementNS("http://www.w3.org/2000/svg", "rect")
+  background.setAttribute("x", "0")
+  background.setAttribute("y", "0")
+  background.setAttribute("width", "100%")
+  background.setAttribute("height", "100%")
+  background.setAttribute("fill", "#ffffff")
+  clone.insertBefore(background, clone.firstChild)
+
+  const serialized = new XMLSerializer().serializeToString(clone)
+  const svgBlob = new Blob([serialized], { type: "image/svg+xml;charset=utf-8" })
+  const url = URL.createObjectURL(svgBlob)
+
+  try {
+    const image = await loadImage(url)
+    const scale = Math.max(2, Math.ceil(window.devicePixelRatio || 1))
+    const canvas = document.createElement("canvas")
+    canvas.width = width * scale
+    canvas.height = height * scale
+
+    const context = canvas.getContext("2d")
+    if (!context) throw new Error("Não foi possível preparar o gráfico para download.")
+
+    context.fillStyle = "#ffffff"
+    context.fillRect(0, 0, canvas.width, canvas.height)
+    context.drawImage(image, 0, 0, canvas.width, canvas.height)
+
+    const pngBlob = await canvasToBlob(canvas, "image/png")
+    if (!pngBlob) throw new Error("Não foi possível preparar o PNG.")
+    downloadBlob(pngBlob, fileName, "image/png")
+  } finally {
+    URL.revokeObjectURL(url)
+  }
+}
+
 async function downloadChartSvgPng(element: HTMLElement, fileName: string) {
   const svg = element.querySelector("svg")
 
   if (!svg) {
     throw new Error("Prévia do gráfico não encontrada.")
+  }
+
+  try {
+    await downloadSvgElementPng(element, fileName)
+    return
+  } catch {
+    // Fallback para capturas que dependem de estilos externos ou SVGs fora do padrão.
   }
 
   const { default: html2canvas } = await import("html2canvas")
@@ -574,20 +708,10 @@ async function downloadChartSvgPng(element: HTMLElement, fileName: string) {
       sanitizeUnsupportedCanvasColors(clonedElement as HTMLElement)
     },
   })
-  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"))
+  const blob = await canvasToBlob(canvas, "image/png")
   if (!blob) throw new Error("Não foi possível preparar o PNG.")
 
-  const url = URL.createObjectURL(blob)
-  try {
-    const anchor = document.createElement("a")
-    anchor.href = url
-    anchor.download = fileName
-    document.body.appendChild(anchor)
-    anchor.click()
-    anchor.remove()
-  } finally {
-    URL.revokeObjectURL(url)
-  }
+  downloadBlob(blob, fileName, "image/png")
 }
 
 function readFileAsDataUrl(file: File) {
@@ -1652,7 +1776,17 @@ function ChatComposer({
       )}
 
       <div className="flex items-end gap-2">
-        <input ref={fileInputRef} type="file" className="hidden" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt" onChange={(event) => onAddFiles(event.target.files)} />
+        <input
+          ref={fileInputRef}
+          type="file"
+          className="hidden"
+          multiple
+          accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt"
+          onChange={(event) => {
+            void onAddFiles(event.target.files)
+            event.target.value = ""
+          }}
+        />
         <Button type="button" variant="ghost" size="icon" className="h-10 w-10 shrink-0 rounded-full" onClick={() => fileInputRef.current?.click()}>
           <Plus className="h-5 w-5" />
         </Button>

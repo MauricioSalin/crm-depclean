@@ -15,6 +15,7 @@ export type ServiceRecord = {
   defaultDuration: number
   durationType: "hours" | "shift" | "days"
   defaultRecurrence: string
+  defaultInformativeTemplateId: string
   recurrenceRules: ServiceRecurrenceRuleRecord[]
   teamIds: string[]
   employeeIds: string[]
@@ -31,6 +32,7 @@ export type ServicePayload = {
   defaultDuration: number
   durationType: "hours" | "shift" | "days"
   defaultRecurrence: string
+  defaultInformativeTemplateId?: string
   recurrenceRules?: ServiceRecurrenceRuleRecord[]
   teamIds?: string[]
   employeeIds?: string[]

@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query"
 import { ArrowLeft, Edit } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
 import { getContractById, type ContractRecord } from "@/lib/api/contracts"
 import { buildPathWithSearchParams, getSafeReturnTo, withReturnTo } from "@/lib/navigation"
 
@@ -38,6 +39,9 @@ export function ContractDetailHeaderActions({ contractId }: ContractDetailHeader
           Voltar
         </Button>
       </Link>
+      {contractQuery.isLoading ? (
+        <Skeleton className="h-9 flex-1 rounded-full sm:w-[150px] sm:flex-initial" />
+      ) : null}
       {contract && !isContractSigned(contract) ? (
         <Link href={withReturnTo(`/contratos/${contractId}/editar`, currentHref)} className="flex-1 sm:flex-initial">
           <Button className="w-full bg-primary hover:bg-primary/90">

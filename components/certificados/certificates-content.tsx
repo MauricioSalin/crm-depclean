@@ -12,6 +12,7 @@ import { listClients } from "@/lib/api/clients"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { listSchedules, type ScheduleRecord } from "@/lib/api/schedules"
 import { getStoredUser } from "@/lib/auth/session"
+import { formatCivilDate } from "@/lib/date-utils"
 import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 import { AssignmentBadges } from "@/components/ui/assignment-badges"
 import { Badge } from "@/components/ui/badge"
@@ -49,9 +50,7 @@ interface CertificatesContentProps {
 }
 
 function formatDate(value: string) {
-  if (!value) return "-"
-  const [year, month, day] = value.split("-")
-  return `${day}/${month}/${year}`
+  return formatCivilDate(value)
 }
 
 function getStatusBadge(status: CertificateQueueRecord["status"]) {
@@ -348,11 +347,12 @@ export function CertificatesContent({ viewMode, viewToggle, createOpen = false, 
       </Dialog>
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-visible md:overflow-hidden">
-        <div className={`${mobileFiltersOpen ? "grid" : "hidden"} shrink-0 grid-cols-2 gap-2 sm:flex sm:items-center`}>
-          <div className="relative col-span-2 sm:w-80">
+        <div className={`${mobileFiltersOpen ? "grid" : "hidden"} -m-1 shrink-0 grid-cols-2 gap-2 overflow-visible p-1 sm:flex sm:items-center`}>
+          <div className="relative col-span-2 focus-within:z-20 sm:w-80">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={searchTerm}
+              spellCheck={false}
               onChange={(event) => {
                 setSearchTerm(event.target.value)
                 setCurrentPage(1)
@@ -445,7 +445,7 @@ export function CertificatesContent({ viewMode, viewToggle, createOpen = false, 
                           {record.naFileName ? (
                             <p className="mt-1 hidden items-center gap-1 text-xs text-muted-foreground md:flex">
                               <FileText className="h-3 w-3" />
-                              {record.naFileName}
+                              {record.naCount > 1 ? `${record.naCount} NAs anexadas` : record.naFileName}
                             </p>
                           ) : null}
                         </div>
@@ -478,11 +478,12 @@ export function CertificatesContent({ viewMode, viewToggle, createOpen = false, 
                               <TooltipTrigger asChild>
                                 <Button
                                   asChild
-                                  size="icon"
-                                  className="h-9 w-9 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
+                                  size="sm"
+                                  className="h-9 rounded-full bg-primary px-3 text-primary-foreground hover:bg-primary/90"
                                 >
-                                  <Link href={`/certificados/${record.scheduleId}`} aria-label="Emitir certificado">
+                                  <Link href={`/certificados/${record.scheduleId}`} aria-label="Emitir certificado" className="gap-2">
                                     <Award className="h-4 w-4" />
+                                    <span>Emitir</span>
                                   </Link>
                                 </Button>
                               </TooltipTrigger>
@@ -585,7 +586,9 @@ export function CertificatesContent({ viewMode, viewToggle, createOpen = false, 
                         <div className="min-w-0">
                           <p className="font-medium text-foreground/80">{record.serviceTypeName}</p>
                           {record.naFileName ? (
-                            <p className="truncate text-xs text-muted-foreground">{record.naFileName}</p>
+                            <p className="truncate text-xs text-muted-foreground">
+                              {record.naCount > 1 ? `${record.naCount} NAs anexadas` : record.naFileName}
+                            </p>
                           ) : null}
                         </div>
                       </div>

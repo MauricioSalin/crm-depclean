@@ -301,6 +301,67 @@ const isSignerReminderAvailable = (status?: string) => {
   return !["signed", "closed", "finished", "completed", "done", "cancelled", "canceled", "refused", "expired", "deadline_expired", "waiting_client", "waiting_witness"].includes(normalizedStatus)
 }
 
+function ContractDetailLoading() {
+  return (
+    <div className="space-y-6">
+      <Card className="p-6">
+        <div className="flex flex-col justify-between gap-4 lg:min-h-[104px] lg:flex-row lg:items-stretch">
+          <div className="flex items-start gap-4">
+            <Skeleton className="h-12 w-12 shrink-0 rounded-xl" />
+            <div className="min-w-0 flex-1 space-y-3">
+              <Skeleton className="h-6 w-48 max-w-full" />
+              <Skeleton className="h-4 w-64 max-w-full" />
+              <Skeleton className="h-4 w-32 max-w-full" />
+              <Skeleton className="h-4 w-36 max-w-full" />
+            </div>
+          </div>
+
+          <div className="flex w-full flex-col gap-3 lg:ml-auto lg:w-[300px] lg:min-w-[300px] lg:self-stretch">
+            <div className="flex w-full gap-2 sm:flex-wrap sm:justify-end">
+              <Skeleton className="h-9 flex-1 rounded-full sm:w-28 sm:flex-none" />
+              <Skeleton className="h-9 flex-1 rounded-full sm:w-24 sm:flex-none" />
+            </div>
+            <div className="mt-auto space-y-2">
+              <div className="flex justify-between">
+                <Skeleton className="h-3 w-28" />
+                <Skeleton className="h-3 w-8" />
+              </div>
+              <Skeleton className="h-2 w-full rounded-full" />
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {["total", "paid", "pending", "overdue"].map((item) => (
+          <Card key={item} className="p-4">
+            <div className="flex items-center gap-3">
+              <Skeleton className="h-10 w-10 rounded-lg" />
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-20" />
+                <Skeleton className="h-6 w-28" />
+              </div>
+            </div>
+          </Card>
+        ))}
+      </div>
+
+      <Card className="p-6">
+        <div className="mb-4 flex items-center gap-2">
+          <Skeleton className="h-5 w-5 rounded-full" />
+          <Skeleton className="h-5 w-24" />
+          <Skeleton className="h-6 w-20 rounded-full" />
+        </div>
+        <div className="space-y-3">
+          <Skeleton className="h-10 w-full rounded-lg" />
+          <Skeleton className="h-10 w-full rounded-lg" />
+          <Skeleton className="h-10 w-full rounded-lg" />
+        </div>
+      </Card>
+    </div>
+  )
+}
+
 export function ContractDetail({ contractId }: ContractDetailProps) {
   const queryClient = useQueryClient()
   const router = useRouter()
@@ -515,8 +576,8 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
       await queryClient.invalidateQueries({ queryKey: ["contract", contractId] })
       await queryClient.invalidateQueries({ queryKey: ["contract", resolvedContractId] })
       toast({
-        title: "Lembrete disparado",
-        description: "A ClickSign foi acionada e o WhatsApp da Depclean também foi enviado.",
+        title: "Lembrete enviado com sucesso",
+        description: "O lembrete foi enviado.",
       })
     },
     onError: clicksignErrorToast,
@@ -563,22 +624,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
   }
 
   if (contractQuery.isLoading) {
-    return (
-      <Card className="p-6">
-        <div className="flex flex-col gap-5">
-          <div className="flex items-start gap-4">
-            <Skeleton className="h-12 w-12 rounded-xl" />
-            <div className="flex-1 space-y-3">
-              <Skeleton className="h-5 w-56" />
-              <Skeleton className="h-4 w-72 max-w-full" />
-              <Skeleton className="h-4 w-44" />
-            </div>
-            <Skeleton className="h-9 w-36 rounded-full" />
-          </div>
-          <Skeleton className="h-2 w-full rounded-full" />
-        </div>
-      </Card>
-    )
+    return <ContractDetailLoading />
   }
 
   if (contractQuery.isError) {
@@ -653,16 +699,24 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                 </Button>
               ) : null}
               {isSignedStatus(contract.status) || isSignedStatus(contract.clicksign?.status) ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="flex-1 sm:flex-none"
-                  onClick={handleDownloadSignedContract}
-                  disabled={clientAttachmentsQuery.isLoading || downloadSignedContractMutation.isPending}
-                >
-                  <Download className="mr-2 h-4 w-4" />
-                  {clientAttachmentsQuery.isLoading || downloadSignedContractMutation.isPending ? "Baixando..." : "Baixar"}
-                </Button>
+                clientAttachmentsQuery.isLoading ? (
+                  <Skeleton className="h-9 flex-1 rounded-full sm:w-24 sm:flex-none" />
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 sm:flex-none"
+                    onClick={handleDownloadSignedContract}
+                    disabled={downloadSignedContractMutation.isPending}
+                  >
+                    {downloadSignedContractMutation.isPending ? (
+                      <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Download className="mr-2 h-4 w-4" />
+                    )}
+                    Baixar
+                  </Button>
+                )
               ) : contract.clicksign?.envelopeId ? null : (
                 <Button
                   variant="outline"

@@ -15,6 +15,7 @@ import type { DateRange } from "react-day-picker"
 import {
   BarChart3,
   Users,
+  UserRound,
   DollarSign,
   Wrench,
   List,
@@ -29,6 +30,7 @@ import { getReportsAnalytics, type ReportsAnalyticsRecord } from "@/lib/api/anal
 import { hasAnyPermission } from "@/lib/auth/permissions"
 import { getStoredUser } from "@/lib/auth/session"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
+import { addCivilDaysKey, addCivilMonthsKey, parseCivilDate, toCivilDateKey } from "@/lib/date-utils"
 import { cn } from "@/lib/utils"
 import {
   BarChart,
@@ -50,6 +52,7 @@ const REPORT_TYPES = [
   { id: "financial", label: "Financeiro", icon: DollarSign, description: "Faturamento, recebimentos e inadimplência" },
   { id: "services", label: "Serviços Realizados", icon: Wrench, description: "Relatório de serviços executados por período" },
   { id: "teams", label: "Equipes", icon: Users, description: "Produtividade e desempenho das equipes" },
+  { id: "employees", label: "Funcionários", icon: UserRound, description: "Produtividade e desempenho por funcionário" },
 ] as const
 
 const REPORT_IDS = REPORT_TYPES.map((type) => type.id)
@@ -73,6 +76,12 @@ type TeamStatusSlice = {
 
 type ServicesByTeamChartPoint = ReportsAnalyticsRecord["servicesByTeamData"][number] & { isEmpty?: boolean }
 type ServicesSummaryChartPoint = ReportsAnalyticsRecord["servicesSummaryData"][number] & { isEmpty?: boolean }
+type EmployeeProductivityPoint = ReportsAnalyticsRecord["dashboardStats"]["employeeProductivity"][number]
+type ProductivityPoint = {
+  completedServices: number
+  scheduledServices: number
+  cancelledServices: number
+}
 
 const emptyReports: ReportsAnalyticsRecord = {
   dashboardStats: {
@@ -93,6 +102,7 @@ const emptyReports: ReportsAnalyticsRecord = {
     overdueInstallments: 0,
     overdueInstallmentsValue: 0,
     teamProductivity: [],
+    employeeProductivity: [],
   },
   financialSummary: {
     totalPaid: 0,
@@ -115,6 +125,7 @@ const emptyReports: ReportsAnalyticsRecord = {
   clients: [],
   contracts: [],
   teams: [],
+  employees: [],
 }
 
 const EMPTY_SERVICES_BY_PERIOD_DATA = [
@@ -153,15 +164,28 @@ const EMPTY_TEAM_PRODUCTIVITY: ReportsAnalyticsRecord["dashboardStats"]["teamPro
   },
 ]
 
+const EMPTY_EMPLOYEE_PRODUCTIVITY: ReportsAnalyticsRecord["dashboardStats"]["employeeProductivity"] = [
+  {
+    employeeId: "sem-funcionario",
+    employeeName: "Sem funcionário",
+    completedServices: 0,
+    scheduledServices: 0,
+    cancelledServices: 0,
+  },
+]
+
 function formatDateParam(value?: Date) {
-  return value ? value.toISOString().split("T")[0] : undefined
+  return value ? toCivilDateKey(value) : undefined
 }
 
 function getCurrentMonthRange(): DateRange {
   const now = new Date()
+  const todayKey = toCivilDateKey(now)
+  const monthStartKey = `${todayKey.slice(0, 7)}-01`
+  const monthEndKey = addCivilDaysKey(addCivilMonthsKey(monthStartKey, 1), -1)
   return {
-    from: new Date(now.getFullYear(), now.getMonth(), 1),
-    to: new Date(now.getFullYear(), now.getMonth() + 1, 0),
+    from: parseCivilDate(monthStartKey) ?? now,
+    to: parseCivilDate(monthEndKey) ?? now,
   }
 }
 
@@ -226,7 +250,7 @@ function downloadBlob(fileName: string, blob: Blob) {
 
 function reportFileName(reportId: string, dateRange?: DateRange) {
   const from = formatDateParam(dateRange?.from) ?? "inicio"
-  const to = formatDateParam(dateRange?.to) ?? new Date().toISOString().split("T")[0]
+  const to = formatDateParam(dateRange?.to) ?? toCivilDateKey(new Date())
   return `depclean-${reportId}-${from}-${to}.xlsx`
 }
 
@@ -724,42 +748,53 @@ function buildReportCharts(reportId: ReportId, data: ReportsAnalyticsRecord): Re
     ]
   }
 
-  const teams = data.dashboardStats.teamProductivity.length > 0 ? data.dashboardStats.teamProductivity : EMPTY_TEAM_PRODUCTIVITY
-  const hasTeamsData = data.dashboardStats.teamProductivity.some(
-    (team) => team.completedServices > 0 || team.scheduledServices > 0 || team.cancelledServices > 0,
+  const isEmployeesReport = reportId === "employees"
+  const productivityData = isEmployeesReport
+    ? data.dashboardStats.employeeProductivity.length > 0 ? data.dashboardStats.employeeProductivity : EMPTY_EMPLOYEE_PRODUCTIVITY
+    : data.dashboardStats.teamProductivity.length > 0 ? data.dashboardStats.teamProductivity : EMPTY_TEAM_PRODUCTIVITY
+  const hasProductivityData = productivityData.some(
+    (item) => item.completedServices > 0 || item.scheduledServices > 0 || item.cancelledServices > 0,
   )
+  const titleSuffix = isEmployeesReport ? "Funcionário" : "Equipe"
+  const productivityChartData = productivityData.map((item) => ({
+    name: isEmployeesReport ? (item as EmployeeProductivityPoint).employeeName : (item as ReportsAnalyticsRecord["dashboardStats"]["teamProductivity"][number]).teamName,
+    completedServices: item.completedServices,
+    scheduledServices: item.scheduledServices,
+    cancelledServices: item.cancelledServices,
+  }))
 
   return [
     {
-      title: "Produtividade por Equipe",
+      title: `Produtividade por ${titleSuffix}`,
       width: CHART_WIDTH,
       height: CHART_HEIGHT,
       svg: makeGroupedBarChartSvg({
-        title: "Produtividade por Equipe",
-        data: teams,
-        labelKey: "teamName",
+        title: `Produtividade por ${titleSuffix}`,
+        data: productivityChartData,
+        labelKey: "name",
         series: [
-          { key: "completedServices", label: "Realizados", color: hasTeamsData ? "#84CC16" : EMPTY_CHART_COLOR },
-          { key: "scheduledServices", label: "Agendados", color: hasTeamsData ? "#2563EB" : "#C9D6BF" },
-          { key: "cancelledServices", label: "Cancelados", color: hasTeamsData ? "#EF4444" : "#E5E7EB" },
+          { key: "completedServices", label: "Realizados", color: hasProductivityData ? "#84CC16" : EMPTY_CHART_COLOR },
+          { key: "scheduledServices", label: "Agendados", color: hasProductivityData ? "#2563EB" : "#C9D6BF" },
+          { key: "cancelledServices", label: "Cancelados", color: hasProductivityData ? "#EF4444" : "#E5E7EB" },
         ],
       }),
     },
-    ...teams.map((team) => {
-      const total = team.completedServices + team.scheduledServices + team.cancelledServices
+    ...productivityChartData.map((item) => {
+      const name = item.name
+      const total = item.completedServices + item.scheduledServices + item.cancelledServices
 
       return {
-        title: `Status da equipe ${team.teamName}`,
+        title: `Status ${isEmployeesReport ? "do funcionário" : "da equipe"} ${name}`,
         width: CHART_WIDTH,
         height: DONUT_CHART_HEIGHT,
         svg: makeDonutChartSvg({
-          title: `Status da equipe ${team.teamName}`,
+          title: `Status ${isEmployeesReport ? "do funcionário" : "da equipe"} ${name}`,
           centerValue: formatInteger(total),
           centerLabel: "serviços",
           entries: [
-            { label: "Realizados", value: team.completedServices, color: "#84CC16" },
-            { label: "Agendados", value: team.scheduledServices, color: "#2563EB" },
-            { label: "Cancelados", value: team.cancelledServices, color: "#EF4444" },
+            { label: "Realizados", value: item.completedServices, color: "#84CC16" },
+            { label: "Agendados", value: item.scheduledServices, color: "#2563EB" },
+            { label: "Cancelados", value: item.cancelledServices, color: "#EF4444" },
           ],
         }),
       }
@@ -818,6 +853,7 @@ export function RelatoriosContent() {
   const [selectedReportQuery, setSelectedReportQuery] = useUrlQueryState("tab", "financial")
   const [selectedServiceIdsQuery, setSelectedServiceIdsQuery] = useUrlQueryState("services", "all")
   const [selectedTeamIdsQuery, setSelectedTeamIdsQuery] = useUrlQueryState("teams", "all")
+  const [selectedEmployeeIdsQuery, setSelectedEmployeeIdsQuery] = useUrlQueryState("employees", "all")
   const [currentUser, setCurrentUser] = useState<ReturnType<typeof getStoredUser>>(null)
   const [hasSyncedUser, setHasSyncedUser] = useState(false)
   const canViewFinancial = hasAnyPermission(currentUser, ["financial_view", "financial_manage"])
@@ -834,6 +870,7 @@ export function RelatoriosContent() {
   const setSelectedReport = (value: string) => setSelectedReportQuery(value)
   const selectedServiceIds = parseUrlIds(selectedServiceIdsQuery)
   const selectedTeamIds = parseUrlIds(selectedTeamIdsQuery)
+  const selectedEmployeeIds = parseUrlIds(selectedEmployeeIdsQuery)
   const [financialViewMode, setFinancialViewMode] = useState<"table" | "cards">("table")
   const [dateRange, setDateRange] = useState<DateRange | undefined>(() => getCurrentMonthRange())
   const [isExporting, setIsExporting] = useState(false)
@@ -859,13 +896,14 @@ export function RelatoriosContent() {
   }, [selectedReportQuery, setSelectedReportQuery, visibleReportIds])
 
   const reportsQuery = useQuery({
-    queryKey: ["analytics", "reports", selectedReport, selectedServiceIdsQuery, selectedTeamIdsQuery, formatDateParam(dateRange?.from), formatDateParam(dateRange?.to)],
+    queryKey: ["analytics", "reports", selectedReport, selectedServiceIdsQuery, selectedTeamIdsQuery, selectedEmployeeIdsQuery, formatDateParam(dateRange?.from), formatDateParam(dateRange?.to)],
     queryFn: () =>
       getReportsAnalytics({
         dateFrom: formatDateParam(dateRange?.from),
         dateTo: formatDateParam(dateRange?.to),
         serviceIds: selectedReport === "services" ? formatUrlIds(selectedServiceIds) : undefined,
         teamIds: selectedReport === "teams" ? formatUrlIds(selectedTeamIds) : undefined,
+        employeeIds: selectedReport === "employees" ? formatUrlIds(selectedEmployeeIds) : undefined,
       }),
     enabled: selectedReport !== "financial" && canViewReports,
   })
@@ -885,12 +923,21 @@ export function RelatoriosContent() {
   const servicesByTeamTotal = hasServicesByTeamData ? servicesByTeamData.reduce((acc, curr) => acc + curr.services, 0) : 0
   const serviceOptions = reports.services.filter((service) => service.isActive)
   const teamOptions = reports.teams
+  const employeeOptions = reports.employees
+    .filter((employee) => employee.status === "active")
+    .map((employee) => ({
+      id: employee.id,
+      name: employee.name,
+      subtitle: employee.role,
+    }))
   const selectedServiceOptions = serviceOptions.filter((service) => selectedServiceIds.includes(service.id))
   const selectedTeamOptions = teamOptions.filter((team) => selectedTeamIds.includes(team.id))
+  const selectedEmployeeOptions = employeeOptions.filter((employee) => selectedEmployeeIds.includes(employee.id))
   const hasServicesSummaryData = servicesSummaryData.some((item) => item.total > 0)
   const servicesSummaryChartData: ServicesSummaryChartPoint[] = hasServicesSummaryData ? servicesSummaryData : EMPTY_SERVICES_SUMMARY_DATA
   const servicesSummaryTotal = hasServicesSummaryData ? servicesSummaryData.reduce((acc, curr) => acc + curr.total, 0) : 0
   const teamsForChart = dashboardStats.teamProductivity.length > 0 ? dashboardStats.teamProductivity : EMPTY_TEAM_PRODUCTIVITY
+  const employeesForChart = dashboardStats.employeeProductivity.length > 0 ? dashboardStats.employeeProductivity : EMPTY_EMPLOYEE_PRODUCTIVITY
 
   const financialViewToggle = (
     <Tabs value={financialViewMode} onValueChange={(value) => setFinancialViewMode(value as "table" | "cards")}>
@@ -901,11 +948,11 @@ export function RelatoriosContent() {
     </Tabs>
   )
 
-  const buildTeamStatusPieData = (team: (typeof dashboardStats.teamProductivity)[number]): TeamStatusSlice[] => {
+  const buildProductivityStatusPieData = (item: ProductivityPoint): TeamStatusSlice[] => {
     const slices: TeamStatusSlice[] = [
-      { name: "Realizados", services: team.completedServices, color: "var(--primary)" },
-      { name: "Agendados", services: team.scheduledServices, color: "#2563EB" },
-      { name: "Cancelados", services: team.cancelledServices ?? 0, color: "#EF4444" },
+      { name: "Realizados", services: item.completedServices, color: "var(--primary)" },
+      { name: "Agendados", services: item.scheduledServices, color: "#2563EB" },
+      { name: "Cancelados", services: item.cancelledServices ?? 0, color: "#EF4444" },
     ]
     const total = slices.reduce((sum, item) => sum + item.services, 0)
     return total > 0 ? slices : [{ name: "Sem serviços", services: 1, color: "#E5E7EB", isEmpty: true }]
@@ -990,6 +1037,22 @@ export function RelatoriosContent() {
       ]
     }
 
+    if (selectedReport === "employees") {
+      return [
+        ["Funcionário", "Serviços realizados", "Serviços agendados", "Serviços cancelados", "Taxa de conclusão"],
+        ...data.dashboardStats.employeeProductivity.map((employee) => {
+          const total = employee.completedServices + employee.scheduledServices + (employee.cancelledServices ?? 0)
+          return [
+            employee.employeeName,
+            employee.completedServices,
+            employee.scheduledServices,
+            employee.cancelledServices ?? 0,
+            total > 0 ? `${Math.round((employee.completedServices / total) * 100)}%` : "0%",
+          ]
+        }),
+      ]
+    }
+
     return []
   }
 
@@ -1012,6 +1075,11 @@ export function RelatoriosContent() {
 
     if (selectedReport === "teams") {
       setSelectedTeamIdsQuery(formatUrlIds(selectedTeamIds.filter((id) => id !== optionId)))
+      return
+    }
+
+    if (selectedReport === "employees") {
+      setSelectedEmployeeIdsQuery(formatUrlIds(selectedEmployeeIds.filter((id) => id !== optionId)))
     }
   }
 
@@ -1049,7 +1117,7 @@ export function RelatoriosContent() {
         ))}
       </div>
 
-      <div className="hidden gap-4 sm:grid sm:grid-cols-2 lg:grid-cols-3">
+      <div className="hidden gap-4 sm:grid sm:grid-cols-2 xl:grid-cols-4">
         {visibleReportTypes.map((type) => (
           <Card
             key={type.id}
@@ -1161,8 +1229,43 @@ export function RelatoriosContent() {
               </div>
             )}
 
+            {selectedReport === "employees" && (
+              <div className="flex w-full flex-col gap-2 sm:w-[340px] xl:w-[380px]">
+                <Label>Funcionário</Label>
+                <MultiSelect
+                  options={employeeOptions}
+                  selected={selectedEmployeeIds}
+                  onChange={(selected) => setSelectedEmployeeIdsQuery(formatUrlIds(selected))}
+                  placeholder="Todos os funcionários"
+                  searchPlaceholder="Buscar funcionário..."
+                  emptyMessage="Nenhum funcionário encontrado."
+                  showSelectedTags={false}
+                />
+                {selectedEmployeeOptions.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {selectedEmployeeOptions.map((option) => (
+                      <Badge
+                        key={option.id}
+                        variant="outline"
+                        className="flex items-center gap-2 px-3 py-1 text-foreground/80"
+                      >
+                        <span>{option.name}</span>
+                        <button
+                          type="button"
+                          className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
+                          onClick={() => removeSelectedFilterOption(option.id)}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {selectedReport !== "financial" && canExportReports ? (
-            <Button className="h-10 w-full shrink-0 bg-primary px-4 text-primary-foreground hover:bg-primary/90 sm:mt-[1.625rem] sm:w-[170px]" onClick={handleGenerateReport} disabled={reportsQuery.isFetching || isExporting}>
+            <Button className="h-10 w-full shrink-0 bg-primary px-4 text-primary-foreground hover:bg-primary/90 sm:mt-6 sm:w-[170px]" onClick={handleGenerateReport} disabled={reportsQuery.isFetching || isExporting}>
               {isExporting ? "Gerando Excel..." : "Gerar relatório"}
             </Button>
             ) : null}
@@ -1404,7 +1507,7 @@ export function RelatoriosContent() {
         {selectedReport === "teams" && (
           <div className="grid gap-4 lg:grid-cols-2">
             {teamsForChart.map((team) => {
-              const statusData = buildTeamStatusPieData(team)
+              const statusData = buildProductivityStatusPieData(team)
               const total = statusData.reduce((sum, item) => sum + (item.isEmpty ? 0 : item.services), 0)
 
               return (
@@ -1429,6 +1532,66 @@ export function RelatoriosContent() {
                         >
                           {statusData.map((entry) => (
                             <Cell key={`${team.teamId}-${entry.name}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: "var(--card)",
+                            border: "1px solid var(--border)",
+                            borderRadius: "8px"
+                          }}
+                          formatter={(value: number, _name, item) => [`${item.payload.isEmpty ? 0 : value} serviços`, item.payload.name]}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 w-full">
+                      {statusData.map((entry) => (
+                        <div key={entry.name} className="flex items-center gap-1.5 text-xs">
+                          <div
+                            className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: entry.color }}
+                          />
+                          <span className="text-muted-foreground whitespace-nowrap">
+                            {entry.name}: {entry.isEmpty || total === 0 ? 0 : Math.round((entry.services / total) * 100)}%
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
+        )}
+
+        {selectedReport === "employees" && (
+          <div className="grid gap-4 lg:grid-cols-2">
+            {employeesForChart.map((employee) => {
+              const statusData = buildProductivityStatusPieData(employee)
+              const total = statusData.reduce((sum, item) => sum + (item.isEmpty ? 0 : item.services), 0)
+
+              return (
+                <Card key={employee.employeeId} data-report-chart={`funcionario-${slugifyFilePart(employee.employeeName)}`}>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <UserRound className="h-5 w-5 text-primary" />
+                      {employee.employeeName}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="flex flex-col items-center gap-4">
+                    <ResponsiveContainer width="100%" height={240}>
+                      <PieChart>
+                        <Pie
+                          data={statusData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={55}
+                          outerRadius={90}
+                          dataKey="services"
+                          nameKey="name"
+                        >
+                          {statusData.map((entry) => (
+                            <Cell key={`${employee.employeeId}-${entry.name}`} fill={entry.color} />
                           ))}
                         </Pie>
                         <Tooltip

@@ -1,7 +1,6 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { format, subDays } from "date-fns"
 import { AnimatePresence, motion } from "framer-motion"
 import type { DateRange } from "react-day-picker"
 
@@ -16,6 +15,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { DateRangePicker } from "@/components/ui/date-range-picker"
 import type { DashboardAnalyticsParams } from "@/lib/api/analytics"
 import { getStoredUser } from "@/lib/auth/session"
+import { addCivilDaysKey, parseCivilDate, toCivilDateKey } from "@/lib/date-utils"
 
 const PERIOD_OPTIONS = [30, 60, 90] as const
 type DashboardPeriod = (typeof PERIOD_OPTIONS)[number]
@@ -23,15 +23,17 @@ type DashboardPeriodTab = DashboardPeriod | "custom"
 
 function getRangeForDays(days: DashboardPeriod): DateRange {
   const today = new Date()
+  const todayKey = toCivilDateKey(today)
+  const fromKey = addCivilDaysKey(todayKey, -(days - 1))
 
   return {
-    from: subDays(today, days - 1),
-    to: today,
+    from: parseCivilDate(fromKey) ?? today,
+    to: parseCivilDate(todayKey) ?? today,
   }
 }
 
 function formatDateParam(date?: Date) {
-  return date ? format(date, "yyyy-MM-dd") : undefined
+  return date ? toCivilDateKey(date) : undefined
 }
 
 export function DashboardContent() {

@@ -9,6 +9,7 @@ export type ContractServicePayload = {
   additionalEmployeeIds?: string[]
   unitIds: string[]
   clauses?: string[]
+  informativeTemplateId?: string
   recurrence?: string
   duration?: number
   durationType?: "hours" | "shift" | "days"
@@ -26,6 +27,7 @@ export type ContractPayload = {
   contractNumber?: string
   unitIds?: string[]
   totalValue?: number
+  downPaymentValue?: number
   duration: number
   startDate: string
   endDate?: string
@@ -71,6 +73,7 @@ export type ContractRecord = {
   automationCertificateTemplateId?: string
   unitIds: string[]
   totalValue: number
+  downPaymentValue: number
   duration: number
   startDate: string
   endDate: string
@@ -88,6 +91,7 @@ export type ContractRecord = {
     additionalEmployeeIds: string[]
     unitIds: string[]
     clauses: string[]
+    informativeTemplateId: string
     recurrence: string
     duration: number
     durationType: "hours" | "shift" | "days"
@@ -129,9 +133,46 @@ export type ContractPreviewRecord = {
   contractNumber: string
   renderedHtml: string
   totalValue: number
+  downPaymentValue: number
   recurrence: string
   endDate: string
   firstDueDate: string
+}
+
+export type ContractImportRow = {
+  contractNumber: string
+  clientId: string
+  templateId: string
+  unitIds?: string
+  serviceTypeIds: string
+  serviceValues?: string
+  totalValue: string
+  downPaymentValue?: string
+  duration: string
+  startDate: string
+  endDate?: string
+  firstVisitDate?: string
+  firstVisitTime?: string
+  paymentDay: string
+  installmentsCount: string
+  recurrence?: string
+  signedAt?: string
+  signatureUrl?: string
+  documentUrl?: string
+  documentFileName?: string
+  clicksignEnvelopeId?: string
+  clicksignDocumentKey?: string
+  clicksignDocumentId?: string
+  clicksignWebhookId?: string
+  clicksignStatus?: string
+  clicksignLastSyncedAt?: string
+  clicksignSigners?: string
+  notes?: string
+}
+
+export type ContractImportResult = {
+  importedCount: number
+  contracts: ContractRecord[]
 }
 
 const legacyContractIds: Record<string, string> = {
@@ -161,6 +202,11 @@ export async function previewContract(payload: ContractPayload) {
 
 export async function createContract(payload: ContractPayload) {
   const response = await api.post<{ success: true; data: ContractRecord }>("/contracts", payload)
+  return response.data
+}
+
+export async function importSignedContracts(contracts: ContractImportRow[]) {
+  const response = await api.post<{ success: true; data: ContractImportResult }>("/contracts/import", { contracts })
   return response.data
 }
 

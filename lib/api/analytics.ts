@@ -59,6 +59,13 @@ export type DashboardStatsRecord = {
     scheduledServices: number
     cancelledServices: number
   }>
+  employeeProductivity: Array<{
+    employeeId: string
+    employeeName: string
+    completedServices: number
+    scheduledServices: number
+    cancelledServices: number
+  }>
 }
 
 export type FinancialInstallmentRecord = {
@@ -157,6 +164,7 @@ export type ReportsAnalyticsRecord = {
     status: string
   }>
   teams: Array<{ id: string; name: string; color: string }>
+  employees: Array<{ id: string; name: string; role: string; status: "active" | "inactive" }>
   services: Array<{ id: string; name: string; isActive: boolean }>
 }
 
@@ -176,7 +184,7 @@ export async function getDashboardAnalytics(params?: DashboardAnalyticsParams) {
   return response.data
 }
 
-export async function getReportsAnalytics(params?: { dateFrom?: string; dateTo?: string; teamId?: string; teamIds?: string; serviceId?: string; serviceIds?: string }) {
+export async function getReportsAnalytics(params?: { dateFrom?: string; dateTo?: string; teamId?: string; teamIds?: string; employeeId?: string; employeeIds?: string; serviceId?: string; serviceIds?: string }) {
   const response = await api.get<{ success: true; data: ReportsAnalyticsRecord }>("/analytics/reports", { params })
   return response.data
 }

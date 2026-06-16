@@ -7,11 +7,9 @@ import type { DateRange } from "react-day-picker"
 import { toast } from "sonner"
 import {
   Calendar,
-  Camera,
   Check,
   Clock,
   Edit,
-  FileUp,
   Loader2,
   MoreHorizontal,
   RotateCcw,
@@ -40,7 +38,7 @@ import { listServices, type ServiceRecord } from "@/lib/api/services"
 import { listTeams, type TeamRecord } from "@/lib/api/teams"
 import { hasAnyPermission } from "@/lib/auth/permissions"
 import { getStoredUser } from "@/lib/auth/session"
-import { formatCivilDate, toCivilDateKey } from "@/lib/date-utils"
+import { formatCivilDate, toBrasiliaTimeKey, toCivilDateKey } from "@/lib/date-utils"
 import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 import { formatConfiguredScheduleDuration, minutesToScheduleDuration, scheduleDurationToMinutes } from "@/lib/schedule-duration"
@@ -48,6 +46,7 @@ import { checkScheduleAvailability, formatAvailabilitySlot } from "@/lib/schedul
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
+import { CompletionNaAttachments } from "@/components/agendamentos/completion-na-attachments"
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
 import { DateRangePicker } from "@/components/ui/date-range-picker"
 import {
@@ -74,8 +73,8 @@ import { ScheduleTypeBadge } from "@/components/ui/schedule-type-badge"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { SchedulingFormDialog, type SchedulingFormData } from "./scheduling-form-dialog"
 import { ScheduleDetailsDialog } from "./schedule-details-dialog"
+import { CancelScheduleDialog } from "./cancel-schedule-dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Textarea } from "@/components/ui/textarea"
 
 interface AgendamentosContentProps {
   viewMode: "table" | "cards"
@@ -103,16 +102,10 @@ function getStatusBadge(status: ScheduleRecord["status"]) {
   }
 }
 
-function formatFileSize(size?: number) {
-  if (!size) return ""
-  if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`
-}
-
 function currentCompletionDateTime() {
   const now = new Date()
   const date = toCivilDateKey(now)
-  const time = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`
+  const time = toBrasiliaTimeKey(now)
   return { date, time }
 }
 
@@ -122,6 +115,12 @@ function getScheduleIconTone(_schedule: Pick<ScheduleRecord, "isEmergency">) {
 
 function canCancelSchedule(schedule: Pick<ScheduleRecord, "status">) {
   return !["in_progress", "completed", "cancelled"].includes(schedule.status)
+}
+
+function canEditSchedule(schedule: Pick<ScheduleRecord, "status">, canManageLockedSchedules: boolean) {
+  if (["in_progress", "cancelled"].includes(schedule.status)) return false
+  if (schedule.status === "completed") return canManageLockedSchedules
+  return true
 }
 
 function isRecurringSchedule(schedule: Pick<ScheduleRecord, "contractId" | "isManual">) {
@@ -403,14 +402,12 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
   const [editingSchedule, setEditingSchedule] = useState<ScheduleRecord | null>(null)
   const [selectedSchedule, setSelectedSchedule] = useState<ScheduleRecord | null>(null)
   const [cancelTarget, setCancelTarget] = useState<ScheduleRecord | null>(null)
-  const [cancelReason, setCancelReason] = useState("")
-  const [cancelStep, setCancelStep] = useState<"reason" | "confirm">("reason")
   const [completionTarget, setCompletionTarget] = useState<ScheduleRecord | null>(null)
   const [completionStartDate, setCompletionStartDate] = useState("")
   const [completionStartTime, setCompletionStartTime] = useState("")
   const [completionEndDate, setCompletionEndDate] = useState("")
   const [completionEndTime, setCompletionEndTime] = useState("")
-  const [completionFile, setCompletionFile] = useState<File | null>(null)
+  const [completionFiles, setCompletionFiles] = useState<File[]>([])
   const [pendingDelete, setPendingDelete] = useState<ScheduleRecord | null>(null)
   const [availabilitySuggestion, setAvailabilitySuggestion] = useState<{
     formData: SchedulingFormData
@@ -418,11 +415,10 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
     requested: { date: string; time: string }
     suggested: { date: string; time: string }
   } | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const cameraInputRef = useRef<HTMLInputElement>(null)
   const scheduleDialogResetTimeoutRef = useRef<number | null>(null)
   const [currentUser, setCurrentUser] = useState<ReturnType<typeof getStoredUser>>(null)
   const canManageAgenda = hasAnyPermission(currentUser, ["agenda_manage"])
+  const canManageLockedSchedules = hasAnyPermission(currentUser, ["agenda_manage_locked"])
 
   useEffect(() => {
     const sync = () => setCurrentUser(getStoredUser())
@@ -641,8 +637,6 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
     onSuccess: async (_data, _variables, context) => {
       await invalidateSchedules()
       setCancelTarget(null)
-      setCancelReason("")
-      setCancelStep("reason")
       toast.success("Agendamento cancelado.", {
         id: context?.toastId,
         description: "O motivo foi salvo no histórico.",
@@ -676,13 +670,16 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
   })
 
   const completeMutation = useMutation({
-    mutationFn: async ({ schedule, startDate, startTime, endDate, endTime, file }: { schedule: ScheduleRecord; startDate: string; startTime: string; endDate: string; endTime: string; file: File | null }) => {
-      if (!file && !schedule.naDocumentUrl) {
+    mutationFn: async ({ schedule, startDate, startTime, endDate, endTime, files }: { schedule: ScheduleRecord; startDate: string; startTime: string; endDate: string; endTime: string; files: File[] }) => {
+      const hasExistingNa = Boolean(schedule.naAttachments?.length || schedule.naDocumentUrl)
+      if (files.length === 0 && !hasExistingNa) {
         throw new Error("Anexe a NA da visita antes de concluir o atendimento.")
       }
-      if (file) {
+
+      for (const file of files) {
         await uploadScheduleNa(schedule.id, file)
       }
+
       return completeSchedule(schedule.id, { startDate, startTime, endDate, endTime })
     },
     onMutate: () => {
@@ -696,7 +693,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
       setCompletionStartTime("")
       setCompletionEndDate("")
       setCompletionEndTime("")
-      setCompletionFile(null)
+      setCompletionFiles([])
       toast.success("Atendimento concluído.", {
         id: context?.toastId,
         description: "A agenda foi atualizada com o horário executado.",
@@ -786,7 +783,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
 
   const openEditSchedule = (schedule: ScheduleRecord) => {
     if (!canManageAgenda) return
-    if (schedule.status === "cancelled") return
+    if (!canEditSchedule(schedule, canManageLockedSchedules)) return
 
     clearScheduleDialogResetTimeout()
     setSelectedSchedule(null)
@@ -806,7 +803,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
     setCompletionStartTime(schedule.completionStartTime || schedule.time || "")
     setCompletionEndDate(schedule.completionEndDate || now.date || schedule.completionStartDate || defaultDate)
     setCompletionEndTime(schedule.completionEndTime || now.time)
-    setCompletionFile(null)
+    setCompletionFiles([])
   }
 
   const openSchedule = (schedule: ScheduleRecord) => {
@@ -819,7 +816,10 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
   }
 
   const canDeleteSchedule = (schedule: ScheduleRecord) => {
-    return canManageAgenda && schedule.status === "cancelled" && !isRecurringSchedule(schedule)
+    return canManageAgenda &&
+      canManageLockedSchedules &&
+      ["cancelled", "completed"].includes(schedule.status) &&
+      !isRecurringSchedule(schedule)
   }
 
   return (
@@ -860,78 +860,18 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
         }}
       />
 
-      <Dialog
+      <CancelScheduleDialog
         open={!!cancelTarget}
+        clientName={cancelTarget?.clientName}
+        initialReason={cancelTarget?.cancellationReason || ""}
+        busy={cancelMutation.isPending}
         onOpenChange={(open) => {
-          if (!open) {
-            setCancelTarget(null)
-            setCancelReason("")
-            setCancelStep("reason")
-          }
+          if (!open) setCancelTarget(null)
         }}
-      >
-        <DialogContent className="max-w-[calc(100vw-2rem)] gap-5 sm:max-w-md">
-          {cancelStep === "reason" ? (
-            <>
-              <DialogHeader className="min-w-0 pr-6">
-                <DialogTitle>Cancelar agendamento</DialogTitle>
-                <DialogDescription>
-                  Informe o motivo do cancelamento para manter o histórico claro para a equipe.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-2">
-                <Label htmlFor="cancel-reason">Motivo do cancelamento *</Label>
-                <Textarea
-                  id="cancel-reason"
-                  value={cancelReason}
-                  onChange={(event) => setCancelReason(event.target.value)}
-                  placeholder="Ex.: cliente pediu reagendamento, acesso indisponível, equipe sem janela..."
-                  className="min-h-28"
-                />
-              </div>
-              <DialogFooter className="gap-2 sm:gap-2">
-                <Button type="button" variant="outline" onClick={() => setCancelTarget(null)}>
-                  Voltar
-                </Button>
-                <Button
-                  type="button"
-                  disabled={!cancelReason.trim()}
-                  className="bg-red-500 text-white hover:bg-red-600"
-                  onClick={() => setCancelStep("confirm")}
-                >
-                  Cancelar agendamento
-                </Button>
-              </DialogFooter>
-            </>
-          ) : (
-            <>
-              <DialogHeader className="min-w-0 pr-6">
-                <DialogTitle>Confirmar cancelamento?</DialogTitle>
-                <DialogDescription>
-                  Esta ação vai marcar o agendamento de {cancelTarget?.clientName} como cancelado.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="rounded-2xl border border-red-100 bg-red-50 p-4 text-sm text-red-900">
-                <p className="font-medium">Motivo registrado</p>
-                <p className="mt-1 text-red-800">{cancelReason}</p>
-              </div>
-              <DialogFooter className="gap-2 sm:gap-2">
-                <Button type="button" variant="outline" onClick={() => setCancelStep("reason")}>
-                  Voltar
-                </Button>
-                <Button
-                  type="button"
-                  disabled={cancelMutation.isPending}
-                  className="bg-red-500 text-white hover:bg-red-600"
-                  onClick={() => cancelTarget && cancelMutation.mutate({ id: cancelTarget.id, reason: cancelReason.trim() })}
-                >
-                  {cancelMutation.isPending ? "Cancelando..." : "Confirmar cancelamento"}
-                </Button>
-              </DialogFooter>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
+        onConfirm={(reason) => {
+          if (cancelTarget) cancelMutation.mutate({ id: cancelTarget.id, reason })
+        }}
+      />
 
       <Dialog
         open={!!completionTarget}
@@ -942,7 +882,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
             setCompletionStartTime("")
             setCompletionEndDate("")
             setCompletionEndTime("")
-            setCompletionFile(null)
+            setCompletionFiles([])
           }
         }}
       >
@@ -991,43 +931,13 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
               />
             </div>
           </div>
-          <div className="min-w-0 space-y-3 overflow-hidden rounded-2xl border border-dashed border-primary/40 bg-primary/5 p-4">
-            <div>
-              <p className="text-sm font-semibold">Anexo da NA</p>
-              <p className="text-xs text-muted-foreground">PDF, DOCX, imagem ou foto tirada pela câmera.</p>
-            </div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              className="hidden"
-              accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
-              onChange={(event) => setCompletionFile(event.target.files?.[0] ?? null)}
-            />
-            <input
-              ref={cameraInputRef}
-              type="file"
-              className="hidden"
-              accept="image/*"
-              capture="environment"
-              onChange={(event) => setCompletionFile(event.target.files?.[0] ?? null)}
-            />
-            <div className="flex min-w-0 flex-col gap-2 sm:flex-row">
-              <Button type="button" variant="outline" className="min-w-0 flex-1" onClick={() => fileInputRef.current?.click()}>
-                <FileUp className="mr-2 h-4 w-4 shrink-0" />
-                <span className="truncate">Anexar arquivo</span>
-              </Button>
-              <Button type="button" variant="outline" className="min-w-0 flex-1" onClick={() => cameraInputRef.current?.click()}>
-                <Camera className="mr-2 h-4 w-4" />
-                Usar câmera
-              </Button>
-            </div>
-            {completionFile && (
-              <div className="flex min-w-0 max-w-full items-center justify-between overflow-hidden rounded-xl bg-card px-3 py-2 text-sm">
-                <span className="min-w-0 flex-1 truncate">{completionFile.name}</span>
-                <span className="ml-3 shrink-0 text-xs text-muted-foreground">{formatFileSize(completionFile.size)}</span>
-              </div>
-            )}
-          </div>
+          <CompletionNaAttachments
+            existingAttachments={completionTarget?.naAttachments ?? []}
+            files={completionFiles}
+            disabled={completeMutation.isPending}
+            onAddFiles={(files) => setCompletionFiles((current) => [...current, ...files])}
+            onRemoveFile={(index) => setCompletionFiles((current) => current.filter((_, currentIndex) => currentIndex !== index))}
+          />
           <DialogFooter className="gap-2 sm:gap-2">
             <Button type="button" variant="outline" className="w-full min-w-0 sm:w-auto" onClick={() => setCompletionTarget(null)}>
               Voltar
@@ -1041,7 +951,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                 !completionStartTime ||
                 !completionEndDate ||
                 !completionEndTime ||
-                (!completionFile && !completionTarget.naDocumentUrl) ||
+                (completionFiles.length === 0 && !completionTarget.naAttachments?.length && !completionTarget.naDocumentUrl) ||
                 completeMutation.isPending
               }
               onClick={() =>
@@ -1052,7 +962,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                   startTime: completionStartTime,
                   endDate: completionEndDate,
                   endTime: completionEndTime,
-                  file: completionFile,
+                  files: completionFiles,
                 })
               }
             >
@@ -1070,12 +980,13 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
       </Dialog>
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-visible md:overflow-hidden">
-        <div className={`${mobileFiltersOpen ? "grid" : "hidden"} shrink-0 grid-cols-2 gap-2 sm:flex sm:items-center`}>
-          <div className="relative col-span-2 sm:w-80">
+        <div className={`${mobileFiltersOpen ? "grid" : "hidden"} -m-1 shrink-0 grid-cols-2 gap-2 overflow-visible p-1 sm:flex sm:items-center`}>
+          <div className="relative col-span-2 focus-within:z-20 sm:w-80">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Buscar cliente, serviço, equipe..."
               value={searchTerm}
+              spellCheck={false}
               onChange={(event) => {
                 setSearchTerm(event.target.value)
                 setCurrentPage(1)
@@ -1211,7 +1122,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            {!["in_progress", "cancelled"].includes(schedule.status) && (
+                            {canEditSchedule(schedule, canManageLockedSchedules) && (
                               <DropdownMenuItem
                                 className="cursor-pointer"
                                 onClick={(event) => {
@@ -1258,8 +1169,6 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                                 onClick={(event) => {
                                   event.stopPropagation()
                                   setCancelTarget(schedule)
-                                  setCancelReason(schedule.cancellationReason || "")
-                                  setCancelStep("reason")
                                 }}
                               >
                                 <X className="mr-2 h-4 w-4" />
@@ -1345,7 +1254,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                     ) : null}
                     {canManageAgenda ? (
                     <div className="mt-auto grid grid-cols-2 gap-2 pt-3 [&>*:only-child]:col-span-2" onClick={(event) => event.stopPropagation()}>
-                      {!["in_progress", "cancelled"].includes(schedule.status) && (
+                      {canEditSchedule(schedule, canManageLockedSchedules) && (
                         <Button type="button" variant="outline" size="sm" className="h-8 rounded-full" onClick={() => openEditSchedule(schedule)}>
                           <Edit className="mr-2 h-4 w-4" />
                           Editar
@@ -1382,8 +1291,6 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                           className="h-8 rounded-full"
                           onClick={() => {
                             setCancelTarget(schedule)
-                            setCancelReason(schedule.cancellationReason || "")
-                            setCancelStep("reason")
                           }}
                         >
                           <X className="mr-2 h-4 w-4" />

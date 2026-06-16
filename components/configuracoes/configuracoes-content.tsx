@@ -176,6 +176,58 @@ function getPermissionModuleDescription(moduleKey: string) {
   return PERMISSION_MODULES.find((module) => module.key === moduleKey)?.description ?? ""
 }
 
+function formatRuleDaysBefore(days: number) {
+  const value = Math.max(0, Math.trunc(Number(days) || 0))
+  if (value === 0) return "no dia"
+  return `${value} dia${value === 1 ? "" : "s"} antes`
+}
+
+function getNotificationRuleSummary(rule: NotificationRuleRecord) {
+  switch (rule.type) {
+    case "new_schedule":
+      return "Disparo quando um agendamento for criado."
+    case "schedule_assigned":
+      return "Disparo quando uma equipe ou funcionário for atribuído."
+    case "schedule_unassigned":
+      return "Disparo quando uma equipe ou funcionário for removido."
+    case "schedule_change":
+      return "Disparo quando dados do agendamento forem alterados."
+    case "schedule_cancel":
+      return "Disparo quando um agendamento for cancelado."
+    case "emergency":
+      return "Disparo quando um agendamento for marcado como emergencial."
+    case "schedule_confirmed":
+      return "Disparo quando o agendamento do contrato for confirmado ao cliente."
+    case "daily_services":
+      return `Envio diário às ${rule.time}.`
+    case "contract_signature":
+      return "Disparo ao enviar o contrato para assinatura."
+    case "contract_signed":
+      return "Disparo após todas as assinaturas do contrato."
+    case "informative":
+      return "Antecedência configurada no template do informativo."
+    case "certificate":
+      return "Disparo após o envio do certificado final."
+    case "certificate_ready":
+      return "Disparo quando o atendimento concluído com NA estiver pronto para emissão."
+    case "payment_due":
+      return `Aviso de parcela: ${formatRuleDaysBefore(rule.daysBefore)}.`
+    case "payment_overdue":
+      return `Cobrança recorrente a cada ${rule.daysBefore || 7} dia${(rule.daysBefore || 7) === 1 ? "" : "s"}.`
+    case "contract_expiring": {
+      const days = (rule.contractExpirationAlertDays?.length ? rule.contractExpirationAlertDays : [rule.daysBefore])
+        .map((day) => Number(day))
+        .filter((day) => Number.isFinite(day))
+
+      return days.length > 0
+        ? `Alertas: ${days.map(formatRuleDaysBefore).join(" e ")}.`
+        : "Alertas conforme vencimento do contrato."
+    }
+    default:
+      return rule.daysBefore > 0 ? `Envio ${formatRuleDaysBefore(rule.daysBefore)}.` : "Disparo conforme o evento."
+  }
+}
+
 export function ConfiguracoesContent() {
   const typeDialogResetTimeoutRef = useRef<number | null>(null)
   const profileDialogResetTimeoutRef = useRef<number | null>(null)
@@ -708,6 +760,7 @@ export function ConfiguracoesContent() {
         .filter((value) => value !== "")
         .map((value) => Math.max(0, Math.trunc(Number(value))))
         .slice(0, 2)
+      const canConfigureRecipients = !editingRule.isDefault || DEFAULT_RULES_WITH_CONFIGURABLE_RECIPIENTS.has(editingRule.type)
 
       const payload = editingRule?.isDefault
         ? {
@@ -716,6 +769,12 @@ export function ConfiguracoesContent() {
           contractExpirationAlertDays: ruleForm.type === "contract_expiring" ? contractExpirationAlertDays : undefined,
           time: ruleForm.time,
           channels: ruleForm.channels,
+          ...(canConfigureRecipients
+            ? {
+              targetTeamIds: ruleForm.targetTeamIds,
+              targetEmployeeIds: ruleForm.targetEmployeeIds,
+            }
+            : {}),
           isActive: ruleForm.isActive,
         }
         : {
@@ -1751,15 +1810,7 @@ export function ConfiguracoesContent() {
                   <CardContent className="flex flex-1 flex-col gap-3 text-sm">
                     {item.description ? <p className="text-sm text-muted-foreground">{item.description}</p> : null}
                     <div className="text-sm text-muted-foreground">
-                      <span>
-                        {item.type === "contract_expiring"
-                          ? `Alertas: ${(item.contractExpirationAlertDays?.length ? item.contractExpirationAlertDays : [item.daysBefore]).join(" e ")} dia(s) antes`
-                          : item.type === "payment_overdue"
-                            ? `A cada ${item.daysBefore || 7} dia(s)`
-                            : item.daysBefore === 0 ? "No dia" : `${item.daysBefore} dia(s) antes`}
-                      </span>
-                      <span className="mx-1">•</span>
-                      <span>às {item.time}</span>
+                      {getNotificationRuleSummary(item)}
                     </div>
                     <div className="mt-auto space-y-3 pt-1">
                       <div className="flex flex-wrap gap-1.5">

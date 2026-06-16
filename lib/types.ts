@@ -100,6 +100,7 @@ export interface ServiceType {
   name: string // Desentupimento, Hidrojateamento, Limpeza de Reservatórios, etc.
   baseValue: number // Valor base
   clauses: string[] // Cláusulas do contrato
+  defaultInformativeTemplateId?: string
   defaultRecurrence: RecurrenceType
   recurrenceRules: RecurrenceRule[] // Regras de recorrência por nº de unidades (ordenadas por maxUnits)
   defaultTeamIds: string[] // Equipes responsáveis
@@ -152,6 +153,7 @@ export interface ContractService {
   additionalEmployeeIds?: string[] // Funcionários avulsos
   unitIds: string[] // Unidades que receberão o serviço
   clauses: string[] // Cláusulas específicas
+  informativeTemplateId?: string
   isActive: boolean
 }
 
@@ -180,6 +182,7 @@ export interface Contract {
   clientId: string
   contractNumber: string
   totalValue: number
+  downPaymentValue: number
   duration: number // Em meses
   startDate: Date
   endDate: Date
@@ -349,7 +352,7 @@ export type PermissionKey =
   | "employees_view" | "employees_create" | "employees_edit" | "employees_delete"
   | "teams_view" | "teams_manage"
   | "services_view" | "services_manage"
-  | "agenda_own_view" | "agenda_view" | "agenda_manage"
+  | "agenda_own_view" | "agenda_view" | "agenda_manage" | "agenda_manage_locked"
   | "financial_view" | "financial_manage"
   | "reports_view" | "reports_export"
   | "certificates_view" | "certificates_manage"

@@ -11,7 +11,7 @@ export const SCHEDULE_DURATION_TYPE_OPTIONS: Array<{ value: ScheduleDurationType
 const DURATION_TYPE_MINUTES: Record<ScheduleDurationType, number> = {
   hours: 60,
   shift: 4 * 60,
-  days: 8 * 60,
+  days: 9 * 60,
 }
 
 export function scheduleDurationToMinutes(duration: number, durationType: ScheduleDurationType) {

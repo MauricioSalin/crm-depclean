@@ -37,6 +37,7 @@ const emptyStats: DashboardStatsRecord = {
   overdueInstallments: 0,
   overdueInstallmentsValue: 0,
   teamProductivity: [],
+  employeeProductivity: [],
 }
 
 type DashboardPeriodProps = DashboardAnalyticsParams

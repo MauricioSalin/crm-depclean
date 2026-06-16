@@ -51,6 +51,7 @@ import {
 } from "@/lib/api/templates"
 import { buildApiFileUrl } from "@/lib/api/client"
 import { getApiErrorMessage } from "@/lib/api/errors"
+import { BRASILIA_TIME_ZONE, formatCivilDate, formatCivilLongDate, parseCivilDate } from "@/lib/date-utils"
 import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 import { cn } from "@/lib/utils"
@@ -154,17 +155,15 @@ function notify({
 }
 
 function formatDate(value?: string | Date | null) {
-  if (!value) return ""
-  const parsed = value instanceof Date ? value : new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value)
-  if (Number.isNaN(parsed.getTime())) return ""
-  return new Intl.DateTimeFormat("pt-BR").format(parsed)
+  return formatCivilDate(value, "")
 }
 
 function formatDateTime(value?: string | Date | null) {
   if (!value) return ""
-  const parsed = value instanceof Date ? value : new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value)
+  const parsed = parseTemplateDate(value)
   if (Number.isNaN(parsed.getTime())) return ""
   return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: BRASILIA_TIME_ZONE,
     dateStyle: "short",
     timeStyle: "short",
   }).format(parsed)
@@ -176,7 +175,7 @@ function capitalizeFirstLetter(value: string) {
 
 function formatRelativeUpdatedAt(value?: string | Date | null) {
   if (!value) return ""
-  const parsed = value instanceof Date ? value : new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value)
+  const parsed = parseTemplateDate(value)
   if (Number.isNaN(parsed.getTime())) return ""
 
   const diffMs = Math.max(0, Date.now() - parsed.getTime())
@@ -201,14 +200,13 @@ function formatRelativeUpdatedAt(value?: string | Date | null) {
 }
 
 function formatLongDate(value: string | Date | null | undefined = new Date()) {
-  if (!value) return ""
-  const parsed = value instanceof Date ? value : new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value)
-  if (Number.isNaN(parsed.getTime())) return ""
-  return new Intl.DateTimeFormat("pt-BR", {
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-  }).format(parsed).replace(/ de ([a-zà-ú])/i, (_match, letter: string) => ` de ${letter.toLocaleUpperCase("pt-BR")}`)
+  return formatCivilLongDate(value, "").replace(/ de ([a-zà-ú])/i, (_match, letter: string) => ` de ${letter.toLocaleUpperCase("pt-BR")}`)
+}
+
+function parseTemplateDate(value: string | Date) {
+  if (value instanceof Date) return value
+  const parsedCivilDate = /^\d{4}-\d{2}-\d{2}$/.test(value) ? parseCivilDate(value) : null
+  return parsedCivilDate ?? new Date(value)
 }
 
 function formatValidityText(value?: number | null) {
@@ -414,8 +412,21 @@ function buildPreviewVariables(params: {
   const reservoirRows = buildReservoirRows(unit)
   const unitValidityMonths = Math.max(1, Math.trunc(Number(unit?.reservoirProfile?.validityMonths ?? 6) || 6))
   const templateValidityMonths = Math.max(1, Math.trunc(Number(certificateValidityMonths ?? 6) || 6))
-  const installmentValue =
-    contract && contract.installmentsCount > 0 ? contract.totalValue / contract.installmentsCount : contract?.totalValue ?? 0
+  const downPaymentValue = contract?.downPaymentValue ?? 0
+  const hasDownPayment = Boolean(contract && downPaymentValue > 0 && contract.installmentsCount > 1)
+  const remainingInstallmentsCount = contract
+    ? hasDownPayment
+      ? contract.installmentsCount - 1
+      : contract.installmentsCount
+    : 0
+  const installmentValue = contract
+    ? hasDownPayment
+      ? contract.installments.find((item) => item.number === 2)?.value ?? (contract.totalValue - downPaymentValue) / remainingInstallmentsCount
+      : contract.installmentsCount > 0
+        ? contract.totalValue / contract.installmentsCount
+        : contract.totalValue
+    : 0
+  const firstInstallmentValue = hasDownPayment ? downPaymentValue : installmentValue
   const contractServiceNames =
     contract?.services
       .map((item) => services.find((serviceItem) => serviceItem.id === item.serviceTypeId)?.name)
@@ -483,8 +494,11 @@ function buildPreviewVariables(params: {
         endDateLong: formatLongDate(contract.endDate),
         firstDueDate: formatDate(contract.installments[0]?.dueDate),
         firstDueDateLong: formatLongDate(contract.installments[0]?.dueDate),
+        downPaymentValue: formatCurrency(downPaymentValue),
+        firstInstallmentValue: formatCurrency(firstInstallmentValue),
         installmentValue: formatCurrency(installmentValue),
         installmentsCount: String(contract.installmentsCount),
+        remainingInstallmentsCount: String(hasDownPayment ? remainingInstallmentsCount : 0),
         number: contract.contractNumber,
         paymentDay: String(contract.paymentDay).padStart(2, "0"),
         recurrence: recurrenceLabel(contract.recurrence),

@@ -39,7 +39,7 @@ import { getFinancialAnalytics, type FinancialInstallmentRecord } from "@/lib/ap
 import { updateInstallment } from "@/lib/api/contracts"
 import { updateScheduleBilling } from "@/lib/api/schedules"
 import { getApiErrorMessage } from "@/lib/api/errors"
-import { formatCivilDate } from "@/lib/date-utils"
+import { formatCivilDate, parseCivilDate, toCivilDateKey } from "@/lib/date-utils"
 import { buildPathWithSearchParams, withReturnTo } from "@/lib/navigation"
 import { hasAnyPermission } from "@/lib/auth/permissions"
 import { getStoredUser } from "@/lib/auth/session"
@@ -89,17 +89,15 @@ function formatDate(value: string) {
   return formatCivilDate(value)
 }
 
-function startOfDay(date: Date) {
-  const copy = new Date(date)
-  copy.setHours(0, 0, 0, 0)
-  return copy
+function civilDateTime(value: string | Date) {
+  return parseCivilDate(value)?.getTime() ?? 0
 }
 
 function selectCurrentInstallment(installments: FinancialInstallmentRecord[]) {
-  const today = startOfDay(new Date()).getTime()
-  const sorted = [...installments].sort((left, right) => new Date(left.dueDate).getTime() - new Date(right.dueDate).getTime())
+  const today = civilDateTime(toCivilDateKey(new Date()))
+  const sorted = [...installments].sort((left, right) => civilDateTime(left.dueDate) - civilDateTime(right.dueDate))
   const dueOrPast = sorted
-    .filter((installment) => startOfDay(new Date(installment.dueDate)).getTime() <= today)
+    .filter((installment) => civilDateTime(installment.dueDate) <= today)
     .at(-1)
 
   return dueOrPast ?? sorted[0]
@@ -421,12 +419,13 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
 
       {/* Installments Table */}
       <div className="space-y-4">
-          <div className="grid grid-cols-2 sm:flex sm:items-center gap-2">
-              <div className="relative sm:flex-none sm:w-80">
+          <div className="-mx-1 -mt-1 mb-4 grid grid-cols-2 gap-2 overflow-visible p-1 sm:flex sm:items-center">
+              <div className="relative focus-within:z-20 sm:w-80 sm:flex-none">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   placeholder="Buscar por contrato ou cliente..."
                   value={searchTerm}
+                  spellCheck={false}
                   onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1) }}
                   className="pl-10"
                 />

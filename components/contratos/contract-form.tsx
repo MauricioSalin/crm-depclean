@@ -79,7 +79,7 @@ import {
 } from "lucide-react"
 import { cn, getColorFromClass } from "@/lib/utils"
 import { withReturnTo } from "@/lib/navigation"
-import { formatCivilDate, formatCivilLongDate, toCivilDateKey } from "@/lib/date-utils"
+import { addCivilDaysKey, addCivilMonthsKey, formatCivilDate, formatCivilLongDate, toCivilDateKey } from "@/lib/date-utils"
 import type { RecurrenceRule, RecurrenceRuleType, RecurrenceType } from "@/lib/types"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
@@ -171,6 +171,7 @@ interface ContractFormProps {
 interface ContractService {
   id: string
   serviceTypeId: string
+  informativeTemplateId: string
   teamIds: string[]
   employeeIds: string[]
   recurrence: string
@@ -197,6 +198,8 @@ const recurrenceOptions = [
   { value: "semiannual", label: "Semestral" },
   { value: "annual", label: "Anual" },
 ]
+
+const NO_INFORMATIVE_TEMPLATE_VALUE = "__none__"
 
 function isPresent<T>(value: T | null | undefined): value is T {
   return value != null
@@ -302,7 +305,6 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
   const [templatePopoverOpen, setTemplatePopoverOpen] = useState(false)
   const [createAutomatedSchedules, setCreateAutomatedSchedules] = useState(false)
   const [createAutomatedInformatives, setCreateAutomatedInformatives] = useState(false)
-  const [selectedInformativeTemplateId, setSelectedInformativeTemplateId] = useState("")
   const [startDate, setStartDate] = useState(
     contract?.startDate ? String(contract.startDate).split("T")[0] : ""
   )
@@ -313,10 +315,12 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
   const [installmentsCount, setInstallmentsCount] = useState(contract?.installmentsCount || 1)
   const endDate = useMemo(() => {
     if (!startDate) return ""
-    const start = new Date(`${startDate}T00:00:00`)
-    start.setMonth(start.getMonth() + installmentsCount)
-    return toCivilDateKey(start)
+    return addCivilMonthsKey(startDate, installmentsCount)
   }, [startDate, installmentsCount])
+  const firstInstallmentDueDate = useMemo(() => {
+    if (!startDate) return ""
+    return addCivilDaysKey(startDate, 7)
+  }, [startDate])
   const [dueDay, setDueDay] = useState(((contract as any)?.dueDay ?? (contract as any)?.paymentDay ?? 10) as number)
   const [selectedUnitIds, setSelectedUnitIds] = useState<string[]>(initialUnitIds)
   const [services, setServices] = useState<ContractService[]>(
@@ -325,6 +329,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
       return {
         id: s.id,
         serviceTypeId: s.serviceTypeId,
+        informativeTemplateId: (s as any).informativeTemplateId ?? (contract as any)?.automationInformativeTemplateId ?? "",
         teamIds: (s as any).teamIds ?? (legacyTeamId ? [legacyTeamId] : []),
         employeeIds: (s as any).additionalEmployeeIds ?? (s as any).employeeIds ?? [],
         recurrence: (s as any).recurrence ?? "monthly",
@@ -335,6 +340,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
     }) || []
   )
   const [contractValue, setContractValue] = useState(contract?.totalValue ? Math.round(contract.totalValue * 100) : 0)
+  const [downPaymentValue, setDownPaymentValue] = useState(contract?.downPaymentValue ? Math.round(contract.downPaymentValue * 100) : 0)
 
   // Contract-level recurrence rules
   const [contractRecurrenceRules, setContractRecurrenceRules] = useState<RecurrenceRule[]>(
@@ -371,6 +377,14 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
   const selectedTemplate = templateById.get(selectedTemplateId)
   const selectedTemplateSigner = selectedTemplate?.signerId ? employeeById.get(selectedTemplate.signerId) : undefined
   const totalValue = contractValue / 100
+  const downPaymentAmount = downPaymentValue / 100
+  const hasDownPayment = downPaymentAmount > 0 && installmentsCount > 1
+  const remainingInstallmentsCount = hasDownPayment ? installmentsCount - 1 : installmentsCount
+  const remainingContractValue = Math.max(totalValue - downPaymentAmount, 0)
+  const regularInstallmentValue = remainingInstallmentsCount > 0
+    ? (hasDownPayment ? remainingContractValue : totalValue) / remainingInstallmentsCount
+    : totalValue
+  const firstInstallmentValue = hasDownPayment ? downPaymentAmount : regularInstallmentValue
   const activeContractTemplates = useMemo(
     () => templates.filter((template) => template.isActive),
     [templates],
@@ -409,6 +423,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
     const initialServiceList = (contract.services ?? []).map((service) => ({
       id: service.id,
       serviceTypeId: service.serviceTypeId,
+      informativeTemplateId: service.informativeTemplateId ?? contract.automationInformativeTemplateId ?? "",
       teamIds: service.teamIds ?? [],
       employeeIds: service.additionalEmployeeIds ?? [],
       recurrence: service.recurrence ?? "monthly",
@@ -421,7 +436,6 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
     setSelectedTemplateId(contract.templateId ?? "")
     setCreateAutomatedSchedules(contract.automationCreateSchedules ?? true)
     setCreateAutomatedInformatives(contract.automationCreateInformatives ?? true)
-    setSelectedInformativeTemplateId(contract.automationInformativeTemplateId ?? "")
     setStartDate(contract.startDate ? String(contract.startDate).split("T")[0] : "")
     setFirstVisitDate(contract.firstVisitDate ? String(contract.firstVisitDate).split("T")[0] : "")
     setFirstVisitTime(contract.firstVisitTime || "08:00")
@@ -430,6 +444,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
     setSelectedUnitIds(Array.from(new Set([...directUnitIds, ...serviceUnitIds])))
     setServices(initialServiceList)
     setContractValue(Math.round((contract.totalValue ?? 0) * 100))
+    setDownPaymentValue(Math.round((contract.downPaymentValue ?? 0) * 100))
     setContractRecurrenceRules(
       contract.recurrenceRules?.length
         ? contract.recurrenceRules.map((rule) => ({
@@ -448,13 +463,16 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
   }, [contract])
 
   useEffect(() => {
+    setDownPaymentValue((current) => Math.min(current, contractValue))
+  }, [contractValue])
+
+  useEffect(() => {
     return () => clearClausesDialogCloseTimeout()
   }, [])
 
   useEffect(() => {
     if (!createAutomatedSchedules) {
       setCreateAutomatedInformatives(false)
-      setSelectedInformativeTemplateId("")
     }
   }, [createAutomatedSchedules])
 
@@ -470,7 +488,10 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
           recurrence: service.recurrence || serviceType.defaultRecurrence || "monthly",
           duration: service.duration || Number(serviceType.defaultDuration ?? 1),
           durationType: service.durationType || serviceType.durationType || "hours",
+          teamIds: service.teamIds.length > 0 ? service.teamIds : [...(serviceType.teamIds ?? [])],
+          employeeIds: service.employeeIds.length > 0 ? service.employeeIds : [...(serviceType.employeeIds ?? [])],
           clauses: service.clauses.length > 0 ? service.clauses : [...(serviceType.clauses ?? [])],
+          informativeTemplateId: service.informativeTemplateId || serviceType.defaultInformativeTemplateId || "",
         }
       }),
     )
@@ -481,16 +502,6 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
       setFirstVisitDate(startDate)
     }
   }, [createAutomatedSchedules, firstVisitDate, startDate])
-
-  useEffect(() => {
-    if (!createAutomatedInformatives) {
-      setSelectedInformativeTemplateId("")
-      return
-    }
-    if (!selectedInformativeTemplateId && activeInformativeTemplates.length > 0) {
-      setSelectedInformativeTemplateId(activeInformativeTemplates[0].id)
-    }
-  }, [activeInformativeTemplates, createAutomatedInformatives, selectedInformativeTemplateId])
 
   // Total de unidades das filiais selecionadas (para regras de recorrência)
   const selectedTotalUnitCount = useMemo(() => {
@@ -611,7 +622,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
   }
 
   const createDraftContractNumber = () => {
-    const year = new Date().getFullYear()
+    const year = toCivilDateKey(new Date()).slice(0, 4)
     const seq = String(Date.now()).slice(-3)
     return `DEP-${year}-${seq}`
   }
@@ -625,11 +636,12 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
     contractNumber: options?.contractNumber,
     automationCreateSchedules: createAutomatedSchedules,
     automationCreateInformatives: createAutomatedInformatives,
-    automationInformativeTemplateId: createAutomatedInformatives ? selectedInformativeTemplateId : "",
+    automationInformativeTemplateId: "",
     automationCreateCertificates: false,
     automationCertificateTemplateId: "",
     unitIds: selectedUnitIds,
     totalValue,
+    downPaymentValue: downPaymentAmount,
     duration: installmentsCount,
     startDate,
     paymentDay: dueDay,
@@ -653,6 +665,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
           additionalEmployeeIds: service.employeeIds,
           unitIds: selectedUnitIds,
           clauses: service.clauses?.length ? service.clauses : serviceType?.clauses ?? [],
+          informativeTemplateId: service.informativeTemplateId,
           recurrence: service.recurrence || serviceType?.defaultRecurrence || "monthly",
           duration: Math.max(1, Number(service.duration || serviceType?.defaultDuration || 1)),
           durationType: service.durationType || serviceType?.durationType || "hours",
@@ -686,8 +699,6 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
       })
       .join("\n\n")
     const serviceSectionsHtml = buildServiceSectionsHtml(services, serviceTypes)
-    const installmentValue = installmentsCount > 0 ? totalValue / installmentsCount : totalValue
-
     return {
       client: {
         address: formatAddress(selectedUnit?.address),
@@ -722,8 +733,11 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
         firstVisitTime,
         firstDueDate: formatMaybeDate(draftPreview.firstDueDate),
         firstDueDateLong: formatLongDate(draftPreview.firstDueDate),
-        installmentValue: formatCurrency(installmentValue),
+        downPaymentValue: formatCurrency(downPaymentAmount),
+        firstInstallmentValue: formatCurrency(firstInstallmentValue),
+        installmentValue: formatCurrency(regularInstallmentValue),
         installmentsCount: String(installmentsCount),
+        remainingInstallmentsCount: String(hasDownPayment ? remainingInstallmentsCount : 0),
         number: draftPreview.contractNumber,
         paymentDay: String(dueDay).padStart(2, "0"),
         recurrence: getRecurrenceLabel(contractRecurrence),
@@ -766,11 +780,16 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
     draftMeta,
     draftPreview,
     dueDay,
+    downPaymentAmount,
     endDate,
     firstVisitDate,
     firstVisitTime,
+    firstInstallmentValue,
+    hasDownPayment,
     installmentsCount,
     organizationSettings,
+    regularInstallmentValue,
+    remainingInstallmentsCount,
     selectedClient,
     selectedTemplateSigner,
     selectedUnitIds,
@@ -876,6 +895,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
       {
         id: `temp-${Date.now()}`,
         serviceTypeId: "",
+        informativeTemplateId: "",
         teamIds: [],
         employeeIds: [],
         recurrence: "monthly",
@@ -898,8 +918,9 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
         return {
           ...s,
           [field]: value as string,
-          teamIds: [],
-          employeeIds: [],
+          informativeTemplateId: serviceType?.defaultInformativeTemplateId || "",
+          teamIds: [...(serviceType?.teamIds ?? [])],
+          employeeIds: [...(serviceType?.employeeIds ?? [])],
           recurrence: serviceType?.defaultRecurrence || "monthly",
           duration: Number(serviceType?.defaultDuration ?? 1),
           durationType: serviceType?.durationType || "hours",
@@ -1010,18 +1031,29 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
       return
     }
 
-    if (createAutomatedInformatives && !selectedInformativeTemplateId) {
-      toast.error("Selecione o template de informativo automatizado.")
-      return
-    }
 
     if (!startDate) {
       toast.error("Preencha a data de início do contrato.")
       return
     }
 
+    if (downPaymentValue > 0 && installmentsCount < 2) {
+      toast.error("Para usar valor de entrada, informe ao menos 2 parcelas.")
+      return
+    }
+
+    if (downPaymentValue > contractValue) {
+      toast.error("O valor de entrada não pode ser maior que o valor do contrato.")
+      return
+    }
+
     if (services.filter((service) => service.serviceTypeId).length === 0) {
       toast.error("Adicione ao menos um serviço ao contrato.")
+      return
+    }
+
+    if (createAutomatedInformatives && services.some((service) => service.serviceTypeId && !service.informativeTemplateId)) {
+      toast.error("Selecione o template de informativo em todos os serviços do contrato.")
       return
     }
 
@@ -1166,6 +1198,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
                 selectedTemplateId,
                 selectedUnitIds.join(","),
                 totalValue,
+                downPaymentValue,
                 installmentsCount,
                 dueDay,
               ].join("|")}
@@ -1612,30 +1645,6 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
               </span>
             </label>
           </div>
-
-          {createAutomatedInformatives && (
-            <div className="flex flex-col gap-4">
-              <div className="space-y-2">
-                <Label>Template do informativo automatizado *</Label>
-                <Select
-                  value={selectedInformativeTemplateId || undefined}
-                  onValueChange={setSelectedInformativeTemplateId}
-                  disabled={activeInformativeTemplates.length === 0}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder={activeInformativeTemplates.length > 0 ? "Selecione um template" : "Nenhum template ativo"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {activeInformativeTemplates.map((template) => (
-                      <SelectItem key={template.id} value={template.id}>
-                        {template.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          )}
         </div>
       </Card>
 
@@ -1677,9 +1686,13 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
             />
           </div>
         </div>
+        <p className="mt-3 max-w-xl text-xs text-muted-foreground">
+          A primeira parcela vence 7 dias após a data de início do contrato. As demais parcelas seguem o dia de vencimento informado.
+        </p>
         {startDate && installmentsCount > 0 && (
           <div className="mt-4 flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted-foreground">
-            <span>Vigência: <strong className="text-foreground">{new Date(`${startDate}T00:00:00`).toLocaleDateString("pt-BR")}</strong> até <strong className="text-foreground">{new Date(`${endDate}T00:00:00`).toLocaleDateString("pt-BR")}</strong></span>
+            <span>Vigência: <strong className="text-foreground">{formatCivilDate(startDate)}</strong> até <strong className="text-foreground">{formatCivilDate(endDate)}</strong></span>
+            <span>1ª parcela: <strong className="text-foreground">{formatCivilDate(firstInstallmentDueDate)}</strong></span>
           </div>
         )}
       </Card>
@@ -1699,10 +1712,11 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
 
         {services.length > 0 ? (
           <div className="overflow-x-auto rounded-lg">
-            <Table className="min-w-[1180px]">
+            <Table className="min-w-[1440px]">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
                   <TableHead className="w-[300px]">Serviço</TableHead>
+                  <TableHead className="w-[260px]">Informativo</TableHead>
                   <TableHead className="w-[210px]">Duração</TableHead>
                   <TableHead className="w-[180px]">Recorrência</TableHead>
                   <TableHead>Equipes / Funcionários</TableHead>
@@ -1727,6 +1741,31 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
                           <SelectContent>
                             {serviceTypes.map((st) => (
                               <SelectItem key={st.id} value={st.id}>{st.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell className="w-[260px] py-3 align-top">
+                        <Select
+                          value={service.informativeTemplateId || NO_INFORMATIVE_TEMPLATE_VALUE}
+                          onValueChange={(value) =>
+                            updateService(
+                              service.id,
+                              "informativeTemplateId",
+                              value === NO_INFORMATIVE_TEMPLATE_VALUE ? "" : value,
+                            )
+                          }
+                          disabled={!service.serviceTypeId || activeInformativeTemplates.length === 0}
+                        >
+                          <SelectTrigger className="w-full min-w-[230px]">
+                            <SelectValue placeholder={activeInformativeTemplates.length > 0 ? "Selecione" : "Nenhum template"} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={NO_INFORMATIVE_TEMPLATE_VALUE}>Sem informativo</SelectItem>
+                            {activeInformativeTemplates.map((template) => (
+                              <SelectItem key={template.id} value={template.id}>
+                                {template.name}
+                              </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
@@ -1861,6 +1900,17 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
             </p>
           </div>
 
+          <div className="space-y-2">
+            <Label>Valor de Entrada</Label>
+            <CurrencyInput
+              value={downPaymentValue}
+              onChange={(value) => setDownPaymentValue(Math.min(value, contractValue))}
+            />
+            <p className="text-xs text-muted-foreground">
+              A primeira parcela será a entrada; o saldo será dividido nas demais parcelas.
+            </p>
+          </div>
+
           <div className="rounded-lg bg-muted/30 p-4">
             <div>
               <p className="text-sm font-medium text-muted-foreground">Total do contrato</p>
@@ -1871,10 +1921,27 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
                 <span className="block text-xs">Parcelas</span>
                 <strong className="text-foreground">{installmentsCount}x</strong>
               </div>
-              <div className="rounded-lg bg-background/70 p-3">
-                <span className="block text-xs">Valor por parcela</span>
-                <strong className="text-foreground">{formatCurrency(installmentsCount > 0 ? totalValue / installmentsCount : totalValue)}</strong>
-              </div>
+              {downPaymentValue > 0 ? (
+                <>
+                  <div className="rounded-lg bg-background/70 p-3">
+                    <span className="block text-xs">Entrada (1ª parcela)</span>
+                    <strong className="text-foreground">{formatCurrency(downPaymentAmount)}</strong>
+                  </div>
+                  <div className="rounded-lg bg-background/70 p-3">
+                    <span className="block text-xs">Demais parcelas</span>
+                    <strong className="text-foreground">{Math.max(installmentsCount - 1, 0)}x</strong>
+                  </div>
+                  <div className="rounded-lg bg-background/70 p-3">
+                    <span className="block text-xs">Valor das demais</span>
+                    <strong className="text-foreground">{formatCurrency(hasDownPayment ? regularInstallmentValue : 0)}</strong>
+                  </div>
+                </>
+              ) : (
+                <div className="rounded-lg bg-background/70 p-3">
+                  <span className="block text-xs">Valor por parcela</span>
+                  <strong className="text-foreground">{formatCurrency(regularInstallmentValue)}</strong>
+                </div>
+              )}
             </div>
           </div>
         </div>

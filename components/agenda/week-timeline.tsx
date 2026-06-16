@@ -3,7 +3,7 @@
 import { useMemo, useEffect, useRef } from "react"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { toCivilDateKey } from "@/lib/date-utils"
+import { addCivilDaysKey, BRASILIA_TIME_ZONE, minutesFromBrasiliaDate, parseCivilDate, toCivilDateKey } from "@/lib/date-utils"
 
 interface TimelineEvent {
   id: string
@@ -35,14 +35,11 @@ const LUNCH_HOUR = 12
 const DAY_LABELS_SHORT = ["DOM.", "SEG.", "TER.", "QUA.", "QUI.", "SEX.", "SÁB."]
 
 function getWeekDays(date: Date): Date[] {
-  const d = new Date(date)
-  const day = d.getDay()
-  const diff = d.getDate() - day
-  return Array.from({ length: 7 }, (_, i) => {
-    const dayDate = new Date(d)
-    dayDate.setDate(diff + i)
-    return dayDate
-  })
+  const key = toCivilDateKey(date)
+  const [year, month, dayOfMonth] = key.split("-").map((value) => Number(value))
+  const weekday = new Date(Date.UTC(year, (month || 1) - 1, dayOfMonth || 1)).getUTCDay()
+  const weekStartKey = addCivilDaysKey(key, -weekday)
+  return Array.from({ length: 7 }, (_, index) => parseCivilDate(addCivilDaysKey(weekStartKey, index)) ?? new Date())
 }
 
 function timeToMinutes(time: string): number {
@@ -51,8 +48,7 @@ function timeToMinutes(time: string): number {
 }
 
 function isToday(date: Date): boolean {
-  const today = new Date()
-  return date.toDateString() === today.toDateString()
+  return toCivilDateKey(date) === toCivilDateKey(new Date())
 }
 
 export function WeekTimeline({
@@ -75,8 +71,7 @@ export function WeekTimeline({
   }, [])
 
   const navigateWeek = (direction: number) => {
-    const newDate = new Date(currentDate)
-    newDate.setDate(newDate.getDate() + direction * 7)
+    const newDate = parseCivilDate(addCivilDaysKey(toCivilDateKey(currentDate), direction * 7)) ?? new Date()
     onDateChange(newDate)
   }
 
@@ -96,7 +91,7 @@ export function WeekTimeline({
 
   // Current time indicator
   const now = new Date()
-  const nowMinutes = now.getHours() * 60 + now.getMinutes()
+  const nowMinutes = minutesFromBrasiliaDate(now)
   const nowOffset = ((nowMinutes - START_HOUR * 60) / 60) * HOUR_HEIGHT
   const showNowLine = nowMinutes >= START_HOUR * 60 && nowMinutes <= END_HOUR * 60
 
@@ -104,9 +99,11 @@ export function WeekTimeline({
   const weekStart = weekDays[0]
   const weekEnd = weekDays[6]
   const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
-  const headerLabel = weekStart.getMonth() === weekEnd.getMonth()
-    ? `${cap(weekStart.toLocaleDateString("pt-BR", { month: "long" }))} ${weekStart.getFullYear()}`
-    : `${cap(weekStart.toLocaleDateString("pt-BR", { month: "short" }))} - ${cap(weekEnd.toLocaleDateString("pt-BR", { month: "short" }))} ${weekEnd.getFullYear()}`
+  const weekStartKey = toCivilDateKey(weekStart)
+  const weekEndKey = toCivilDateKey(weekEnd)
+  const headerLabel = weekStartKey.slice(5, 7) === weekEndKey.slice(5, 7)
+    ? `${cap(weekStart.toLocaleDateString("pt-BR", { month: "long", timeZone: BRASILIA_TIME_ZONE }))} ${weekStartKey.slice(0, 4)}`
+    : `${cap(weekStart.toLocaleDateString("pt-BR", { month: "short", timeZone: BRASILIA_TIME_ZONE }))} - ${cap(weekEnd.toLocaleDateString("pt-BR", { month: "short", timeZone: BRASILIA_TIME_ZONE }))} ${weekEndKey.slice(0, 4)}`
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -153,7 +150,7 @@ export function WeekTimeline({
                     : ""
                 }`}
               >
-                {day.getDate()}
+                {Number(toCivilDateKey(day).slice(8, 10))}
               </div>
             </button>
           )

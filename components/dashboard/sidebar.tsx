@@ -26,6 +26,7 @@ import { listCertificates } from "@/lib/api/certificates"
 import { listNotifications } from "@/lib/api/notifications"
 import { listSchedules } from "@/lib/api/schedules"
 import { listTeams } from "@/lib/api/teams"
+import { toCivilDateKey } from "@/lib/date-utils"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useSidebarCollapse } from "./sidebar-collapse-context"
 
@@ -51,11 +52,7 @@ const generalItems = [
 const ACTIVE_AGENDA_BADGE_STATUSES = new Set(["scheduled", "in_progress", "rescheduled"])
 
 function getTodayDateKey() {
-  const today = new Date()
-  const year = today.getFullYear()
-  const month = String(today.getMonth() + 1).padStart(2, "0")
-  const day = String(today.getDate()).padStart(2, "0")
-  return `${year}-${month}-${day}`
+  return toCivilDateKey(new Date())
 }
 
 interface SidebarProps {
@@ -70,6 +67,7 @@ export function Sidebar({ onNavigate, forceExpanded = false }: SidebarProps) {
   const showFullLogo = !collapsed
   const todayDateKey = getTodayDateKey()
   const [currentUser, setCurrentUser] = useState<ReturnType<typeof getStoredUser>>(null)
+  const [showExpandedBadgeTone, setShowExpandedBadgeTone] = useState(!collapsed)
 
   useEffect(() => {
     const sync = () => setCurrentUser(getStoredUser())
@@ -81,6 +79,16 @@ export function Sidebar({ onNavigate, forceExpanded = false }: SidebarProps) {
       window.removeEventListener("depclean:session", sync)
     }
   }, [])
+
+  useEffect(() => {
+    if (collapsed) {
+      setShowExpandedBadgeTone(false)
+      return
+    }
+
+    const timeout = window.setTimeout(() => setShowExpandedBadgeTone(true), 180)
+    return () => window.clearTimeout(timeout)
+  }, [collapsed])
 
   const canAccessPermissions = (permissions?: string[]) => {
     if (!permissions || permissions.length === 0) return true
@@ -166,7 +174,7 @@ export function Sidebar({ onNavigate, forceExpanded = false }: SidebarProps) {
         </span>
         <span
           className={cn(
-            "min-w-0 whitespace-nowrap text-sm",
+            "min-w-0 whitespace-nowrap text-sm transition-[max-width,opacity] duration-300 ease-out",
             collapsed ? "max-w-0 overflow-hidden opacity-0" : "max-w-36 opacity-100",
           )}
         >
@@ -175,11 +183,9 @@ export function Sidebar({ onNavigate, forceExpanded = false }: SidebarProps) {
         {badge && (
           <span
             className={cn(
-              "z-20 flex shrink-0 items-center justify-center rounded-full text-[10px] font-bold leading-none shadow-sm",
-              collapsed ? "absolute right-[-5px] top-[-5px] h-4 min-w-4 px-1" : "ml-auto mr-0.5 h-5 min-w-5 px-1.5",
-              isActive
-                ? "bg-primary-foreground text-primary"
-                : "bg-primary text-primary-foreground",
+              "pointer-events-none absolute z-20 flex shrink-0 items-center justify-center rounded-full border-0 text-[10px] font-bold leading-none shadow-none transition-[background-color,color,height,min-width,padding,right,top,transform] duration-300 ease-out",
+              collapsed ? "-right-1 -top-1 h-4 min-w-4 translate-y-0 px-1" : "right-2 top-1/2 h-5 min-w-5 -translate-y-1/2 px-1.5",
+              isActive && showExpandedBadgeTone ? "bg-primary-foreground text-primary" : "bg-primary text-primary-foreground",
             )}
           >
             {badge}
@@ -195,8 +201,8 @@ export function Sidebar({ onNavigate, forceExpanded = false }: SidebarProps) {
         onClick={onNavigate}
         aria-label={item.label}
         className={cn(
-          "relative flex h-9 items-center rounded-lg text-sm font-medium transition-colors duration-200",
-          collapsed ? "w-9" : "w-full pr-2",
+          "relative flex h-9 items-center text-sm font-medium transition-[width,padding,color,background-color,box-shadow,border-radius] duration-300 ease-out",
+          collapsed ? "w-9 rounded-full p-0" : cn("w-full rounded-lg", badge ? "pr-8" : "pr-2"),
           isActive
             ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20"
             : "text-foreground/70 hover:bg-secondary hover:text-foreground",

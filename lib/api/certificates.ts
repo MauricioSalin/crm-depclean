@@ -15,6 +15,8 @@ export type CertificateQueueRecord = {
   time: string
   status: "pending" | "sent"
   naFileName?: string
+  naFileNames: string[]
+  naCount: number
   certificateFileName?: string
   certificateUrl?: string
   sentAt?: string
@@ -38,6 +40,12 @@ export type CertificateContextRecord = {
       mimeType: string
       fileSize: number
     } | null
+    naAttachments: Array<{
+      fileName: string
+      documentUrl: string
+      mimeType: string
+      fileSize: number
+    }>
   }
   client: {
     id: string

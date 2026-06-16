@@ -20,12 +20,15 @@ import { listEmployees } from "@/lib/api/employees"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { createService, getServiceById, updateService } from "@/lib/api/services"
 import { listTeams } from "@/lib/api/teams"
+import { listTemplates } from "@/lib/api/templates"
 import { cn } from "@/lib/utils"
 
 interface ServiceFormProps {
   serviceId?: string
   isEditing?: boolean
 }
+
+const NO_INFORMATIVE_TEMPLATE_VALUE = "__none__"
 
 export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
   const router = useRouter()
@@ -37,6 +40,7 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
     defaultDuration: 1,
     durationType: "hours" as "hours" | "shift" | "days",
     defaultRecurrence: "monthly",
+    defaultInformativeTemplateId: "",
     teamIds: [] as string[],
     employeeIds: [] as string[],
     clauses: [] as string[],
@@ -60,6 +64,10 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
     queryKey: ["employees", "service-form"],
     queryFn: () => listEmployees(""),
   })
+  const informativeTemplatesQuery = useQuery({
+    queryKey: ["templates", "service-form", "informative"],
+    queryFn: () => listTemplates("", "informative"),
+  })
 
   useEffect(() => {
     const service = serviceQuery.data?.data
@@ -70,6 +78,7 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
       defaultDuration: service.defaultDuration,
       durationType: service.durationType,
       defaultRecurrence: service.defaultRecurrence,
+      defaultInformativeTemplateId: service.defaultInformativeTemplateId ?? "",
       teamIds: service.teamIds,
       employeeIds: service.employeeIds,
       clauses: service.clauses,
@@ -79,6 +88,11 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
 
   const teams = teamsQuery.data?.data ?? []
   const employees = employeesQuery.data?.data ?? []
+  const informativeTemplates = informativeTemplatesQuery.data?.data ?? []
+  const activeInformativeTemplates = useMemo(
+    () => informativeTemplates.filter((template) => template.isActive && template.format === "docx"),
+    [informativeTemplates],
+  )
   const filteredTeams = useMemo(
     () => teams.filter((team) => team.name.toLowerCase().includes(teamSearchTerm.toLowerCase())),
     [teamSearchTerm, teams],
@@ -100,6 +114,7 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
         defaultDuration: Number(formData.defaultDuration),
         durationType: formData.durationType,
         defaultRecurrence: formData.defaultRecurrence,
+        defaultInformativeTemplateId: formData.defaultInformativeTemplateId,
         teamIds: formData.teamIds,
         employeeIds: formData.employeeIds,
         clauses: formData.clauses,
@@ -252,6 +267,39 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
               </SelectContent>
             </Select>
           </div>
+        </div>
+      </Card>
+
+      <Card className="p-6">
+        <div className="mb-6 flex items-center gap-2">
+          <FileText className="h-5 w-5 text-primary" />
+          <h3 className="text-lg font-semibold">Informativo padrão</h3>
+        </div>
+
+        <div className="space-y-2 md:max-w-[360px]">
+          <Label htmlFor="defaultInformativeTemplateId">Template do informativo</Label>
+          <Select
+            value={formData.defaultInformativeTemplateId || NO_INFORMATIVE_TEMPLATE_VALUE}
+            onValueChange={(value) =>
+              setFormData((current) => ({
+                ...current,
+                defaultInformativeTemplateId: value === NO_INFORMATIVE_TEMPLATE_VALUE ? "" : value,
+              }))
+            }
+            disabled={activeInformativeTemplates.length === 0}
+          >
+            <SelectTrigger id="defaultInformativeTemplateId" className="w-full">
+              <SelectValue placeholder={activeInformativeTemplates.length > 0 ? "Selecione um template" : "Nenhum template ativo"} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NO_INFORMATIVE_TEMPLATE_VALUE}>Sem informativo padrão</SelectItem>
+              {activeInformativeTemplates.map((template) => (
+                <SelectItem key={template.id} value={template.id}>
+                  {template.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </Card>
 

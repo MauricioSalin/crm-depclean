@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { flushSync } from "react-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { Award, Calendar, Edit, ExternalLink, Eye, FileText, Send, UserRound } from "lucide-react"
@@ -21,13 +20,12 @@ import { buildApiFileUrl } from "@/lib/api/client"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { listTemplates, type TemplateRecord } from "@/lib/api/templates"
 import { getStoredUser } from "@/lib/auth/session"
+import { formatCivilDate } from "@/lib/date-utils"
 
 type EditorTab = "editor" | "preview"
 
 function formatDate(value: string) {
-  if (!value) return "-"
-  const [year, month, day] = value.split("-")
-  return `${day}/${month}/${year}`
+  return formatCivilDate(value)
 }
 
 function getTemplateImageUrl(template?: TemplateRecord | null) {
@@ -107,6 +105,13 @@ export function CertificateEditorContent({ scheduleId }: { scheduleId: string })
   )
   const selectedTemplate = templates.find((template) => template.id === selectedTemplateId) ?? null
   const context = contextQuery.data?.data
+  const naAttachments = context
+    ? context.schedule.naAttachments?.length
+      ? context.schedule.naAttachments
+      : context.schedule.naAttachment
+        ? [context.schedule.naAttachment]
+        : []
+    : []
   const previewVariables = useMemo(
     () => (context ? applyTemplateCertificateValidity(context.variables, selectedTemplate) : null),
     [context, selectedTemplate],
@@ -118,10 +123,7 @@ export function CertificateEditorContent({ scheduleId }: { scheduleId: string })
         throw new Error("Selecione um template de certificado.")
       }
 
-      flushSync(() => setEditorTab("preview"))
-      await new Promise((resolve) => window.requestAnimationFrame(resolve))
-
-      const file = await editorRef.current?.generatePreviewPdf({ download: false })
+      const file = await editorRef.current?.saveToFile()
       if (!file) {
         throw new Error("O documento ainda não está pronto para envio.")
       }
@@ -291,26 +293,37 @@ export function CertificateEditorContent({ scheduleId }: { scheduleId: string })
               </div>
             </div>
 
-            {context.schedule.naAttachment ? (
+            {naAttachments.length > 0 ? (
               <div className="space-y-3 rounded-xl border bg-card p-4">
                 <div className="flex items-start gap-3">
                   <div className="rounded-full bg-primary/10 p-2">
                     <FileText className="h-4 w-4 text-primary" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="font-semibold">NA anexada</p>
-                    <p className="truncate text-sm text-muted-foreground">{context.schedule.naAttachment.fileName}</p>
-                    {context.schedule.naAttachment.fileSize ? (
-                      <p className="text-xs text-muted-foreground">{formatFileSize(context.schedule.naAttachment.fileSize)}</p>
-                    ) : null}
+                    <p className="font-semibold">NAs anexadas</p>
+                    <p className="text-sm text-muted-foreground">
+                      {naAttachments.length} {naAttachments.length === 1 ? "arquivo" : "arquivos"}
+                    </p>
                   </div>
                 </div>
-                <Button variant="outline" className="w-full justify-center" asChild>
-                  <a href={buildApiFileUrl(context.schedule.naAttachment.documentUrl)} target="_blank" rel="noreferrer">
-                    <ExternalLink className="mr-2 h-4 w-4" />
-                    Abrir NA
-                  </a>
-                </Button>
+                <div className="space-y-2">
+                  {naAttachments.map((attachment, index) => (
+                    <div key={`${attachment.documentUrl}-${index}`} className="flex min-w-0 items-center gap-3 rounded-lg border px-3 py-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium">{attachment.fileName}</p>
+                        {attachment.fileSize ? (
+                          <p className="text-xs text-muted-foreground">{formatFileSize(attachment.fileSize)}</p>
+                        ) : null}
+                      </div>
+                      <Button variant="ghost" size="sm" className="shrink-0" asChild>
+                        <a href={buildApiFileUrl(attachment.documentUrl)} target="_blank" rel="noreferrer">
+                          <ExternalLink className="mr-2 h-4 w-4" />
+                          Abrir
+                        </a>
+                      </Button>
+                    </div>
+                  ))}
+                </div>
               </div>
             ) : null}
           </div>

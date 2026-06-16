@@ -1,6 +1,6 @@
 "use client"
 
-import { Suspense } from "react"
+import { Suspense, useState } from "react"
 import { usePathname, useSearchParams } from "next/navigation"
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { Header } from "@/components/dashboard/header"
@@ -9,12 +9,13 @@ import { Button } from "@/components/ui/button"
 import { ContentLoadingSkeleton } from "@/components/ui/content-loading-skeleton"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import Link from "next/link"
-import { Plus, List, LayoutGrid } from "lucide-react"
+import { FileUp, Plus, List, LayoutGrid } from "lucide-react"
 import { buildPathWithSearchParams, withReturnTo } from "@/lib/navigation"
 import { useResponsiveDefaultViewMode } from "@/hooks/use-responsive-default-view-mode"
 
 export default function ContratosPage() {
   const [viewMode, setViewMode] = useResponsiveDefaultViewMode("table", "cards")
+  const [importOpen, setImportOpen] = useState(false)
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const currentHref = buildPathWithSearchParams(pathname, searchParams)
@@ -41,16 +42,29 @@ export default function ContratosPage() {
           hasFilters
           viewToggle={toggle}
           actions={
-            <Link href={withReturnTo("/contratos/novo", currentHref)}>
-              <Button className="w-full sm:w-auto h-9 text-sm bg-primary text-primary-foreground hover:bg-primary/90">
-                <Plus className="w-4 h-4 mr-2" />
-                Novo Contrato
+            <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setImportOpen(true)}
+                className="h-9 w-9 shrink-0 px-0 sm:w-auto sm:px-4"
+                aria-label="Importar contratos"
+                title="Importar contratos"
+              >
+                <FileUp className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Importar</span>
               </Button>
-            </Link>
+              <Link href={withReturnTo("/contratos/novo", currentHref)} className="min-w-0 flex-1 sm:flex-none">
+                <Button className="h-9 w-full min-w-0 text-sm bg-primary text-primary-foreground hover:bg-primary/90 sm:w-auto">
+                  <Plus className="h-4 w-4 shrink-0 sm:mr-2" />
+                  <span className="truncate">Novo Contrato</span>
+                </Button>
+              </Link>
+            </div>
           }
         />
         <Suspense fallback={<ContentLoadingSkeleton className="mt-4 md:mt-5" />}>
-          <ContractsContent viewMode={viewMode} viewToggle={toggle} />
+          <ContractsContent viewMode={viewMode} viewToggle={toggle} openImport={importOpen} onImportChange={setImportOpen} />
         </Suspense>
       </main>
     </div>

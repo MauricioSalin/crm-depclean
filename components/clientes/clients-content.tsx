@@ -151,7 +151,7 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
   }, [contracts])
   const currentHref = buildPathWithSearchParams(pathname, searchParams)
   const getClientProfileHref = (clientId: string) => withReturnTo(`/clientes/${clientId}`, currentHref)
-  const getClientEditHref = (clientId: string) => withReturnTo(`/clientes/${clientId}/editar`, getClientProfileHref(clientId))
+  const getClientEditHref = (clientId: string) => withReturnTo(`/clientes/${clientId}/editar`, currentHref)
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteClient(id),
     onSuccess: async () => {
