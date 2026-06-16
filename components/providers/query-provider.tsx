@@ -1,6 +1,6 @@
 "use client"
 
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { keepPreviousData, QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { AxiosError } from "axios"
 import { ReactNode, useState } from "react"
 
@@ -18,6 +18,7 @@ export function QueryProvider({ children }: { children: ReactNode }) {
           queries: {
             retry: shouldRetryRequest,
             refetchOnWindowFocus: false,
+            placeholderData: keepPreviousData,
           },
           mutations: {
             retry: 0,

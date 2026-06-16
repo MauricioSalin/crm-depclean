@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
+import { Skeleton } from "@/components/ui/skeleton"
 import { DateRangePicker } from "@/components/ui/date-range-picker"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { MultiSelect } from "@/components/ui/multi-select"
@@ -58,12 +59,12 @@ const REPORT_TYPES = [
 const REPORT_IDS = REPORT_TYPES.map((type) => type.id)
 type ReportId = (typeof REPORT_IDS)[number]
 
-const COLORS = ["#84CC16", "#65A30D", "#A3E635", "#4D7C0F", "#BEF264", "#3F6212"]
+const COLORS = ["#84CC16", "#65A30D", "#A3E635", "#4D7C0F", "#BEF264", "#22C55E"]
 const STATUS_COLORS = {
   completed: "#65A30D",
-  scheduled: "#2F7D9A",
-  cancelled: "#D9E6C8",
-  emergency: "#F59E0B",
+  scheduled: "#22C55E",
+  cancelled: "#FCA5A5",
+  emergency: "#A3E635",
 }
 const EMPTY_CHART_COLOR = "#DDE7D5"
 
@@ -158,6 +159,75 @@ function normalizeReports(data?: Partial<ReportsAnalyticsRecord> | null): Report
     teams: Array.isArray(data?.teams) ? data.teams : [],
     employees: Array.isArray(data?.employees) ? data.employees : [],
   }
+}
+
+function ReportContentSkeleton({ reportId }: { reportId: ReportId }) {
+  if (reportId === "services") {
+    return (
+      <div className="space-y-4" aria-live="polite">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <Card key={index} className="p-4">
+              <div className="flex items-center gap-3">
+                <Skeleton className="h-10 w-10 rounded-lg" />
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-28" />
+                  <Skeleton className="h-6 w-16" />
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          {Array.from({ length: 2 }).map((_, index) => (
+            <Card key={index}>
+              <CardHeader>
+                <Skeleton className="h-5 w-44" />
+                <Skeleton className="h-4 w-64 max-w-full" />
+              </CardHeader>
+              <CardContent>
+                <Skeleton className="h-[260px] w-full rounded-xl" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-5 w-40" />
+            <Skeleton className="h-4 w-56 max-w-full" />
+          </CardHeader>
+          <CardContent>
+            <Skeleton className="h-[320px] w-full rounded-xl" />
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-2" aria-live="polite">
+      {Array.from({ length: 2 }).map((_, index) => (
+        <Card key={index}>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Skeleton className="h-5 w-5 rounded-full" />
+              <Skeleton className="h-5 w-40" />
+            </div>
+          </CardHeader>
+          <CardContent className="flex flex-col items-center gap-4">
+            <Skeleton className="h-[240px] w-full rounded-xl" />
+            <div className="flex w-full flex-wrap justify-center gap-3">
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-4 w-24" />
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  )
 }
 
 const EMPTY_SERVICES_BY_PERIOD_DATA = [
@@ -694,8 +764,8 @@ function buildReportCharts(reportId: ReportId, data: ReportsAnalyticsRecord): Re
           valueFormatter: formatCompactCurrency,
           series: [
             { key: "paidValue", label: "Pagas", color: hasMonthlyData ? "#84CC16" : EMPTY_CHART_COLOR },
-            { key: "lateValue", label: "Em atraso", color: hasMonthlyData ? "#F59E0B" : "#F6EFE4" },
-            { key: "overdueValue", label: "Vencidas", color: hasMonthlyData ? "#EF4444" : "#F3E7E7" },
+            { key: "lateValue", label: "Em atraso", color: hasMonthlyData ? STATUS_COLORS.emergency : "#EAF4DF" },
+            { key: "overdueValue", label: "Vencidas", color: hasMonthlyData ? STATUS_COLORS.cancelled : "#EAF4DF" },
           ],
         }),
       },
@@ -710,9 +780,9 @@ function buildReportCharts(reportId: ReportId, data: ReportsAnalyticsRecord): Re
           valueFormatter: formatCompactCurrency,
           entries: [
             { label: "Recebido", value: data.financialSummary.totalPaid, color: "#22C55E" },
-            { label: "A receber", value: receivable, color: "#2563EB" },
-            { label: "Em atraso", value: data.financialSummary.totalLate, color: "#F59E0B" },
-            { label: "Vencidas", value: data.financialSummary.totalOverdue, color: "#EF4444" },
+            { label: "A receber", value: receivable, color: STATUS_COLORS.scheduled },
+            { label: "Em atraso", value: data.financialSummary.totalLate, color: STATUS_COLORS.emergency },
+            { label: "Vencidas", value: data.financialSummary.totalOverdue, color: STATUS_COLORS.cancelled },
           ],
         }),
       },
@@ -741,8 +811,8 @@ function buildReportCharts(reportId: ReportId, data: ReportsAnalyticsRecord): Re
           series: [
             { key: "completed", label: "Concluídos", color: hasPeriodData ? STATUS_COLORS.completed : EMPTY_CHART_COLOR },
             { key: "scheduled", label: "Agendados", color: hasPeriodData ? STATUS_COLORS.scheduled : "#C9D6BF" },
-            { key: "cancelled", label: "Cancelados", color: hasPeriodData ? STATUS_COLORS.cancelled : "#E5E7EB" },
-            { key: "emergency", label: "Emergências", color: hasPeriodData ? STATUS_COLORS.emergency : "#FDE68A" },
+            { key: "cancelled", label: "Cancelados", color: hasPeriodData ? STATUS_COLORS.cancelled : EMPTY_CHART_COLOR },
+            { key: "emergency", label: "Emergências", color: hasPeriodData ? STATUS_COLORS.emergency : "#EAF4DF" },
           ],
         }),
       },
@@ -772,8 +842,8 @@ function buildReportCharts(reportId: ReportId, data: ReportsAnalyticsRecord): Re
           series: [
             { key: "completed", label: "Concluídos", color: hasPeriodData ? STATUS_COLORS.completed : EMPTY_CHART_COLOR },
             { key: "scheduled", label: "Agendados", color: hasPeriodData ? STATUS_COLORS.scheduled : "#C9D6BF" },
-            { key: "cancelled", label: "Cancelados", color: hasPeriodData ? "#EF4444" : "#E5E7EB" },
-            { key: "emergency", label: "Emergências", color: hasPeriodData ? STATUS_COLORS.emergency : "#FDE68A" },
+            { key: "cancelled", label: "Cancelados", color: hasPeriodData ? STATUS_COLORS.cancelled : EMPTY_CHART_COLOR },
+            { key: "emergency", label: "Emergências", color: hasPeriodData ? STATUS_COLORS.emergency : "#EAF4DF" },
           ],
         }),
       },
@@ -806,8 +876,8 @@ function buildReportCharts(reportId: ReportId, data: ReportsAnalyticsRecord): Re
         labelKey: "name",
         series: [
           { key: "completedServices", label: "Realizados", color: hasProductivityData ? "#84CC16" : EMPTY_CHART_COLOR },
-          { key: "scheduledServices", label: "Agendados", color: hasProductivityData ? "#2563EB" : "#C9D6BF" },
-          { key: "cancelledServices", label: "Cancelados", color: hasProductivityData ? "#EF4444" : "#E5E7EB" },
+          { key: "scheduledServices", label: "Agendados", color: hasProductivityData ? STATUS_COLORS.scheduled : "#C9D6BF" },
+          { key: "cancelledServices", label: "Cancelados", color: hasProductivityData ? STATUS_COLORS.cancelled : EMPTY_CHART_COLOR },
         ],
       }),
     },
@@ -825,8 +895,8 @@ function buildReportCharts(reportId: ReportId, data: ReportsAnalyticsRecord): Re
           centerLabel: "serviços",
           entries: [
             { label: "Realizados", value: item.completedServices, color: "#84CC16" },
-            { label: "Agendados", value: item.scheduledServices, color: "#2563EB" },
-            { label: "Cancelados", value: item.cancelledServices, color: "#EF4444" },
+            { label: "Agendados", value: item.scheduledServices, color: STATUS_COLORS.scheduled },
+            { label: "Cancelados", value: item.cancelledServices, color: STATUS_COLORS.cancelled },
           ],
         }),
       }
@@ -940,6 +1010,7 @@ export function RelatoriosContent() {
     enabled: selectedReport !== "financial" && canViewReports,
   })
   const reports = normalizeReports(reportsQuery.data?.data)
+  const isInitialReportsLoading = selectedReport !== "financial" && reportsQuery.isPending && !reportsQuery.data
   const {
     dashboardStats,
     servicesByPeriodData,
@@ -982,12 +1053,12 @@ export function RelatoriosContent() {
 
   const buildProductivityStatusPieData = (item: ProductivityPoint): TeamStatusSlice[] => {
     const slices: TeamStatusSlice[] = [
-      { name: "Realizados", services: item.completedServices, color: "var(--primary)" },
-      { name: "Agendados", services: item.scheduledServices, color: "#2563EB" },
-      { name: "Cancelados", services: item.cancelledServices ?? 0, color: "#EF4444" },
+      { name: "Realizados", services: item.completedServices, color: STATUS_COLORS.completed },
+      { name: "Agendados", services: item.scheduledServices, color: STATUS_COLORS.scheduled },
+      { name: "Cancelados", services: item.cancelledServices ?? 0, color: STATUS_COLORS.cancelled },
     ]
     const total = slices.reduce((sum, item) => sum + item.services, 0)
-    return total > 0 ? slices : [{ name: "Sem serviços", services: 1, color: "#E5E7EB", isEmpty: true }]
+    return total > 0 ? slices : [{ name: "Sem serviços", services: 1, color: EMPTY_CHART_COLOR, isEmpty: true }]
   }
 
   const buildReportRows = (data: ReportsAnalyticsRecord): ExcelCell[][] => {
@@ -1297,9 +1368,12 @@ export function RelatoriosContent() {
             )}
 
             {selectedReport !== "financial" && canExportReports ? (
-            <Button className="h-10 w-full shrink-0 bg-primary px-4 text-primary-foreground hover:bg-primary/90 sm:mt-6 sm:w-[170px]" onClick={handleGenerateReport} disabled={reportsQuery.isFetching || isExporting}>
-              {isExporting ? "Gerando Excel..." : "Gerar relatório"}
-            </Button>
+              <div className="flex w-full flex-col gap-2 sm:w-[170px]">
+                <Label className="invisible hidden sm:block" aria-hidden="true">Gerar relatório</Label>
+                <Button className="h-10 w-full shrink-0 bg-primary px-4 text-primary-foreground hover:bg-primary/90" onClick={handleGenerateReport} disabled={reportsQuery.isFetching || isExporting}>
+                  {isExporting ? "Gerando Excel..." : "Gerar relatório"}
+                </Button>
+              </div>
             ) : null}
           </div>
         </CardContent>
@@ -1307,7 +1381,9 @@ export function RelatoriosContent() {
 
       {/* Report Content */}
       <div className="space-y-4">
-        {selectedReport === "services" && (
+        {isInitialReportsLoading ? <ReportContentSkeleton reportId={selectedReport} /> : null}
+
+        {!isInitialReportsLoading && selectedReport === "services" && (
           <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <Card className="p-4">
@@ -1323,23 +1399,23 @@ export function RelatoriosContent() {
               </Card>
               <Card className="p-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
-                    <Calendar className="w-5 h-5 text-blue-500" />
+                  <div className="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center">
+                    <Calendar className="w-5 h-5 text-emerald-600" />
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Serviços Agendados</p>
-                    <p className="text-xl font-semibold text-blue-600/80">{dashboardStats.scheduledServices}</p>
+                    <p className="text-xl font-semibold text-emerald-700/80">{dashboardStats.scheduledServices}</p>
                   </div>
                 </div>
               </Card>
               <Card className="p-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center">
-                    <AlertTriangle className="w-5 h-5 text-amber-500" />
+                  <div className="w-10 h-10 rounded-lg bg-lime-50 flex items-center justify-center">
+                    <AlertTriangle className="w-5 h-5 text-lime-600" />
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Emergências</p>
-                    <p className="text-xl font-semibold text-amber-600/80">{dashboardStats.emergencyServices}</p>
+                    <p className="text-xl font-semibold text-lime-700/80">{dashboardStats.emergencyServices}</p>
                   </div>
                 </div>
               </Card>
@@ -1503,19 +1579,19 @@ export function RelatoriosContent() {
                         <Line
                           dataKey="cancelled"
                           type="monotone"
-                          stroke={hasServicesByPeriodData ? STATUS_COLORS.cancelled : "#E5E7EB"}
+                          stroke={hasServicesByPeriodData ? STATUS_COLORS.cancelled : EMPTY_CHART_COLOR}
                           strokeWidth={2}
                           name="Cancelados"
-                          dot={{ r: 4, fill: hasServicesByPeriodData ? STATUS_COLORS.cancelled : "#E5E7EB" }}
+                          dot={{ r: 4, fill: hasServicesByPeriodData ? STATUS_COLORS.cancelled : EMPTY_CHART_COLOR }}
                           activeDot={{ r: 6 }}
                         />
                         <Line
                           dataKey="emergency"
                           type="monotone"
-                          stroke={hasServicesByPeriodData ? STATUS_COLORS.emergency : "#FDE68A"}
+                          stroke={hasServicesByPeriodData ? STATUS_COLORS.emergency : "#EAF4DF"}
                           strokeWidth={2}
                           name="Emergências"
-                          dot={{ r: 4, fill: hasServicesByPeriodData ? STATUS_COLORS.emergency : "#FDE68A" }}
+                          dot={{ r: 4, fill: hasServicesByPeriodData ? STATUS_COLORS.emergency : "#EAF4DF" }}
                           activeDot={{ r: 6 }}
                         />
                       </LineChart>
@@ -1536,7 +1612,7 @@ export function RelatoriosContent() {
           />
         )}
 
-        {selectedReport === "teams" && (
+        {!isInitialReportsLoading && selectedReport === "teams" && (
           <div className="grid gap-4 lg:grid-cols-2">
             {teamsForChart.map((team) => {
               const statusData = buildProductivityStatusPieData(team)
@@ -1596,7 +1672,7 @@ export function RelatoriosContent() {
           </div>
         )}
 
-        {selectedReport === "employees" && (
+        {!isInitialReportsLoading && selectedReport === "employees" && (
           <div className="grid gap-4 lg:grid-cols-2">
             {employeesForChart.map((employee) => {
               const statusData = buildProductivityStatusPieData(employee)
