@@ -29,6 +29,7 @@ type AvailabilityResult = {
 const DAY_END_MINUTES = 24 * 60
 const WORKDAY_START_MINUTES = 8 * 60
 const WORKDAY_END_MINUTES = 17 * 60
+const DAY_DURATION_MINUTES = 9 * 60
 const LUNCH_START_MINUTES = 12 * 60
 const LUNCH_END_MINUTES = 13 * 60
 const MAX_SINGLE_SIDE_LUNCH_DURATION = 4 * 60
@@ -59,32 +60,48 @@ export function checkScheduleAvailability(params: {
   const conflicts = params.schedules
     .filter((schedule) => schedule.id !== params.ignoreScheduleId)
     .filter((schedule) => !["cancelled", "completed"].includes(schedule.status))
-    .map((schedule) => ({
-      date: schedule.date,
-      startMinutes: minutesFromTime(schedule.time || "08:00"),
-      endMinutes: minutesFromTime(schedule.time || "08:00") + Number(schedule.duration || 60),
-      resource: expandResource({
+    .flatMap((schedule) => {
+      const resource = expandResource({
         teamIds: schedule.teams.map((team) => team.id),
         employeeIds: schedule.additionalEmployees.map((employee) => employee.id),
         teams: params.teams,
-      }),
-    }))
+      })
+      return buildScheduleBlocks({
+        date: schedule.date,
+        time: schedule.time || "08:00",
+        durationMinutes: Number(schedule.duration || 60),
+        durationType: schedule.durationType,
+      }).map((block) => ({ ...block, resource }))
+    })
     .filter((schedule) => hasResourceConflict(resource, schedule.resource))
 
   const requestedStart = minutesFromTime(requested.time)
   const requestedEnd = requestedStart + requested.durationMinutes
+  const requestedBlocks = buildScheduleBlocks({
+    date: requested.date,
+    time: requested.time,
+    durationMinutes: requested.durationMinutes,
+    durationType: params.formData.durationType,
+  })
+  const isFullDay = isFullDaySchedule(requested.durationMinutes, params.formData.durationType)
   const respectsBusinessHours = params.formData.isEmergency !== true
-  const outsideWorkday = respectsBusinessHours && (requestedStart < WORKDAY_START_MINUTES || requestedEnd > WORKDAY_END_MINUTES)
+  const outsideWorkday = respectsBusinessHours &&
+    !isFullDay &&
+    (requestedStart < WORKDAY_START_MINUTES || requestedEnd > WORKDAY_END_MINUTES)
   const lunchConflict =
     respectsBusinessHours &&
+    !isFullDay &&
     requested.durationMinutes <= MAX_SINGLE_SIDE_LUNCH_DURATION &&
     requestedStart < LUNCH_END_MINUTES &&
     requestedEnd > LUNCH_START_MINUTES
+  const fullDayBadStart = respectsBusinessHours && isFullDay && requestedStart !== WORKDAY_START_MINUTES
   const hasConflict = conflicts.some((schedule) =>
-    schedule.date === requested.date &&
-    requestedStart < schedule.endMinutes &&
-    requestedEnd > schedule.startMinutes,
-  ) || lunchConflict || outsideWorkday
+    requestedBlocks.some((block) =>
+      schedule.date === block.date &&
+      block.startMinutes < schedule.endMinutes &&
+      block.endMinutes > schedule.startMinutes,
+    ),
+  ) || lunchConflict || outsideWorkday || fullDayBadStart
 
   if (!hasConflict) {
     return { available: true, requested }
@@ -94,6 +111,7 @@ export function checkScheduleAvailability(params: {
     date: requested.date,
     startMinutes: requestedStart,
     durationMinutes: requested.durationMinutes,
+    durationType: params.formData.durationType,
     conflicts,
     isEmergency: params.formData.isEmergency === true,
   })
@@ -130,8 +148,9 @@ export function getAvailableRescheduleTimes(params: {
   const startMinutes = params.startMinutes ?? WORKDAY_START_MINUTES
   const endMinutes = params.endMinutes ?? WORKDAY_END_MINUTES
   const todayKey = toCivilDateKey(params.now ?? new Date())
+  const isFullDay = isFullDaySchedule(durationMinutes, durationConfig.durationType)
 
-  if (date < todayKey || durationMinutes <= 0 || durationMinutes > endMinutes - startMinutes) {
+  if (date < todayKey || durationMinutes <= 0 || (!isFullDay && durationMinutes > endMinutes - startMinutes)) {
     return []
   }
 
@@ -144,6 +163,20 @@ export function getAvailableRescheduleTimes(params: {
     date,
     durationType: durationConfig.durationType,
     duration: durationConfig.duration,
+  }
+
+  if (isFullDay) {
+    const availability = checkScheduleAvailability({
+      schedules: params.schedules,
+      teams: params.teams,
+      ignoreScheduleId: schedule.id,
+      formData: {
+        ...baseFormData,
+        time: "08:00",
+      },
+    })
+
+    return availability.available ? ["08:00"] : []
   }
 
   for (let start = firstSlot; start + durationMinutes <= endMinutes; start += stepMinutes) {
@@ -180,9 +213,14 @@ function findNextAvailableSlot(params: {
   date: string
   startMinutes: number
   durationMinutes: number
+  durationType?: ScheduleDurationType
   conflicts: Array<{ date: string; startMinutes: number; endMinutes: number }>
   isEmergency?: boolean
 }) {
+  if (!params.isEmergency && isFullDaySchedule(params.durationMinutes, params.durationType)) {
+    return findNextAvailableFullDaySlot(params)
+  }
+
   const dayStartMinutes = params.isEmergency ? 0 : WORKDAY_START_MINUTES
   const dayEndMinutes = params.isEmergency ? DAY_END_MINUTES : WORKDAY_END_MINUTES
   let currentDate = params.date
@@ -213,6 +251,101 @@ function findNextAvailableSlot(params: {
   }
 
   return undefined
+}
+
+function findNextAvailableFullDaySlot(params: {
+  date: string
+  durationMinutes: number
+  durationType?: ScheduleDurationType
+  conflicts: Array<{ date: string; startMinutes: number; endMinutes: number }>
+}) {
+  let currentDate = toBusinessDateKey(params.date)
+
+  for (let dayOffset = 0; dayOffset < 60; dayOffset += 1) {
+    const blocks = buildScheduleBlocks({
+      date: currentDate,
+      time: "08:00",
+      durationMinutes: params.durationMinutes,
+      durationType: "days",
+    })
+    const hasConflict = blocks.some((block) =>
+      params.conflicts.some((item) =>
+        item.date === block.date &&
+        block.startMinutes < item.endMinutes &&
+        block.endMinutes > item.startMinutes,
+      ),
+    )
+
+    if (!hasConflict) return { date: currentDate, time: "08:00" }
+    currentDate = nextBusinessDateKey(currentDate)
+  }
+
+  return undefined
+}
+
+function buildScheduleBlocks(params: {
+  date: string
+  time: string
+  durationMinutes: number
+  durationType?: ScheduleDurationType
+}) {
+  const durationMinutes = Math.max(1, Number(params.durationMinutes || 60))
+
+  if (isFullDaySchedule(durationMinutes, params.durationType)) {
+    const blocks: Array<{ date: string; startMinutes: number; endMinutes: number }> = []
+    let currentDate = toBusinessDateKey(params.date)
+    const days = scheduleDaySpan(durationMinutes, params.durationType)
+
+    for (let index = 0; index < days; index += 1) {
+      blocks.push({
+        date: currentDate,
+        startMinutes: WORKDAY_START_MINUTES,
+        endMinutes: WORKDAY_END_MINUTES,
+      })
+      currentDate = nextBusinessDateKey(currentDate)
+    }
+
+    return blocks
+  }
+
+  const startMinutes = minutesFromTime(params.time || "08:00")
+  return [{
+    date: params.date,
+    startMinutes,
+    endMinutes: startMinutes + durationMinutes,
+  }]
+}
+
+function isFullDaySchedule(durationMinutes: number, durationType?: ScheduleDurationType) {
+  const parsed = Number(durationMinutes || 0)
+  return durationType === "days" || (!durationType && parsed > DAY_DURATION_MINUTES)
+}
+
+function scheduleDaySpan(durationMinutes: number, durationType?: ScheduleDurationType) {
+  if (!isFullDaySchedule(durationMinutes, durationType)) return 1
+  return Math.max(1, Math.ceil(Number(durationMinutes || DAY_DURATION_MINUTES) / DAY_DURATION_MINUTES))
+}
+
+function toBusinessDateKey(date: string) {
+  let current = date
+  while (isWeekendDateKey(current)) {
+    current = addCivilDaysKey(current, 1)
+  }
+  return current
+}
+
+function nextBusinessDateKey(date: string) {
+  let current = addCivilDaysKey(date, 1)
+  while (isWeekendDateKey(current)) {
+    current = addCivilDaysKey(current, 1)
+  }
+  return current
+}
+
+function isWeekendDateKey(date: string) {
+  const [year, month, day] = date.split("-").map((value) => Number(value))
+  const weekday = new Date(Date.UTC(year || 0, (month || 1) - 1, day || 1)).getUTCDay()
+  return weekday === 0 || weekday === 6
 }
 
 function expandResource(params: { teamIds: string[]; employeeIds: string[]; teams: TeamRecord[] }) {

@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AvatarUploadDialog } from "@/components/perfil/avatar-upload-dialog"
-import { changePassword, getProfileMe, updateProfile, uploadProfileAvatar, type AvatarUploadVariant, type ChangePasswordPayload } from "@/lib/api/profile"
+import { changePassword, getProfileMe, updateProfile, uploadProfileAvatar, type AvatarUploadVariant, type ChangePasswordPayload, type UpdateProfilePayload } from "@/lib/api/profile"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { getSettings, type PermissionProfileRecord } from "@/lib/api/settings"
 import { getStoredAccessToken, getStoredRefreshToken, getStoredUser, isPersistentSession, persistSession } from "@/lib/auth/session"
@@ -82,6 +82,7 @@ export function PerfilContent() {
   const activeProfile = permissionProfiles.find((item) => item.id === profile?.permissionProfileId)
   const canEditPermission = Boolean(profile?.permissions.includes("settings_manage"))
   const canEditStatus = canEditPermission
+  const showProfileMeta = canEditPermission || canEditStatus || Boolean(formData?.mustChangePassword)
 
   const handleSave = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -95,15 +96,18 @@ export function PerfilContent() {
     setSaving(true)
     const toastId = toast.loading("Salvando perfil...")
     try {
-      const response = await updateProfile({
+      const payload: UpdateProfilePayload = {
         name: profile.name,
         email: profile.email,
         phone: profile.phone,
         cpf: profile.cpf,
         avatar: profile.avatar,
-        permissionProfileId: profile.permissionProfileId,
-        status: profile.employeeStatus,
-      })
+      }
+
+      if (canEditPermission) payload.permissionProfileId = profile.permissionProfileId
+      if (canEditStatus) payload.status = profile.employeeStatus
+
+      const response = await updateProfile(payload)
 
       const updatedUser = response.data
       const { profileDescription, ...storedUser } = updatedUser
@@ -258,16 +262,22 @@ export function PerfilContent() {
             <div className="min-w-0 flex-1">
               <h3 className="text-lg font-semibold">{formData.name}</h3>
               <p className="text-sm text-muted-foreground">{formData.email}</p>
-              <div className="mt-2 flex flex-wrap items-center gap-3">
-                <div className="flex items-center gap-1.5">
-                  <Shield className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span className="text-sm font-medium text-foreground/70">{activeProfile?.name ?? formData.permissionProfileName}</span>
+              {showProfileMeta && (
+                <div className="mt-2 flex flex-wrap items-center gap-3">
+                  {canEditPermission && (
+                    <div className="flex items-center gap-1.5">
+                      <Shield className="h-3.5 w-3.5 text-muted-foreground" />
+                      <span className="text-sm font-medium text-foreground/70">{activeProfile?.name ?? formData.permissionProfileName}</span>
+                    </div>
+                  )}
+                  {canEditStatus && (
+                    <Badge className={formData.isActive ? "bg-green-100 text-green-700 hover:bg-green-100" : "bg-gray-100 text-gray-700 hover:bg-gray-100"}>
+                      {formData.isActive ? "Ativo" : "Inativo"}
+                    </Badge>
+                  )}
+                  {formData.mustChangePassword && <Badge variant="outline">Primeiro acesso</Badge>}
                 </div>
-                <Badge className={formData.isActive ? "bg-green-100 text-green-700 hover:bg-green-100" : "bg-gray-100 text-gray-700 hover:bg-gray-100"}>
-                  {formData.isActive ? "Ativo" : "Inativo"}
-                </Badge>
-                {formData.mustChangePassword && <Badge variant="outline">Primeiro acesso</Badge>}
-              </div>
+              )}
             </div>
           </div>
         </CardContent>
@@ -328,51 +338,47 @@ export function PerfilContent() {
                 <Input id="email" type="email" autoComplete="off" value={formData.email} onChange={(event) => setProfile({ ...formData, email: event.target.value })} required />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="permissionProfile" className="flex items-center gap-1.5">
-                  <Shield className="h-3.5 w-3.5 text-muted-foreground" />
-                  Perfil de Permissão
-                </Label>
-                <Select
-                  value={formData.permissionProfileId}
-                  onValueChange={(value) => setProfile({ ...formData, permissionProfileId: value })}
-                  disabled={!canEditPermission}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Selecione" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {permissionProfiles.map((item) => (
-                      <SelectItem key={item.id} value={item.id}>
-                        {item.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {!canEditPermission && (
-                  <p className="text-[10px] text-muted-foreground">Somente administradores podem alterar o perfil de permissão.</p>
-                )}
-              </div>
+              {canEditPermission && (
+                <div className="space-y-2">
+                  <Label htmlFor="permissionProfile" className="flex items-center gap-1.5">
+                    <Shield className="h-3.5 w-3.5 text-muted-foreground" />
+                    Perfil de Permissão
+                  </Label>
+                  <Select
+                    value={formData.permissionProfileId}
+                    onValueChange={(value) => setProfile({ ...formData, permissionProfileId: value })}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Selecione" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {permissionProfiles.map((item) => (
+                        <SelectItem key={item.id} value={item.id}>
+                          {item.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
 
-              <div className="space-y-2">
-                <Label htmlFor="status">Status</Label>
-                <Select
-                  value={formData.employeeStatus}
-                  onValueChange={(value) => setProfile({ ...formData, employeeStatus: value as "active" | "inactive" })}
-                  disabled={!canEditStatus}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="active">Ativo</SelectItem>
-                    <SelectItem value="inactive">Inativo</SelectItem>
-                  </SelectContent>
-                </Select>
-                {!canEditStatus && (
-                  <p className="text-[10px] text-muted-foreground">Somente administradores podem alterar o status.</p>
-                )}
-              </div>
+              {canEditStatus && (
+                <div className="space-y-2">
+                  <Label htmlFor="status">Status</Label>
+                  <Select
+                    value={formData.employeeStatus}
+                    onValueChange={(value) => setProfile({ ...formData, employeeStatus: value as "active" | "inactive" })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="active">Ativo</SelectItem>
+                      <SelectItem value="inactive">Inativo</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-2 sm:flex sm:justify-end">

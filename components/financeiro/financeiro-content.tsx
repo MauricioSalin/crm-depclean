@@ -420,7 +420,7 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
       {/* Installments Table */}
       <div className="space-y-4">
           <div className="-mx-1 -mt-1 mb-4 grid grid-cols-2 gap-2 overflow-visible p-1 sm:flex sm:items-center">
-              <div className="relative focus-within:z-20 sm:w-80 sm:flex-none">
+              <div className="relative focus-within:z-[70] sm:w-80 sm:flex-none">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   placeholder="Buscar por contrato ou cliente..."

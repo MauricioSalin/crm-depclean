@@ -71,6 +71,9 @@ type AgendaScheduledServiceRow = ScheduleRecord & {
   recurrence: AgendaRecurrenceConfig
 }
 
+const AGENDA_WORKDAY_START_TIME = "08:00"
+const AGENDA_DAY_DURATION_MINUTES = 9 * 60
+
 const DEFAULT_RECURRENCE: AgendaRecurrenceConfig = {
   type: "none",
   daysOfWeek: [],
@@ -105,6 +108,49 @@ const MONTHS = [
 function weekdayFromCivilDateKey(dateKey: string) {
   const [year, month, day] = dateKey.split("-").map((value) => Number(value))
   return new Date(Date.UTC(year, (month || 1) - 1, day || 1)).getUTCDay()
+}
+
+function isWeekendCivilDateKey(dateKey: string) {
+  const weekday = weekdayFromCivilDateKey(dateKey)
+  return weekday === 0 || weekday === 6
+}
+
+function toBusinessDateKey(dateKey: string) {
+  let current = dateKey
+  while (isWeekendCivilDateKey(current)) {
+    current = addCivilDaysKey(current, 1)
+  }
+  return current
+}
+
+function nextBusinessDateKey(dateKey: string) {
+  let current = addCivilDaysKey(dateKey, 1)
+  while (isWeekendCivilDateKey(current)) {
+    current = addCivilDaysKey(current, 1)
+  }
+  return current
+}
+
+function isFullDaySchedule(schedule: Pick<AgendaScheduledServiceRow, "duration" | "durationType">) {
+  return schedule.durationType === "days" || (!schedule.durationType && Number(schedule.duration) > AGENDA_DAY_DURATION_MINUTES)
+}
+
+function scheduleDaySpan(schedule: Pick<AgendaScheduledServiceRow, "duration" | "durationType">) {
+  if (!isFullDaySchedule(schedule)) return 1
+  return Math.max(1, Math.ceil(Number(schedule.duration || AGENDA_DAY_DURATION_MINUTES) / AGENDA_DAY_DURATION_MINUTES))
+}
+
+function scheduleOccupiesDate(schedule: AgendaScheduledServiceRow, dateKey: string) {
+  if (!isFullDaySchedule(schedule)) return schedule.date === dateKey
+
+  let currentDate = toBusinessDateKey(schedule.date)
+  const days = scheduleDaySpan(schedule)
+  for (let index = 0; index < days; index += 1) {
+    if (currentDate === dateKey) return true
+    currentDate = nextBusinessDateKey(currentDate)
+  }
+
+  return false
 }
 
 interface AgendaContentProps {
@@ -502,7 +548,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
 
   const getServicesForDate = (date: Date) => {
     const dateStr = toCivilDateKey(date)
-    return filteredServices.filter((service) => service.date === dateStr)
+    return filteredServices.filter((service) => scheduleOccupiesDate(service, dateStr))
   }
 
   const navigateMonth = (direction: number) => {
@@ -620,6 +666,51 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
     if (!teamId) return "#9CA3AF"
     return teams.find((team) => team.id === teamId)?.color || "#9CA3AF"
   }
+
+  const timelineEvents = useMemo(() => filteredServices.flatMap((service) => {
+    const baseEvent = {
+      id: service.id,
+      title: service.clientName,
+      subtitle: service.serviceTypeName,
+      teamColor: service.teams.length > 0 ? service.teams[0].color : getTeamColor(service.teamId),
+      status: service.status,
+    }
+
+    if (!isFullDaySchedule(service)) {
+      return [{
+        ...baseEvent,
+        date: service.date,
+        time: service.time || AGENDA_WORKDAY_START_TIME,
+        duration: service.duration,
+      }]
+    }
+
+    const days = scheduleDaySpan(service)
+    const events: Array<{
+      id: string
+      title: string
+      subtitle: string
+      date: string
+      time: string
+      duration: number
+      teamColor: string | null
+      status: string
+    }> = []
+    let currentDate = toBusinessDateKey(service.date)
+
+    for (let index = 0; index < days; index += 1) {
+      events.push({
+        ...baseEvent,
+        subtitle: days > 1 ? `${service.serviceTypeName} (${index + 1}/${days})` : service.serviceTypeName,
+        date: currentDate,
+        time: AGENDA_WORKDAY_START_TIME,
+        duration: AGENDA_DAY_DURATION_MINUTES,
+      })
+      currentDate = nextBusinessDateKey(currentDate)
+    }
+
+    return events
+  }), [filteredServices, teams])
 
   const selectedDateServices = selectedDate ? getServicesForDate(selectedDate) : []
 
@@ -851,7 +942,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       </Dialog>
 
       <div className={`${mobileFiltersOpen ? "grid" : "hidden"} -m-1 grid-cols-2 gap-2 overflow-visible p-1 sm:flex sm:items-center`}>
-        <div className="relative focus-within:z-20 sm:w-80">
+        <div className="relative focus-within:z-[70] sm:w-80">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Buscar cliente, serviço, equipe..."
@@ -1126,16 +1217,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
           <Card className="flex flex-col lg:col-span-3 lg:overflow-hidden xl:col-span-3">
             <CardContent className="flex min-h-0 flex-1 flex-col p-0 lg:h-[calc(100vh-280px)]">
               <WeekTimeline
-                events={filteredServices.map((service) => ({
-                  id: service.id,
-                  title: service.clientName,
-                  subtitle: service.serviceTypeName,
-                  date: service.date,
-                  time: service.time || "08:00",
-                  duration: service.duration,
-                  teamColor: service.teams.length > 0 ? service.teams[0].color : getTeamColor(service.teamId),
-                  status: service.status,
-                }))}
+                events={timelineEvents}
                 currentDate={currentDate}
                 selectedDate={selectedDate}
                 onDateChange={setCurrentDate}

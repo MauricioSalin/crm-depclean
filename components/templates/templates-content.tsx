@@ -1722,8 +1722,8 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
       />
 
       <div className="flex flex-col gap-4 md:min-h-0 md:flex-1 md:overflow-hidden">
-        <div className={`${mobileFiltersOpen ? "flex" : "hidden"} flex-col gap-3 sm:flex sm:flex-row sm:items-center`}>
-          <div className="relative w-full sm:max-w-md">
+        <div className={`${mobileFiltersOpen ? "flex" : "hidden"} -m-1 flex-col gap-3 overflow-visible p-1 sm:flex sm:flex-row sm:items-center`}>
+          <div className="relative w-full focus-within:z-[70] sm:max-w-md">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder={`Buscar ${config.pluralLabel}...`}

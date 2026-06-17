@@ -263,8 +263,8 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
         onImport={(rows) => importMutation.mutateAsync(rows)}
       />
 
-        <div className={`${mobileFiltersOpen ? "grid" : "hidden"} shrink-0 grid-cols-2 gap-2 sm:flex sm:items-center`}>
-          <div className="relative sm:flex-none sm:w-80">
+        <div className={`${mobileFiltersOpen ? "grid" : "hidden"} -m-1 shrink-0 grid-cols-2 gap-2 overflow-visible p-1 sm:flex sm:items-center`}>
+          <div className="relative focus-within:z-[70] sm:w-80 sm:flex-none">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Buscar por nome, responsável ou CNPJ..."

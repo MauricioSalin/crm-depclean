@@ -1035,7 +1035,7 @@ export function ConfiguracoesContent() {
     if (activeSection === "tipos-cliente") {
       return (
         <div className={className}>
-          <div className="relative w-full sm:max-w-md">
+          <div className="relative w-full focus-within:z-[70] sm:max-w-md">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input placeholder="Buscar tipos..." value={typeSearch} onChange={(event) => { setTypeSearch(event.target.value); setTypePage(1) }} className="pl-10" />
           </div>
@@ -1046,7 +1046,7 @@ export function ConfiguracoesContent() {
     if (activeSection === "permissoes") {
       return (
         <div className={className}>
-          <div className="relative w-full sm:max-w-md">
+          <div className="relative w-full focus-within:z-[70] sm:max-w-md">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input placeholder="Buscar perfis..." value={profileSearch} onChange={(event) => { setProfileSearch(event.target.value); setProfilePage(1) }} className="pl-10" />
           </div>
@@ -1057,7 +1057,7 @@ export function ConfiguracoesContent() {
     if (activeSection === "usuarios") {
       return (
         <div className={className}>
-          <div className="relative w-full sm:max-w-md">
+          <div className="relative w-full focus-within:z-[70] sm:max-w-md">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input placeholder="Buscar usuários..." value={userSearch} onChange={(event) => { setUserSearch(event.target.value); setUserPage(1) }} className="pl-10" />
           </div>
@@ -1068,7 +1068,7 @@ export function ConfiguracoesContent() {
     if (activeSection === "notificações") {
       return (
         <div className={className}>
-          <div className="relative w-full sm:max-w-md">
+          <div className="relative w-full focus-within:z-[70] sm:max-w-md">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input placeholder="Buscar regras..." value={ruleSearch} onChange={(event) => { setRuleSearch(event.target.value); setRulePage(1) }} className="pl-10" />
           </div>
@@ -1098,7 +1098,7 @@ export function ConfiguracoesContent() {
 
   return (
     <div className="space-y-6">
-      {renderActiveSectionFilters(`${mobileFiltersOpen ? "flex" : "hidden"} flex-col gap-3 sm:hidden`)}
+      {renderActiveSectionFilters(`${mobileFiltersOpen ? "flex" : "hidden"} -m-1 flex-col gap-3 overflow-visible p-1 sm:hidden`)}
 
       <div className="flex gap-2 overflow-x-auto pb-2 sm:hidden">
         {settingsCards.map((card) => (
@@ -1274,8 +1274,8 @@ export function ConfiguracoesContent() {
 
       {activeSection === "tipos-cliente" && (
         <div className="space-y-4">
-          <div className="hidden flex-col gap-3 sm:flex sm:flex-row sm:items-center">
-            <div className="relative w-full sm:max-w-md">
+          <div className="hidden -m-1 flex-col gap-3 overflow-visible p-1 sm:flex sm:flex-row sm:items-center">
+            <div className="relative w-full focus-within:z-[70] sm:max-w-md">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input placeholder="Buscar tipos..." value={typeSearch} onChange={(event) => { setTypeSearch(event.target.value); setTypePage(1) }} className="pl-10" />
             </div>
@@ -1390,8 +1390,8 @@ export function ConfiguracoesContent() {
 
       {activeSection === "permissoes" && (
         <div className="space-y-4">
-          <div className="hidden flex-col gap-3 sm:flex sm:flex-row sm:items-center">
-            <div className="relative w-full sm:max-w-md">
+          <div className="hidden -m-1 flex-col gap-3 overflow-visible p-1 sm:flex sm:flex-row sm:items-center">
+            <div className="relative w-full focus-within:z-[70] sm:max-w-md">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input placeholder="Buscar perfis..." value={profileSearch} onChange={(event) => { setProfileSearch(event.target.value); setProfilePage(1) }} className="pl-10" />
             </div>
@@ -1541,8 +1541,8 @@ export function ConfiguracoesContent() {
 
       {activeSection === "usuarios" && (
         <div className="space-y-4">
-          <div className="hidden flex-col gap-3 sm:flex sm:flex-row sm:items-center">
-            <div className="relative w-full sm:max-w-md">
+          <div className="hidden -m-1 flex-col gap-3 overflow-visible p-1 sm:flex sm:flex-row sm:items-center">
+            <div className="relative w-full focus-within:z-[70] sm:max-w-md">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input placeholder="Buscar usuários..." value={userSearch} onChange={(event) => { setUserSearch(event.target.value); setUserPage(1) }} className="pl-10" />
             </div>
@@ -1758,8 +1758,8 @@ export function ConfiguracoesContent() {
 
       {activeSection === "notificações" && (
         <div className="space-y-4">
-          <div className="hidden flex-col gap-3 sm:flex sm:flex-row sm:items-center">
-            <div className="relative w-full sm:max-w-md">
+          <div className="hidden -m-1 flex-col gap-3 overflow-visible p-1 sm:flex sm:flex-row sm:items-center">
+            <div className="relative w-full focus-within:z-[70] sm:max-w-md">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input placeholder="Buscar regras..." value={ruleSearch} onChange={(event) => { setRuleSearch(event.target.value); setRulePage(1) }} className="pl-10" />
             </div>

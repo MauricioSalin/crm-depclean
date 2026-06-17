@@ -188,11 +188,11 @@ export function LogsContent() {
   }
 
   const filters = (
-    <div className="overflow-visible">
+    <div className="-m-1 overflow-visible p-1">
       <div className="flex flex-wrap items-end gap-2">
         <div className="w-full space-y-1 sm:w-[280px]">
           <Label>Busca</Label>
-          <div className="relative">
+          <div className="relative focus-within:z-[70]">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={search}
