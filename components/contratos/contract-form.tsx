@@ -101,6 +101,11 @@ import { listTemplates } from "@/lib/api/templates"
 import { listTeams } from "@/lib/api/teams"
 import { listEmployees } from "@/lib/api/employees"
 import { getOrganizationSettings, listClientTypes } from "@/lib/api/settings"
+import {
+  isEmployeeCoveredBySelectedTeams,
+  normalizeTeamEmployeeSelection,
+  removeEmployeesCoveredByTeams,
+} from "@/lib/team-member-selection"
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value)
@@ -233,11 +238,11 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
     queryFn: () => listTemplates("", "informative"),
   })
   const teamsQuery = useQuery({
-    queryKey: ["teams", "contract-form"],
+    queryKey: ["teams", "catalog"],
     queryFn: () => listTeams(),
   })
   const employeesQuery = useQuery({
-    queryKey: ["employees", "contract-form"],
+    queryKey: ["employees", "catalog"],
     queryFn: () => listEmployees(),
   })
   const clientTypesQuery = useQuery({
@@ -483,19 +488,24 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
         if (!service.serviceTypeId) return service
         const serviceType = serviceTypes.find((item) => item.id === service.serviceTypeId)
         if (!serviceType) return service
+        const defaultSelection = normalizeTeamEmployeeSelection({
+          teamIds: service.teamIds.length > 0 ? service.teamIds : [...(serviceType.teamIds ?? [])],
+          employeeIds: service.employeeIds.length > 0 ? service.employeeIds : [...(serviceType.employeeIds ?? [])],
+          teams,
+        })
         return {
           ...service,
           recurrence: service.recurrence || serviceType.defaultRecurrence || "monthly",
           duration: service.duration || Number(serviceType.defaultDuration ?? 1),
           durationType: service.durationType || serviceType.durationType || "hours",
-          teamIds: service.teamIds.length > 0 ? service.teamIds : [...(serviceType.teamIds ?? [])],
-          employeeIds: service.employeeIds.length > 0 ? service.employeeIds : [...(serviceType.employeeIds ?? [])],
+          teamIds: defaultSelection.teamIds,
+          employeeIds: defaultSelection.employeeIds,
           clauses: service.clauses.length > 0 ? service.clauses : [...(serviceType.clauses ?? [])],
           informativeTemplateId: service.informativeTemplateId || serviceType.defaultInformativeTemplateId || "",
         }
       }),
     )
-  }, [serviceTypes])
+  }, [serviceTypes, teams])
 
   useEffect(() => {
     if (createAutomatedSchedules && startDate && !firstVisitDate) {
@@ -915,12 +925,17 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
       if (s.id !== id) return s
       if (field === "serviceTypeId") {
         const serviceType = serviceTypes.find(st => st.id === value)
+        const defaultSelection = normalizeTeamEmployeeSelection({
+          teamIds: [...(serviceType?.teamIds ?? [])],
+          employeeIds: [...(serviceType?.employeeIds ?? [])],
+          teams,
+        })
         return {
           ...s,
           [field]: value as string,
           informativeTemplateId: serviceType?.defaultInformativeTemplateId || "",
-          teamIds: [...(serviceType?.teamIds ?? [])],
-          employeeIds: [...(serviceType?.employeeIds ?? [])],
+          teamIds: defaultSelection.teamIds,
+          employeeIds: defaultSelection.employeeIds,
           recurrence: serviceType?.defaultRecurrence || "monthly",
           duration: Number(serviceType?.defaultDuration ?? 1),
           durationType: serviceType?.durationType || "hours",
@@ -978,11 +993,23 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
     const newTeamIds = editingService.teamIds.includes(teamId)
       ? editingService.teamIds.filter(id => id !== teamId)
       : [...editingService.teamIds, teamId]
-    updateService(editingService.id, "teamIds", newTeamIds)
+    setServices((current) => current.map((service) =>
+      service.id === editingService.id
+        ? {
+            ...service,
+            teamIds: newTeamIds,
+            employeeIds: removeEmployeesCoveredByTeams(service.employeeIds, newTeamIds, teams),
+          }
+        : service,
+    ))
   }
 
   const toggleEmployeeForService = (employeeId: string) => {
     if (!editingService) return
+    if (!editingService.employeeIds.includes(employeeId) && isEmployeeCoveredBySelectedTeams(employeeId, editingService.teamIds, teams)) {
+      return
+    }
+
     const newEmployeeIds = editingService.employeeIds.includes(employeeId)
       ? editingService.employeeIds.filter(id => id !== employeeId)
       : [...editingService.employeeIds, employeeId]
@@ -997,12 +1024,15 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
 
   const filteredEmployees = useMemo(() => {
     const term = deferredEmployeeSearchTerm.trim().toLowerCase()
-    if (!term) return employees
-    return employees.filter(e =>
+    const availableEmployees = employees.filter((employee) =>
+      !editingService || !isEmployeeCoveredBySelectedTeams(employee.id, editingService.teamIds, teams),
+    )
+    if (!term) return availableEmployees
+    return availableEmployees.filter(e =>
       e.name.toLowerCase().includes(term) ||
       e.role.toLowerCase().includes(term)
     )
-  }, [deferredEmployeeSearchTerm, employees])
+  }, [deferredEmployeeSearchTerm, editingService, employees, teams])
 
   const toggleUnit = (unitId: string) => {
     setSelectedUnitIds(prev =>
@@ -1364,7 +1394,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-[400px] p-0" align="start">
+              <PopoverContent className="w-[min(calc(100vw-2.5rem),400px)] p-0" align="start">
                 <Command>
                   <CommandInput placeholder="Buscar cliente..." />
                   <CommandList>
@@ -1558,7 +1588,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-[400px] p-0" align="start">
+              <PopoverContent className="w-[min(calc(100vw-2.5rem),400px)] p-0" align="start">
                 <Command>
                   <CommandInput placeholder="Buscar template..." />
                   <CommandList>

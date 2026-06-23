@@ -65,11 +65,11 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
     queryFn: () => listServices(""),
   })
   const teamsQuery = useQuery({
-    queryKey: ["teams", "services-content"],
+    queryKey: ["teams", "catalog"],
     queryFn: () => listTeams(""),
   })
   const employeesQuery = useQuery({
-    queryKey: ["employees", "services-content"],
+    queryKey: ["employees", "catalog"],
     queryFn: () => listEmployees(""),
   })
 

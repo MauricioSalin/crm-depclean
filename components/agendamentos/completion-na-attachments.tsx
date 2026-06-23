@@ -48,7 +48,7 @@ export function CompletionNaAttachments({
   }
 
   return (
-    <div className="min-w-0 overflow-hidden rounded-2xl border border-dashed border-primary/40 bg-primary/5 p-4">
+    <div className="min-w-0 overflow-visible rounded-2xl border border-dashed border-primary/40 bg-primary/5 p-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="flex items-center gap-2">

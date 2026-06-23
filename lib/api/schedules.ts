@@ -53,6 +53,7 @@ export type ScheduleRecord = {
   naFileName?: string
   naDocumentUrl?: string
   naAttachments: ScheduleNaAttachmentRecord[]
+  canStartAttendance?: boolean
   createdAt: string
   updatedAt: string
 }
@@ -93,6 +94,11 @@ export async function listSchedules(params?: {
   year?: string | number
 }) {
   const response = await api.get<{ success: true; data: ScheduleRecord[] }>("/schedules", { params })
+  return response.data
+}
+
+export async function getScheduleById(id: string) {
+  const response = await api.get<{ success: true; data: ScheduleRecord }>(`/schedules/${id}`)
   return response.data
 }
 

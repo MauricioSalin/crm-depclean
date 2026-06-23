@@ -4,6 +4,9 @@ import { keepPreviousData, QueryClient, QueryClientProvider } from "@tanstack/re
 import { AxiosError } from "axios"
 import { ReactNode, useState } from "react"
 
+const DEFAULT_STALE_TIME = 60_000
+const DEFAULT_GC_TIME = 10 * 60_000
+
 function shouldRetryRequest(failureCount: number, error: unknown) {
   const status = (error as AxiosError).response?.status
   if (status === 401) return false
@@ -17,7 +20,10 @@ export function QueryProvider({ children }: { children: ReactNode }) {
         defaultOptions: {
           queries: {
             retry: shouldRetryRequest,
+            staleTime: DEFAULT_STALE_TIME,
+            gcTime: DEFAULT_GC_TIME,
             refetchOnWindowFocus: false,
+            refetchOnReconnect: false,
             placeholderData: keepPreviousData,
           },
           mutations: {

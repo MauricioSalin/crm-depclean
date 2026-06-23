@@ -60,6 +60,11 @@ import {
 import { listTeams, type TeamRecord } from "@/lib/api/teams"
 import { getStoredUser } from "@/lib/auth/session"
 import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
+import {
+  isEmployeeCoveredBySelectedTeams,
+  normalizeTeamEmployeeSelection,
+  removeEmployeesCoveredByTeams,
+} from "@/lib/team-member-selection"
 
 type SettingsSection = "empresa" | "tipos-cliente" | "permissoes" | "usuarios" | "notificações"
 type ContractExpirationAlertDay = number | ""
@@ -238,6 +243,7 @@ export function ConfiguracoesContent() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
+  const [canManageSettings, setCanManageSettings] = useState(false)
 
   const [organizationSettings, setOrganizationSettings] = useState<OrganizationSettingsRecord | null>(null)
   const [organizationForm, setOrganizationForm] = useState({
@@ -326,11 +332,21 @@ export function ConfiguracoesContent() {
     try {
       const storedUser = getStoredUser()
       const adminUser = storedUser?.permissionProfileId === "profile-admin"
+      const userPermissions = storedUser?.permissions ?? []
+      const canManage = userPermissions.includes("settings_manage")
+      const canReadTeams = canManage || userPermissions.includes("teams_view") || userPermissions.includes("teams_manage")
+      const canReadEmployees =
+        canManage ||
+        userPermissions.includes("employees_view") ||
+        userPermissions.includes("employees_create") ||
+        userPermissions.includes("employees_edit") ||
+        userPermissions.includes("employees_delete")
       setIsAdmin(adminUser)
+      setCanManageSettings(canManage)
       const [settingsResponse, teamsResponse, employeesResponse] = await Promise.all([
         getSettings(),
-        listTeams(),
-        listEmployees(),
+        canReadTeams ? listTeams() : Promise.resolve({ data: [] }),
+        canReadEmployees ? listEmployees() : Promise.resolve({ data: [] }),
       ])
       const organizationResponse = adminUser ? await getOrganizationSettings() : null
       const response = settingsResponse
@@ -416,11 +432,13 @@ export function ConfiguracoesContent() {
     color: team.color,
   })), [teams])
 
-  const employeeOptions = useMemo(() => employees.map((employee) => ({
+  const employeeOptions = useMemo(() => employees
+    .filter((employee) => !isEmployeeCoveredBySelectedTeams(employee.id, ruleForm.targetTeamIds, teams))
+    .map((employee) => ({
     id: employee.id,
     name: employee.name,
     subtitle: `${employee.role || "Sem cargo"} • ${formatPhone(employee.phone)}`,
-  })), [employees])
+  })), [employees, ruleForm.targetTeamIds, teams])
 
   const settingsCards = useMemo(
     () => SETTINGS_CARDS.filter((card) => !card.adminOnly || isAdmin),
@@ -503,6 +521,7 @@ export function ConfiguracoesContent() {
   }
 
   const openTypeDialog = (record?: ClientTypeRecord) => {
+    if (!canManageSettings) return
     clearDialogResetTimeout(typeDialogResetTimeoutRef)
     if (record) {
       setEditingType(record)
@@ -519,6 +538,7 @@ export function ConfiguracoesContent() {
   }
 
   const openProfileDialog = (record?: PermissionProfileRecord) => {
+    if (!canManageSettings) return
     clearDialogResetTimeout(profileDialogResetTimeoutRef)
     if (record) {
       setEditingProfile(record)
@@ -530,6 +550,7 @@ export function ConfiguracoesContent() {
   }
 
   const openUserDialog = (record?: UserRecord) => {
+    if (!canManageSettings) return
     clearDialogResetTimeout(userDialogResetTimeoutRef)
     if (record) {
       setEditingUser(record)
@@ -552,8 +573,14 @@ export function ConfiguracoesContent() {
   }
 
   const openRuleDialog = (record?: NotificationRuleRecord) => {
+    if (!canManageSettings) return
     clearDialogResetTimeout(ruleDialogResetTimeoutRef)
     if (record) {
+      const selection = normalizeTeamEmployeeSelection({
+        teamIds: [...record.targetTeamIds],
+        employeeIds: [...record.targetEmployeeIds],
+        teams,
+      })
       setEditingRule(record)
       setRuleForm({
         name: record.name,
@@ -563,8 +590,8 @@ export function ConfiguracoesContent() {
         contractExpirationAlertDays: record.contractExpirationAlertDays?.length ? record.contractExpirationAlertDays : [record.daysBefore, ""],
         time: record.time,
         channels: [...record.channels],
-        targetTeamIds: [...record.targetTeamIds],
-        targetEmployeeIds: [...record.targetEmployeeIds],
+        targetTeamIds: selection.teamIds,
+        targetEmployeeIds: selection.employeeIds,
         isActive: record.isActive,
       })
     } else {
@@ -575,6 +602,8 @@ export function ConfiguracoesContent() {
 
   useEffect(() => {
     const handleCreateAction = (event: Event) => {
+      if (!canManageSettings) return
+
       const action = (event as CustomEvent<{ action?: SettingsCreateAction }>).detail?.action
 
       if (action === "client-type") {
@@ -594,10 +623,11 @@ export function ConfiguracoesContent() {
 
     window.addEventListener(SETTINGS_CREATE_ACTION_EVENT, handleCreateAction)
     return () => window.removeEventListener(SETTINGS_CREATE_ACTION_EVENT, handleCreateAction)
-  }, [openProfileDialog, openTypeDialog, openUserDialog])
+  }, [canManageSettings, openProfileDialog, openTypeDialog, openUserDialog])
 
   const handleOrganizationSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (!canManageSettings) return
     if (saving) return
     if (!isValidCNPJ(organizationForm.cnpj)) {
       toast.error("Informe um CNPJ válido para a empresa.")
@@ -625,6 +655,7 @@ export function ConfiguracoesContent() {
 
   const handleTypeSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (!canManageSettings) return
     if (saving) return
     setSaving(true)
     const toastId = toast.loading(editingType ? "Salvando tipo de cliente..." : "Criando tipo de cliente...")
@@ -648,6 +679,7 @@ export function ConfiguracoesContent() {
 
   const handleProfileSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (!canManageSettings) return
     if (saving) return
     setSaving(true)
     const toastId = toast.loading(editingProfile ? "Salvando perfil..." : "Criando perfil...")
@@ -672,6 +704,7 @@ export function ConfiguracoesContent() {
 
   const handleUserSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (!canManageSettings) return
     if (saving) return
     if (!isValidCPF(userForm.cpf)) {
       toast.error("Informe um CPF válido para o usuário.")
@@ -748,6 +781,7 @@ export function ConfiguracoesContent() {
 
   const handleRuleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (!canManageSettings) return
     if (saving) return
     if (!editingRule) {
       toast.error("Apenas notificações padrão podem ser editadas.")
@@ -761,6 +795,11 @@ export function ConfiguracoesContent() {
         .map((value) => Math.max(0, Math.trunc(Number(value))))
         .slice(0, 2)
       const canConfigureRecipients = !editingRule.isDefault || DEFAULT_RULES_WITH_CONFIGURABLE_RECIPIENTS.has(editingRule.type)
+      const recipientSelection = normalizeTeamEmployeeSelection({
+        teamIds: ruleForm.targetTeamIds,
+        employeeIds: ruleForm.targetEmployeeIds,
+        teams,
+      })
 
       const payload = editingRule?.isDefault
         ? {
@@ -771,8 +810,8 @@ export function ConfiguracoesContent() {
           channels: ruleForm.channels,
           ...(canConfigureRecipients
             ? {
-              targetTeamIds: ruleForm.targetTeamIds,
-              targetEmployeeIds: ruleForm.targetEmployeeIds,
+              targetTeamIds: recipientSelection.teamIds,
+              targetEmployeeIds: recipientSelection.employeeIds,
             }
             : {}),
           isActive: ruleForm.isActive,
@@ -785,8 +824,8 @@ export function ConfiguracoesContent() {
           contractExpirationAlertDays: ruleForm.type === "contract_expiring" ? contractExpirationAlertDays : undefined,
           time: ruleForm.time,
           channels: ruleForm.channels,
-          targetTeamIds: ruleForm.targetTeamIds,
-          targetEmployeeIds: ruleForm.targetEmployeeIds,
+          targetTeamIds: recipientSelection.teamIds,
+          targetEmployeeIds: recipientSelection.employeeIds,
           isActive: ruleForm.isActive,
         }
       const response = await updateNotificationRule(editingRule.id, payload)
@@ -801,6 +840,7 @@ export function ConfiguracoesContent() {
   }
 
   const handleDeleteType = async (id: string) => {
+    if (!canManageSettings) return
     if (saving) return
     setSaving(true)
     const toastId = toast.loading("Removendo tipo de cliente...")
@@ -816,6 +856,7 @@ export function ConfiguracoesContent() {
   }
 
   const handleDeleteProfile = async (id: string) => {
+    if (!canManageSettings) return
     if (saving) return
     setSaving(true)
     const toastId = toast.loading("Removendo perfil...")
@@ -831,6 +872,7 @@ export function ConfiguracoesContent() {
   }
 
   const handleDeleteUser = async (id: string) => {
+    if (!canManageSettings) return
     if (saving) return
     setSaving(true)
     const toastId = toast.loading("Removendo usuário...")
@@ -846,6 +888,7 @@ export function ConfiguracoesContent() {
   }
 
   const handleDeleteRule = async (id: string) => {
+    if (!canManageSettings) return
     if (saving) return
     setSaving(true)
     try {
@@ -1138,7 +1181,7 @@ export function ConfiguracoesContent() {
         ))}
       </div>
 
-      {activeSection === "empresa" && isAdmin && (
+      {activeSection === "empresa" && isAdmin && canManageSettings && (
         <form autoComplete="off" onSubmit={handleOrganizationSubmit} className="space-y-4">
           <Card>
             <CardHeader>
@@ -1289,12 +1332,12 @@ export function ConfiguracoesContent() {
                   <TableHead>Nome</TableHead>
                   <TableHead>Descrição</TableHead>
                   <TableHead>Assina contrato</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
+                  {canManageSettings ? <TableHead className="text-right">Ações</TableHead> : null}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {paginatedTypes.length === 0 ? (
-                  <TableEmptyState colSpan={5} icon={Building} title="Nenhum tipo encontrado." />
+                  <TableEmptyState colSpan={canManageSettings ? 5 : 4} icon={Building} title="Nenhum tipo encontrado." />
                 ) : (
                   paginatedTypes.map((item) => (
                     <TableRow key={item.id}>
@@ -1306,6 +1349,7 @@ export function ConfiguracoesContent() {
                           {CONTRACT_SIGNER_ROLE_LABELS[item.contractSignerRole ?? DEFAULT_CONTRACT_SIGNER_ROLE]}
                         </Badge>
                       </TableCell>
+                      {canManageSettings ? (
                       <TableCell className="text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -1325,6 +1369,7 @@ export function ConfiguracoesContent() {
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
+                      ) : null}
                     </TableRow>
                   ))
                 )}
@@ -1404,12 +1449,12 @@ export function ConfiguracoesContent() {
                   <TableHead>Nome</TableHead>
                   <TableHead>Descrição</TableHead>
                   <TableHead>Permissões</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
+                  {canManageSettings ? <TableHead className="text-right">Ações</TableHead> : null}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {paginatedProfiles.length === 0 ? (
-                  <TableEmptyState colSpan={4} icon={Shield} title="Nenhum perfil encontrado." />
+                  <TableEmptyState colSpan={canManageSettings ? 4 : 3} icon={Shield} title="Nenhum perfil encontrado." />
                 ) : (
                   paginatedProfiles.map((item) => (
                     <TableRow key={item.id}>
@@ -1421,6 +1466,7 @@ export function ConfiguracoesContent() {
                           {item.id === "profile-admin" && <Badge className="bg-primary/10 text-primary hover:bg-primary/10">Padrão</Badge>}
                         </div>
                       </TableCell>
+                      {canManageSettings ? (
                       <TableCell className="text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -1444,6 +1490,7 @@ export function ConfiguracoesContent() {
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
+                      ) : null}
                     </TableRow>
                   ))
                 )}
@@ -1557,12 +1604,12 @@ export function ConfiguracoesContent() {
                   <TableHead>CPF</TableHead>
                   <TableHead>Perfil</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
+                  {canManageSettings ? <TableHead className="text-right">Ações</TableHead> : null}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {paginatedUsers.length === 0 ? (
-                  <TableEmptyState colSpan={6} icon={Users} title="Nenhum usuário encontrado." />
+                  <TableEmptyState colSpan={canManageSettings ? 6 : 5} icon={Users} title="Nenhum usuário encontrado." />
                 ) : (
                   paginatedUsers.map((item) => (
                     <TableRow key={item.id}>
@@ -1592,6 +1639,7 @@ export function ConfiguracoesContent() {
                           {item.isActive ? "Ativo" : "Inativo"}
                         </Badge>
                       </TableCell>
+                      {canManageSettings ? (
                       <TableCell className="text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -1611,6 +1659,7 @@ export function ConfiguracoesContent() {
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
+                      ) : null}
                     </TableRow>
                   ))
                 )}
@@ -1786,23 +1835,27 @@ export function ConfiguracoesContent() {
                       </div>
                       <div className="flex items-center gap-2">
                         {item.isDefault ? <Badge variant="secondary" className="shrink-0 whitespace-nowrap">Padrão</Badge> : null}
-                        <Switch
-                          checked={item.isActive}
-                          onCheckedChange={async () => {
-                            setSaving(true)
-                            try {
-                              const response = await updateNotificationRule(item.id, { isActive: !item.isActive })
-                              upsertNotificationRule(response.data)
-                            } catch (error) {
-                              toast.error(getApiErrorMessage(error, "Não foi possível atualizar a regra."))
-                            } finally {
-                              setSaving(false)
-                            }
-                          }}
-                        />
-                        <Button variant="ghost" size="icon" onClick={() => openRuleDialog(item)}><Edit className="h-4 w-4" /></Button>
-                        {!item.isDefault ? (
-                          <Button variant="ghost" size="icon" onClick={() => setPendingDelete({ kind: "rule", id: item.id, label: item.name })}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                        {canManageSettings ? (
+                          <>
+                            <Switch
+                              checked={item.isActive}
+                              onCheckedChange={async () => {
+                                setSaving(true)
+                                try {
+                                  const response = await updateNotificationRule(item.id, { isActive: !item.isActive })
+                                  upsertNotificationRule(response.data)
+                                } catch (error) {
+                                  toast.error(getApiErrorMessage(error, "Não foi possível atualizar a regra."))
+                                } finally {
+                                  setSaving(false)
+                                }
+                              }}
+                            />
+                            <Button variant="ghost" size="icon" onClick={() => openRuleDialog(item)}><Edit className="h-4 w-4" /></Button>
+                            {!item.isDefault ? (
+                              <Button variant="ghost" size="icon" onClick={() => setPendingDelete({ kind: "rule", id: item.id, label: item.name })}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                            ) : null}
+                          </>
                         ) : null}
                       </div>
                     </div>
@@ -1981,7 +2034,11 @@ export function ConfiguracoesContent() {
                         <MultiSelect
                           options={teamOptions}
                           selected={ruleForm.targetTeamIds}
-                          onChange={(selected) => setRuleForm({ ...ruleForm, targetTeamIds: selected })}
+                          onChange={(selected) => setRuleForm({
+                            ...ruleForm,
+                            targetTeamIds: selected,
+                            targetEmployeeIds: removeEmployeesCoveredByTeams(ruleForm.targetEmployeeIds, selected, teams),
+                          })}
                           placeholder="Buscar e adicionar equipes..."
                           searchPlaceholder="Buscar equipe..."
                           emptyMessage="Nenhuma equipe encontrada."
@@ -1992,7 +2049,10 @@ export function ConfiguracoesContent() {
                         <MultiSelect
                           options={employeeOptions}
                           selected={ruleForm.targetEmployeeIds}
-                          onChange={(selected) => setRuleForm({ ...ruleForm, targetEmployeeIds: selected })}
+                          onChange={(selected) => setRuleForm({
+                            ...ruleForm,
+                            targetEmployeeIds: removeEmployeesCoveredByTeams(selected, ruleForm.targetTeamIds, teams),
+                          })}
                           placeholder="Buscar e adicionar funcionários..."
                           searchPlaceholder="Buscar funcionário..."
                           emptyMessage="Nenhum funcionário encontrado."

@@ -80,9 +80,9 @@ export function Header({ title, description, titleAddon, headerActions, actions,
     queryKey: ["notifications"],
     queryFn: listNotifications,
     enabled: mounted && hasSession,
-    refetchInterval: 10_000,
-    refetchIntervalInBackground: true,
-    refetchOnWindowFocus: true,
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
   })
   const notifs = notificationsQuery.data?.data ?? []
   const unreadNotifications = notifs.filter((n) => !n.isRead)

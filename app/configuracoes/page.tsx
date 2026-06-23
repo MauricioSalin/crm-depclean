@@ -1,6 +1,6 @@
 "use client"
 
-import { Suspense } from "react"
+import { Suspense, useEffect, useState } from "react"
 import { Plus } from "lucide-react"
 import { useSearchParams } from "next/navigation"
 import { Sidebar } from "@/components/dashboard/sidebar"
@@ -12,6 +12,8 @@ import {
 } from "@/components/configuracoes/configuracoes-content"
 import { Button } from "@/components/ui/button"
 import { ContentLoadingSkeleton } from "@/components/ui/content-loading-skeleton"
+import { hasAnyPermission } from "@/lib/auth/permissions"
+import { getStoredUser } from "@/lib/auth/session"
 
 type SettingsSection = "empresa" | "tipos-cliente" | "permissoes" | "usuarios" | "notificações"
 
@@ -35,6 +37,19 @@ export default function ConfiguracoesPage() {
   const searchParams = useSearchParams()
   const activeSection = getSettingsSection(searchParams.get("section"))
   const actionConfig = SETTINGS_ACTIONS[activeSection]
+  const [currentUser, setCurrentUser] = useState<ReturnType<typeof getStoredUser>>(null)
+  const canManageSettings = hasAnyPermission(currentUser, ["settings_manage"])
+
+  useEffect(() => {
+    const sync = () => setCurrentUser(getStoredUser())
+    sync()
+    window.addEventListener("storage", sync)
+    window.addEventListener("depclean:session", sync)
+    return () => {
+      window.removeEventListener("storage", sync)
+      window.removeEventListener("depclean:session", sync)
+    }
+  }, [])
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -48,7 +63,7 @@ export default function ConfiguracoesPage() {
           description="Personalize as configurações do sistema Depclean."
           hasFilters={activeSection !== "empresa"}
           actions={
-            actionConfig ? (
+            canManageSettings && actionConfig ? (
               <Button
                 type="button"
                 className="h-9 w-full min-w-0 bg-primary text-sm text-primary-foreground hover:bg-primary/90 sm:w-auto"

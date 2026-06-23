@@ -40,6 +40,24 @@ const LOG_TYPE_OPTIONS = [
   { value: "execute", label: "Execução" },
 ]
 
+const LOG_MODULE_OPTIONS = [
+  { value: "analytics", label: "Relatórios" },
+  { value: "auth", label: "Acesso" },
+  { value: "certificates", label: "Certificados" },
+  { value: "clicksign", label: "ClickSign" },
+  { value: "clients", label: "Clientes" },
+  { value: "contracts", label: "Contratos" },
+  { value: "employees", label: "Funcionários" },
+  { value: "notifications", label: "Notificações" },
+  { value: "profile", label: "Perfil" },
+  { value: "schedules", label: "Agendamentos" },
+  { value: "services", label: "Serviços" },
+  { value: "settings", label: "Configurações" },
+  { value: "support", label: "Ajuda" },
+  { value: "teams", label: "Equipes" },
+  { value: "templates", label: "Templates" },
+]
+
 const TYPE_BADGE_CLASS: Record<string, string> = {
   cancel: "bg-orange-100 text-orange-700 hover:bg-orange-100",
   complete: "bg-green-100 text-green-700 hover:bg-green-100",
@@ -133,12 +151,13 @@ export function LogsContent() {
   const [clientId, setClientId] = useState("all")
   const [employeeId, setEmployeeId] = useState("all")
   const [type, setType] = useState("all")
+  const [module, setModule] = useState("all")
   const [status, setStatus] = useState<"all" | "success" | "error">("all")
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
 
   const logsQuery = useQuery({
-    queryKey: ["audit-logs", search, from, to, clientId, employeeId, type, status, page, pageSize],
+    queryKey: ["audit-logs", search, from, to, clientId, employeeId, type, module, status, page, pageSize],
     queryFn: () => listAuditLogs({
       search: search.trim() || undefined,
       from: toApiDateTime(from),
@@ -146,6 +165,7 @@ export function LogsContent() {
       clientId,
       employeeId,
       type,
+      module,
       status,
       page,
       limit: pageSize,
@@ -158,14 +178,14 @@ export function LogsContent() {
   })
 
   const employeesQuery = useQuery({
-    queryKey: ["employees", "logs-filter"],
+    queryKey: ["employees", "catalog"],
     queryFn: () => listEmployees(""),
   })
 
   const logs = logsQuery.data?.data.items ?? []
   const totalItems = logsQuery.data?.data.total ?? 0
   const totalPages = Math.max(1, logsQuery.data?.data.totalPages ?? 1)
-  const hasActiveFilters = Boolean(search || from || to || clientId !== "all" || employeeId !== "all" || type !== "all" || status !== "all")
+  const hasActiveFilters = Boolean(search || from || to || clientId !== "all" || employeeId !== "all" || type !== "all" || module !== "all" || status !== "all")
   const clientOptions = useMemo(
     () => (clientsQuery.data?.data ?? []).map((client) => ({ value: client.id, label: client.companyName })),
     [clientsQuery.data?.data],
@@ -183,6 +203,7 @@ export function LogsContent() {
     setClientId("all")
     setEmployeeId("all")
     setType("all")
+    setModule("all")
     setStatus("all")
     setPage(1)
   }
@@ -258,10 +279,24 @@ export function LogsContent() {
           />
         </div>
         <div className="flex w-full flex-wrap items-end gap-x-0 gap-y-2 sm:w-auto">
+          <div className="w-[176px] shrink-0 space-y-1">
+            <Label>Funcionalidade</Label>
+            <Select value={module} onValueChange={(value) => { setModule(value); resetPage() }}>
+              <SelectTrigger className="w-full rounded-r-none">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas</SelectItem>
+                {LOG_MODULE_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <div className="w-[152px] shrink-0 space-y-1">
             <Label>Tipo</Label>
             <Select value={type} onValueChange={(value) => { setType(value); resetPage() }}>
-              <SelectTrigger className="w-full rounded-r-none">
+              <SelectTrigger className="w-full rounded-none border-l-0">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -444,8 +479,8 @@ export function LogsContent() {
       />
 
       <Dialog open={Boolean(selectedLog)} onOpenChange={(open) => !open && setSelectedLog(null)}>
-        <DialogContent className="max-h-[90dvh] max-w-3xl overflow-hidden p-0">
-          <DialogHeader className="px-6 pb-3 pt-6">
+        <DialogContent className="flex max-h-[min(90dvh,760px)] min-w-0 flex-col gap-0 overflow-hidden p-0 max-sm:left-0 max-sm:top-0 max-sm:h-[100dvh] max-sm:max-h-none max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none max-sm:border-0 max-sm:[&_[data-slot=dialog-close]]:right-5 max-sm:[&_[data-slot=dialog-close]]:top-[calc(env(safe-area-inset-top)+1rem)] sm:max-w-3xl">
+          <DialogHeader className="min-w-0 px-6 pb-3 pt-6 max-sm:px-5 max-sm:pt-[calc(env(safe-area-inset-top)+1.75rem)]">
             <DialogTitle>Detalhes do log</DialogTitle>
             <DialogDescription>
               {selectedLog?.title ?? "Registro de auditoria"}
@@ -453,7 +488,7 @@ export function LogsContent() {
           </DialogHeader>
 
           {selectedLog ? (
-            <div className="min-h-0 space-y-4 overflow-y-auto px-6 pb-6">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 pb-6 max-sm:px-5 max-sm:pb-[calc(env(safe-area-inset-bottom)+1.25rem)]">
               {selectedLog.status === "error" ? (
                 <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
                   <p className="font-semibold">Motivo da falha</p>
@@ -504,7 +539,7 @@ export function LogsContent() {
 
               <div className="space-y-2">
                 <p className="text-xs font-medium text-muted-foreground">Detalhes técnicos</p>
-                <pre className="max-h-[260px] overflow-auto rounded-md bg-muted p-3 text-xs leading-relaxed text-foreground">
+                <pre className="max-h-[260px] max-w-full overflow-auto rounded-md bg-muted p-3 text-xs leading-relaxed text-foreground">
                   {formatLogJson(selectedLog.metadata)}
                 </pre>
               </div>

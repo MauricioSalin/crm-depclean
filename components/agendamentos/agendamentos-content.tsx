@@ -2,6 +2,7 @@
 
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useRouter } from "next/navigation"
 import { format } from "date-fns"
 import type { DateRange } from "react-day-picker"
 import { toast } from "sonner"
@@ -26,6 +27,7 @@ import {
   completeSchedule,
   createSchedule,
   deleteSchedule,
+  getScheduleById,
   listSchedules,
   reactivateSchedule,
   startSchedule,
@@ -43,6 +45,7 @@ import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 import { formatConfiguredScheduleDuration, minutesToScheduleDuration, scheduleDurationToMinutes } from "@/lib/schedule-duration"
 import { checkScheduleAvailability, formatAvailabilitySlot } from "@/lib/schedule-availability"
+import { canStartSchedule } from "@/lib/schedule-permissions"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
@@ -83,6 +86,7 @@ interface AgendamentosContentProps {
   viewToggle?: React.ReactNode
   openImport?: boolean
   onImportChange?: (open: boolean) => void
+  initialScheduleId?: string
 }
 
 function getStatusBadge(status: ScheduleRecord["status"]) {
@@ -389,7 +393,8 @@ const SCHEDULE_IMPORT_FIELDS: CsvImportField[] = [
   { key: "notes", label: "Observações" },
 ]
 
-export function AgendamentosContent({ viewMode, openDialog, onDialogChange, viewToggle, openImport = false, onImportChange }: AgendamentosContentProps) {
+export function AgendamentosContent({ viewMode, openDialog, onDialogChange, viewToggle, openImport = false, onImportChange, initialScheduleId }: AgendamentosContentProps) {
+  const router = useRouter()
   const queryClient = useQueryClient()
   const mobileFiltersOpen = useMobileFiltersOpen()
   const [searchTerm, setSearchTerm] = useUrlQueryState("q")
@@ -435,6 +440,12 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
     queryKey: ["schedules"],
     queryFn: () => listSchedules(),
   })
+  const routeScheduleQuery = useQuery({
+    queryKey: ["schedule", initialScheduleId],
+    queryFn: () => getScheduleById(initialScheduleId!),
+    enabled: Boolean(initialScheduleId),
+    retry: false,
+  })
   const clientsQuery = useQuery({
     queryKey: ["clients"],
     queryFn: () => listClients(),
@@ -446,12 +457,12 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
     enabled: canManageAgenda,
   })
   const teamsQuery = useQuery({
-    queryKey: ["teams"],
+    queryKey: ["teams", "catalog"],
     queryFn: () => listTeams(),
     enabled: canManageAgenda,
   })
   const employeesQuery = useQuery({
-    queryKey: ["employees"],
+    queryKey: ["employees", "catalog"],
     queryFn: () => listEmployees(),
     enabled: canManageAgenda,
   })
@@ -461,6 +472,22 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
   const services = servicesQuery.data?.data ?? []
   const teams = teamsQuery.data?.data ?? []
   const employees = employeesQuery.data?.data ?? []
+  const routeSchedule = useMemo(() => {
+    if (!initialScheduleId) return null
+    return schedules.find((item) => item.id === initialScheduleId) ?? routeScheduleQuery.data?.data ?? null
+  }, [initialScheduleId, routeScheduleQuery.data?.data, schedules])
+
+  useEffect(() => {
+    if (!initialScheduleId || !routeSchedule) return
+    setSelectedSchedule((current) => (current?.id === routeSchedule.id ? current : routeSchedule))
+  }, [initialScheduleId, routeSchedule])
+
+  useEffect(() => {
+    if (!initialScheduleId || !routeScheduleQuery.isError) return
+    toast.error("Agendamento não encontrado ou sem permissão de acesso.")
+    router.replace("/agendamentos")
+  }, [initialScheduleId, routeScheduleQuery.isError, router])
+
   useEffect(() => {
     if (openDialog && !canManageAgenda) {
       onDialogChange?.(false)
@@ -812,6 +839,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
       return
     }
 
+    router.push(`/agendamentos/${encodeURIComponent(schedule.id)}`)
     setSelectedSchedule(schedule)
   }
 
@@ -847,15 +875,20 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
       <ScheduleDetailsDialog
         open={!!selectedSchedule}
         onOpenChange={(open) => {
-          if (!open) setSelectedSchedule(null)
+          if (!open) {
+            setSelectedSchedule(null)
+            if (initialScheduleId) router.replace("/agendamentos")
+          }
         }}
         schedule={selectedSchedule}
         schedules={schedules}
         teams={teams}
         isStartingAttendance={startMutation.isPending}
         canManage={canManageAgenda}
+        canStart={selectedSchedule ? canStartSchedule(selectedSchedule, currentUser, teams) : false}
+        canReschedule={canManageAgenda}
         onStartAttendance={async (schedule) => {
-          if (!canManageAgenda) return
+          if (!canStartSchedule(schedule, currentUser, teams)) return
           await startMutation.mutateAsync(schedule)
         }}
       />
@@ -886,59 +919,61 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
           }
         }}
       >
-        <DialogContent className="max-h-[calc(100dvh-1rem)] min-w-0 content-start overflow-x-hidden overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+1.5rem)] max-sm:left-0 max-sm:top-3 max-sm:h-[calc(100dvh-1.5rem)] max-sm:max-h-none max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none max-sm:border-0 sm:max-w-lg">
-          <DialogHeader className="min-w-0 pr-6">
+        <DialogContent className="flex max-h-[calc(100dvh-1rem)] min-w-0 flex-col gap-0 overflow-hidden p-0 max-sm:left-0 max-sm:top-0 max-sm:h-[100dvh] max-sm:max-h-none max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none max-sm:border-0 max-sm:[&_[data-slot=dialog-close]]:right-5 max-sm:[&_[data-slot=dialog-close]]:top-[calc(env(safe-area-inset-top)+1rem)] sm:max-w-lg">
+          <DialogHeader className="min-w-0 px-6 pb-4 pt-6 max-sm:px-5 max-sm:pt-[calc(env(safe-area-inset-top)+1.75rem)]">
             <DialogTitle>Concluir agendamento</DialogTitle>
             <DialogDescription>
               Registre o horário executado e anexe a NA da visita para vincular ao cliente.
             </DialogDescription>
           </DialogHeader>
-          <div className="grid min-w-0 gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="completion-start-date">Data de início *</Label>
-              <Input
-                id="completion-start-date"
-                type="date"
-                value={completionStartDate}
-                onChange={(event) => setCompletionStartDate(event.target.value)}
-              />
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 pb-5 max-sm:px-5">
+            <div className="grid min-w-0 gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="completion-start-date">Data de início *</Label>
+                <Input
+                  id="completion-start-date"
+                  type="date"
+                  value={completionStartDate}
+                  onChange={(event) => setCompletionStartDate(event.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="completion-start">Horário de início *</Label>
+                <Input
+                  id="completion-start"
+                  type="time"
+                  value={completionStartTime}
+                  onChange={(event) => setCompletionStartTime(event.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="completion-end-date">Data de fim *</Label>
+                <Input
+                  id="completion-end-date"
+                  type="date"
+                  value={completionEndDate}
+                  onChange={(event) => setCompletionEndDate(event.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="completion-end">Horário de fim *</Label>
+                <Input
+                  id="completion-end"
+                  type="time"
+                  value={completionEndTime}
+                  onChange={(event) => setCompletionEndTime(event.target.value)}
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="completion-start">Horário de início *</Label>
-              <Input
-                id="completion-start"
-                type="time"
-                value={completionStartTime}
-                onChange={(event) => setCompletionStartTime(event.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="completion-end-date">Data de fim *</Label>
-              <Input
-                id="completion-end-date"
-                type="date"
-                value={completionEndDate}
-                onChange={(event) => setCompletionEndDate(event.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="completion-end">Horário de fim *</Label>
-              <Input
-                id="completion-end"
-                type="time"
-                value={completionEndTime}
-                onChange={(event) => setCompletionEndTime(event.target.value)}
-              />
-            </div>
+            <CompletionNaAttachments
+              existingAttachments={completionTarget?.naAttachments ?? []}
+              files={completionFiles}
+              disabled={completeMutation.isPending}
+              onAddFiles={(files) => setCompletionFiles((current) => [...current, ...files])}
+              onRemoveFile={(index) => setCompletionFiles((current) => current.filter((_, currentIndex) => currentIndex !== index))}
+            />
           </div>
-          <CompletionNaAttachments
-            existingAttachments={completionTarget?.naAttachments ?? []}
-            files={completionFiles}
-            disabled={completeMutation.isPending}
-            onAddFiles={(files) => setCompletionFiles((current) => [...current, ...files])}
-            onRemoveFile={(index) => setCompletionFiles((current) => current.filter((_, currentIndex) => currentIndex !== index))}
-          />
-          <DialogFooter className="gap-2 sm:gap-2">
+          <DialogFooter className="gap-2 px-6 pb-6 pt-3 max-sm:px-5 max-sm:pb-[calc(env(safe-area-inset-bottom)+1.25rem)] sm:gap-2">
             <Button type="button" variant="outline" className="w-full min-w-0 sm:w-auto" onClick={() => setCompletionTarget(null)}>
               Voltar
             </Button>

@@ -312,7 +312,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
   })
 
   const teamsQuery = useQuery({
-    queryKey: ["teams", "client-profile"],
+    queryKey: ["teams", "catalog"],
     queryFn: () => listTeams(""),
   })
 

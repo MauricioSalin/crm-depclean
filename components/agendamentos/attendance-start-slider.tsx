@@ -69,7 +69,7 @@ export function AttendanceStartSlider({
 
       <div className="pointer-events-none absolute inset-y-0 left-0 right-0 z-10 flex items-center justify-center px-20 text-center text-sm font-medium text-foreground/85">
         <span className="leading-5">
-          {disabled ? "Aguardando assinatura do contrato" : submitting ? "Iniciando atendimento..." : "Iniciar atendimento"}
+          {submitting ? "Iniciando atendimento..." : "Iniciar atendimento"}
         </span>
       </div>
 

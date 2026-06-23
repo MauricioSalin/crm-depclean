@@ -38,6 +38,11 @@ import {
   SCHEDULE_DURATION_TYPE_OPTIONS,
   type ScheduleDurationType,
 } from "@/lib/schedule-duration"
+import {
+  isEmployeeCoveredBySelectedTeams,
+  normalizeTeamEmployeeSelection,
+  removeEmployeesCoveredByTeams,
+} from "@/lib/team-member-selection"
 import type { ClientRecord } from "@/lib/api/clients"
 import type { EmployeeRecord } from "@/lib/api/employees"
 import type { ServiceRecord } from "@/lib/api/services"
@@ -147,12 +152,15 @@ export function SchedulingFormDialog({
 
   const filteredEmployees = useMemo(() => {
     const term = deferredEmployeeSearchTerm.trim().toLowerCase()
-    if (!term) return employees
-    return employees.filter(e =>
+    const availableEmployees = employees.filter((employee) =>
+      !isEmployeeCoveredBySelectedTeams(employee.id, formData.teamIds, teams),
+    )
+    if (!term) return availableEmployees
+    return availableEmployees.filter(e =>
       e.name.toLowerCase().includes(term) ||
       e.role.toLowerCase().includes(term)
     )
-  }, [employees, deferredEmployeeSearchTerm])
+  }, [employees, deferredEmployeeSearchTerm, formData.teamIds, teams])
 
   const clientById = useMemo(() => new Map(clients.map((client) => [client.id, client])), [clients])
   const teamById = useMemo(() => new Map(teams.map((team) => [team.id, team])), [teams])
@@ -178,11 +186,17 @@ export function SchedulingFormDialog({
       }
     }
 
+    const selection = normalizeTeamEmployeeSelection({
+      teamIds: schedule.teamIds ?? schedule.teams?.map((team) => team.id) ?? (schedule.teamId ? [schedule.teamId] : []),
+      employeeIds: schedule.additionalEmployees?.map((employee) => employee.id) ?? [],
+      teams,
+    })
+
     return {
       clientId: schedule.clientId,
       serviceTypeId: schedule.serviceTypeId,
-      teamIds: schedule.teamIds ?? schedule.teams?.map((team) => team.id) ?? (schedule.teamId ? [schedule.teamId] : []),
-      employeeIds: schedule.additionalEmployees?.map((employee) => employee.id) ?? [],
+      teamIds: selection.teamIds,
+      employeeIds: selection.employeeIds,
       date: schedule.date,
       time: schedule.time ?? "",
       durationType: durationFields.durationType,
@@ -203,17 +217,24 @@ export function SchedulingFormDialog({
     }
 
     setFormData({ ...DEFAULT_FORM_DATA, ...(initialFormData ?? {}) })
-  }, [open, editingSchedule, initialFormData, serviceTypes])
+  }, [open, editingSchedule, initialFormData, serviceTypes, teams])
 
   const toggleTeam = (teamId: string) => {
-    if (formData.teamIds.includes(teamId)) {
-      setFormData({ ...formData, teamIds: formData.teamIds.filter(id => id !== teamId) })
-    } else {
-      setFormData({ ...formData, teamIds: [...formData.teamIds, teamId] })
-    }
+    const teamIds = formData.teamIds.includes(teamId)
+      ? formData.teamIds.filter(id => id !== teamId)
+      : [...formData.teamIds, teamId]
+    setFormData({
+      ...formData,
+      teamIds,
+      employeeIds: removeEmployeesCoveredByTeams(formData.employeeIds, teamIds, teams),
+    })
   }
 
   const toggleEmployee = (employeeId: string) => {
+    if (!formData.employeeIds.includes(employeeId) && isEmployeeCoveredBySelectedTeams(employeeId, formData.teamIds, teams)) {
+      return
+    }
+
     if (formData.employeeIds.includes(employeeId)) {
       setFormData({ ...formData, employeeIds: formData.employeeIds.filter(id => id !== employeeId) })
     } else {
@@ -310,11 +331,16 @@ export function SchedulingFormDialog({
               value={formData.serviceTypeId}
               onValueChange={(value) => {
                 const serviceType = serviceTypes.find(st => st.id === value)
+                const selection = normalizeTeamEmployeeSelection({
+                  teamIds: serviceType?.teamIds || [],
+                  employeeIds: serviceType?.employeeIds || [],
+                  teams,
+                })
                 setFormData({
                   ...formData,
                   serviceTypeId: value,
-                  teamIds: serviceType?.teamIds || [],
-                  employeeIds: serviceType?.employeeIds || [],
+                  teamIds: selection.teamIds,
+                  employeeIds: selection.employeeIds,
                   durationType: serviceType?.durationType ?? formData.durationType,
                   duration: serviceType?.defaultDuration ?? formData.duration,
                   value: formData.createContract ? serviceType?.baseValue ?? formData.value : 0,

@@ -21,6 +21,11 @@ import { getApiErrorMessage } from "@/lib/api/errors"
 import { createService, getServiceById, updateService } from "@/lib/api/services"
 import { listTeams } from "@/lib/api/teams"
 import { listTemplates } from "@/lib/api/templates"
+import {
+  isEmployeeCoveredBySelectedTeams,
+  normalizeTeamEmployeeSelection,
+  removeEmployeesCoveredByTeams,
+} from "@/lib/team-member-selection"
 import { cn } from "@/lib/utils"
 
 interface ServiceFormProps {
@@ -57,11 +62,11 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
     enabled: Boolean(serviceId),
   })
   const teamsQuery = useQuery({
-    queryKey: ["teams", "service-form"],
+    queryKey: ["teams", "catalog"],
     queryFn: () => listTeams(""),
   })
   const employeesQuery = useQuery({
-    queryKey: ["employees", "service-form"],
+    queryKey: ["employees", "catalog"],
     queryFn: () => listEmployees(""),
   })
   const informativeTemplatesQuery = useQuery({
@@ -69,9 +74,18 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
     queryFn: () => listTemplates("", "informative"),
   })
 
+  const teams = teamsQuery.data?.data ?? []
+  const employees = employeesQuery.data?.data ?? []
+  const informativeTemplates = informativeTemplatesQuery.data?.data ?? []
+
   useEffect(() => {
     const service = serviceQuery.data?.data
     if (!service) return
+    const selection = normalizeTeamEmployeeSelection({
+      teamIds: service.teamIds,
+      employeeIds: service.employeeIds,
+      teams,
+    })
     setFormData({
       name: service.name,
       description: service.description,
@@ -79,16 +93,13 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
       durationType: service.durationType,
       defaultRecurrence: service.defaultRecurrence,
       defaultInformativeTemplateId: service.defaultInformativeTemplateId ?? "",
-      teamIds: service.teamIds,
-      employeeIds: service.employeeIds,
+      teamIds: selection.teamIds,
+      employeeIds: selection.employeeIds,
       clauses: service.clauses,
       newClause: "",
     })
-  }, [serviceQuery.data])
+  }, [serviceQuery.data, teams])
 
-  const teams = teamsQuery.data?.data ?? []
-  const employees = employeesQuery.data?.data ?? []
-  const informativeTemplates = informativeTemplatesQuery.data?.data ?? []
   const activeInformativeTemplates = useMemo(
     () => informativeTemplates.filter((template) => template.isActive && template.format === "docx"),
     [informativeTemplates],
@@ -99,11 +110,12 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
   )
   const filteredEmployees = useMemo(
     () =>
-      employees.filter((employee) =>
-        employee.name.toLowerCase().includes(employeeSearchTerm.toLowerCase()) ||
-        employee.role.toLowerCase().includes(employeeSearchTerm.toLowerCase()),
-      ),
-    [employeeSearchTerm, employees],
+      employees.filter((employee) => {
+        if (isEmployeeCoveredBySelectedTeams(employee.id, formData.teamIds, teams)) return false
+        const term = employeeSearchTerm.toLowerCase()
+        return employee.name.toLowerCase().includes(term) || employee.role.toLowerCase().includes(term)
+      }),
+    [employeeSearchTerm, employees, formData.teamIds, teams],
   )
 
   const saveMutation = useMutation({
@@ -142,15 +154,24 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
   })
 
   function toggleTeam(teamId: string) {
-    setFormData((current) => ({
-      ...current,
-      teamIds: current.teamIds.includes(teamId)
+    setFormData((current) => {
+      const teamIds = current.teamIds.includes(teamId)
         ? current.teamIds.filter((id) => id !== teamId)
-        : [...current.teamIds, teamId],
-    }))
+        : [...current.teamIds, teamId]
+
+      return {
+        ...current,
+        teamIds,
+        employeeIds: removeEmployeesCoveredByTeams(current.employeeIds, teamIds, teams),
+      }
+    })
   }
 
   function toggleEmployee(employeeId: string) {
+    if (!formData.employeeIds.includes(employeeId) && isEmployeeCoveredBySelectedTeams(employeeId, formData.teamIds, teams)) {
+      return
+    }
+
     setFormData((current) => ({
       ...current,
       employeeIds: current.employeeIds.includes(employeeId)
@@ -212,7 +233,7 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
           <h3 className="text-lg font-semibold">Duração</h3>
         </div>
 
-        <div className="flex items-start gap-3">
+        <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-[minmax(0,180px)_minmax(0,120px)] lg:grid-cols-[180px_120px_180px]">
           <div className="space-y-2">
             <Label htmlFor="durationType">Tipo de Duração</Label>
             <Select
@@ -221,7 +242,7 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
                 setFormData((current) => ({ ...current, durationType: value as "hours" | "shift" | "days" }))
               }
             >
-              <SelectTrigger id="durationType" className="w-[180px]">
+              <SelectTrigger id="durationType" className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -242,17 +263,17 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
               onChange={(event) =>
                 setFormData((current) => ({ ...current, defaultDuration: Number(event.target.value) || 1 }))
               }
-              className="w-[120px]"
+              className="w-full"
             />
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-2 sm:col-span-2 lg:col-span-1">
             <Label htmlFor="recurrence">Recorrência Padrão</Label>
             <Select
               value={formData.defaultRecurrence}
               onValueChange={(value) => setFormData((current) => ({ ...current, defaultRecurrence: value }))}
             >
-              <SelectTrigger id="recurrence" className="w-[180px]">
+              <SelectTrigger id="recurrence" className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -314,12 +335,12 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
             <Label>Equipes Responsáveis</Label>
             <Popover open={teamsPopoverOpen} onOpenChange={setTeamsPopoverOpen}>
               <PopoverTrigger asChild>
-                <Button variant="outline" role="combobox" className="w-full max-w-[320px] justify-between font-normal">
-                  <span className="text-muted-foreground">Buscar e adicionar equipes...</span>
+                <Button variant="outline" role="combobox" className="w-full justify-between font-normal md:max-w-[320px]">
+                  <span className="min-w-0 truncate text-muted-foreground">Buscar e adicionar equipes...</span>
                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-[320px] p-0" align="start">
+              <PopoverContent className="w-[min(calc(100vw-2.5rem),320px)] p-0" align="start">
                 <Command>
                   <CommandInput placeholder="Buscar equipe..." value={teamSearchTerm} onValueChange={setTeamSearchTerm} />
                   <CommandList>
@@ -365,12 +386,12 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
             <Label>Funcionários Avulsos</Label>
             <Popover open={employeesPopoverOpen} onOpenChange={setEmployeesPopoverOpen}>
               <PopoverTrigger asChild>
-                <Button variant="outline" role="combobox" className="w-full max-w-[320px] justify-between font-normal">
-                  <span className="text-muted-foreground">Buscar e adicionar funcionários...</span>
+                <Button variant="outline" role="combobox" className="w-full justify-between font-normal md:max-w-[320px]">
+                  <span className="min-w-0 truncate text-muted-foreground">Buscar e adicionar funcionários...</span>
                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-[320px] p-0" align="start">
+              <PopoverContent className="w-[min(calc(100vw-2.5rem),320px)] p-0" align="start">
                 <Command>
                   <CommandInput
                     placeholder="Buscar funcionário..."
@@ -456,19 +477,19 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
             </div>
           ))}
 
-          <div className="flex items-end gap-2">
+          <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-end">
             <Textarea
               placeholder="Adicionar nova cláusula..."
               value={formData.newClause}
               onChange={(event) => setFormData((current) => ({ ...current, newClause: event.target.value }))}
               rows={3}
-              className="w-full max-w-[50%] resize-y"
+              className="w-full resize-y md:max-w-[50%]"
             />
             <Button
               type="button"
               variant="outline"
               size="icon"
-              className="shrink-0"
+              className="self-end shrink-0"
               onClick={() => {
                 if (!formData.newClause.trim()) return
                 setFormData((current) => ({

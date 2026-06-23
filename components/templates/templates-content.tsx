@@ -588,7 +588,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
   })
 
   const employeesQuery = useQuery({
-    queryKey: ["employees", "templates"],
+    queryKey: ["employees", "catalog"],
     queryFn: () => listEmployees(""),
   })
 

@@ -31,6 +31,7 @@ import { addCivilDaysKey, addCivilMonthsKey, parseCivilDate, toBrasiliaTimeKey, 
 import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 import { checkScheduleAvailability, formatAvailabilitySlot } from "@/lib/schedule-availability"
+import { canStartSchedule } from "@/lib/schedule-permissions"
 import type { RecurrenceType } from "@/lib/types"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -246,12 +247,12 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
     enabled: canManageAgenda,
   })
   const teamsQuery = useQuery({
-    queryKey: ["teams", "agenda"],
+    queryKey: ["teams", "catalog"],
     queryFn: () => listTeams(),
     enabled: canManageAgenda,
   })
   const employeesQuery = useQuery({
-    queryKey: ["employees", "agenda"],
+    queryKey: ["employees", "catalog"],
     queryFn: () => listEmployees(),
     enabled: canManageAgenda,
   })
@@ -756,8 +757,10 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
         teams={teams}
         isStartingAttendance={startMutation.isPending}
         canManage={canManageAgenda}
+        canStart={selectedSchedule ? canStartSchedule(selectedSchedule, currentUser, teams) : false}
+        canReschedule={canManageAgenda}
         onStartAttendance={async (schedule) => {
-          if (!canManageAgenda) return
+          if (!canStartSchedule(schedule, currentUser, teams)) return
           await startMutation.mutateAsync(schedule)
         }}
       />
@@ -790,62 +793,64 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
           }
         }}
       >
-        <DialogContent className="max-h-[calc(100dvh-1rem)] min-w-0 content-start overflow-x-hidden overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+1.5rem)] max-sm:left-0 max-sm:top-3 max-sm:h-[calc(100dvh-1.5rem)] max-sm:max-h-none max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none max-sm:border-0 sm:max-w-lg">
-          <DialogHeader className="min-w-0 pr-6">
+        <DialogContent className="flex max-h-[calc(100dvh-1rem)] min-w-0 flex-col gap-0 overflow-hidden p-0 max-sm:left-0 max-sm:top-0 max-sm:h-[100dvh] max-sm:max-h-none max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none max-sm:border-0 max-sm:[&_[data-slot=dialog-close]]:right-5 max-sm:[&_[data-slot=dialog-close]]:top-[calc(env(safe-area-inset-top)+1rem)] sm:max-w-lg">
+          <DialogHeader className="min-w-0 px-6 pb-4 pt-6 max-sm:px-5 max-sm:pt-[calc(env(safe-area-inset-top)+1.75rem)]">
             <DialogTitle>Concluir agendamento</DialogTitle>
             <DialogDescription>
               Registre o horário executado e anexe a NA da visita para vincular ao cliente.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid min-w-0 gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="agenda-completion-start-date">Data de início *</Label>
-              <Input
-                id="agenda-completion-start-date"
-                type="date"
-                value={completionStartDate}
-                onChange={(event) => setCompletionStartDate(event.target.value)}
-              />
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 pb-5 max-sm:px-5">
+            <div className="grid min-w-0 gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="agenda-completion-start-date">Data de início *</Label>
+                <Input
+                  id="agenda-completion-start-date"
+                  type="date"
+                  value={completionStartDate}
+                  onChange={(event) => setCompletionStartDate(event.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="agenda-completion-start">Horário de início *</Label>
+                <Input
+                  id="agenda-completion-start"
+                  type="time"
+                  value={completionStartTime}
+                  onChange={(event) => setCompletionStartTime(event.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="agenda-completion-end-date">Data de fim *</Label>
+                <Input
+                  id="agenda-completion-end-date"
+                  type="date"
+                  value={completionEndDate}
+                  onChange={(event) => setCompletionEndDate(event.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="agenda-completion-end">Horário de fim *</Label>
+                <Input
+                  id="agenda-completion-end"
+                  type="time"
+                  value={completionEndTime}
+                  onChange={(event) => setCompletionEndTime(event.target.value)}
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="agenda-completion-start">Horário de início *</Label>
-              <Input
-                id="agenda-completion-start"
-                type="time"
-                value={completionStartTime}
-                onChange={(event) => setCompletionStartTime(event.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="agenda-completion-end-date">Data de fim *</Label>
-              <Input
-                id="agenda-completion-end-date"
-                type="date"
-                value={completionEndDate}
-                onChange={(event) => setCompletionEndDate(event.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="agenda-completion-end">Horário de fim *</Label>
-              <Input
-                id="agenda-completion-end"
-                type="time"
-                value={completionEndTime}
-                onChange={(event) => setCompletionEndTime(event.target.value)}
-              />
-            </div>
+
+            <CompletionNaAttachments
+              existingAttachments={completionTarget?.naAttachments ?? []}
+              files={completionFiles}
+              disabled={completeMutation.isPending}
+              onAddFiles={(files) => setCompletionFiles((current) => [...current, ...files])}
+              onRemoveFile={(index) => setCompletionFiles((current) => current.filter((_, currentIndex) => currentIndex !== index))}
+            />
           </div>
 
-          <CompletionNaAttachments
-            existingAttachments={completionTarget?.naAttachments ?? []}
-            files={completionFiles}
-            disabled={completeMutation.isPending}
-            onAddFiles={(files) => setCompletionFiles((current) => [...current, ...files])}
-            onRemoveFile={(index) => setCompletionFiles((current) => current.filter((_, currentIndex) => currentIndex !== index))}
-          />
-
-          <DialogFooter className="gap-2 sm:gap-2">
+          <DialogFooter className="gap-2 px-6 pb-6 pt-3 max-sm:px-5 max-sm:pb-[calc(env(safe-area-inset-bottom)+1.25rem)] sm:gap-2">
             <Button type="button" variant="outline" className="w-full min-w-0 sm:w-auto" onClick={() => setCompletionTarget(null)}>
               Voltar
             </Button>

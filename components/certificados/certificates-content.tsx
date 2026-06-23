@@ -5,8 +5,9 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { Award, Calendar, Clock, FileText, Loader2, MoreHorizontal, RotateCcw, Search, Trash2 } from "lucide-react"
+import { Award, Calendar, Clock, Eye, FileText, Loader2, MoreHorizontal, RotateCcw, Search, Trash2 } from "lucide-react"
 
+import { buildApiFileUrl } from "@/lib/api/client"
 import { deleteCertificate, listCertificates, resendCertificate, type CertificateQueueRecord } from "@/lib/api/certificates"
 import { listClients } from "@/lib/api/clients"
 import { getApiErrorMessage } from "@/lib/api/errors"
@@ -71,6 +72,10 @@ function formatScheduleOption(schedule: ScheduleRecord) {
   return `${time} - ${schedule.serviceTypeName} (${unit})`
 }
 
+function getCertificateUrl(record: CertificateQueueRecord) {
+  return record.certificateUrl ? buildApiFileUrl(record.certificateUrl) : ""
+}
+
 export function CertificatesContent({ viewMode, viewToggle, createOpen = false, onCreateOpenChange }: CertificatesContentProps) {
   const queryClient = useQueryClient()
   const router = useRouter()
@@ -108,7 +113,7 @@ export function CertificatesContent({ viewMode, viewToggle, createOpen = false, 
   )
 
   const certificatesQuery = useQuery({
-    queryKey: ["certificates"],
+    queryKey: ["certificates", "list"],
     queryFn: () => listCertificates(),
     enabled: mounted && canView,
   })
@@ -410,6 +415,7 @@ export function CertificatesContent({ viewMode, viewToggle, createOpen = false, 
                 ) : (
                   paginatedRecords.map((record) => {
                     const canIssue = canIssueCertificate(record)
+                    const certificateUrl = getCertificateUrl(record)
 
                     return (
                     <TableRow
@@ -472,7 +478,26 @@ export function CertificatesContent({ viewMode, viewToggle, createOpen = false, 
                       </TableCell>
                       <TableCell className="hidden sm:table-cell">{getStatusBadge(record.status)}</TableCell>
                       <TableCell className="text-right" onClick={(event) => event.stopPropagation()}>
-                        <div className="flex justify-end">
+                        <div className="flex justify-end gap-1">
+                          {certificateUrl ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  asChild
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-9 rounded-full px-3"
+                                >
+                                  <a href={certificateUrl} target="_blank" rel="noreferrer" aria-label="Visualizar certificado">
+                                    <Eye className="mr-2 h-4 w-4" />
+                                    <span>Visualizar</span>
+                                  </a>
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>Visualizar certificado</TooltipContent>
+                            </Tooltip>
+                          ) : null}
+
                           {canManage && record.status === "pending" ? (
                             <Tooltip>
                               <TooltipTrigger asChild>
@@ -523,7 +548,7 @@ export function CertificatesContent({ viewMode, viewToggle, createOpen = false, 
                             </DropdownMenu>
                           ) : null}
 
-                          {!canManage ? (
+                          {!canManage && !certificateUrl ? (
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <Button size="icon" className="h-9 w-9 rounded-full" disabled aria-label="Emitir certificado">
@@ -552,6 +577,7 @@ export function CertificatesContent({ viewMode, viewToggle, createOpen = false, 
             ) : (
               paginatedRecords.map((record) => {
                 const canIssue = canIssueCertificate(record)
+                const certificateUrl = getCertificateUrl(record)
 
                 return (
                 <Card
@@ -612,8 +638,18 @@ export function CertificatesContent({ viewMode, viewToggle, createOpen = false, 
                       <p className="mt-3 text-xs text-muted-foreground">Sem responsável vinculado.</p>
                     )}
 
-                    {canManage ? (
-                      <div className="mt-auto flex gap-2 pt-4" onClick={(event) => event.stopPropagation()}>
+                    <div className="mt-auto flex gap-2 pt-4" onClick={(event) => event.stopPropagation()}>
+                      {certificateUrl ? (
+                        <Button asChild variant="outline" className="h-9 min-w-0 flex-1 text-sm">
+                          <a href={certificateUrl} target="_blank" rel="noreferrer" aria-label="Visualizar certificado">
+                            <Eye className="mr-2 h-4 w-4 shrink-0" />
+                            Visualizar
+                          </a>
+                        </Button>
+                      ) : null}
+
+                      {canManage ? (
+                        <>
                         {record.status === "pending" ? (
                           <Button asChild className="h-9 flex-1 text-sm">
                             <Link href={`/certificados/${record.scheduleId}`}>
@@ -650,8 +686,14 @@ export function CertificatesContent({ viewMode, viewToggle, createOpen = false, 
                             </Button>
                           </>
                         )}
-                      </div>
-                    ) : null}
+                        </>
+                      ) : !certificateUrl ? (
+                        <Button className="h-9 flex-1 text-sm" disabled>
+                          <Award className="mr-2 h-4 w-4" />
+                          Emitir
+                        </Button>
+                      ) : null}
+                    </div>
                   </CardContent>
                 </Card>
                 )

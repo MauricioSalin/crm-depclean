@@ -405,12 +405,12 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
   })
 
   const teamsQuery = useQuery({
-    queryKey: ["teams", "contract-detail"],
+    queryKey: ["teams", "catalog"],
     queryFn: () => listTeams(""),
   })
 
   const employeesQuery = useQuery({
-    queryKey: ["employees", "contract-detail"],
+    queryKey: ["employees", "catalog"],
     queryFn: () => listEmployees(""),
   })
 

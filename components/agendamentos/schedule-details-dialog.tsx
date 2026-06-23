@@ -30,6 +30,8 @@ interface ScheduleDetailsDialogProps {
   onStartAttendance: (schedule: ScheduleRecord) => Promise<void> | void
   isStartingAttendance?: boolean
   canManage?: boolean
+  canStart?: boolean
+  canReschedule?: boolean
 }
 
 function getStatusLabel(status: ScheduleRecord["status"]) {
@@ -64,12 +66,16 @@ export function ScheduleDetailsDialog({
   onStartAttendance,
   isStartingAttendance = false,
   canManage = true,
+  canStart,
+  canReschedule,
 }: ScheduleDetailsDialogProps) {
   const isMobile = useIsMobile()
   const queryClient = useQueryClient()
   const [mode, setMode] = useState<"details" | "reschedule">("details")
   const [customDate, setCustomDate] = useState("")
   const [customTime, setCustomTime] = useState("")
+  const canStartAction = canStart ?? canManage
+  const canRescheduleAction = canReschedule ?? canManage
 
   useEffect(() => {
     if (!open || !schedule) return
@@ -81,7 +87,7 @@ export function ScheduleDetailsDialog({
   const optionsQuery = useQuery({
     queryKey: ["schedule", "reschedule-options", schedule?.id],
     queryFn: () => getScheduleRescheduleOptions(schedule!.id),
-    enabled: canManage && open && mode === "reschedule" && Boolean(schedule?.id),
+    enabled: canRescheduleAction && open && mode === "reschedule" && Boolean(schedule?.id),
   })
 
   const customDateValue = useMemo(() => {
@@ -144,9 +150,9 @@ export function ScheduleDetailsDialog({
   ]
 
   const isRecurringSchedule = Boolean(schedule.contractId && !schedule.isManual)
-  const canStartAttendance = canManage && (schedule.status === "scheduled" || schedule.status === "rescheduled")
-  const canReschedule = canManage && ["draft", "scheduled", "rescheduled"].includes(schedule.status)
-  const showAttendanceAction = canManage && (canStartAttendance || schedule.status === "draft")
+  const canStartAttendance = canStartAction && ["scheduled", "rescheduled"].includes(schedule.status)
+  const canRescheduleSchedule = canRescheduleAction && ["draft", "scheduled", "rescheduled"].includes(schedule.status)
+  const showAttendanceAction = canStartAttendance || canRescheduleSchedule || (canManage && schedule.status === "draft")
   const rescheduleOptions = optionsQuery.data?.data ?? []
 
   const submitReschedule = (date: string, time: string, validateAvailability = false) => {
@@ -406,7 +412,7 @@ export function ScheduleDetailsDialog({
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      {canReschedule ? (
+                      {canRescheduleSchedule ? (
                         <Button
                           type="button"
                           size="lg"
@@ -444,7 +450,7 @@ export function ScheduleDetailsDialog({
 
           {showAttendanceAction && isMobile && mode === "details" ? (
             <div className="shrink-0 space-y-3 bg-background px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-4">
-              {canReschedule ? (
+              {canRescheduleSchedule ? (
                 <Button
                   type="button"
                   variant="outline"

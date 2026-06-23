@@ -32,8 +32,30 @@ export type CreateSystemUserPayload = {
   permissionProfileId: string
 }
 
+export type EmployeeListQuery = {
+  search?: string
+  status?: "active" | "inactive"
+  page?: number
+  limit?: number
+}
+
+export type PaginatedEmployees = {
+  items: EmployeeRecord[]
+  total: number
+  page: number
+  limit: number
+  totalPages: number
+}
+
 export async function listEmployees(search = "") {
   const response = await api.get<{ success: true; data: EmployeeRecord[] }>("/employees", { params: { search } })
+  return response.data
+}
+
+export async function listEmployeesPage(query: EmployeeListQuery) {
+  const response = await api.get<{ success: true; data: PaginatedEmployees }>("/employees", {
+    params: query,
+  })
   return response.data
 }
 

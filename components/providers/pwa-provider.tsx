@@ -185,9 +185,9 @@ export function PwaProvider() {
             if (!open && !isEnabling) dismissPrompt()
           }}
         >
-          <DialogContent className="max-w-md gap-5 p-0" showCloseButton={!isEnabling}>
-            <div className="flex items-start gap-4 px-6 pt-6">
-              <div className="rounded-full bg-primary/10 p-3 text-primary">
+          <DialogContent className="w-[calc(100vw-2rem)] max-w-md gap-5 overflow-x-hidden p-0" showCloseButton={!isEnabling}>
+            <div className="flex min-w-0 items-start gap-4 px-6 pt-6">
+              <div className="shrink-0 rounded-full bg-primary/10 p-3 text-primary">
                 <Bell className="size-5" aria-hidden="true" />
               </div>
               <DialogHeader className="min-w-0 gap-2 pr-6 text-left">
@@ -198,7 +198,7 @@ export function PwaProvider() {
               </DialogHeader>
             </div>
 
-            <DialogFooter className="px-6 pb-6 sm:justify-start">
+            <DialogFooter className="flex-row flex-wrap items-center justify-start px-6 pb-6">
               <Button onClick={enableNotifications} disabled={isEnabling}>
                 <Bell className="size-4" aria-hidden="true" />
                 {isEnabling ? "Ativando..." : "Ativar"}

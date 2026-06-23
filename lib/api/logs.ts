@@ -46,6 +46,7 @@ export type AuditLogsQuery = {
   clientId?: string
   employeeId?: string
   type?: string
+  module?: string
   status?: "all" | AuditLogStatus
   page?: number
   limit?: number

@@ -61,11 +61,11 @@ export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle 
   })
 
   const teamsQuery = useQuery({
-    queryKey: ["teams", searchTerm],
+    queryKey: ["teams", "list", searchTerm],
     queryFn: () => listTeams(searchTerm),
   })
   const employeesQuery = useQuery({
-    queryKey: ["employees", "teams"],
+    queryKey: ["employees", "catalog"],
     queryFn: () => listEmployees(""),
   })
 

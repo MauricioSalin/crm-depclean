@@ -68,6 +68,7 @@ export function Sidebar({ onNavigate, forceExpanded = false }: SidebarProps) {
   const todayDateKey = getTodayDateKey()
   const [currentUser, setCurrentUser] = useState<ReturnType<typeof getStoredUser>>(null)
   const [showExpandedBadgeTone, setShowExpandedBadgeTone] = useState(!collapsed)
+  const [counterQueriesEnabled, setCounterQueriesEnabled] = useState(false)
 
   useEffect(() => {
     const sync = () => setCurrentUser(getStoredUser())
@@ -90,6 +91,11 @@ export function Sidebar({ onNavigate, forceExpanded = false }: SidebarProps) {
     return () => window.clearTimeout(timeout)
   }, [collapsed])
 
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setCounterQueriesEnabled(true), 800)
+    return () => window.clearTimeout(timeout)
+  }, [])
+
   const canAccessPermissions = (permissions?: string[]) => {
     if (!permissions || permissions.length === 0) return true
     return hasAnyPermission(currentUser, permissions)
@@ -98,28 +104,31 @@ export function Sidebar({ onNavigate, forceExpanded = false }: SidebarProps) {
   const schedulesQuery = useQuery({
     queryKey: ["schedules", "sidebar-agenda-count", todayDateKey],
     queryFn: () => listSchedules({ dateFrom: todayDateKey, dateTo: todayDateKey }),
-    enabled: Boolean(currentUser?.employeeId && hasAnyPermission(currentUser, ["agenda_own_view", "agenda_view", "agenda_manage"])),
+    enabled: Boolean(counterQueriesEnabled && currentUser?.employeeId && hasAnyPermission(currentUser, ["agenda_own_view", "agenda_view", "agenda_manage"])),
+    staleTime: 30_000,
   })
 
   const teamsQuery = useQuery({
-    queryKey: ["teams", "sidebar-agenda-count"],
+    queryKey: ["teams", "catalog"],
     queryFn: () => listTeams(),
-    enabled: Boolean(currentUser?.employeeId && hasAnyPermission(currentUser, ["teams_view", "teams_manage"])),
+    enabled: Boolean(counterQueriesEnabled && currentUser?.employeeId && hasAnyPermission(currentUser, ["teams_view", "teams_manage"])),
+    staleTime: 5 * 60_000,
   })
 
   const certificatesQuery = useQuery({
-    queryKey: ["certificates", "sidebar-pending-count"],
+    queryKey: ["certificates", "list"],
     queryFn: () => listCertificates(),
-    enabled: Boolean(currentUser && hasAnyPermission(currentUser, ["certificates_view", "certificates_manage"])),
+    enabled: Boolean(counterQueriesEnabled && currentUser && hasAnyPermission(currentUser, ["certificates_view", "certificates_manage"])),
+    staleTime: 5 * 60_000,
   })
 
   const notificationsQuery = useQuery({
     queryKey: ["notifications"],
     queryFn: listNotifications,
     enabled: Boolean(currentUser),
-    refetchInterval: 10_000,
-    refetchIntervalInBackground: true,
-    refetchOnWindowFocus: true,
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
   })
 
   const agendaBadge = useMemo(() => {
