@@ -707,7 +707,7 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
         </DialogContent>
       </Dialog>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-visible md:overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col gap-4">
         <div className={`${mobileFiltersOpen ? "grid" : "hidden"} -m-1 shrink-0 grid-cols-2 gap-2 overflow-visible p-1 sm:flex sm:items-center`}>
           <div className="relative focus-within:z-[70] sm:w-80">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />

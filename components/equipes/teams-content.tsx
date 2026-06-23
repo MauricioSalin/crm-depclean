@@ -244,7 +244,7 @@ export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle 
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-visible md:overflow-hidden">
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
       <Dialog open={isDialogOpen} onOpenChange={handleDialogChange}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -376,7 +376,7 @@ export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle 
         busy={deleteMutation.isPending}
       />
 
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-visible md:overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col gap-4">
         <div className={`${mobileFiltersOpen ? "flex" : "hidden"} -m-1 shrink-0 items-center gap-2 overflow-visible p-1 sm:flex`}>
           <div className="relative w-full focus-within:z-[70] sm:max-w-sm">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />

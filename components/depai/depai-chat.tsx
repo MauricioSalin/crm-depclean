@@ -714,7 +714,12 @@ async function downloadChartSvgPng(element: HTMLElement, fileName: string) {
   downloadBlob(blob, fileName, "image/png")
 }
 
-function readFileAsDataUrl(file: File) {
+const DEPAI_INLINE_FILE_LIMIT_BYTES = 8 * 1024 * 1024
+const DEPAI_IMAGE_FILE_LIMIT_BYTES = 20 * 1024 * 1024
+const DEPAI_IMAGE_MAX_SIDE = 1800
+const DEPAI_IMAGE_JPEG_QUALITY = 0.82
+
+function readFileAsDataUrl(file: Blob) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => resolve(String(reader.result ?? ""))
@@ -739,6 +744,8 @@ function inferFileType(file: File) {
   if (lowerName.endsWith(".png")) return "image/png"
   if (lowerName.endsWith(".jpg") || lowerName.endsWith(".jpeg")) return "image/jpeg"
   if (lowerName.endsWith(".webp")) return "image/webp"
+  if (lowerName.endsWith(".heic")) return "image/heic"
+  if (lowerName.endsWith(".heif")) return "image/heif"
   if (lowerName.endsWith(".pdf")) return "application/pdf"
   if (lowerName.endsWith(".xlsx")) return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
   if (lowerName.endsWith(".xls")) return "application/vnd.ms-excel"
@@ -751,6 +758,77 @@ function inferFileType(file: File) {
   return "application/octet-stream"
 }
 
+function isHeicLike(type: string, lowerName: string) {
+  return type.includes("heic") || type.includes("heif") || lowerName.endsWith(".heic") || lowerName.endsWith(".heif")
+}
+
+function canOptimizeImageInBrowser(type: string, lowerName: string) {
+  return !isHeicLike(type, lowerName) && ["image/jpeg", "image/png", "image/webp"].includes(type)
+}
+
+async function blobToImage(blob: Blob) {
+  const objectUrl = URL.createObjectURL(blob)
+  try {
+    const image = new Image()
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve()
+      image.onerror = () => reject(new Error("Image load failed"))
+      image.src = objectUrl
+    })
+    return image
+  } finally {
+    URL.revokeObjectURL(objectUrl)
+  }
+}
+
+async function canvasToOptimizedJpegBlob(canvas: HTMLCanvasElement) {
+  return new Promise<Blob | null>((resolve) => {
+    canvas.toBlob(resolve, "image/jpeg", DEPAI_IMAGE_JPEG_QUALITY)
+  })
+}
+
+async function readImageAsOptimizedDataUrl(file: File, type: string) {
+  const lowerName = file.name.toLowerCase()
+  if (!canOptimizeImageInBrowser(type, lowerName)) {
+    return file.size <= DEPAI_INLINE_FILE_LIMIT_BYTES ? readFileAsDataUrl(file) : undefined
+  }
+
+  try {
+    const image = await blobToImage(file)
+    const largestSide = Math.max(image.naturalWidth, image.naturalHeight)
+    const ratio = largestSide > DEPAI_IMAGE_MAX_SIDE ? DEPAI_IMAGE_MAX_SIDE / largestSide : 1
+    const width = Math.max(1, Math.round(image.naturalWidth * ratio))
+    const height = Math.max(1, Math.round(image.naturalHeight * ratio))
+    const canvas = document.createElement("canvas")
+    canvas.width = width
+    canvas.height = height
+
+    const context = canvas.getContext("2d")
+    if (!context) return file.size <= DEPAI_INLINE_FILE_LIMIT_BYTES ? readFileAsDataUrl(file) : undefined
+
+    context.fillStyle = "#ffffff"
+    context.fillRect(0, 0, width, height)
+    context.drawImage(image, 0, 0, width, height)
+
+    const optimizedBlob = await canvasToOptimizedJpegBlob(canvas)
+    if (!optimizedBlob || optimizedBlob.size <= 0) {
+      return file.size <= DEPAI_INLINE_FILE_LIMIT_BYTES ? readFileAsDataUrl(file) : undefined
+    }
+
+    if (optimizedBlob.size >= file.size) {
+      return file.size <= DEPAI_INLINE_FILE_LIMIT_BYTES ? readFileAsDataUrl(file) : undefined
+    }
+
+    if (optimizedBlob.size > DEPAI_INLINE_FILE_LIMIT_BYTES) {
+      return file.size <= DEPAI_INLINE_FILE_LIMIT_BYTES ? readFileAsDataUrl(file) : undefined
+    }
+
+    return readFileAsDataUrl(optimizedBlob)
+  } catch {
+    return file.size <= DEPAI_INLINE_FILE_LIMIT_BYTES ? readFileAsDataUrl(file) : undefined
+  }
+}
+
 async function mapFile(file: File): Promise<DepAIFile> {
   const type = inferFileType(file)
   const lowerName = file.name.toLowerCase()
@@ -760,18 +838,19 @@ async function mapFile(file: File): Promise<DepAIFile> {
     lowerName.endsWith(".txt") ||
     lowerName.endsWith(".md") ||
     lowerName.endsWith(".json")
+  const isImageFile = type.startsWith("image/") || lowerName.endsWith(".heic") || lowerName.endsWith(".heif")
   const shouldAttachDataUrl =
-    file.size <= 8 * 1024 * 1024 &&
-    (type.startsWith("image/") ||
-      type.includes("pdf") ||
-      type.includes("spreadsheet") ||
-      type.includes("excel") ||
-      type.includes("wordprocessingml") ||
-      lowerName.endsWith(".pdf") ||
-      lowerName.endsWith(".xlsx") ||
-      lowerName.endsWith(".xls") ||
-      lowerName.endsWith(".docx") ||
-      lowerName.endsWith(".doc"))
+    (isImageFile && file.size <= DEPAI_IMAGE_FILE_LIMIT_BYTES) ||
+    (file.size <= DEPAI_INLINE_FILE_LIMIT_BYTES &&
+      (type.includes("pdf") ||
+        type.includes("spreadsheet") ||
+        type.includes("excel") ||
+        type.includes("wordprocessingml") ||
+        lowerName.endsWith(".pdf") ||
+        lowerName.endsWith(".xlsx") ||
+        lowerName.endsWith(".xls") ||
+        lowerName.endsWith(".docx") ||
+        lowerName.endsWith(".doc")))
 
   return {
     id: `${file.name}-${file.lastModified}-${file.size}`,
@@ -779,7 +858,11 @@ async function mapFile(file: File): Promise<DepAIFile> {
     size: file.size,
     type,
     content: shouldReadText ? await readFileAsText(file) : undefined,
-    dataUrl: shouldAttachDataUrl ? await readFileAsDataUrl(file) : undefined,
+    dataUrl: shouldAttachDataUrl
+      ? isImageFile
+        ? await readImageAsOptimizedDataUrl(file, type)
+        : await readFileAsDataUrl(file)
+      : undefined,
   }
 }
 
@@ -1367,6 +1450,7 @@ export function DepAIChat({ compact = false }: { compact?: boolean }) {
   const pathname = usePathname()
   const queryClient = useQueryClient()
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const messagesScrollRef = useRef<HTMLDivElement | null>(null)
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
   const processedInitialAskRef = useRef(false)
   const [conversations, setConversations] = useState<DepAIConversation[]>(initialConversations)
@@ -1377,6 +1461,7 @@ export function DepAIChat({ compact = false }: { compact?: boolean }) {
   const [conversationToDelete, setConversationToDelete] = useState<DepAIConversation | null>(null)
   const activeConversation = conversations.find((conversation) => conversation.id === activeConversationId) ?? conversations[0]
   const messages = activeConversation.messages ?? []
+  const lastMessageContent = messages[messages.length - 1]?.content ?? ""
 
   const conversationsQuery = useQuery({
     queryKey: ["depai", "conversations"],
@@ -1415,8 +1500,18 @@ export function DepAIChat({ compact = false }: { compact?: boolean }) {
   }, [conversationsQuery.error])
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
-  }, [messages.length, sendMutation.isPending, activeConversationId])
+    const frame = window.requestAnimationFrame(() => {
+      const container = messagesScrollRef.current
+      if (container) {
+        container.scrollTo({ top: container.scrollHeight, behavior: "smooth" })
+        return
+      }
+
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
+    })
+
+    return () => window.cancelAnimationFrame(frame)
+  }, [messages.length, lastMessageContent, sendMutation.isPending, activeConversationId])
 
   useEffect(() => {
     window.dispatchEvent(new CustomEvent("depai:history-state", { detail: { open: historyOpen } }))
@@ -1610,7 +1705,7 @@ export function DepAIChat({ compact = false }: { compact?: boolean }) {
   if (compact) {
     return (
       <div className="flex h-full flex-col bg-background">
-        <div className="h-[330px] overflow-y-auto">
+        <div ref={messagesScrollRef} className="h-[330px] overflow-y-auto">
           {messages.map((message) => <MessageRow key={message.id} message={message} />)}
           {sendMutation.isPending && <ThinkingMessage />}
           <div ref={messagesEndRef} />
@@ -1624,7 +1719,7 @@ export function DepAIChat({ compact = false }: { compact?: boolean }) {
     <div className="relative flex h-full min-h-0 overflow-hidden bg-background">
       <section className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
 
-        <div className="flex-1 overflow-y-auto pb-36 pt-4">
+        <div ref={messagesScrollRef} className="flex-1 overflow-y-auto pb-36 pt-4">
           {messages.length === 0 && (
             <div className="mx-auto flex max-w-3xl flex-col items-center px-4 pb-4 pt-12 text-center">
               <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
@@ -1636,7 +1731,7 @@ export function DepAIChat({ compact = false }: { compact?: boolean }) {
               </p>
               <div className="mt-6 grid w-full gap-2 sm:grid-cols-2">
                 {suggestions.map((suggestion) => (
-                  <button key={suggestion} type="button" onClick={() => setInput(suggestion)} className="rounded-2xl border border-border bg-card px-4 py-3 text-left text-sm text-muted-foreground transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/40 hover:text-foreground hover:shadow-sm">
+                  <button key={suggestion} type="button" onClick={() => setInput(suggestion)} className="cursor-pointer rounded-2xl border border-border bg-card px-4 py-3 text-left text-sm text-muted-foreground transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/40 hover:text-foreground hover:shadow-sm">
                     {suggestion}
                   </button>
                 ))}
@@ -1781,7 +1876,7 @@ function ChatComposer({
           type="file"
           className="hidden"
           multiple
-          accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt"
+          accept="image/*,.heic,.heif,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt"
           onChange={(event) => {
             void onAddFiles(event.target.files)
             event.target.value = ""

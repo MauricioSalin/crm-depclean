@@ -253,7 +253,7 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
   }, [filteredClients, currentPage, pageSize])
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-visible md:overflow-hidden">
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
       <CsvImportDialog
         open={openImport}
         onOpenChange={(open) => onImportChange?.(open)}

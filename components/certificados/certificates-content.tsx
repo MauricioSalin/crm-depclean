@@ -5,10 +5,10 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { Award, Calendar, Clock, Eye, FileText, Loader2, MoreHorizontal, RotateCcw, Search, Trash2 } from "lucide-react"
+import { Award, Calendar, Clock, Eye, FileText, MoreHorizontal, RotateCcw, Search, Trash2 } from "lucide-react"
 
 import { buildApiFileUrl } from "@/lib/api/client"
-import { deleteCertificate, listCertificates, resendCertificate, type CertificateQueueRecord } from "@/lib/api/certificates"
+import { deleteCertificate, listCertificates, type CertificateQueueRecord } from "@/lib/api/certificates"
 import { listClients } from "@/lib/api/clients"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { listSchedules, type ScheduleRecord } from "@/lib/api/schedules"
@@ -154,26 +154,6 @@ export function CertificatesContent({ viewMode, viewToggle, createOpen = false, 
       await queryClient.invalidateQueries({ queryKey: ["client-attachments", clientId] })
     }
   }
-
-  const resendMutation = useMutation({
-    mutationFn: (record: CertificateQueueRecord) => resendCertificate(record.scheduleId),
-    onMutate: () => {
-      const toastId = toast.loading("Reemitindo certificado...")
-      return { toastId }
-    },
-    onSuccess: async (_response, record, context) => {
-      await invalidateCertificates(record.clientId)
-      toast.success("Certificado reemitido.", {
-        id: context?.toastId,
-        description: `${record.clientName} • ${record.serviceTypeName}`,
-      })
-    },
-    onError: (error, _record, context) => {
-      toast.error(getApiErrorMessage(error, "Não foi possível reemitir o certificado."), {
-        id: context?.toastId,
-      })
-    },
-  })
 
   const deleteMutation = useMutation({
     mutationFn: (record: CertificateQueueRecord) => deleteCertificate(record.scheduleId),
@@ -351,7 +331,7 @@ export function CertificatesContent({ viewMode, viewToggle, createOpen = false, 
         </DialogContent>
       </Dialog>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-visible md:overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col gap-4">
         <div className={`${mobileFiltersOpen ? "grid" : "hidden"} -m-1 shrink-0 grid-cols-2 gap-2 overflow-visible p-1 sm:flex sm:items-center`}>
           <div className="relative col-span-2 focus-within:z-[70] sm:w-80">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -363,7 +343,7 @@ export function CertificatesContent({ viewMode, viewToggle, createOpen = false, 
                 setCurrentPage(1)
               }}
               placeholder="Buscar cliente, serviço, equipe..."
-              className="pl-10 text-base md:text-sm"
+              className="pl-10"
             />
           </div>
           <SearchableSelect
@@ -479,25 +459,6 @@ export function CertificatesContent({ viewMode, viewToggle, createOpen = false, 
                       <TableCell className="hidden sm:table-cell">{getStatusBadge(record.status)}</TableCell>
                       <TableCell className="text-right" onClick={(event) => event.stopPropagation()}>
                         <div className="flex justify-end gap-1">
-                          {certificateUrl ? (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  asChild
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-9 rounded-full px-3"
-                                >
-                                  <a href={certificateUrl} target="_blank" rel="noreferrer" aria-label="Visualizar certificado">
-                                    <Eye className="mr-2 h-4 w-4" />
-                                    <span>Visualizar</span>
-                                  </a>
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>Visualizar certificado</TooltipContent>
-                            </Tooltip>
-                          ) : null}
-
                           {canManage && record.status === "pending" ? (
                             <Tooltip>
                               <TooltipTrigger asChild>
@@ -516,7 +477,7 @@ export function CertificatesContent({ viewMode, viewToggle, createOpen = false, 
                             </Tooltip>
                           ) : null}
 
-                          {canManage && record.status === "sent" ? (
+                          {certificateUrl || (canManage && record.status === "sent") ? (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full" aria-label="Ações do certificado">
@@ -524,26 +485,33 @@ export function CertificatesContent({ viewMode, viewToggle, createOpen = false, 
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                <DropdownMenuItem
-                                  className="cursor-pointer"
-                                  disabled={resendMutation.isPending}
-                                  onClick={() => resendMutation.mutate(record)}
-                                >
-                                  {resendMutation.isPending && resendMutation.variables?.scheduleId === record.scheduleId ? (
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                  ) : (
-                                    <RotateCcw className="mr-2 h-4 w-4" />
-                                  )}
-                                  Reemitir
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  className="cursor-pointer"
-                                  disabled={deleteMutation.isPending}
-                                  onClick={() => setCertificateToDelete(record)}
-                                >
-                                  <Trash2 className="mr-2 h-4 w-4" />
-                                  Excluir
-                                </DropdownMenuItem>
+                                {certificateUrl ? (
+                                  <DropdownMenuItem asChild className="cursor-pointer">
+                                    <a href={certificateUrl} target="_blank" rel="noreferrer">
+                                      <Eye className="mr-2 h-4 w-4" />
+                                      Visualizar
+                                    </a>
+                                  </DropdownMenuItem>
+                                ) : null}
+                                {canManage && record.status === "sent" ? (
+                                  <>
+                                    <DropdownMenuItem
+                                      className="cursor-pointer"
+                                      onClick={() => router.push(`/certificados/${record.scheduleId}`)}
+                                    >
+                                      <RotateCcw className="mr-2 h-4 w-4" />
+                                      Reemitir
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      className="cursor-pointer"
+                                      disabled={deleteMutation.isPending}
+                                      onClick={() => setCertificateToDelete(record)}
+                                    >
+                                      <Trash2 className="mr-2 h-4 w-4" />
+                                      Excluir
+                                    </DropdownMenuItem>
+                                  </>
+                                ) : null}
                               </DropdownMenuContent>
                             </DropdownMenu>
                           ) : null}
@@ -663,14 +631,9 @@ export function CertificatesContent({ viewMode, viewToggle, createOpen = false, 
                               type="button"
                               variant="outline"
                               className="h-9 flex-1 text-sm"
-                              disabled={resendMutation.isPending}
-                              onClick={() => resendMutation.mutate(record)}
+                              onClick={() => router.push(`/certificados/${record.scheduleId}`)}
                             >
-                              {resendMutation.isPending && resendMutation.variables?.scheduleId === record.scheduleId ? (
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                              ) : (
-                                <RotateCcw className="mr-2 h-4 w-4" />
-                              )}
+                              <RotateCcw className="mr-2 h-4 w-4" />
                               Reemitir
                             </Button>
                             <Button
