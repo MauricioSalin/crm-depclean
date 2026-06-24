@@ -439,12 +439,24 @@ function buildPreviewVariables(params: {
   const base = {
     client: {
       address: getUnitAddress(unit),
+      assessor: {
+        cpf: formatCpf(client.assessor?.cpf ?? ""),
+        email: client.assessor?.email ?? "",
+        name: client.assessor?.name ?? "",
+        phone: client.assessor?.phone ?? "",
+      },
       cnpj: formatCnpj(client.cnpj),
       companyName: client.companyName,
       email: client.email,
       phone: client.phone,
       responsibleCpf: formatCpf(client.responsibleCpf),
       responsibleName: client.responsibleName,
+      syndic: {
+        cpf: formatCpf(client.syndic?.cpf ?? ""),
+        email: client.syndic?.email ?? "",
+        name: client.syndic?.name ?? "",
+        phone: client.syndic?.phone ?? "",
+      },
     },
     contractor: {
       address: getOrganizationAddress(organizationSettings),
