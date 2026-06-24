@@ -197,6 +197,44 @@ const getInstallmentStatusBadge = (status: ContractInstallmentRecord["status"]) 
   }
 }
 
+const getClientContractStatusBadge = (status: string) => {
+  const className =
+    ["signed", "active"].includes(status)
+      ? "bg-green-100 text-green-700 hover:bg-green-100"
+      : status === "pending_signature"
+        ? "bg-amber-100 text-amber-700 hover:bg-amber-100"
+        : status === "overdue"
+          ? "bg-red-100 text-red-700 hover:bg-red-100"
+          : status === "refused"
+            ? "bg-orange-100 text-orange-700 hover:bg-orange-100"
+            : status === "deadline_expired"
+              ? "bg-purple-100 text-purple-700 hover:bg-purple-100"
+              : status === "cancelled"
+                ? "bg-red-100 text-red-700 hover:bg-red-100"
+                : status === "expired"
+                  ? "bg-gray-100 text-gray-700 hover:bg-gray-100"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-100"
+
+  const label =
+    ["signed", "active"].includes(status)
+      ? "Assinado"
+      : status === "pending_signature"
+        ? "Aguardando assinatura"
+        : status === "overdue"
+          ? "Em atraso"
+          : status === "refused"
+            ? "Recusado"
+            : status === "deadline_expired"
+              ? "Prazo expirado"
+              : status === "expired"
+                ? "Expirado"
+                : status === "cancelled"
+                  ? "Cancelado"
+                  : "Rascunho"
+
+  return <Badge className={`shrink-0 ${className}`}>{label}</Badge>
+}
+
 type ClientContactInfo = {
   name?: string
   cpf?: string
@@ -1044,7 +1082,10 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                         className="block hover:text-primary"
                         onClick={(event) => event.stopPropagation()}
                       >
-                        <p className="font-medium">{contract.contractNumber}</p>
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <p className="min-w-0 break-words font-medium">{contract.contractNumber}</p>
+                          {getClientContractStatusBadge(contract.status)}
+                        </div>
                         <p className="text-xs text-muted-foreground">{contract.services.length} serviço(s)</p>
                       </Link>
                     </TableCell>
@@ -1052,43 +1093,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                     <TableCell className="hidden md:table-cell text-sm">
                       {formatDate(contract.startDate)} - {formatDate(contract.endDate)}
                     </TableCell>
-                    <TableCell>
-                      <Badge
-                        className={
-                          ["signed", "active"].includes(contract.status)
-                            ? "bg-green-100 text-green-700"
-                            : contract.status === "pending_signature"
-                              ? "bg-amber-100 text-amber-700"
-                              : contract.status === "overdue"
-                                ? "bg-red-100 text-red-700"
-                                : contract.status === "refused"
-                                  ? "bg-orange-100 text-orange-700"
-                                  : contract.status === "deadline_expired"
-                                    ? "bg-purple-100 text-purple-700"
-                                    : contract.status === "cancelled"
-                                      ? "bg-red-100 text-red-700"
-                                      : contract.status === "expired"
-                                        ? "bg-gray-100 text-gray-700"
-                                        : "bg-gray-100 text-gray-600"
-                        }
-                      >
-                        {["signed", "active"].includes(contract.status)
-                          ? "Assinado"
-                          : contract.status === "pending_signature"
-                            ? "Aguardando assinatura"
-                            : contract.status === "overdue"
-                              ? "Em atraso"
-                              : contract.status === "refused"
-                                ? "Recusado"
-                                : contract.status === "deadline_expired"
-                                  ? "Prazo expirado"
-                                  : contract.status === "expired"
-                                    ? "Expirado"
-                                    : contract.status === "cancelled"
-                                      ? "Cancelado"
-                                      : "Rascunho"}
-                      </Badge>
-                    </TableCell>
+                    <TableCell>{getClientContractStatusBadge(contract.status)}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
                         <Button variant="ghost" size="icon" asChild>

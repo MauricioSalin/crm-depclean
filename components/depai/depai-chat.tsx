@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { usePathname, useRouter } from "next/navigation"
 import {
+  ArrowDown,
   BarChart3,
   Bot,
   ClipboardList,
@@ -16,7 +17,7 @@ import {
   Send,
   X,
 } from "lucide-react"
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react"
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type RefObject } from "react"
 import ReactMarkdown from "react-markdown"
 import rehypeSanitize from "rehype-sanitize"
 import remarkGfm from "remark-gfm"
@@ -146,6 +147,10 @@ function mergeConversations(
   return activeConversation ? [activeConversation, ...ordered] : ordered
 }
 
+function isNearScrollBottom(element: HTMLElement) {
+  return element.scrollHeight - element.scrollTop - element.clientHeight < 96
+}
+
 type MarkdownSegment =
   | { type: "markdown"; content: string }
   | { type: "mermaid"; content: string }
@@ -154,6 +159,28 @@ type MarkdownSegment =
 const MERMAID_START_PATTERN = /^(?:%%\{[\s\S]*?\}%%\s*)?(?:flowchart|graph|sequenceDiagram|classDiagram|classDiagram-v2|stateDiagram|stateDiagram-v2|erDiagram|journey|gantt|pie|gitGraph|mindmap|timeline|quadrantChart|requirementDiagram|C4Context|C4Container|C4Component|C4Dynamic|sankey-beta|xychart-beta|block-beta)\b/i
 const SVG_START_PATTERN = /^\s*<svg(?:\s|>)/i
 const SVG_BLOCK_PATTERN = /<svg\b[\s\S]*?<\/svg>/i
+
+function normalizeTextForIntent(value: string) {
+  return value.toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "")
+}
+
+function isChartIntentContent(content: string) {
+  const normalized = normalizeTextForIntent(content)
+  return ["grafico", "pizza", "barras", "barra", "linha", "linhas", "rosca", "donut", "dashboard"].some((term) =>
+    normalized.includes(term),
+  )
+}
+
+function isDiagramIntentContent(content: string) {
+  const normalized = normalizeTextForIntent(content)
+  return ["fluxograma", "diagrama", "mapa de processo", "processo", "mermaid", "svg"].some((term) =>
+    normalized.includes(term),
+  )
+}
+
+function shouldRenderDiagramBlocks(content: string) {
+  return !isChartIntentContent(content) || isDiagramIntentContent(content)
+}
 
 function extractSvgSource(value: string) {
   const match = value.match(SVG_BLOCK_PATTERN)
@@ -202,8 +229,12 @@ function isSvgSource(value: string) {
   return SVG_START_PATTERN.test(trimmed) || Boolean(extractSvgSource(trimmed))
 }
 
-function pushMarkdownWithInlineSvg(segments: MarkdownSegment[], content: string) {
+function pushMarkdownWithInlineSvg(segments: MarkdownSegment[], content: string, renderDiagramBlocks = true) {
   if (!content) return
+  if (!renderDiagramBlocks) {
+    segments.push({ type: "markdown", content })
+    return
+  }
 
   const pattern = /<svg\b[\s\S]*?<\/svg>/gi
   let lastIndex = 0
@@ -223,19 +254,20 @@ function pushMarkdownWithInlineSvg(segments: MarkdownSegment[], content: string)
 function parseMarkdownSegments(content: string): MarkdownSegment[] {
   const codeFencePattern = /```([^\n`]*)\n([\s\S]*?)```/g
   const segments: MarkdownSegment[] = []
+  const renderDiagramBlocks = shouldRenderDiagramBlocks(content)
   let lastIndex = 0
   let match: RegExpExecArray | null
 
   while ((match = codeFencePattern.exec(content)) !== null) {
     const [fullMatch, languageLine = "", code = ""] = match
     const before = content.slice(lastIndex, match.index)
-    pushMarkdownWithInlineSvg(segments, before)
+    pushMarkdownWithInlineSvg(segments, before, renderDiagramBlocks)
 
     const language = languageLine.trim().split(/\s+/)[0]?.toLowerCase() ?? ""
     const svgSource = extractSvgSource(code)
-    if (language === "svg" || language === "xml" || svgSource || isSvgSource(code)) {
+    if (renderDiagramBlocks && (language === "svg" || language === "xml" || svgSource || isSvgSource(code))) {
       segments.push({ type: "svg", content: svgSource ?? code.trim() })
-    } else if (language === "mermaid" || isMermaidSource(code) || isMermaidFragment(code)) {
+    } else if (renderDiagramBlocks && (language === "mermaid" || isMermaidSource(code) || isMermaidFragment(code))) {
       segments.push({ type: "mermaid", content: normalizeMermaidSource(code) })
     } else {
       segments.push({ type: "markdown", content: fullMatch })
@@ -245,13 +277,45 @@ function parseMarkdownSegments(content: string): MarkdownSegment[] {
   }
 
   const rest = content.slice(lastIndex)
-  pushMarkdownWithInlineSvg(segments, rest)
+  pushMarkdownWithInlineSvg(segments, rest, renderDiagramBlocks)
   return segments.length > 0 ? segments : [{ type: "markdown", content }]
 }
 
 function formatFileSize(size: number) {
   if (size < 1024 * 1024) return `${Math.max(1, Math.round(size / 1024))} KB`
   return `${(size / 1024 / 1024).toFixed(1)} MB`
+}
+
+function extensionFromMimeType(type: string) {
+  if (type === "image/jpeg") return "jpg"
+  if (type === "image/png") return "png"
+  if (type === "image/webp") return "webp"
+  if (type === "image/gif") return "gif"
+  if (type === "image/heic") return "heic"
+  if (type === "image/heif") return "heif"
+  return "png"
+}
+
+function getClipboardImageFiles(event: ClipboardEvent<HTMLTextAreaElement>) {
+  const items = Array.from(event.clipboardData?.items ?? [])
+  const now = Date.now()
+
+  return items
+    .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+    .map((item, index) => {
+      const file = item.getAsFile()
+      if (!file) return null
+
+      const extension = extensionFromMimeType(file.type)
+      const fallbackName = `imagem-colada-${now}-${index + 1}.${extension}`
+      const name = file.name && file.name !== "image.png" ? file.name : fallbackName
+
+      return new File([file], name, {
+        type: file.type || "image/png",
+        lastModified: now,
+      })
+    })
+    .filter((file): file is File => Boolean(file))
 }
 
 function cleanCell(value: string) {
@@ -1461,7 +1525,8 @@ export function DepAIChat({ compact = false }: { compact?: boolean }) {
   const [conversationToDelete, setConversationToDelete] = useState<DepAIConversation | null>(null)
   const activeConversation = conversations.find((conversation) => conversation.id === activeConversationId) ?? conversations[0]
   const messages = activeConversation.messages ?? []
-  const lastMessageContent = messages[messages.length - 1]?.content ?? ""
+  const lastMessageId = messages[messages.length - 1]?.id ?? ""
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false)
 
   const conversationsQuery = useQuery({
     queryKey: ["depai", "conversations"],
@@ -1499,19 +1564,33 @@ export function DepAIChat({ compact = false }: { compact?: boolean }) {
     }
   }, [conversationsQuery.error])
 
+  const scrollToBottom = useCallback(() => {
+    const container = messagesScrollRef.current
+    if (container) {
+      container.scrollTo({ top: container.scrollHeight, behavior: "smooth" })
+      setShowScrollToBottom(false)
+      return
+    }
+
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
+    setShowScrollToBottom(false)
+  }, [])
+
+  const handleMessagesScroll = useCallback(() => {
+    const container = messagesScrollRef.current
+    if (!container) return
+    setShowScrollToBottom(!isNearScrollBottom(container))
+  }, [])
+
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
       const container = messagesScrollRef.current
-      if (container) {
-        container.scrollTo({ top: container.scrollHeight, behavior: "smooth" })
-        return
-      }
-
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
+      if (!container) return
+      setShowScrollToBottom(!isNearScrollBottom(container))
     })
 
     return () => window.cancelAnimationFrame(frame)
-  }, [messages.length, lastMessageContent, sendMutation.isPending, activeConversationId])
+  }, [activeConversationId, lastMessageId, messages.length, sendMutation.isPending])
 
   useEffect(() => {
     window.dispatchEvent(new CustomEvent("depai:history-state", { detail: { open: historyOpen } }))
@@ -1602,7 +1681,7 @@ export function DepAIChat({ compact = false }: { compact?: boolean }) {
     sendMessage(input)
   }
 
-  const addFiles = async (selectedFiles: FileList | null) => {
+  const addFiles = async (selectedFiles: FileList | File[] | null) => {
     if (!selectedFiles) return
     try {
       const nextFiles = await Promise.all(Array.from(selectedFiles).map(mapFile))
@@ -1704,12 +1783,24 @@ export function DepAIChat({ compact = false }: { compact?: boolean }) {
   })
   if (compact) {
     return (
-      <div className="flex h-full flex-col bg-background">
-        <div ref={messagesScrollRef} className="h-[330px] overflow-y-auto">
+      <div className="relative flex h-full flex-col bg-background">
+        <div ref={messagesScrollRef} className="h-[330px] overflow-y-auto" onScroll={handleMessagesScroll}>
           {messages.map((message) => <MessageRow key={message.id} message={message} />)}
           {sendMutation.isPending && <ThinkingMessage />}
           <div ref={messagesEndRef} />
         </div>
+        {showScrollToBottom && (
+          <Button
+            type="button"
+            size="icon"
+            className="absolute bottom-24 right-4 z-20 h-9 w-9 rounded-full shadow-lg shadow-black/10"
+            onClick={scrollToBottom}
+            aria-label="Ir para o final"
+            title="Ir para o final"
+          >
+            <ArrowDown className="h-4 w-4" />
+          </Button>
+        )}
         <ChatComposer input={input} files={files} isPending={sendMutation.isPending} fileInputRef={fileInputRef} onInputChange={setInput} onSubmit={submit} onAddFiles={addFiles} onRemoveFile={removeFile} />
       </div>
     )
@@ -1719,7 +1810,7 @@ export function DepAIChat({ compact = false }: { compact?: boolean }) {
     <div className="relative flex h-full min-h-0 overflow-hidden bg-background">
       <section className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
 
-        <div ref={messagesScrollRef} className="flex-1 overflow-y-auto pb-36 pt-4">
+        <div ref={messagesScrollRef} className="flex-1 overflow-y-auto pb-36 pt-4" onScroll={handleMessagesScroll}>
           {messages.length === 0 && (
             <div className="mx-auto flex max-w-3xl flex-col items-center px-4 pb-4 pt-12 text-center">
               <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
@@ -1745,6 +1836,19 @@ export function DepAIChat({ compact = false }: { compact?: boolean }) {
             <div ref={messagesEndRef} />
           </div>
         </div>
+
+        {showScrollToBottom && (
+          <Button
+            type="button"
+            size="icon"
+            className="absolute bottom-28 left-1/2 z-20 h-10 w-10 -translate-x-1/2 rounded-full shadow-lg shadow-black/10"
+            onClick={scrollToBottom}
+            aria-label="Ir para o final"
+            title="Ir para o final"
+          >
+            <ArrowDown className="h-4 w-4" />
+          </Button>
+        )}
 
         <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-background via-background to-background/0 px-4 pb-4 pt-10">
           <div className="mx-auto max-w-3xl">
@@ -1850,7 +1954,7 @@ function ChatComposer({
   fileInputRef: RefObject<HTMLInputElement | null>
   onInputChange: (value: string) => void
   onSubmit: (event?: FormEvent<HTMLFormElement>) => void
-  onAddFiles: (files: FileList | null) => void | Promise<void>
+  onAddFiles: (files: FileList | File[] | null) => void | Promise<void>
   onRemoveFile: (id: string) => void
 }) {
   return (
@@ -1885,7 +1989,21 @@ function ChatComposer({
         <Button type="button" variant="ghost" size="icon" className="h-10 w-10 shrink-0 rounded-full" onClick={() => fileInputRef.current?.click()}>
           <Plus className="h-5 w-5" />
         </Button>
-        <Textarea value={input} onChange={(event) => onInputChange(event.target.value)} placeholder="Pergunte alguma coisa" className="max-h-40 min-h-10 flex-1 resize-none border-0 bg-transparent px-0 py-2 shadow-none focus-visible:ring-0" onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); onSubmit() } }} />
+        <Textarea
+          value={input}
+          onChange={(event) => onInputChange(event.target.value)}
+          onPaste={(event) => {
+            const pastedImages = getClipboardImageFiles(event)
+            if (pastedImages.length === 0) return
+
+            event.preventDefault()
+            void onAddFiles(pastedImages)
+            toast.success(pastedImages.length === 1 ? "Imagem anexada." : `${pastedImages.length} imagens anexadas.`)
+          }}
+          placeholder="Pergunte alguma coisa"
+          className="max-h-40 min-h-10 flex-1 resize-none border-0 bg-transparent px-0 py-2 shadow-none focus-visible:ring-0"
+          onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); onSubmit() } }}
+        />
         <Button type="submit" size="icon" className="h-10 w-10 shrink-0 rounded-full" disabled={!input.trim() || isPending}>
           {isPending ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
         </Button>

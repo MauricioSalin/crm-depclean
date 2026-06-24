@@ -259,6 +259,7 @@ export function CertificateEditorContent({ scheduleId }: { scheduleId: string })
                 searchPlaceholder="Buscar template..."
                 emptyMessage="Nenhum template encontrado."
                 options={templates.map((template) => ({ value: template.id, label: template.name }))}
+                className="w-full"
               />
             </div>
 

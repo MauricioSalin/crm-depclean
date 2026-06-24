@@ -1367,7 +1367,7 @@ export function RelatoriosContent() {
               </div>
             )}
 
-            {selectedReport !== "financial" && canExportReports ? (
+            {canExportReports ? (
               <div className="flex w-full flex-col gap-2 sm:w-[170px]">
                 <Label className="invisible hidden sm:block" aria-hidden="true">Gerar relatório</Label>
                 <Button className="h-10 w-full shrink-0 bg-primary px-4 text-primary-foreground hover:bg-primary/90" onClick={handleGenerateReport} disabled={reportsQuery.isFetching || isExporting}>

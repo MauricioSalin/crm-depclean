@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState, type FormEvent } from "react"
-import { Camera, CreditCard, Lock, Mail, Phone, Save, Shield, User } from "lucide-react"
+import { Bell, Camera, CreditCard, Lock, Mail, Phone, Save, Shield, User } from "lucide-react"
 import { toast } from "sonner"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -13,8 +13,10 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 import { AvatarUploadDialog } from "@/components/perfil/avatar-upload-dialog"
 import { changePassword, getProfileMe, updateProfile, uploadProfileAvatar, type AvatarUploadVariant, type ChangePasswordPayload, type UpdateProfilePayload } from "@/lib/api/profile"
+import { deletePushSubscription } from "@/lib/api/notifications"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { getSettings, type PermissionProfileRecord } from "@/lib/api/settings"
 import { getStoredAccessToken, getStoredRefreshToken, getStoredUser, isPersistentSession, persistSession } from "@/lib/auth/session"
@@ -40,6 +42,9 @@ export function PerfilContent() {
   const [passwordDialog, setPasswordDialog] = useState(false)
   const [passwordData, setPasswordData] = useState(emptyPasswordForm)
   const [passwordError, setPasswordError] = useState("")
+  const [pushEnabled, setPushEnabled] = useState(false)
+  const [pushAvailable, setPushAvailable] = useState(false)
+  const [pushUpdating, setPushUpdating] = useState(false)
 
   const profileInitials = useMemo(() => {
     const name = profile?.name ?? "Usuario"
@@ -76,6 +81,44 @@ export function PerfilContent() {
 
   useEffect(() => {
     void loadProfile()
+  }, [])
+
+  useEffect(() => {
+    const refreshPushStatus = async () => {
+      if (typeof window === "undefined") return
+      const available = "Notification" in window && "PushManager" in window && "serviceWorker" in navigator
+      setPushAvailable(available)
+      if (!available || Notification.permission !== "granted") {
+        setPushEnabled(false)
+        return
+      }
+
+      try {
+        const registration = await navigator.serviceWorker.getRegistration()
+        const subscription = await registration?.pushManager.getSubscription()
+        setPushEnabled(Boolean(subscription))
+      } catch {
+        setPushEnabled(Notification.permission === "granted")
+      }
+    }
+
+    const handlePushStatus = (event: Event) => {
+      const enabled = (event as CustomEvent<{ enabled?: boolean }>).detail?.enabled
+      if (typeof enabled === "boolean") {
+        setPushEnabled(enabled)
+        return
+      }
+      void refreshPushStatus()
+    }
+
+    void refreshPushStatus()
+    window.addEventListener("focus", refreshPushStatus)
+    window.addEventListener("depclean:push-status", handlePushStatus)
+
+    return () => {
+      window.removeEventListener("focus", refreshPushStatus)
+      window.removeEventListener("depclean:push-status", handlePushStatus)
+    }
   }, [])
 
   const formData = profile
@@ -212,6 +255,34 @@ export function PerfilContent() {
     }
   }
 
+  const handlePushPreferenceChange = async (checked: boolean) => {
+    if (pushUpdating) return
+
+    if (checked) {
+      window.dispatchEvent(new CustomEvent("depclean:request-push-permission"))
+      return
+    }
+
+    if (!pushAvailable) return
+
+    setPushUpdating(true)
+    try {
+      const registration = await navigator.serviceWorker.getRegistration()
+      const subscription = await registration?.pushManager.getSubscription()
+      if (subscription) {
+        await deletePushSubscription(subscription.endpoint)
+        await subscription.unsubscribe()
+      }
+      setPushEnabled(false)
+      window.dispatchEvent(new CustomEvent("depclean:push-status", { detail: { enabled: false } }))
+      toast.success("Notificações push desativadas neste dispositivo.")
+    } catch {
+      toast.error("Não foi possível desativar as notificações push neste dispositivo.")
+    } finally {
+      setPushUpdating(false)
+    }
+  }
+
   if (loading || !formData) {
     return (
       <div className="space-y-6">
@@ -280,6 +351,41 @@ export function PerfilContent() {
               )}
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Notificações</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col gap-4 rounded-xl border bg-muted/20 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
+              <div className="rounded-full bg-primary/10 p-2 text-primary">
+                <Bell className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                <Label htmlFor="push-notifications" className="font-semibold">
+                  Quero receber notificações em push
+                </Label>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Receba avisos do sistema neste dispositivo mesmo com o app em segundo plano.
+                </p>
+              </div>
+            </div>
+            <Switch
+              id="push-notifications"
+              checked={pushEnabled}
+              disabled={!pushAvailable || pushUpdating}
+              onCheckedChange={handlePushPreferenceChange}
+              aria-label="Quero receber notificações em push"
+            />
+          </div>
+          {!pushAvailable ? (
+            <p className="mt-2 text-xs text-muted-foreground">
+              Notificações push não estão disponíveis neste navegador.
+            </p>
+          ) : null}
         </CardContent>
       </Card>
 

@@ -385,9 +385,9 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
                           <FileText className="h-5 w-5 text-primary" />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
-                            <h3 className="min-w-0 flex-1 break-words text-sm font-semibold">{contract.contractNumber}</h3>
-                            <span className="inline-flex shrink-0 translate-y-[2px]">
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                            <h3 className="min-w-0 break-words text-sm font-semibold">{contract.contractNumber}</h3>
+                            <span className="inline-flex shrink-0">
                               {getStatusBadge(contract.status)}
                             </span>
                           </div>

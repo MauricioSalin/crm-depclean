@@ -237,8 +237,8 @@ export function AjudaContent() {
 
           <Card>
             <CardHeader className="mb-3">
-              <CardTitle>Enviar Mensagem</CardTitle>
-              <CardDescription>Nos envie sua dúvida, sugestão ou report de bug.</CardDescription>
+              <CardTitle>Reportar bug ou sugestão</CardTitle>
+              <CardDescription>Envie erros encontrados, sugestões de melhoria e prints para análise.</CardDescription>
             </CardHeader>
             <CardContent>
               <form autoComplete="off" onSubmit={handleContactSubmit} className="space-y-6">
@@ -266,7 +266,7 @@ export function AjudaContent() {
                   <Label htmlFor="support-subject">Assunto</Label>
                   <Input
                     id="support-subject"
-                    placeholder="Ex: Bug na tela de contratos"
+                    placeholder="Ex: Bug na emissão de certificado"
                     value={contactForm.subject}
                     onChange={(event) => setContactForm({ ...contactForm, subject: event.target.value })}
                     required
@@ -276,6 +276,7 @@ export function AjudaContent() {
                   <Label htmlFor="support-message">Mensagem</Label>
                   <Textarea
                     id="support-message"
+                    placeholder="Descreva o que aconteceu, onde aconteceu e, se possível, quais passos reproduzem o problema."
                     value={contactForm.message}
                     onChange={(event) => setContactForm({ ...contactForm, message: event.target.value })}
                     rows={4}
@@ -289,7 +290,7 @@ export function AjudaContent() {
                     id="support-attachments"
                     type="file"
                     multiple
-                    accept="image/*,.pdf,.txt,.log,.csv,.doc,.docx,.xls,.xlsx"
+                    accept="image/*,.png,.jpg,.jpeg,.webp,.heic,.heif,.pdf,.txt,.log,.csv,.doc,.docx,.xls,.xlsx"
                     className="hidden"
                     onChange={handleAttachmentChange}
                   />
@@ -300,8 +301,11 @@ export function AjudaContent() {
                     onClick={() => attachmentInputRef.current?.click()}
                   >
                     <Paperclip className="h-4 w-4" />
-                    Adicionar anexos
+                    Adicionar prints ou anexos
                   </Button>
+                  <p className="text-xs text-muted-foreground">
+                    Envie até {MAX_ATTACHMENTS} arquivos, incluindo imagens, HEIC/HEIF, PDF, logs ou planilhas.
+                  </p>
                   {attachments.length > 0 ? (
                     <div className="space-y-2">
                       {attachments.map((file, index) => (
@@ -336,7 +340,7 @@ export function AjudaContent() {
                   ) : (
                     <Send className="h-4 w-4" />
                   )}
-                  {sendMessageMutation.isPending ? "Enviando..." : "Enviar Mensagem"}
+                  {sendMessageMutation.isPending ? "Enviando..." : "Enviar reporte"}
                 </Button>
               </form>
             </CardContent>

@@ -158,6 +158,51 @@ export function PwaProvider() {
     }
   }, [dismissedThisSession])
 
+  useEffect(() => {
+    const requestPushPrompt = async () => {
+      if (!canUsePush()) {
+        toast.error("Notificações push não estão disponíveis neste dispositivo.")
+        return
+      }
+
+      if (!getStoredAccessToken()) return
+      if (getStoredUser()?.mustChangePassword) return
+
+      if (isIosBrowserWithoutStandalone()) {
+        toast.error("No iPhone, instale o app na tela inicial para ativar notificações push.")
+        return
+      }
+
+      try {
+        const config = await getPushPublicKey()
+        const nextPublicKey = config.data.publicKey
+        if (!config.data.enabled || !nextPublicKey) {
+          toast.error("Notificações push ainda não estão configuradas para este ambiente.")
+          return
+        }
+
+        if (Notification.permission === "granted") {
+          await subscribeCurrentBrowser(nextPublicKey)
+          toast.success("Notificações push ativadas neste dispositivo.")
+          window.dispatchEvent(new CustomEvent("depclean:push-status", { detail: { enabled: true } }))
+          return
+        }
+
+        setDismissedThisSession(false)
+        setPublicKey(nextPublicKey)
+        setShowPrompt(true)
+      } catch {
+        toast.error("Não foi possível abrir a autorização de notificações push.")
+      }
+    }
+
+    window.addEventListener("depclean:request-push-permission", requestPushPrompt)
+
+    return () => {
+      window.removeEventListener("depclean:request-push-permission", requestPushPrompt)
+    }
+  }, [])
+
   const enableNotifications = async () => {
     setIsEnabling(true)
 
@@ -165,6 +210,7 @@ export function PwaProvider() {
       const enabled = await enablePush(publicKey)
       if (enabled) {
         setShowPrompt(false)
+        window.dispatchEvent(new CustomEvent("depclean:push-status", { detail: { enabled: true } }))
       }
     } finally {
       setIsEnabling(false)

@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
@@ -27,6 +27,7 @@ import { AssignmentBadges } from "@/components/ui/assignment-badges"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import { DataPagination } from "@/components/ui/data-pagination"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -100,6 +101,9 @@ const formatCurrency = (value: number) =>
 
 const formatDate = (value?: string) =>
   formatCivilDate(value)
+
+const paginateItems = <T,>(items: T[], page: number, pageSize: number) =>
+  items.slice((page - 1) * pageSize, page * pageSize)
 
 const formatDuration = (duration: number, durationType: "hours" | "shift" | "days") => {
   if (durationType === "hours") return `${duration} hora${duration === 1 ? "" : "s"}`
@@ -368,6 +372,8 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null)
+  const [schedulePage, setSchedulePage] = useState(1)
+  const [schedulePageSize, setSchedulePageSize] = useState(10)
   const activeTab = getContractDetailTabFromUrl(searchParams.get("tab"))
   const backHref = getSafeReturnTo(searchParams.get("returnTo"), "/contratos")
   const currentHref = buildPathWithSearchParams(pathname, searchParams)
@@ -428,6 +434,15 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
     () => (schedulesQuery.data?.data ?? []).filter((schedule) => schedule.contractId === resolvedContractId),
     [schedulesQuery.data?.data, resolvedContractId],
   )
+  const scheduleTotalPages = Math.max(1, Math.ceil(contractSchedules.length / schedulePageSize))
+  const paginatedContractSchedules = useMemo(
+    () => paginateItems(contractSchedules, schedulePage, schedulePageSize),
+    [contractSchedules, schedulePage, schedulePageSize],
+  )
+
+  useEffect(() => {
+    if (schedulePage > scheduleTotalPages) setSchedulePage(scheduleTotalPages)
+  }, [schedulePage, scheduleTotalPages])
 
   const serviceTypeMap = useMemo(() => new Map(serviceTypes.map((item) => [item.id, item])), [serviceTypes])
   const teamMap = useMemo(() => new Map(teams.map((item) => [item.id, item])), [teams])
@@ -664,9 +679,9 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
               <FileText className="h-6 w-6 text-primary" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="mb-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-                <h2 className="min-w-0 flex-1 break-words text-xl font-bold">{contract.contractNumber}</h2>
-                {getStatusBadge(contract.status)}
+              <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+                <h2 className="min-w-0 break-words text-xl font-bold">{contract.contractNumber}</h2>
+                <span className="inline-flex shrink-0">{getStatusBadge(contract.status)}</span>
               </div>
               <Link
                 href={withReturnTo(`/clientes/${contract.clientId}`, currentHref)}
@@ -1159,7 +1174,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                 {contractSchedules.length === 0 ? (
                   <TableEmptyState colSpan={6} icon={Calendar} title="Nenhum agendamento vinculado a este contrato." />
                 ) : (
-                  contractSchedules.map((schedule) => {
+                  paginatedContractSchedules.map((schedule) => {
                     const scheduleTeams =
                       schedule.teams.length > 0
                         ? schedule.teams
@@ -1184,6 +1199,17 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
               </TableBody>
             </Table>
           </div>
+          <DataPagination
+            currentPage={schedulePage}
+            totalPages={scheduleTotalPages}
+            pageSize={schedulePageSize}
+            totalItems={contractSchedules.length}
+            onPageChange={setSchedulePage}
+            onPageSizeChange={(size) => {
+              setSchedulePageSize(size)
+              setSchedulePage(1)
+            }}
+          />
         </TabsContent>
       </Tabs>
 
