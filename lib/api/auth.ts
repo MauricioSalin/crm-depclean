@@ -2,12 +2,21 @@ import { api } from "@/lib/api/client"
 import type { LoginResponse } from "@/lib/auth/types"
 
 export type LoginPayload = {
-  email: string
-  password: string
+  identifier: string
+  password?: string
+}
+
+export type RequestLoginCodePayload = {
+  identifier: string
+}
+
+export type ConfirmLoginCodePayload = {
+  identifier: string
+  code: string
 }
 
 export type RequestPasswordResetPayload = {
-  email: string
+  identifier: string
 }
 
 export type ResetPasswordPayload = {
@@ -18,6 +27,16 @@ export type ResetPasswordPayload = {
 
 export async function login(payload: LoginPayload) {
   const response = await api.post<LoginResponse>("/auth/login", payload)
+  return response.data
+}
+
+export async function requestLoginCode(payload: RequestLoginCodePayload) {
+  const response = await api.post<{ success: true; data: null }>("/auth/login-code/request", payload)
+  return response.data
+}
+
+export async function confirmLoginCode(payload: ConfirmLoginCodePayload) {
+  const response = await api.post<LoginResponse>("/auth/login-code/confirm", payload)
   return response.data
 }
 

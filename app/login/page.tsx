@@ -13,19 +13,23 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { login, requestPasswordReset } from "@/lib/api/auth"
+import { confirmLoginCode, login, requestLoginCode, requestPasswordReset } from "@/lib/api/auth"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { isAuthenticated, persistSession } from "@/lib/auth/session"
 
 export default function LoginPage() {
   const router = useRouter()
   const [showPassword, setShowPassword] = useState(false)
-  const [email, setEmail] = useState("")
+  const [identifier, setIdentifier] = useState("")
   const [password, setPassword] = useState("")
   const [rememberMe, setRememberMe] = useState(true)
   const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false)
-  const [resetEmail, setResetEmail] = useState("")
+  const [resetIdentifier, setResetIdentifier] = useState("")
   const [resetSubmitting, setResetSubmitting] = useState(false)
+  const [loginCodeOpen, setLoginCodeOpen] = useState(false)
+  const [loginCodeIdentifier, setLoginCodeIdentifier] = useState("")
+  const [loginCode, setLoginCode] = useState("")
+  const [loginCodeSubmitting, setLoginCodeSubmitting] = useState(false)
 
   const loginMutation = useMutation({
     mutationFn: login,
@@ -52,19 +56,58 @@ export default function LoginPage() {
     }
   }, [router])
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+
+    if (!password.trim()) {
+      try {
+        await requestLoginCode({ identifier })
+        setLoginCodeIdentifier(identifier)
+        setLoginCode("")
+        setLoginCodeOpen(true)
+        toast.success("Se disponível, enviamos um código pelo WhatsApp.")
+      } catch (error) {
+        toast.error(getApiErrorMessage(error, "Não foi possível solicitar o código."))
+      }
+      return
+    }
+
     loginMutation.mutate({
-      email,
+      identifier,
       password,
     })
+  }
+
+  const handleConfirmLoginCode = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setLoginCodeSubmitting(true)
+    try {
+      const response = await confirmLoginCode({
+        identifier: loginCodeIdentifier || identifier,
+        code: loginCode,
+      })
+      persistSession({
+        accessToken: response.data.accessToken,
+        refreshToken: response.data.refreshToken,
+        user: response.data.user,
+        persistent: rememberMe,
+      })
+      toast.success(`Bem-vindo, ${response.data.user.name}.`)
+      setLoginCodeOpen(false)
+      router.push("/")
+      router.refresh()
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Código inválido ou expirado."))
+    } finally {
+      setLoginCodeSubmitting(false)
+    }
   }
 
   const handleRequestPasswordReset = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setResetSubmitting(true)
     try {
-      await requestPasswordReset({ email: resetEmail || email })
+      await requestPasswordReset({ identifier: resetIdentifier || identifier })
       toast.success("Se o e-mail estiver cadastrado, você receberá um link para redefinir a senha.")
       setForgotPasswordOpen(false)
     } catch (error) {
@@ -130,15 +173,15 @@ export default function LoginPage() {
                 </div> */}
                 <form autoComplete="off" onSubmit={handleSubmit} className="space-y-4 2xl:space-y-5">
                   <div className="space-y-2">
-                    <Label htmlFor="email">Usuário</Label>
+                    <Label htmlFor="identifier">Usuário</Label>
                     <div className="relative">
                       <Mail className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                       <Input
-                        id="email"
-                        type="email" autoComplete="off"
-                        value={email}
-                        onChange={(event) => setEmail(event.target.value)}
-                        placeholder="seuemail@depcleanrs.com.br"
+                        id="identifier"
+                        type="text" autoComplete="username"
+                        value={identifier}
+                        onChange={(event) => setIdentifier(event.target.value)}
+                        placeholder="E-mail, CPF ou telefone"
                         className="h-12 rounded-xl border-border bg-white/70 pl-12 pr-4 text-base shadow-none focus-visible:ring-2 focus-visible:ring-primary/20 2xl:h-[54px]"
                         disabled={loginMutation.isPending}
                         required
@@ -157,8 +200,7 @@ export default function LoginPage() {
                         onChange={(event) => setPassword(event.target.value)}
                         placeholder="Digite sua senha"
                         className="h-12 rounded-xl border-border bg-white/70 pl-12 pr-12 text-base shadow-none focus-visible:ring-2 focus-visible:ring-primary/20 2xl:h-[54px]"
-                        disabled={loginMutation.isPending}
-                        required
+                        disabled={loginMutation.isPending || loginCodeSubmitting}
                       />
                       <button
                         type="button"
@@ -188,7 +230,7 @@ export default function LoginPage() {
                       type="button"
                       className="cursor-pointer font-medium text-primary transition-opacity hover:opacity-80"
                       onClick={() => {
-                        setResetEmail(email)
+                        setResetIdentifier(identifier)
                         setForgotPasswordOpen(true)
                       }}
                     >
@@ -199,9 +241,9 @@ export default function LoginPage() {
                   <Button
                     type="submit"
                     className="mt-5 h-12 w-full rounded-xl text-base font-semibold shadow-none 2xl:mt-7 2xl:h-14"
-                    disabled={loginMutation.isPending}
+                    disabled={loginMutation.isPending || loginCodeSubmitting}
                   >
-                    {loginMutation.isPending ? (
+                    {loginMutation.isPending || loginCodeSubmitting ? (
                       <span className="inline-flex items-center gap-2">
                         <LoaderCircle className="h-4 w-4 animate-spin" />
                         Entrando...
@@ -239,6 +281,39 @@ export default function LoginPage() {
         </section>
       </div>
 
+      <Dialog open={loginCodeOpen} onOpenChange={setLoginCodeOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Código de acesso</DialogTitle>
+          </DialogHeader>
+          <form autoComplete="off" onSubmit={handleConfirmLoginCode} className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Informe o código enviado pelo WhatsApp para continuar.
+            </p>
+            <div className="space-y-2">
+              <Label htmlFor="login-code">Código</Label>
+              <Input
+                id="login-code"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                value={loginCode}
+                onChange={(event) => setLoginCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
+                placeholder="000000"
+                required
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setLoginCodeOpen(false)} disabled={loginCodeSubmitting}>
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={loginCodeSubmitting || loginCode.length !== 6}>
+                {loginCodeSubmitting ? "Validando..." : "Validar código"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={forgotPasswordOpen} onOpenChange={setForgotPasswordOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -249,13 +324,13 @@ export default function LoginPage() {
               Informe seu e-mail para receber o link de redefinição.
             </p>
             <div className="space-y-2">
-              <Label htmlFor="reset-email">E-mail</Label>
+              <Label htmlFor="reset-identifier">E-mail, CPF ou telefone</Label>
               <Input
-                id="reset-email"
-                type="email" autoComplete="off"
-                value={resetEmail}
-                onChange={(event) => setResetEmail(event.target.value)}
-                placeholder="seuemail@depcleanrs.com.br"
+                id="reset-identifier"
+                type="text" autoComplete="username"
+                value={resetIdentifier}
+                onChange={(event) => setResetIdentifier(event.target.value)}
+                placeholder="E-mail, CPF ou telefone"
                 required
               />
             </div>

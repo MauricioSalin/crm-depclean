@@ -36,6 +36,7 @@ export function FirstAccessDialog() {
   }, [])
 
   const open = mounted && Boolean(user?.mustChangePassword)
+  const canSkipCurrentPassword = Boolean(user?.canChangePasswordWithoutCurrentPassword)
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -71,10 +72,10 @@ export function FirstAccessDialog() {
         persistSession({
           accessToken,
           refreshToken,
-          user: { ...storedUser, mustChangePassword: false },
+          user: { ...storedUser, mustChangePassword: false, canChangePasswordWithoutCurrentPassword: false },
           persistent: isPersistentSession(),
         })
-        setUser({ ...storedUser, mustChangePassword: false })
+        setUser({ ...storedUser, mustChangePassword: false, canChangePasswordWithoutCurrentPassword: false })
       }
 
       setFormData({
@@ -111,16 +112,18 @@ export function FirstAccessDialog() {
           <p className="text-sm text-muted-foreground">
             Você precisa definir uma nova senha antes de continuar.
           </p>
-          <div className="space-y-2">
-            <Label htmlFor="currentPassword">Senha temporária</Label>
-            <Input
-              id="currentPassword"
-              type="password" autoComplete="off"
-              value={formData.currentPassword}
-              onChange={(event) => setFormData({ ...formData, currentPassword: event.target.value })}
-              required
-            />
-          </div>
+          {!canSkipCurrentPassword && (
+            <div className="space-y-2">
+              <Label htmlFor="currentPassword">Senha temporária</Label>
+              <Input
+                id="currentPassword"
+                type="password" autoComplete="off"
+                value={formData.currentPassword}
+                onChange={(event) => setFormData({ ...formData, currentPassword: event.target.value })}
+                required
+              />
+            </div>
+          )}
           <div className="space-y-2">
             <Label htmlFor="newPassword">Nova senha</Label>
             <Input

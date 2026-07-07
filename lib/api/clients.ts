@@ -88,8 +88,8 @@ export type ClientPayload = {
   cnpj: string
   responsibleName: string
   responsibleCpf: string
-  phone?: string
-  email: string
+  phone: string
+  email?: string
   clientTypeId: string
   assessorName?: string
   assessorCpf?: string

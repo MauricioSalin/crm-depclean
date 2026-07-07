@@ -14,6 +14,7 @@ export type AuthenticatedUser = {
   avatar: string
   isSystemUser: boolean
   mustChangePassword: boolean
+  canChangePasswordWithoutCurrentPassword?: boolean
   createdAt: string
   updatedAt: string
 }

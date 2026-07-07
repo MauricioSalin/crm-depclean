@@ -735,7 +735,7 @@ export function ConfiguracoesContent() {
       if (editingUser) {
         const response = await updateUser(editingUser.id, {
           name: userForm.name,
-          email: userForm.email,
+          email: userForm.email.trim() || undefined,
           phone: userForm.phone,
           cpf: userForm.cpf,
           role: userForm.role,
@@ -952,7 +952,7 @@ export function ConfiguracoesContent() {
         mustChangePassword: true,
       }))
       setShowTemporaryPassword(false)
-      toast.success("Senha redefinida.", { id: toastId })
+      toast.success(response.message || "Senha redefinida e enviada.", { id: toastId })
     } catch (error) {
       toast.error(getApiErrorMessage(error, "Não foi possível redefinir a senha."), { id: toastId })
     } finally {
@@ -965,7 +965,7 @@ export function ConfiguracoesContent() {
     if (saving) return
 
     setSaving(true)
-    const toastId = toast.loading("Enviando e-mail de acesso...")
+    const toastId = toast.loading("Enviando acesso...")
     try {
       const response = await sendFirstAccessEmail(editingUser.id)
       upsertUser(response.data)
@@ -982,7 +982,7 @@ export function ConfiguracoesContent() {
         mustChangePassword: true,
       }))
       setShowTemporaryPassword(false)
-      toast.success("E-mail de primeiro acesso enviado.", { id: toastId })
+      toast.success(response.message || "Acesso enviado.", { id: toastId })
     } catch (error) {
       toast.error(getApiErrorMessage(error, "Não foi possível enviar o e-mail de acesso."), { id: toastId })
     } finally {
@@ -1690,10 +1690,10 @@ export function ConfiguracoesContent() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="user-email">E-mail</Label>
-                  <Input id="user-email" type="email" autoComplete="off" placeholder="email@empresa.com" value={userForm.email} onChange={(event) => setUserForm({ ...userForm, email: event.target.value })} required />
+                  <Input id="user-email" type="email" autoComplete="off" placeholder="email@empresa.com" value={userForm.email} onChange={(event) => setUserForm({ ...userForm, email: event.target.value })} />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="user-phone">Telefone</Label>
+                  <Label htmlFor="user-phone">Telefone *</Label>
                   <Input
                     id="user-phone"
                     value={userForm.phone}

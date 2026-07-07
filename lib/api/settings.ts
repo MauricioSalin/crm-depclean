@@ -178,12 +178,12 @@ export async function deleteUser(id: string) {
 }
 
 export async function resetUserPassword(id: string) {
-  const response = await api.post<{ success: true; data: UserRecord }>(`/settings/users/${id}/reset-password`)
+  const response = await api.post<{ success: true; message: string; data: UserRecord }>(`/settings/users/${id}/reset-password`)
   return response.data
 }
 
 export async function sendFirstAccessEmail(id: string) {
-  const response = await api.post<{ success: true; data: UserRecord }>(`/settings/users/${id}/send-first-access-email`)
+  const response = await api.post<{ success: true; message: string; data: UserRecord }>(`/settings/users/${id}/send-first-access-email`)
   return response.data
 }
 

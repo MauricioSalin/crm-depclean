@@ -88,7 +88,7 @@ const CLIENT_IMPORT_FIELDS: CsvImportField[] = [
   { key: "responsibleName", label: "Responsável", required: true },
   { key: "responsibleCpf", label: "CPF do responsável", required: true },
   { key: "phone", label: "Telefone" },
-  { key: "email", label: "E-mail", required: true },
+  { key: "email", label: "E-mail", required: false },
   { key: "assessorName", label: "Assessor" },
   { key: "assessorCpf", label: "CPF do assessor" },
   { key: "assessorEmail", label: "E-mail do assessor" },
