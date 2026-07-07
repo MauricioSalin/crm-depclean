@@ -198,7 +198,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   const [searchTerm, setSearchTerm] = useUrlQueryState("q")
   const deferredSearchTerm = useDeferredValue(searchTerm)
   const [statusFilter, setStatusFilter] = useState<string>("all")
-  const [viewMode, setViewMode] = useState<"month" | "week">("month")
+  const [viewMode, setViewMode] = useState<"month" | "week">("week")
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingService, setEditingService] = useState<AgendaScheduledServiceRow | null>(null)
   const [initialFormData, setInitialFormData] = useState<Partial<SchedulingFormData> | null>(null)

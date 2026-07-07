@@ -236,7 +236,7 @@ export default function LoginPage() {
                 <form
                   autoComplete="off"
                   onSubmit={handleSubmit}
-                  className={cn(loginStep === "identifier" ? "space-y-4" : "space-y-4 2xl:space-y-5")}
+                  className={cn(loginStep === "identifier" ? "space-y-2.5" : "space-y-4 2xl:space-y-5")}
                 >
                   <div className="space-y-2">
                     <Label htmlFor="identifier">E-mail ou CPF</Label>
@@ -317,7 +317,7 @@ export default function LoginPage() {
                     type="submit"
                     className={cn(
                       "h-12 w-full rounded-xl text-base font-semibold shadow-none 2xl:h-14",
-                      loginStep === "identifier" ? "mt-4 2xl:mt-5" : "mt-5 2xl:mt-7",
+                      loginStep === "identifier" ? "mt-2 2xl:mt-3" : "mt-5 2xl:mt-7",
                     )}
                     disabled={loginMutation.isPending || loginCodeSubmitting || identifySubmitting}
                   >
@@ -361,14 +361,14 @@ export default function LoginPage() {
 
       <Dialog open={loginCodeOpen} onOpenChange={setLoginCodeOpen}>
         <DialogContent className="max-w-md">
-          <DialogHeader>
+          <DialogHeader className="space-y-1">
             <DialogTitle>Código de acesso</DialogTitle>
           </DialogHeader>
           <form autoComplete="off" onSubmit={handleConfirmLoginCode} className="space-y-4">
-            <p className="text-sm text-muted-foreground">
+            <p className="-mt-2 text-sm text-muted-foreground">
               Informe o código enviado pelo WhatsApp para continuar.
             </p>
-            <div className="flex justify-center gap-2">
+            <div className="flex justify-start gap-2">
                 {Array.from({ length: 6 }).map((_, index) => (
                   <Input
                     key={index}
