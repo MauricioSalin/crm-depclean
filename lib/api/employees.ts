@@ -20,7 +20,7 @@ export type EmployeeRecord = {
 
 export type EmployeePayload = {
   name: string
-  email: string
+  email?: string
   phone?: string
   cpf: string
   role?: string

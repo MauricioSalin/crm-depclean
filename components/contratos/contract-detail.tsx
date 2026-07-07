@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { toast as sonnerToast } from "sonner"
 import {
   AlertTriangle,
   BellRing,
@@ -374,6 +375,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null)
   const [schedulePage, setSchedulePage] = useState(1)
   const [schedulePageSize, setSchedulePageSize] = useState(10)
+  const [remindingSignerIds, setRemindingSignerIds] = useState<string[]>([])
   const activeTab = getContractDetailTabFromUrl(searchParams.get("tab"))
   const backHref = getSafeReturnTo(searchParams.get("returnTo"), "/contratos")
   const currentHref = buildPathWithSearchParams(pathname, searchParams)
@@ -587,15 +589,22 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
 
   const remindSignerMutation = useMutation({
     mutationFn: (signerId: string) => remindContractSigner(resolvedContractId, signerId),
+    onMutate: (signerId) => {
+      setRemindingSignerIds((current) => current.includes(signerId) ? current : [...current, signerId])
+    },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["contract", contractId] })
       await queryClient.invalidateQueries({ queryKey: ["contract", resolvedContractId] })
+      sonnerToast.success("Lembrete enviado com sucesso.")
       toast({
         title: "Lembrete enviado com sucesso",
         description: "O lembrete foi enviado.",
       })
     },
     onError: clicksignErrorToast,
+    onSettled: (_data, _error, signerId) => {
+      setRemindingSignerIds((current) => current.filter((id) => id !== signerId))
+    },
   })
 
   const downloadSignedContractMutation = useMutation({
@@ -844,6 +853,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
               <TableBody>
                 {contract.clicksign.signers.map((signer) => {
                   const displayStatus = getClicksignSignerDisplayStatus(signer, contract.clicksign?.signers ?? [])
+                  const isSendingReminder = remindingSignerIds.includes(signer.signerId)
 
                   return (
                     <TableRow key={`${signer.signerId}-${signer.email}`}>
@@ -861,10 +871,10 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                             size="sm"
                             className="gap-2"
                             onClick={() => remindSignerMutation.mutate(signer.signerId)}
-                            disabled={remindSignerMutation.isPending}
+                            disabled={isSendingReminder}
                           >
                             <BellRing className="h-4 w-4" />
-                            {remindSignerMutation.isPending ? "Enviando..." : "Lembrete"}
+                            {isSendingReminder ? "Enviando..." : "Lembrete"}
                           </Button>
                         ) : null}
                       </TableCell>

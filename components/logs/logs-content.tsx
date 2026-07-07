@@ -210,7 +210,7 @@ export function LogsContent() {
 
   const filters = (
     <div className="-m-1 overflow-visible p-1">
-      <div className="flex flex-wrap items-end gap-2">
+      <div className="flex flex-wrap items-end gap-x-2 gap-y-5">
         <div className="w-full space-y-1 sm:w-[280px]">
           <Label>Busca</Label>
           <div className="relative focus-within:z-[70]">
@@ -278,11 +278,11 @@ export function LogsContent() {
             className="w-full"
           />
         </div>
-        <div className="flex w-full flex-wrap items-end gap-x-0 gap-y-2 sm:w-auto">
+        <div className="flex w-full flex-wrap items-end gap-x-2 gap-y-5 sm:w-auto">
           <div className="w-[176px] shrink-0 space-y-1">
             <Label>Funcionalidade</Label>
             <Select value={module} onValueChange={(value) => { setModule(value); resetPage() }}>
-              <SelectTrigger className="w-full rounded-r-none">
+              <SelectTrigger className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -296,7 +296,7 @@ export function LogsContent() {
           <div className="w-[152px] shrink-0 space-y-1">
             <Label>Tipo</Label>
             <Select value={type} onValueChange={(value) => { setType(value); resetPage() }}>
-              <SelectTrigger className="w-full rounded-none border-l-0">
+              <SelectTrigger className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -310,7 +310,7 @@ export function LogsContent() {
           <div className="w-[124px] shrink-0 space-y-1">
             <Label>Status</Label>
             <Select value={status} onValueChange={(value) => { setStatus(value as "all" | "success" | "error"); resetPage() }}>
-              <SelectTrigger className="w-full rounded-none border-l-0">
+              <SelectTrigger className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -320,7 +320,7 @@ export function LogsContent() {
               </SelectContent>
             </Select>
           </div>
-          <Button type="button" variant="outline" className="w-[112px] shrink-0 gap-2 rounded-l-none border-l-0" onClick={clearFilters} disabled={!hasActiveFilters}>
+          <Button type="button" variant="outline" className="w-[112px] shrink-0 gap-2" onClick={clearFilters} disabled={!hasActiveFilters}>
             <X className="h-4 w-4" />
             Limpar
           </Button>

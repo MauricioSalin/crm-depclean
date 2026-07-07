@@ -66,7 +66,7 @@ function generatePassword(length = 12) {
 
 const EMPLOYEE_IMPORT_FIELDS: CsvImportField[] = [
   { key: "name", label: "Nome", required: true },
-  { key: "email", label: "E-mail", required: true },
+  { key: "email", label: "E-mail", required: false },
   { key: "cpf", label: "CPF", required: true },
   { key: "phone", label: "Telefone" },
   { key: "role", label: "Cargo" },
@@ -597,7 +597,7 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
             <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="sm:col-span-2 space-y-2">
-                <Label htmlFor="employee-name">Nome Completo</Label>
+                <Label htmlFor="employee-name">Nome Completo *</Label>
                 <Input
                   id="employee-name"
                   value={formData.name}
@@ -636,7 +636,6 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
                   value={formData.email}
                   onChange={(event) => setFormData({ ...formData, email: event.target.value })}
                   placeholder="Ex: mauricio@depcleanrs.com.br"
-                  required
                 />
               </div>
               <div className="sm:col-span-2 space-y-2">

@@ -146,7 +146,7 @@ export async function listUsers(search = "") {
 
 export async function createUser(payload: {
   name: string
-  email: string
+  email?: string
   phone?: string
   cpf: string
   role?: string
@@ -160,8 +160,8 @@ export async function createUser(payload: {
 
 export async function updateUser(id: string, payload: Partial<{
   name: string
-  email: string
-  phone: string
+  email?: string
+  phone?: string
   cpf: string
   role: string
   password: string

@@ -984,7 +984,7 @@ export function ConfiguracoesContent() {
       setShowTemporaryPassword(false)
       toast.success(response.message || "Acesso enviado.", { id: toastId })
     } catch (error) {
-      toast.error(getApiErrorMessage(error, "Não foi possível enviar o e-mail de acesso."), { id: toastId })
+      toast.error(getApiErrorMessage(error, "Não foi possível enviar o acesso."), { id: toastId })
     } finally {
       setSaving(false)
     }
@@ -1685,7 +1685,7 @@ export function ConfiguracoesContent() {
                 <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-4">
                   <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="user-name">Nome</Label>
+                  <Label htmlFor="user-name">Nome *</Label>
                   <Input id="user-name" placeholder="Nome completo" value={userForm.name} onChange={(event) => setUserForm({ ...userForm, name: event.target.value })} required />
                 </div>
                 <div className="space-y-2">
@@ -1693,7 +1693,7 @@ export function ConfiguracoesContent() {
                   <Input id="user-email" type="email" autoComplete="off" placeholder="email@empresa.com" value={userForm.email} onChange={(event) => setUserForm({ ...userForm, email: event.target.value })} />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="user-phone">Telefone *</Label>
+                  <Label htmlFor="user-phone">Telefone</Label>
                   <Input
                     id="user-phone"
                     value={userForm.phone}
@@ -1785,7 +1785,7 @@ export function ConfiguracoesContent() {
                     {editingUser && userForm.mustChangePassword ? (
                       <Button type="button" variant="outline" onClick={handleSendFirstAccessEmail} disabled={saving}>
                         <Mail className="mr-2 h-4 w-4" />
-                        Enviar para e-mail
+                        Enviar acesso
                       </Button>
                     ) : editingUser ? (
                       <Button type="button" variant="outline" onClick={handleResetUserPassword} disabled={saving}>

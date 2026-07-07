@@ -6,6 +6,17 @@ export type LoginPayload = {
   password?: string
 }
 
+export type IdentifyLoginPayload = {
+  identifier: string
+}
+
+export type IdentifyLoginResponse = {
+  success: true
+  data: {
+    authMode: "password" | "code"
+  }
+}
+
 export type RequestLoginCodePayload = {
   identifier: string
 }
@@ -27,6 +38,11 @@ export type ResetPasswordPayload = {
 
 export async function login(payload: LoginPayload) {
   const response = await api.post<LoginResponse>("/auth/login", payload)
+  return response.data
+}
+
+export async function identifyLogin(payload: IdentifyLoginPayload) {
+  const response = await api.post<IdentifyLoginResponse>("/auth/login/identify", payload)
   return response.data
 }
 

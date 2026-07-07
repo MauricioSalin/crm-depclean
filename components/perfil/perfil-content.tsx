@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState, type FormEvent } from "react"
-import { Bell, Camera, CreditCard, Lock, Mail, Phone, Save, Shield, User } from "lucide-react"
+import { Bell, Camera, CreditCard, Eye, EyeOff, Lock, Mail, Phone, Save, Shield, User } from "lucide-react"
 import { toast } from "sonner"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -15,7 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { AvatarUploadDialog } from "@/components/perfil/avatar-upload-dialog"
-import { changePassword, getProfileMe, updateProfile, uploadProfileAvatar, type AvatarUploadVariant, type ChangePasswordPayload, type UpdateProfilePayload } from "@/lib/api/profile"
+import { changePassword, getProfileMe, removeProfileAvatar, updateProfile, uploadProfileAvatar, type AvatarUploadVariant, type ChangePasswordPayload, type UpdateProfilePayload } from "@/lib/api/profile"
 import { deletePushSubscription } from "@/lib/api/notifications"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { getSettings, type PermissionProfileRecord } from "@/lib/api/settings"
@@ -32,6 +32,14 @@ const emptyPasswordForm: ChangePasswordPayload = {
   confirmPassword: "",
 }
 
+type PasswordVisibilityField = keyof ChangePasswordPayload
+
+const emptyPasswordVisibility: Record<PasswordVisibilityField, boolean> = {
+  currentPassword: false,
+  newPassword: false,
+  confirmPassword: false,
+}
+
 export function PerfilContent() {
   const [profile, setProfile] = useState<ProfileResponse | null>(null)
   const [permissionProfiles, setPermissionProfiles] = useState<PermissionProfileRecord[]>([])
@@ -41,6 +49,7 @@ export function PerfilContent() {
   const [avatarSaving, setAvatarSaving] = useState(false)
   const [passwordDialog, setPasswordDialog] = useState(false)
   const [passwordData, setPasswordData] = useState(emptyPasswordForm)
+  const [passwordVisibility, setPasswordVisibility] = useState(emptyPasswordVisibility)
   const [passwordError, setPasswordError] = useState("")
   const [pushEnabled, setPushEnabled] = useState(false)
   const [pushAvailable, setPushAvailable] = useState(false)
@@ -207,6 +216,7 @@ export function PerfilContent() {
       }
       setPasswordDialog(false)
       setPasswordData(emptyPasswordForm)
+      setPasswordVisibility(emptyPasswordVisibility)
       toast.success("Senha alterada com sucesso.", { id: toastId })
     } catch (error) {
       toast.error(getApiErrorMessage(error, "Não foi possível alterar a senha."), { id: toastId })
@@ -250,6 +260,37 @@ export function PerfilContent() {
       toast.success("Foto do perfil atualizada.", { id: toastId })
     } catch (error) {
       toast.error(getApiErrorMessage(error, "Não foi possível salvar a foto do perfil."), { id: toastId })
+    } finally {
+      setAvatarSaving(false)
+    }
+  }
+
+  const togglePasswordVisibility = (field: PasswordVisibilityField) => {
+    setPasswordVisibility((current) => ({
+      ...current,
+      [field]: !current[field],
+    }))
+  }
+
+  const handleAvatarRemove = async () => {
+    if (avatarSaving) return
+
+    setAvatarSaving(true)
+    const toastId = toast.loading("Removendo foto do perfil...")
+    try {
+      const response = await removeProfileAvatar()
+      const updatedUser = response.data
+
+      syncStoredProfile(updatedUser)
+      setProfile({
+        ...updatedUser,
+        cpf: formatCPF(updatedUser.cpf),
+        phone: formatPhone(updatedUser.phone),
+      })
+      setAvatarDialog(false)
+      toast.success("Foto do perfil removida.", { id: toastId })
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Não foi possível remover a foto do perfil."), { id: toastId })
     } finally {
       setAvatarSaving(false)
     }
@@ -359,7 +400,7 @@ export function PerfilContent() {
           <CardTitle>Notificações</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-col gap-4 rounded-xl border bg-muted/20 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 items-start gap-3">
               <div className="rounded-full bg-primary/10 p-2 text-primary">
                 <Bell className="h-4 w-4" />
@@ -512,15 +553,75 @@ export function PerfilContent() {
           <form autoComplete="off" onSubmit={handlePasswordChange} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="currentPassword">Senha Atual</Label>
-              <Input id="currentPassword" type="password" autoComplete="off" value={passwordData.currentPassword} onChange={(event) => setPasswordData({ ...passwordData, currentPassword: event.target.value })} required />
+              <div className="relative">
+                <Input
+                  id="currentPassword"
+                  type={passwordVisibility.currentPassword ? "text" : "password"}
+                  autoComplete="off"
+                  className="pr-11"
+                  value={passwordData.currentPassword}
+                  onChange={(event) => setPasswordData({ ...passwordData, currentPassword: event.target.value })}
+                  required
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  onClick={() => togglePasswordVisibility("currentPassword")}
+                  aria-label={passwordVisibility.currentPassword ? "Ocultar senha atual" : "Mostrar senha atual"}
+                >
+                  {passwordVisibility.currentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </Button>
+              </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="newPassword">Nova Senha</Label>
-              <Input id="newPassword" type="password" autoComplete="off" value={passwordData.newPassword} onChange={(event) => setPasswordData({ ...passwordData, newPassword: event.target.value })} required />
+              <div className="relative">
+                <Input
+                  id="newPassword"
+                  type={passwordVisibility.newPassword ? "text" : "password"}
+                  autoComplete="off"
+                  className="pr-11"
+                  value={passwordData.newPassword}
+                  onChange={(event) => setPasswordData({ ...passwordData, newPassword: event.target.value })}
+                  required
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  onClick={() => togglePasswordVisibility("newPassword")}
+                  aria-label={passwordVisibility.newPassword ? "Ocultar nova senha" : "Mostrar nova senha"}
+                >
+                  {passwordVisibility.newPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </Button>
+              </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="confirmPassword">Confirmar Nova Senha</Label>
-              <Input id="confirmPassword" type="password" autoComplete="off" value={passwordData.confirmPassword} onChange={(event) => setPasswordData({ ...passwordData, confirmPassword: event.target.value })} required />
+              <div className="relative">
+                <Input
+                  id="confirmPassword"
+                  type={passwordVisibility.confirmPassword ? "text" : "password"}
+                  autoComplete="off"
+                  className="pr-11"
+                  value={passwordData.confirmPassword}
+                  onChange={(event) => setPasswordData({ ...passwordData, confirmPassword: event.target.value })}
+                  required
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  onClick={() => togglePasswordVisibility("confirmPassword")}
+                  aria-label={passwordVisibility.confirmPassword ? "Ocultar confirmação de senha" : "Mostrar confirmação de senha"}
+                >
+                  {passwordVisibility.confirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </Button>
+              </div>
             </div>
             {passwordError && <p className="text-sm text-destructive">{passwordError}</p>}
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
@@ -543,6 +644,7 @@ export function PerfilContent() {
         initials={profileInitials}
         saving={avatarSaving}
         onSave={handleAvatarSave}
+        onRemove={handleAvatarRemove}
       />
     </div>
   )

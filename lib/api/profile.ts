@@ -56,3 +56,8 @@ export async function uploadProfileAvatar(variants: AvatarUploadVariant[]) {
 
   return response.data
 }
+
+export async function removeProfileAvatar() {
+  const response = await api.delete<{ success: true; data: AuthenticatedUser & { profileDescription: string } }>("/profile/me/avatar")
+  return response.data
+}

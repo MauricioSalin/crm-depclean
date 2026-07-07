@@ -53,6 +53,7 @@ interface AvatarUploadDialogProps {
   initials: string
   saving?: boolean
   onSave: (variants: AvatarUploadVariant[]) => Promise<void>
+  onRemove?: () => Promise<void>
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -84,6 +85,7 @@ export function AvatarUploadDialog({
   onOpenChange,
   saving = false,
   onSave,
+  onRemove,
 }: AvatarUploadDialogProps) {
   const inputRef = useRef<HTMLInputElement | null>(null)
   const imageRef = useRef<HTMLImageElement | null>(null)
@@ -450,6 +452,11 @@ export function AvatarUploadDialog({
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
             Cancelar
           </Button>
+          {onRemove ? (
+            <Button type="button" variant="outline" onClick={onRemove} disabled={saving}>
+              Remover foto
+            </Button>
+          ) : null}
           <Button type="button" onClick={handleSave} disabled={!imageUrl || !naturalSize || saving}>
             {saving ? (
               <>
