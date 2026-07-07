@@ -839,7 +839,6 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
       return
     }
 
-    router.push(`/agendamentos/${encodeURIComponent(schedule.id)}`)
     setSelectedSchedule(schedule)
   }
 
