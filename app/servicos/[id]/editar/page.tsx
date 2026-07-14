@@ -25,7 +25,7 @@ export default function EditServicePage({ params }: PageProps) {
           title="Editar Serviço"
           description="Atualize as informações do serviço"
           actions={
-            <Link href={`/servicos/${id}`}>
+            <Link href="/servicos">
               <Button variant="outline" className="w-full sm:w-auto h-9 text-sm bg-transparent">
                 <ArrowLeft className="w-4 h-4 mr-2" />
                 Voltar

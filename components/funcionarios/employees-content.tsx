@@ -273,6 +273,10 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
   const canDeleteEmployees = Boolean(
     currentUser?.permissions.includes("employees_delete") || currentUser?.permissions.includes("settings_manage"),
   )
+  const canEditEmployees = Boolean(
+    currentUser?.permissions.includes("employees_edit") || currentUser?.permissions.includes("settings_manage"),
+  )
+  const canManageEmployeeSystemAccess = canManageSettings
 
   const upsertEmployee = (record: EmployeeRecord) => {
     updateEmployeeQueries((current) => current.some((item) => item.id === record.id)
@@ -769,7 +773,11 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
                 ) : paginatedEmployees.length === 0 ? (
                   <TableEmptyState colSpan={7} icon={User} title="Nenhum funcionário encontrado." />
                 ) : (
-                  paginatedEmployees.map((employee) => (
+                  paginatedEmployees.map((employee) => {
+                    const canShowDeleteEmployee = canDeleteEmployees && currentUser?.employeeId !== employee.id
+                    const canShowEmployeeActions = canManageEmployeeSystemAccess || canEditEmployees || canShowDeleteEmployee
+
+                    return (
                     <TableRow key={employee.id}>
                       <TableCell className="min-w-[180px]">
                         <div className="flex items-center gap-3">
@@ -808,19 +816,20 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
                         )}
                       </TableCell>
                       <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={(event) => event.stopPropagation()}
-                              aria-label="Ações do funcionário"
-                            >
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            {!employee.isSystemUser ? (
+                        {canShowEmployeeActions ? (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={(event) => event.stopPropagation()}
+                                aria-label="Ações do funcionário"
+                              >
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                            {canManageEmployeeSystemAccess && !employee.isSystemUser ? (
                               <DropdownMenuItem
                                 className="cursor-pointer"
                                 onClick={(event) => {
@@ -831,7 +840,7 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
                                 <UserCog className="mr-2 h-4 w-4" />
                                 Tornar usuário
                               </DropdownMenuItem>
-                            ) : (
+                            ) : canManageEmployeeSystemAccess ? (
                               <DropdownMenuItem
                                 className="cursor-pointer"
                                 onClick={(event) => {
@@ -842,18 +851,20 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
                                 <Shield className="mr-2 h-4 w-4" />
                                 Remover acesso
                               </DropdownMenuItem>
-                            )}
-                            <DropdownMenuItem
-                              className="cursor-pointer"
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                handleEdit(employee)
-                              }}
-                            >
-                              <Edit className="mr-2 h-4 w-4" />
-                              Editar
-                            </DropdownMenuItem>
-                            {employee.status === "active" ? (
+                            ) : null}
+                            {canEditEmployees ? (
+                              <DropdownMenuItem
+                                className="cursor-pointer"
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  handleEdit(employee)
+                                }}
+                              >
+                                <Edit className="mr-2 h-4 w-4" />
+                                Editar
+                              </DropdownMenuItem>
+                            ) : null}
+                            {canEditEmployees && employee.status === "active" ? (
                               <DropdownMenuItem
                                 className="cursor-pointer"
                                 onClick={(event) => {
@@ -865,7 +876,7 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
                                 Inativar
                               </DropdownMenuItem>
                             ) : null}
-                            {canDeleteEmployees && currentUser?.employeeId !== employee.id ? (
+                            {canShowDeleteEmployee ? (
                               <DropdownMenuItem
                                 className="cursor-pointer text-destructive focus:text-destructive"
                                 onClick={(event) => {
@@ -877,11 +888,13 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
                                 Excluir
                               </DropdownMenuItem>
                             ) : null}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        ) : null}
                       </TableCell>
                     </TableRow>
-                  ))
+                    )
+                  })
                 )}
               </TableBody>
             </Table>
@@ -891,7 +904,11 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 2xl:grid-cols-3">
               {loading ? (
                 <CardSkeletonGrid cards={4} />
-              ) : paginatedEmployees.map((employee) => (
+              ) : paginatedEmployees.map((employee) => {
+                const canShowDeleteEmployee = canDeleteEmployees && currentUser?.employeeId !== employee.id
+                const canShowEmployeeActions = canManageEmployeeSystemAccess || canEditEmployees || canShowDeleteEmployee
+
+                return (
                 <Card key={employee.id} className="h-full overflow-hidden">
                   <CardContent className="flex h-full flex-col px-6">
                     <div className="flex items-start justify-between gap-3">
@@ -933,8 +950,9 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
                       )}
                     </div>
 
-                    <div className="mt-auto grid grid-cols-2 gap-2 pt-4">
-                      {!employee.isSystemUser ? (
+                    {canShowEmployeeActions ? (
+                      <div className="mt-auto grid grid-cols-2 gap-2 pt-4">
+                      {canManageEmployeeSystemAccess && !employee.isSystemUser ? (
                         <Button
                           type="button"
                           variant="outline"
@@ -945,7 +963,7 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
                           <UserCog className="mr-2 h-4 w-4" />
                           Tornar usuário
                         </Button>
-                      ) : (
+                      ) : canManageEmployeeSystemAccess ? (
                         <Button
                           type="button"
                           variant="outline"
@@ -956,12 +974,14 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
                           <Shield className="mr-2 h-4 w-4" />
                           Remover acesso
                         </Button>
-                      )}
-                      <Button type="button" variant="outline" size="sm" className="h-8 rounded-full" onClick={() => handleEdit(employee)}>
-                        <Edit className="mr-2 h-4 w-4" />
-                        Editar
-                      </Button>
-                      {employee.status === "active" ? (
+                      ) : null}
+                      {canEditEmployees ? (
+                        <Button type="button" variant="outline" size="sm" className="h-8 rounded-full" onClick={() => handleEdit(employee)}>
+                          <Edit className="mr-2 h-4 w-4" />
+                          Editar
+                        </Button>
+                      ) : null}
+                      {canEditEmployees && employee.status === "active" ? (
                         <Button
                           type="button"
                           variant="outline"
@@ -973,7 +993,7 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
                           Inativar
                         </Button>
                       ) : null}
-                      {canDeleteEmployees && currentUser?.employeeId !== employee.id ? (
+                      {canShowDeleteEmployee ? (
                         <Button
                           type="button"
                           variant="outline"
@@ -985,10 +1005,12 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
                           Excluir
                         </Button>
                       ) : null}
-                    </div>
+                      </div>
+                    ) : null}
                   </CardContent>
                 </Card>
-              ))}
+                )
+              })}
             </div>
           </div>
         )}

@@ -24,6 +24,7 @@ import { toast } from "sonner"
 import { createClient, deleteClient, getClientById, updateClient, type ClientPayload } from "@/lib/api/clients"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { listClientTypes } from "@/lib/api/settings"
+import { useHasAnyPermission } from "@/hooks/use-permissions"
 import { getColorFromClass } from "@/lib/utils"
 
 interface ClientFormProps {
@@ -96,6 +97,7 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
   const router = useRouter()
   const queryClient = useQueryClient()
   const formBackHref = returnTo || "/clientes"
+  const canDeleteClients = useHasAnyPermission(["clients_delete"])
 
   const clientQuery = useQuery({
     queryKey: ["client", clientId],
@@ -1295,7 +1297,7 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
 
       {/* Actions */}
       <div className="grid grid-cols-2 gap-3 sm:flex sm:justify-end">
-        {isEditing && clientId ? (
+        {isEditing && clientId && canDeleteClients ? (
           <Button
             type="button"
             variant="outline"
@@ -1323,7 +1325,7 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
       </div>
 
       <ConfirmActionDialog
-        open={removeDialogOpen}
+        open={canDeleteClients && removeDialogOpen}
         title="Excluir cliente"
         description={`Excluir ${
           client?.companyName ? `o cliente ${client.companyName}` : "este cliente"
@@ -1332,6 +1334,7 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
         busy={deleteMutation.isPending}
         onOpenChange={setRemoveDialogOpen}
         onConfirm={() => {
+          if (!canDeleteClients) return
           if (!clientId) return
           deleteMutation.mutate(clientId)
         }}

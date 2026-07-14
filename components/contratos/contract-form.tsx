@@ -78,6 +78,7 @@ import {
   DollarSign,
 } from "lucide-react"
 import { cn, getColorFromClass } from "@/lib/utils"
+import { useHasAnyPermission } from "@/hooks/use-permissions"
 import { withReturnTo } from "@/lib/navigation"
 import { addCivilDaysKey, addCivilMonthsKey, formatCivilDate, formatCivilLongDate, toCivilDateKey } from "@/lib/date-utils"
 import type { RecurrenceRule, RecurrenceRuleType, RecurrenceType } from "@/lib/types"
@@ -220,6 +221,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
   const router = useRouter()
   const queryClient = useQueryClient()
   const formBackHref = returnTo || "/contratos"
+  const canDeleteContracts = useHasAnyPermission(["contracts_delete"])
 
   const clientsQuery = useQuery({
     queryKey: ["clients", "contract-form"],
@@ -1980,7 +1982,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
       {/* Actions */}
       <div className="flex justify-end">
         <div className="grid w-full grid-cols-2 gap-3 sm:flex sm:w-auto sm:justify-end">
-          {isEditing && contractId ? (
+          {isEditing && contractId && canDeleteContracts ? (
             <Button
               type="button"
               variant="outline"
@@ -2003,7 +2005,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
       </div>
 
       <ConfirmActionDialog
-        open={removeDialogOpen}
+        open={canDeleteContracts && removeDialogOpen}
         title="Remover contrato"
         description={`Tem certeza que deseja remover ${
           contract?.contractNumber ? `o contrato ${contract.contractNumber}` : "este contrato"
@@ -2012,6 +2014,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
         busy={deleteMutation.isPending}
         onOpenChange={setRemoveDialogOpen}
         onConfirm={() => {
+          if (!canDeleteContracts) return
           if (!contractId) return
           if (deleteMutation.isPending) return
           deleteMutation.mutate(contractId)

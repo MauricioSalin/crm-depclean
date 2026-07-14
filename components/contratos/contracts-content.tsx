@@ -40,6 +40,7 @@ import { formatCivilDate } from "@/lib/date-utils"
 import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 import { buildPathWithSearchParams, withReturnTo } from "@/lib/navigation"
+import { useHasAnyPermission } from "@/hooks/use-permissions"
 
 interface ContractsContentProps {
   viewMode: "table" | "cards"
@@ -100,6 +101,7 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const mobileFiltersOpen = useMobileFiltersOpen()
+  const canEditContracts = useHasAnyPermission(["contracts_edit"])
   const [searchTerm, setSearchTerm] = useUrlQueryState("q")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [currentPage, setCurrentPage] = useState(1)
@@ -339,7 +341,7 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
                                 Ver Detalhes
                               </Link>
                             </DropdownMenuItem>
-                            {!isContractSigned(contract) ? (
+                            {canEditContracts && !isContractSigned(contract) ? (
                               <DropdownMenuItem asChild>
                                 <Link href={getContractEditHref(contract.id)}>
                                   <Edit className="mr-2 h-4 w-4" />
@@ -419,7 +421,7 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
                         </div>
                       </Link>
                       <div className="flex gap-2">
-                        {!isContractSigned(contract) ? (
+                        {canEditContracts && !isContractSigned(contract) ? (
                           <Button variant="outline" size="sm" className="flex-1" asChild>
                             <Link href={getContractEditHref(contract.id)}>
                               <Edit className="mr-1 h-4 w-4" />

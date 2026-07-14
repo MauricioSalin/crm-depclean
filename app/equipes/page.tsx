@@ -9,10 +9,12 @@ import { ContentLoadingSkeleton } from "@/components/ui/content-loading-skeleton
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Plus, List, LayoutGrid } from "lucide-react"
 import { useResponsiveDefaultViewMode } from "@/hooks/use-responsive-default-view-mode"
+import { useHasAnyPermission } from "@/hooks/use-permissions"
 
 export default function EquipesPage() {
   const [openDialog, setOpenDialog] = useState(false)
   const [viewMode, setViewMode] = useResponsiveDefaultViewMode("table", "grid")
+  const canManageTeams = useHasAnyPermission(["teams_manage"])
 
   const toggle = (
     <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "grid" | "table")}>
@@ -35,7 +37,7 @@ export default function EquipesPage() {
           description="Gerencie as equipes de serviço da Depclean."
           hasFilters
           viewToggle={toggle}
-          actions={
+          actions={canManageTeams ? (
             <Button
               onClick={() => setOpenDialog(true)}
               className="w-full sm:w-auto h-9 text-sm bg-primary text-primary-foreground hover:bg-primary/90"
@@ -43,10 +45,15 @@ export default function EquipesPage() {
               <Plus className="w-4 h-4 mr-2" />
               Nova Equipe
             </Button>
-          }
+          ) : undefined}
         />
         <Suspense fallback={<ContentLoadingSkeleton className="mt-4 md:mt-5" />}>
-          <TeamsContent viewMode={viewMode} viewToggle={toggle} openDialog={openDialog} onDialogChange={setOpenDialog} />
+          <TeamsContent
+            viewMode={viewMode}
+            viewToggle={toggle}
+            openDialog={canManageTeams && openDialog}
+            onDialogChange={setOpenDialog}
+          />
         </Suspense>
       </main>
     </div>

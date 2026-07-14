@@ -60,6 +60,7 @@ import { listClientTypes } from "@/lib/api/settings"
 import { listTeams } from "@/lib/api/teams"
 import { listTemplates, type TemplateRecord } from "@/lib/api/templates"
 import { formatCivilDate } from "@/lib/date-utils"
+import { useHasAnyPermission } from "@/hooks/use-permissions"
 import { formatCPF } from "@/lib/masks"
 import { buildPathWithSearchParams, getSafeReturnTo, withReturnTo } from "@/lib/navigation"
 
@@ -319,6 +320,10 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const queryClient = useQueryClient()
+  const canEditClients = useHasAnyPermission(["clients_edit"])
+  const canDeleteClients = useHasAnyPermission(["clients_delete"])
+  const canManageInstallments = useHasAnyPermission(["financial_manage", "contracts_edit"])
+  const canModifyClientAttachments = canEditClients || canDeleteClients
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const informativePdfEditorRef = useRef<DocxTemplateEditorRef | null>(null)
   const [informativePdfJob, setInformativePdfJob] = useState<{
@@ -369,7 +374,13 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
   })
 
   const uploadAttachmentMutation = useMutation({
-    mutationFn: (file: File) => uploadClientAttachment(resolvedClientId, file),
+    mutationFn: (file: File) => {
+      if (!canEditClients) {
+        throw new Error("Sem permissao para anexar arquivos ao cliente.")
+      }
+
+      return uploadClientAttachment(resolvedClientId, file)
+    },
     onMutate: () => {
       const toastId = toast.loading("Salvando anexo...")
       return { toastId }
@@ -384,7 +395,13 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
   })
 
   const deleteAttachmentMutation = useMutation({
-    mutationFn: (attachmentId: string) => deleteClientAttachment(resolvedClientId, attachmentId),
+    mutationFn: (attachmentId: string) => {
+      if (!canModifyClientAttachments) {
+        throw new Error("Sem permissao para remover anexos do cliente.")
+      }
+
+      return deleteClientAttachment(resolvedClientId, attachmentId)
+    },
     onMutate: () => {
       const toastId = toast.loading("Removendo anexo...")
       return { toastId }
@@ -426,6 +443,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
 
   const handleManualAttachmentSelected = (file?: File) => {
     if (!file) return
+    if (!canEditClients) return
     if (uploadAttachmentMutation.isPending) return
     uploadAttachmentMutation.mutate(file)
     if (fileInputRef.current) {
@@ -745,6 +763,8 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
   }
 
   const setInstallmentStatus = (installmentId: string, status: ContractInstallmentRecord["status"]) => {
+    if (!canManageInstallments) return
+
     setInstallmentOverrides((previous) => {
       if (status === "paid") {
         const original = clientContracts
@@ -1133,12 +1153,12 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                     <TableHead>Valor</TableHead>
                     <TableHead className="hidden md:table-cell">Vencimento</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Ações</TableHead>
+                    {canManageInstallments ? <TableHead className="text-right">Ações</TableHead> : null}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {allInstallments.length === 0 ? (
-                    <TableEmptyState colSpan={6} icon={DollarSign} title="Nenhuma parcela encontrada." />
+                    <TableEmptyState colSpan={canManageInstallments ? 6 : 5} icon={DollarSign} title="Nenhuma parcela encontrada." />
                   ) : (
                     paginatedInstallments.map((installment) => (
                       <TableRow key={installment.id}>
@@ -1149,26 +1169,28 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                         <TableCell className="font-medium">{formatCurrency(installment.value)}</TableCell>
                         <TableCell className="hidden md:table-cell text-sm">{formatDate(installment.dueDate)}</TableCell>
                         <TableCell>{getInstallmentStatusBadge(installment.status)}</TableCell>
-                        <TableCell className="text-right">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon">
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => setInstallmentStatus(installment.id, "paid")}>
-                                Marcar como paga
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => setInstallmentStatus(installment.id, "overdue")}>
-                                Marcar como vencida
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => setInstallmentStatus(installment.id, "pending")}>
-                                Marcar como pendente
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </TableCell>
+                        {canManageInstallments ? (
+                          <TableCell className="text-right">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon">
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => setInstallmentStatus(installment.id, "paid")}>
+                                  Marcar como paga
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => setInstallmentStatus(installment.id, "overdue")}>
+                                  Marcar como vencida
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => setInstallmentStatus(installment.id, "pending")}>
+                                  Marcar como pendente
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        ) : null}
                       </TableRow>
                     ))
                   )}
@@ -1375,7 +1397,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                           >
                             <Download className="h-4 w-4" />
                           </Button>
-                          {attachment.source === "manual" ? (
+                          {attachment.source === "manual" && canModifyClientAttachments ? (
                             <Button
                               type="button"
                               variant="ghost"

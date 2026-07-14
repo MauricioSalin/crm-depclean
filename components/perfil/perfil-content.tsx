@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState, type FormEvent } from "react"
-import { Bell, Camera, CreditCard, Eye, EyeOff, Lock, Mail, Phone, Save, Shield, User } from "lucide-react"
+import { Camera, CreditCard, Eye, EyeOff, Lock, Mail, Phone, Save, Shield, User } from "lucide-react"
 import { toast } from "sonner"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -175,7 +175,11 @@ export function PerfilContent() {
         })
       }
 
-      setProfile(updatedUser)
+      setProfile({
+        ...updatedUser,
+        cpf: formatCPF(updatedUser.cpf),
+        phone: formatPhone(updatedUser.phone),
+      })
       toast.success("Perfil atualizado com sucesso.", { id: toastId })
     } catch (error) {
       toast.error(getApiErrorMessage(error, "Não foi possível salvar suas alterações."), { id: toastId })
@@ -400,11 +404,16 @@ export function PerfilContent() {
           <CardTitle>Notificações</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
             <div className="flex min-w-0 items-start gap-3">
-              <div className="rounded-full bg-primary/10 p-2 text-primary">
-                <Bell className="h-4 w-4" />
-              </div>
+              <Switch
+                id="push-notifications"
+                checked={pushEnabled}
+                disabled={!pushAvailable || pushUpdating}
+                onCheckedChange={handlePushPreferenceChange}
+                aria-label="Quero receber notificações em push"
+                className="mt-1 shrink-0"
+              />
               <div className="min-w-0">
                 <Label htmlFor="push-notifications" className="font-semibold">
                   Quero receber notificações em push
@@ -414,13 +423,6 @@ export function PerfilContent() {
                 </p>
               </div>
             </div>
-            <Switch
-              id="push-notifications"
-              checked={pushEnabled}
-              disabled={!pushAvailable || pushUpdating}
-              onCheckedChange={handlePushPreferenceChange}
-              aria-label="Quero receber notificações em push"
-            />
           </div>
           {!pushAvailable ? (
             <p className="mt-2 text-xs text-muted-foreground">
@@ -452,7 +454,7 @@ export function PerfilContent() {
                 </Label>
                   <Input
                     id="cpf"
-                    value={formData.cpf}
+                    value={formatCPF(formData.cpf)}
                     onChange={(event) => setProfile({ ...formData, cpf: formatCPF(event.target.value) })}
                     placeholder="000.000.000-00"
                     inputMode="numeric"

@@ -51,6 +51,7 @@ import {
 } from "@/lib/api/templates"
 import { buildApiFileUrl } from "@/lib/api/client"
 import { getApiErrorMessage } from "@/lib/api/errors"
+import { useHasAnyPermission } from "@/hooks/use-permissions"
 import { BRASILIA_TIME_ZONE, formatCivilDate, formatCivilLongDate, parseCivilDate } from "@/lib/date-utils"
 import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
@@ -560,6 +561,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
   const queryClient = useQueryClient()
   const mobileFiltersOpen = useMobileFiltersOpen()
   const config = TEMPLATE_CONFIG[kind]
+  const canManageTemplates = useHasAnyPermission(["templates_manage"])
   const docxEditorRef = useRef<DocxTemplateEditorRef | null>(null)
   const closingEditorRef = useRef(false)
   const routeTemplateId = searchParams.get("template")
@@ -641,6 +643,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
   })
 
   const templates = templatesQuery.data?.data ?? []
+  const tableColumnCount = (config.requiresSigner ? 5 : 3) + (canManageTemplates ? 1 : 0)
   const totalPages = Math.max(1, Math.ceil(templates.length / pageSize))
   const paginatedTemplates = useMemo(() => {
     const start = (currentPage - 1) * pageSize
@@ -767,6 +770,11 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
     }
 
     if (routeTemplateId) {
+      if (!canManageTemplates) {
+        replaceRouteParams({ template: null, templateMode: null, view: null })
+        return
+      }
+
       if (!routeTemplate || routeTemplate.kind !== kind) return
 
       if (isEditorOpen && editingTemplate?.id === routeTemplate.id) {
@@ -779,6 +787,11 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
     }
 
     if (routeTemplateMode === "new") {
+      if (!canManageTemplates) {
+        replaceRouteParams({ template: null, templateMode: null, view: null })
+        return
+      }
+
       if (isEditorOpen && !editingTemplate) {
         setEditorTab((current) => (current === routeEditorTab ? current : routeEditorTab))
         return
@@ -786,7 +799,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
 
       openNewTemplateEditor(routeEditorTab)
     }
-  }, [editingTemplate, isEditorOpen, kind, routeEditorTab, routeTemplate, routeTemplateId, routeTemplateMode])
+  }, [canManageTemplates, editingTemplate, isEditorOpen, kind, replaceRouteParams, routeEditorTab, routeTemplate, routeTemplateId, routeTemplateMode])
 
   useEffect(() => {
     setPreviewDocumentId("")
@@ -815,13 +828,22 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
   useEffect(() => {
     if (!openImport) return
 
+    if (!canManageTemplates) {
+      onImportChange?.(false)
+      return
+    }
+
     prepareNewTemplateForm()
     setIsImportOpen(true)
     onImportChange?.(false)
-  }, [onImportChange, openImport])
+  }, [canManageTemplates, onImportChange, openImport])
 
   const saveMutation = useMutation({
     mutationFn: async () => {
+      if (!canManageTemplates) {
+        throw new Error("Sem permissao para gerenciar templates.")
+      }
+
       const docxFile = await docxEditorRef.current?.saveToFile()
 
       if (!docxFile) {
@@ -894,7 +916,13 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
   })
 
   const deleteMutation = useMutation({
-    mutationFn: deleteTemplate,
+    mutationFn: async (id: string) => {
+      if (!canManageTemplates) {
+        throw new Error("Sem permissao para gerenciar templates.")
+      }
+
+      return deleteTemplate(id)
+    },
     onSuccess: () => {
       notify({
         title: "Template excluído",
@@ -913,7 +941,13 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
   })
 
   const duplicateMutation = useMutation({
-    mutationFn: duplicateTemplate,
+    mutationFn: async (id: string) => {
+      if (!canManageTemplates) {
+        throw new Error("Sem permissao para gerenciar templates.")
+      }
+
+      return duplicateTemplate(id)
+    },
     onSuccess: (response) => {
       notify({
         title: "Template duplicado",
@@ -932,7 +966,13 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
   })
 
   const toggleActiveMutation = useMutation({
-    mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) => updateTemplate(id, { isActive }),
+    mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) => {
+      if (!canManageTemplates) {
+        throw new Error("Sem permissao para gerenciar templates.")
+      }
+
+      return updateTemplate(id, { isActive })
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["templates"] })
     },
@@ -950,7 +990,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
       isOpen: isEditorOpen,
       isEditing: Boolean(editingTemplate),
       name: formData.name,
-      canSave: Boolean(formData.name.trim() && (!config.requiresSigner || formData.signerId)) && !saveMutation.isPending,
+      canSave: canManageTemplates && Boolean(formData.name.trim() && (!config.requiresSigner || formData.signerId)) && !saveMutation.isPending,
       isSaving: saveMutation.isPending,
       onSave: handleSave,
       onCancel: handleCancel,
@@ -1008,6 +1048,8 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
   }
 
   function handleEdit(template: TemplateRecord) {
+    if (!canManageTemplates) return
+
     openTemplateEditor(template, "editor")
     replaceRouteParams({
       template: template.id,
@@ -1018,6 +1060,8 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
 
   function handleImportSubmit(event: React.FormEvent) {
     event.preventDefault()
+    if (!canManageTemplates) return
+
     setIsImportOpen(false)
     openNewTemplateEditor("editor")
     replaceRouteParams({
@@ -1029,6 +1073,14 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
 
   function handleSave() {
     if (saveMutation.isPending) return
+
+    if (!canManageTemplates) {
+      notify({
+        title: "Sem permissao",
+        description: "Seu perfil nao permite gerenciar templates.",
+      })
+      return
+    }
 
     if (!formData.name.trim() || (config.requiresSigner && !formData.signerId)) {
       notify({
@@ -1727,6 +1779,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
         description={`Esta ação vai excluir o template "${pendingDelete?.label}".`}
         confirmLabel="Excluir"
         onConfirm={() => {
+          if (!canManageTemplates) return
           if (!pendingDelete) return
           deleteMutation.mutate(pendingDelete.id)
         }}
@@ -1760,7 +1813,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
                 {config.requiresSigner ? <TableHead className="hidden md:table-cell">Testemunha</TableHead> : null}
                 <TableHead className="hidden lg:table-cell">Atualizado</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="text-right">Ações</TableHead>
+                {canManageTemplates ? <TableHead className="text-right">Ações</TableHead> : null}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -1773,11 +1826,11 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
                     ...(config.requiresSigner ? [{ className: "hidden md:table-cell", width: "w-32" }] : []),
                     { className: "hidden lg:table-cell", width: "w-24" },
                     { width: "w-20" },
-                    { align: "right", width: "w-16" },
+                    ...(canManageTemplates ? [{ align: "right" as const, width: "w-16" }] : []),
                   ]}
                 />
               ) : paginatedTemplates.length === 0 ? (
-                <TableEmptyState colSpan={config.requiresSigner ? 6 : 4} icon={FileText} title="Nenhum template encontrado." />
+                <TableEmptyState colSpan={tableColumnCount} icon={FileText} title="Nenhum template encontrado." />
               ) : (
                 paginatedTemplates.map((template) => (
                   <TableRow key={template.id}>
@@ -1813,65 +1866,67 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
                       <Badge
                         className={
                           template.isActive
-                            ? cn("cursor-pointer bg-green-100 text-green-700 hover:bg-green-200", toggleActiveMutation.isPending && "pointer-events-none opacity-60")
-                            : cn("cursor-pointer bg-gray-100 text-gray-700 hover:bg-gray-200", toggleActiveMutation.isPending && "pointer-events-none opacity-60")
+                            ? cn("bg-green-100 text-green-700 hover:bg-green-100", canManageTemplates && "cursor-pointer hover:bg-green-200", toggleActiveMutation.isPending && "pointer-events-none opacity-60")
+                            : cn("bg-gray-100 text-gray-700 hover:bg-gray-100", canManageTemplates && "cursor-pointer hover:bg-gray-200", toggleActiveMutation.isPending && "pointer-events-none opacity-60")
                         }
-                        onClick={() => {
+                        onClick={canManageTemplates ? () => {
                           if (toggleActiveMutation.isPending) return
                           toggleActiveMutation.mutate({ id: template.id, isActive: !template.isActive })
-                        }}
+                        } : undefined}
                       >
                         {template.isActive ? "Ativo" : "Inativo"}
                       </Badge>
                     </TableCell>
 
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={(event) => event.stopPropagation()}
-                            aria-label="Acoes do template"
-                          >
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            className="cursor-pointer"
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              handleEdit(template)
-                            }}
-                          >
-                            <Edit className="mr-2 h-4 w-4" />
-                            Editar
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            className="cursor-pointer"
-                            disabled={duplicateMutation.isPending}
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              duplicateMutation.mutate(template.id)
-                            }}
-                          >
-                            <Copy className="mr-2 h-4 w-4" />
-                            Duplicar
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            className="cursor-pointer"
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              setPendingDelete({ id: template.id, label: template.name })
-                            }}
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Excluir
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
+                    {canManageTemplates ? (
+                      <TableCell className="text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={(event) => event.stopPropagation()}
+                              aria-label="Acoes do template"
+                            >
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              className="cursor-pointer"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                handleEdit(template)
+                              }}
+                            >
+                              <Edit className="mr-2 h-4 w-4" />
+                              Editar
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="cursor-pointer"
+                              disabled={duplicateMutation.isPending}
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                duplicateMutation.mutate(template.id)
+                              }}
+                            >
+                              <Copy className="mr-2 h-4 w-4" />
+                              Duplicar
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="cursor-pointer"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                setPendingDelete({ id: template.id, label: template.name })
+                              }}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Excluir
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    ) : null}
                   </TableRow>
                 ))
               )}

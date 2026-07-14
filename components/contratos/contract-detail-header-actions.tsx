@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { getContractById, type ContractRecord } from "@/lib/api/contracts"
 import { buildPathWithSearchParams, getSafeReturnTo, withReturnTo } from "@/lib/navigation"
+import { useHasAnyPermission } from "@/hooks/use-permissions"
 
 interface ContractDetailHeaderActionsProps {
   contractId: string
@@ -23,6 +24,7 @@ const isContractSigned = (contract?: Pick<ContractRecord, "status" | "clicksign"
 export function ContractDetailHeaderActions({ contractId }: ContractDetailHeaderActionsProps) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  const canEditContracts = useHasAnyPermission(["contracts_edit"])
   const contractQuery = useQuery({
     queryKey: ["contract", contractId],
     queryFn: () => getContractById(contractId),
@@ -42,7 +44,7 @@ export function ContractDetailHeaderActions({ contractId }: ContractDetailHeader
       {contractQuery.isLoading ? (
         <Skeleton className="h-9 flex-1 rounded-full sm:w-[150px] sm:flex-initial" />
       ) : null}
-      {contract && !isContractSigned(contract) ? (
+      {canEditContracts && contract && !isContractSigned(contract) ? (
         <Link href={withReturnTo(`/contratos/${contractId}/editar`, currentHref)} className="flex-1 sm:flex-initial">
           <Button className="w-full bg-primary hover:bg-primary/90">
             <Edit className="mr-2 h-4 w-4" />

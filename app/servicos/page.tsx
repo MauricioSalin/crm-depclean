@@ -10,9 +10,11 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Plus, List, LayoutGrid } from "lucide-react"
 import Link from "next/link"
 import { useResponsiveDefaultViewMode } from "@/hooks/use-responsive-default-view-mode"
+import { useHasAnyPermission } from "@/hooks/use-permissions"
 
 export default function ServicosPage() {
   const [viewMode, setViewMode] = useResponsiveDefaultViewMode("table", "cards")
+  const canManageServices = useHasAnyPermission(["services_manage"])
 
   const toggle = (
     <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "table" | "cards")}>
@@ -35,14 +37,14 @@ export default function ServicosPage() {
           description="Gerencie os serviços oferecidos pela Depclean."
           hasFilters
           viewToggle={toggle}
-          actions={
+          actions={canManageServices ? (
             <Link href="/servicos/novo">
               <Button className="w-full sm:w-auto h-9 text-sm bg-primary text-primary-foreground hover:bg-primary/90">
                 <Plus className="w-4 h-4 mr-2" />
                 Novo Serviço
               </Button>
             </Link>
-          }
+          ) : undefined}
         />
         <Suspense fallback={<ContentLoadingSkeleton className="mt-4 md:mt-5" />}>
           <ServicesContent viewMode={viewMode} viewToggle={toggle} />

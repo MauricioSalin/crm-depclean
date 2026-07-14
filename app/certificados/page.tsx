@@ -10,10 +10,12 @@ import { Button } from "@/components/ui/button"
 import { ContentLoadingSkeleton } from "@/components/ui/content-loading-skeleton"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useResponsiveDefaultViewMode } from "@/hooks/use-responsive-default-view-mode"
+import { useHasAnyPermission } from "@/hooks/use-permissions"
 
 export default function CertificadosPage() {
   const [viewMode, setViewMode] = useResponsiveDefaultViewMode("table", "cards")
   const [createOpen, setCreateOpen] = useState(false)
+  const canManageCertificates = useHasAnyPermission(["certificates_manage"])
 
   const toggle = (
     <Tabs value={viewMode} onValueChange={(value) => setViewMode(value as "table" | "cards")}>
@@ -36,7 +38,7 @@ export default function CertificadosPage() {
           description="Gere e envie certificados de visitas concluídas."
           hasFilters
           viewToggle={toggle}
-          actions={
+          actions={canManageCertificates ? (
             <Button
               onClick={() => setCreateOpen(true)}
               className="h-9 w-full bg-primary text-sm text-primary-foreground hover:bg-primary/90 sm:w-auto"
@@ -44,13 +46,13 @@ export default function CertificadosPage() {
               <Plus className="mr-2 h-4 w-4" />
               Criar novo
             </Button>
-          }
+          ) : undefined}
         />
         <Suspense fallback={<ContentLoadingSkeleton className="mt-4 md:mt-5" />}>
           <CertificatesContent
             viewMode={viewMode}
             viewToggle={toggle}
-            createOpen={createOpen}
+            createOpen={canManageCertificates && createOpen}
             onCreateOpenChange={setCreateOpen}
           />
         </Suspense>

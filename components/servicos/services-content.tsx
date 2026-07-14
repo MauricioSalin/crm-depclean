@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, type KeyboardEvent, type ReactNode } from "react"
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react"
 import Link from "next/link"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Search, Edit, Trash2, Clock, ClipboardList, MoreHorizontal } from "lucide-react"
@@ -35,6 +35,7 @@ import { listEmployees } from "@/lib/api/employees"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { deleteService, listServices, type ServiceRecord } from "@/lib/api/services"
 import { listTeams } from "@/lib/api/teams"
+import { useHasAnyPermission } from "@/hooks/use-permissions"
 
 type ServiceTypeRow = ServiceRecord
 
@@ -54,11 +55,14 @@ function formatDuration(type: ServiceTypeRow) {
 export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) {
   const mobileFiltersOpen = useMobileFiltersOpen()
   const queryClient = useQueryClient()
+  const canManageServices = useHasAnyPermission(["services_manage"])
   const [searchTerm, setSearchTerm] = useUrlQueryState("q")
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(10)
   const [pendingDelete, setPendingDelete] = useState<{ id: string; label: string } | null>(null)
   const [selectedService, setSelectedService] = useState<ServiceTypeRow | null>(null)
+  const [serviceDetailsOpen, setServiceDetailsOpen] = useState(false)
+  const serviceDetailsCloseTimeoutRef = useRef<number | null>(null)
 
   const servicesQuery = useQuery({
     queryKey: ["services", "content"],
@@ -106,8 +110,38 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
     deleteMutation.mutate(pendingDelete.id)
   }
 
+  const clearServiceDetailsCloseTimeout = useCallback(() => {
+    if (serviceDetailsCloseTimeoutRef.current === null) return
+    window.clearTimeout(serviceDetailsCloseTimeoutRef.current)
+    serviceDetailsCloseTimeoutRef.current = null
+  }, [])
+
   const openServiceDetails = (type: ServiceTypeRow) => {
+    clearServiceDetailsCloseTimeout()
     setSelectedService(type)
+    setServiceDetailsOpen(true)
+  }
+
+  const closeServiceDetails = useCallback(() => {
+    setServiceDetailsOpen(false)
+    clearServiceDetailsCloseTimeout()
+    serviceDetailsCloseTimeoutRef.current = window.setTimeout(() => {
+      setSelectedService(null)
+      serviceDetailsCloseTimeoutRef.current = null
+    }, 220)
+  }, [clearServiceDetailsCloseTimeout])
+
+  useEffect(() => {
+    return () => clearServiceDetailsCloseTimeout()
+  }, [clearServiceDetailsCloseTimeout])
+
+  const handleServiceDetailsOpenChange = (open: boolean) => {
+    if (open) {
+      setServiceDetailsOpen(true)
+      return
+    }
+
+    closeServiceDetails()
   }
 
   const handleServiceKeyDown = (event: KeyboardEvent<HTMLElement>, type: ServiceTypeRow) => {
@@ -154,7 +188,7 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
                 <TableHead className="hidden sm:table-cell">Descrição</TableHead>
                 <TableHead className="hidden md:table-cell">Equipe / Funcionários</TableHead>
                 <TableHead className="min-w-[110px]">Duração</TableHead>
-                <TableHead className="text-right">Ações</TableHead>
+                {canManageServices ? <TableHead className="text-right">Ações</TableHead> : null}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -166,11 +200,11 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
                     { className: "hidden sm:table-cell", width: "w-48" },
                     { className: "hidden md:table-cell", width: "w-32" },
                     { width: "w-20" },
-                    { align: "right", width: "w-16" },
+                    ...(canManageServices ? [{ align: "right" as const, width: "w-16" }] : []),
                   ]}
                 />
               ) : filteredTypes.length === 0 ? (
-                <TableEmptyState colSpan={5} icon={ClipboardList} title="Nenhum tipo de serviço encontrado." />
+                <TableEmptyState colSpan={canManageServices ? 5 : 4} icon={ClipboardList} title="Nenhum tipo de serviço encontrado." />
               ) : (
                 paginatedTypes.map((type) => (
                   <TableRow
@@ -231,33 +265,35 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
                         <span className="whitespace-nowrap">{formatDuration(type)}</span>
                       </div>
                     </TableCell>
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" onClick={(event) => event.stopPropagation()} aria-label="Ações do serviço">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem asChild className="cursor-pointer">
-                            <Link href={`/servicos/${type.id}/editar`} onClick={(event) => event.stopPropagation()}>
-                              <Edit className="mr-2 h-4 w-4" />
-                              Editar
-                            </Link>
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            className="cursor-pointer"
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              handleDeleteType(type.id)
-                            }}
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Excluir
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
+                    {canManageServices ? (
+                      <TableCell className="text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" onClick={(event) => event.stopPropagation()} aria-label="Ações do serviço">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem asChild className="cursor-pointer">
+                              <Link href={`/servicos/${type.id}/editar`} onClick={(event) => event.stopPropagation()}>
+                                <Edit className="mr-2 h-4 w-4" />
+                                Editar
+                              </Link>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="cursor-pointer"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                handleDeleteType(type.id)
+                              }}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Excluir
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    ) : null}
                   </TableRow>
                 ))
               )}
@@ -324,24 +360,26 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
                     })}
                   </div>
                 ) : null}
-                <div className="mt-auto grid grid-cols-2 gap-2 pt-3" onClick={(event) => event.stopPropagation()}>
-                  <Button variant="outline" size="sm" className="h-8 rounded-full" asChild>
-                    <Link href={`/servicos/${type.id}/editar`}>
-                      <Edit className="mr-2 h-4 w-4" />
-                      Editar
-                    </Link>
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-8 rounded-full text-destructive hover:text-destructive"
-                    onClick={() => handleDeleteType(type.id)}
-                  >
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    Excluir
-                  </Button>
-                </div>
+                {canManageServices ? (
+                  <div className="mt-auto grid grid-cols-2 gap-2 pt-3" onClick={(event) => event.stopPropagation()}>
+                    <Button variant="outline" size="sm" className="h-8 rounded-full" asChild>
+                      <Link href={`/servicos/${type.id}/editar`}>
+                        <Edit className="mr-2 h-4 w-4" />
+                        Editar
+                      </Link>
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 rounded-full text-destructive hover:text-destructive"
+                      onClick={() => handleDeleteType(type.id)}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Excluir
+                    </Button>
+                  </div>
+                ) : null}
               </CardContent>
             </Card>
           ))}
@@ -376,14 +414,12 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
       />
 
       <ServiceClausesDialog
-        open={Boolean(selectedService)}
+        open={serviceDetailsOpen}
         title={selectedService?.name ?? "Cláusulas do serviço"}
         description={selectedService?.description || "Sem descrição cadastrada."}
         clauses={selectedService?.clauses ?? []}
         clausePrefix="1"
-        onOpenChange={(open) => {
-          if (!open) setSelectedService(null)
-        }}
+        onOpenChange={handleServiceDetailsOpenChange}
       />
     </div>
   )

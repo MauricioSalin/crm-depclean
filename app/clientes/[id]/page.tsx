@@ -1,10 +1,8 @@
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { Header } from "@/components/dashboard/header"
 import { ClientProfile } from "@/components/clientes/client-profile"
-import { Button } from "@/components/ui/button"
-import { buildPathWithSearchRecord, getFirstSearchParam, getSafeReturnTo, withReturnTo } from "@/lib/navigation"
-import Link from "next/link"
-import { ArrowLeft, Edit } from "lucide-react"
+import { ClientProfileHeaderActions } from "@/components/clientes/client-profile-header-actions"
+import { getFirstSearchParam, getSafeReturnTo } from "@/lib/navigation"
 
 interface ClientPageProps {
   params: Promise<{ id: string }>
@@ -15,7 +13,6 @@ export default async function ClientPage({ params, searchParams }: ClientPagePro
   const { id } = await params
   const resolvedSearchParams = await searchParams
   const backHref = getSafeReturnTo(getFirstSearchParam(resolvedSearchParams?.returnTo), "/clientes")
-  const currentHref = buildPathWithSearchRecord(`/clientes/${id}`, resolvedSearchParams)
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -27,22 +24,7 @@ export default async function ClientPage({ params, searchParams }: ClientPagePro
         <Header
           title="Perfil do Cliente"
           description="Visualize e gerencie todas as informações do cliente"
-          actions={
-            <>
-              <Link href={backHref}>
-                <Button variant="outline" className="w-full sm:w-auto h-9 text-sm bg-transparent">
-                  <ArrowLeft className="w-4 h-4 mr-2" />
-                  Voltar
-                </Button>
-              </Link>
-              <Link href={withReturnTo(`/clientes/${id}/editar`, currentHref)}>
-                <Button className="w-full sm:w-auto h-9 text-sm bg-primary text-primary-foreground hover:bg-primary/90">
-                  <Edit className="w-4 h-4 mr-2" />
-                  Editar
-                </Button>
-              </Link>
-            </>
-          }
+          actions={<ClientProfileHeaderActions clientId={id} backHref={backHref} />}
         />
 
         <div className="mt-4 md:mt-5">

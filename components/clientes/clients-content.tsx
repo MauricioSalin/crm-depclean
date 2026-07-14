@@ -48,6 +48,7 @@ import { toast } from "@/components/ui/use-toast"
 import Link from "next/link"
 import { usePathname, useSearchParams } from "next/navigation"
 import { buildPathWithSearchParams, withReturnTo } from "@/lib/navigation"
+import { useHasAnyPermission } from "@/hooks/use-permissions"
 
 interface ClientsContentProps {
   viewMode: "table" | "cards"
@@ -115,6 +116,8 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const mobileFiltersOpen = useMobileFiltersOpen()
+  const canEditClients = useHasAnyPermission(["clients_edit"])
+  const canDeleteClients = useHasAnyPermission(["clients_delete"])
   const [searchTerm, setSearchTerm] = useUrlQueryState("q")
   const [typeFilter, setTypeFilter] = useState<string>("all")
   const [currentPage, setCurrentPage] = useState(1)
@@ -372,17 +375,23 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
                                 Ver Detalhes
                               </Link>
                             </DropdownMenuItem>
-                            <DropdownMenuItem asChild>
-                              <Link href={getClientEditHref(client.id)}>
-                                <Edit className="w-4 h-4 mr-2" />
-                                Editar
-                              </Link>
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={() => setClientToRemove(client)}>
-                              <Trash2 className="w-4 h-4 mr-2" />
-                              Excluir
-                            </DropdownMenuItem>
+                            {canEditClients ? (
+                              <DropdownMenuItem asChild>
+                                <Link href={getClientEditHref(client.id)}>
+                                  <Edit className="w-4 h-4 mr-2" />
+                                  Editar
+                                </Link>
+                              </DropdownMenuItem>
+                            ) : null}
+                            {canDeleteClients ? (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem onClick={() => setClientToRemove(client)}>
+                                  <Trash2 className="w-4 h-4 mr-2" />
+                                  Excluir
+                                </DropdownMenuItem>
+                              </>
+                            ) : null}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
@@ -445,12 +454,14 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
                       </div>
                     </Link>
                     <div className="mt-auto flex gap-2 pt-3">
-                      <Button variant="outline" size="sm" className="flex-1" asChild>
-                        <Link href={getClientEditHref(client.id)}>
-                          <Edit className="w-4 h-4 mr-1" />
-                          Editar
-                        </Link>
-                      </Button>
+                      {canEditClients ? (
+                        <Button variant="outline" size="sm" className="flex-1" asChild>
+                          <Link href={getClientEditHref(client.id)}>
+                            <Edit className="w-4 h-4 mr-1" />
+                            Editar
+                          </Link>
+                        </Button>
+                      ) : null}
                       <Button size="sm" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground" asChild>
                         <Link href={getClientProfileHref(client.id)}>
                           <Eye className="w-4 h-4 mr-1" />

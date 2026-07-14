@@ -12,10 +12,12 @@ import Link from "next/link"
 import { FileUp, Plus, List, LayoutGrid } from "lucide-react"
 import { buildPathWithSearchParams, withReturnTo } from "@/lib/navigation"
 import { useResponsiveDefaultViewMode } from "@/hooks/use-responsive-default-view-mode"
+import { useHasAnyPermission } from "@/hooks/use-permissions"
 
 export default function ClientesPage() {
   const [viewMode, setViewMode] = useResponsiveDefaultViewMode("table", "cards")
   const [importOpen, setImportOpen] = useState(false)
+  const canCreateClients = useHasAnyPermission(["clients_create"])
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const currentHref = buildPathWithSearchParams(pathname, searchParams)
@@ -41,7 +43,7 @@ export default function ClientesPage() {
           description="Gerencie todos os clientes da Depclean."
           hasFilters
           viewToggle={toggle}
-          actions={
+          actions={canCreateClients ? (
             <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
               <Button
                 type="button"
@@ -61,10 +63,15 @@ export default function ClientesPage() {
                 </Button>
               </Link>
             </div>
-          }
+          ) : undefined}
         />
         <Suspense fallback={<ContentLoadingSkeleton className="mt-4 md:mt-5" />}>
-          <ClientsContent viewMode={viewMode} viewToggle={toggle} openImport={importOpen} onImportChange={setImportOpen} />
+          <ClientsContent
+            viewMode={viewMode}
+            viewToggle={toggle}
+            openImport={canCreateClients && importOpen}
+            onImportChange={setImportOpen}
+          />
         </Suspense>
       </main>
     </div>

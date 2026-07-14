@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
@@ -52,6 +52,7 @@ import { listServices, type ServiceRecurrenceRuleRecord } from "@/lib/api/servic
 import { listTeams } from "@/lib/api/teams"
 import { getContractClicksignSigningUrl } from "@/lib/clicksign"
 import { formatCivilDate } from "@/lib/date-utils"
+import { useHasAnyPermission } from "@/hooks/use-permissions"
 import { buildPathWithSearchParams, getSafeReturnTo, withReturnTo } from "@/lib/navigation"
 import { cn } from "@/lib/utils"
 
@@ -372,13 +373,51 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  const canEditContracts = useHasAnyPermission(["contracts_edit"])
+  const canManageContractInstallments = useHasAnyPermission(["contracts_edit", "financial_manage"])
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null)
+  const [serviceClausesOpen, setServiceClausesOpen] = useState(false)
+  const serviceClausesCloseTimeoutRef = useRef<number | null>(null)
   const [schedulePage, setSchedulePage] = useState(1)
   const [schedulePageSize, setSchedulePageSize] = useState(10)
   const [remindingSignerIds, setRemindingSignerIds] = useState<string[]>([])
   const activeTab = getContractDetailTabFromUrl(searchParams.get("tab"))
   const backHref = getSafeReturnTo(searchParams.get("returnTo"), "/contratos")
   const currentHref = buildPathWithSearchParams(pathname, searchParams)
+
+  const clearServiceClausesCloseTimeout = useCallback(() => {
+    if (serviceClausesCloseTimeoutRef.current === null) return
+    window.clearTimeout(serviceClausesCloseTimeoutRef.current)
+    serviceClausesCloseTimeoutRef.current = null
+  }, [])
+
+  const openServiceClauses = (serviceId: string) => {
+    clearServiceClausesCloseTimeout()
+    setSelectedServiceId(serviceId)
+    setServiceClausesOpen(true)
+  }
+
+  const closeServiceClauses = useCallback(() => {
+    setServiceClausesOpen(false)
+    clearServiceClausesCloseTimeout()
+    serviceClausesCloseTimeoutRef.current = window.setTimeout(() => {
+      setSelectedServiceId(null)
+      serviceClausesCloseTimeoutRef.current = null
+    }, 220)
+  }, [clearServiceClausesCloseTimeout])
+
+  useEffect(() => {
+    return () => clearServiceClausesCloseTimeout()
+  }, [clearServiceClausesCloseTimeout])
+
+  const handleServiceClausesOpenChange = (open: boolean) => {
+    if (open) {
+      setServiceClausesOpen(true)
+      return
+    }
+
+    closeServiceClauses()
+  }
 
   const handleTabChange = (value: string) => {
     if (!isContractDetailTab(value)) return
@@ -539,15 +578,20 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
     }: {
       installmentId: string
       status: "pending" | "paid" | "late" | "overdue" | "cancelled"
-    }) =>
-      updateInstallment(resolvedContractId, installmentId, {
+    }) => {
+      if (!canManageContractInstallments) {
+        throw new Error("Sem permissao para alterar parcelas.")
+      }
+
+      return updateInstallment(resolvedContractId, installmentId, {
         status,
         paidDate: status === "paid" ? new Date().toISOString() : undefined,
         paidValue:
           status === "paid" && contract
             ? contract.installments.find((installment) => installment.id === installmentId)?.value
             : undefined,
-      }),
+      })
+    },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["contract", contractId] })
       await queryClient.invalidateQueries({ queryKey: ["contract", resolvedContractId] })
@@ -574,7 +618,13 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
   }
 
   const sendClicksignMutation = useMutation({
-    mutationFn: () => sendContractToClicksign(resolvedContractId),
+    mutationFn: () => {
+      if (!canEditContracts) {
+        throw new Error("Sem permissao para enviar contrato ao ClickSign.")
+      }
+
+      return sendContractToClicksign(resolvedContractId)
+    },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["contract", contractId] })
       await queryClient.invalidateQueries({ queryKey: ["contract", resolvedContractId] })
@@ -588,7 +638,13 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
   })
 
   const remindSignerMutation = useMutation({
-    mutationFn: (signerId: string) => remindContractSigner(resolvedContractId, signerId),
+    mutationFn: (signerId: string) => {
+      if (!canEditContracts) {
+        throw new Error("Sem permissao para enviar lembrete.")
+      }
+
+      return remindContractSigner(resolvedContractId, signerId)
+    },
     onMutate: (signerId) => {
       setRemindingSignerIds((current) => current.includes(signerId) ? current : [...current, signerId])
     },
@@ -741,7 +797,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                     Baixar
                   </Button>
                 )
-              ) : contract.clicksign?.envelopeId ? null : (
+              ) : contract.clicksign?.envelopeId || !canEditContracts ? null : (
                 <Button
                   variant="outline"
                   size="sm"
@@ -847,7 +903,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                   <TableHead sortable={false}>Papel</TableHead>
                   <TableHead sortable={false}>E-mail</TableHead>
                   <TableHead sortable={false}>Status</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
+                  {canEditContracts ? <TableHead className="text-right">Ações</TableHead> : null}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -863,21 +919,23 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                       </TableCell>
                       <TableCell>{signer.email}</TableCell>
                       <TableCell>{getClicksignSignerStatusBadge(displayStatus)}</TableCell>
-                      <TableCell className="text-right">
-                        {isSignerReminderAvailable(displayStatus) ? (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="gap-2"
-                            onClick={() => remindSignerMutation.mutate(signer.signerId)}
-                            disabled={isSendingReminder}
-                          >
-                            <BellRing className="h-4 w-4" />
-                            {isSendingReminder ? "Enviando..." : "Lembrete"}
-                          </Button>
-                        ) : null}
-                      </TableCell>
+                      {canEditContracts ? (
+                        <TableCell className="text-right">
+                          {isSignerReminderAvailable(displayStatus) ? (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="gap-2"
+                              onClick={() => remindSignerMutation.mutate(signer.signerId)}
+                              disabled={isSendingReminder}
+                            >
+                              <BellRing className="h-4 w-4" />
+                              {isSendingReminder ? "Enviando..." : "Lembrete"}
+                            </Button>
+                          ) : null}
+                        </TableCell>
+                      ) : null}
                     </TableRow>
                   )
                 })}
@@ -1003,7 +1061,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                     <TableRow
                       key={service.id}
                       className="cursor-pointer"
-                      onClick={() => setSelectedServiceId(service.id)}
+                      onClick={() => openServiceClauses(service.id)}
                     >
                       <TableCell>
                         <div className="space-y-1">
@@ -1037,7 +1095,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                           size="icon"
                           onClick={(event) => {
                             event.stopPropagation()
-                            setSelectedServiceId(service.id)
+                            openServiceClauses(service.id)
                           }}
                         >
                           <Eye className="h-4 w-4" />
@@ -1061,7 +1119,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                   <TableHead>Valor</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Data de pagamento</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
+                  {canManageContractInstallments ? <TableHead className="text-right">Ações</TableHead> : null}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1074,50 +1132,52 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                     <TableCell>{formatCurrency(installment.value)}</TableCell>
                     <TableCell>{getInstallmentStatusBadge(installment.status)}</TableCell>
                     <TableCell>{formatDate(installment.paidDate)}</TableCell>
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" disabled={installmentMutation.isPending}>
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="max-h-none min-w-[190px] overflow-visible">
-                          <DropdownMenuItem
-                            className="h-9 rounded-lg"
-                            disabled={installmentMutation.isPending}
-                            onClick={() =>
-                              !installmentMutation.isPending &&
-                              installmentMutation.mutate({ installmentId: installment.id, status: "paid" })
-                            }
-                          >
-                            <CheckCircle className="mr-2 h-4 w-4" />
-                            Marcar como paga
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            className="h-9 rounded-lg"
-                            disabled={installmentMutation.isPending}
-                            onClick={() =>
-                              !installmentMutation.isPending &&
-                              installmentMutation.mutate({ installmentId: installment.id, status: "overdue" })
-                            }
-                          >
-                            <AlertTriangle className="mr-2 h-4 w-4" />
-                            Marcar como vencida
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            className="h-9 rounded-lg"
-                            disabled={installmentMutation.isPending}
-                            onClick={() =>
-                              !installmentMutation.isPending &&
-                              installmentMutation.mutate({ installmentId: installment.id, status: "pending" })
-                            }
-                          >
-                            <Clock className="mr-2 h-4 w-4" />
-                            Marcar como pendente
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
+                    {canManageContractInstallments ? (
+                      <TableCell className="text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" disabled={installmentMutation.isPending}>
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="max-h-none min-w-[190px] overflow-visible">
+                            <DropdownMenuItem
+                              className="h-9 rounded-lg"
+                              disabled={installmentMutation.isPending}
+                              onClick={() =>
+                                !installmentMutation.isPending &&
+                                installmentMutation.mutate({ installmentId: installment.id, status: "paid" })
+                              }
+                            >
+                              <CheckCircle className="mr-2 h-4 w-4" />
+                              Marcar como paga
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="h-9 rounded-lg"
+                              disabled={installmentMutation.isPending}
+                              onClick={() =>
+                                !installmentMutation.isPending &&
+                                installmentMutation.mutate({ installmentId: installment.id, status: "overdue" })
+                              }
+                            >
+                              <AlertTriangle className="mr-2 h-4 w-4" />
+                              Marcar como vencida
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="h-9 rounded-lg"
+                              disabled={installmentMutation.isPending}
+                              onClick={() =>
+                                !installmentMutation.isPending &&
+                                installmentMutation.mutate({ installmentId: installment.id, status: "pending" })
+                              }
+                            >
+                              <Clock className="mr-2 h-4 w-4" />
+                              Marcar como pendente
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    ) : null}
                   </TableRow>
                 ))}
               </TableBody>
@@ -1224,7 +1284,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
       </Tabs>
 
       <ServiceClausesDialog
-        open={Boolean(selectedService)}
+        open={serviceClausesOpen}
         title={
           selectedService
             ? serviceTypeMap.get(selectedService.serviceTypeId)?.name ?? "Cláusulas do serviço"
@@ -1241,7 +1301,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
             : []
         }
         clausePrefix={selectedService ? String(contract.services.findIndex((service) => service.id === selectedService.id) + 1) : undefined}
-        onOpenChange={(open) => !open && setSelectedServiceId(null)}
+        onOpenChange={handleServiceClausesOpenChange}
       />
 
     </div>

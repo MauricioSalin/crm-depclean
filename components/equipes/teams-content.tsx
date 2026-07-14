@@ -30,6 +30,7 @@ import { createTeam, deleteTeam, listTeams, updateTeam, type TeamRecord } from "
 import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 import { cn } from "@/lib/utils"
+import { useHasAnyPermission } from "@/hooks/use-permissions"
 
 type TeamView = TeamRecord & {
   members: EmployeeRecord[]
@@ -45,6 +46,7 @@ interface TeamsContentProps {
 export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle }: TeamsContentProps) {
   const queryClient = useQueryClient()
   const mobileFiltersOpen = useMobileFiltersOpen()
+  const canManageTeams = useHasAnyPermission(["teams_manage"])
   const [searchTerm, setSearchTerm] = useUrlQueryState("q")
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingTeam, setEditingTeam] = useState<TeamView | null>(null)
@@ -428,22 +430,24 @@ export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle 
                       ))}
                     </div>
                   </div>
-                  <div className="mt-auto grid grid-cols-2 gap-2 pt-4">
-                    <Button type="button" variant="outline" size="sm" className="h-8 rounded-full" onClick={() => handleEdit(team)}>
-                      <Edit className="mr-2 h-4 w-4" />
-                      Editar
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-8 rounded-full text-destructive hover:text-destructive"
-                      onClick={() => setPendingDelete({ id: team.id, label: team.name })}
-                    >
-                      <Trash2 className="mr-2 h-4 w-4" />
-                      Excluir
-                    </Button>
-                  </div>
+                  {canManageTeams ? (
+                    <div className="mt-auto grid grid-cols-2 gap-2 pt-4">
+                      <Button type="button" variant="outline" size="sm" className="h-8 rounded-full" onClick={() => handleEdit(team)}>
+                        <Edit className="mr-2 h-4 w-4" />
+                        Editar
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 rounded-full text-destructive hover:text-destructive"
+                        onClick={() => setPendingDelete({ id: team.id, label: team.name })}
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Excluir
+                      </Button>
+                    </div>
+                  ) : null}
                 </CardContent>
               </Card>
             ))}
@@ -457,7 +461,7 @@ export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle 
                   <TableHead>Equipe</TableHead>
                   <TableHead className="hidden sm:table-cell">Membros</TableHead>
                   <TableHead className="hidden md:table-cell">Integrantes</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
+                  {canManageTeams ? <TableHead className="text-right">Ações</TableHead> : null}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -468,11 +472,11 @@ export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle 
                       { withIcon: true, width: "w-36" },
                       { className: "hidden sm:table-cell", width: "w-24" },
                       { className: "hidden md:table-cell", width: "w-44" },
-                      { align: "right", width: "w-16" },
+                      ...(canManageTeams ? [{ align: "right" as const, width: "w-16" }] : []),
                     ]}
                   />
                 ) : teamsView.length === 0 ? (
-                  <TableEmptyState colSpan={4} icon={Users} title="Nenhuma equipe encontrada." />
+                  <TableEmptyState colSpan={canManageTeams ? 4 : 3} icon={Users} title="Nenhuma equipe encontrada." />
                 ) : paginatedTeams.map((team) => (
                   <TableRow key={team.id}>
                     <TableCell>
@@ -501,42 +505,44 @@ export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle 
                         ))}
                       </div>
                     </TableCell>
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={(event) => event.stopPropagation()}
-                            aria-label="Ações da equipe"
-                          >
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            className="cursor-pointer"
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              handleEdit(team)
-                            }}
-                          >
-                            <Edit className="mr-2 h-4 w-4" />
-                            Editar
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            className="cursor-pointer"
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              setPendingDelete({ id: team.id, label: team.name })
-                            }}
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Excluir
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
+                    {canManageTeams ? (
+                      <TableCell className="text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={(event) => event.stopPropagation()}
+                              aria-label="Ações da equipe"
+                            >
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              className="cursor-pointer"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                handleEdit(team)
+                              }}
+                            >
+                              <Edit className="mr-2 h-4 w-4" />
+                              Editar
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="cursor-pointer"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                setPendingDelete({ id: team.id, label: team.name })
+                              }}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Excluir
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    ) : null}
                   </TableRow>
                 ))}
               </TableBody>

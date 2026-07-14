@@ -9,11 +9,13 @@ import { ContentLoadingSkeleton } from "@/components/ui/content-loading-skeleton
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { FileUp, Plus, List, LayoutGrid } from "lucide-react"
 import { useResponsiveDefaultViewMode } from "@/hooks/use-responsive-default-view-mode"
+import { useHasAnyPermission } from "@/hooks/use-permissions"
 
 export default function FuncionariosPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
   const [viewMode, setViewMode] = useResponsiveDefaultViewMode("table", "cards")
+  const canCreateEmployees = useHasAnyPermission(["employees_create"])
 
   const toggle = (
     <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "table" | "cards")}>
@@ -36,7 +38,7 @@ export default function FuncionariosPage() {
           description="Gerencie os funcionários da Depclean."
           hasFilters
           viewToggle={toggle}
-          actions={
+          actions={canCreateEmployees ? (
             <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
               <Button
                 type="button"
@@ -57,15 +59,15 @@ export default function FuncionariosPage() {
                 <span className="truncate">Novo Funcionário</span>
               </Button>
             </div>
-          }
+          ) : undefined}
         />
         <Suspense fallback={<ContentLoadingSkeleton className="mt-4 md:mt-5" />}>
           <EmployeesContent
             viewMode={viewMode}
             viewToggle={toggle}
-            openDialog={dialogOpen}
+            openDialog={canCreateEmployees && dialogOpen}
             onDialogChange={setDialogOpen}
-            openImport={importOpen}
+            openImport={canCreateEmployees && importOpen}
             onImportChange={setImportOpen}
           />
         </Suspense>

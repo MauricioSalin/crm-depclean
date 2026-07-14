@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { AlertTriangle, CheckCircle2, Clock, Database, Search, UserRound, X } from "lucide-react"
 
@@ -145,6 +145,8 @@ function formatLogJson(value: unknown) {
 export function LogsContent() {
   const mobileFiltersOpen = useMobileFiltersOpen()
   const [selectedLog, setSelectedLog] = useState<AuditLogRecord | null>(null)
+  const [logDetailsOpen, setLogDetailsOpen] = useState(false)
+  const logDetailsCloseTimeoutRef = useRef<number | null>(null)
   const [search, setSearch] = useState("")
   const [from, setFrom] = useState("")
   const [to, setTo] = useState("")
@@ -155,6 +157,40 @@ export function LogsContent() {
   const [status, setStatus] = useState<"all" | "success" | "error">("all")
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
+
+  const clearLogDetailsCloseTimeout = useCallback(() => {
+    if (logDetailsCloseTimeoutRef.current === null) return
+    window.clearTimeout(logDetailsCloseTimeoutRef.current)
+    logDetailsCloseTimeoutRef.current = null
+  }, [])
+
+  const openLogDetails = (log: AuditLogRecord) => {
+    clearLogDetailsCloseTimeout()
+    setSelectedLog(log)
+    setLogDetailsOpen(true)
+  }
+
+  const closeLogDetails = useCallback(() => {
+    setLogDetailsOpen(false)
+    clearLogDetailsCloseTimeout()
+    logDetailsCloseTimeoutRef.current = window.setTimeout(() => {
+      setSelectedLog(null)
+      logDetailsCloseTimeoutRef.current = null
+    }, 220)
+  }, [clearLogDetailsCloseTimeout])
+
+  useEffect(() => {
+    return () => clearLogDetailsCloseTimeout()
+  }, [clearLogDetailsCloseTimeout])
+
+  const handleLogDetailsOpenChange = (open: boolean) => {
+    if (open) {
+      setLogDetailsOpen(true)
+      return
+    }
+
+    closeLogDetails()
+  }
 
   const logsQuery = useQuery({
     queryKey: ["audit-logs", search, from, to, clientId, employeeId, type, module, status, page, pageSize],
@@ -377,11 +413,11 @@ export function LogsContent() {
                   role="button"
                   tabIndex={0}
                   className="cursor-pointer hover:bg-muted/40"
-                  onClick={() => setSelectedLog(log)}
+                  onClick={() => openLogDetails(log)}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" || event.key === " ") {
                       event.preventDefault()
-                      setSelectedLog(log)
+                      openLogDetails(log)
                     }
                   }}
                 >
@@ -427,11 +463,11 @@ export function LogsContent() {
               role="button"
               tabIndex={0}
               className="cursor-pointer transition-colors hover:bg-muted/30"
-              onClick={() => setSelectedLog(log)}
+              onClick={() => openLogDetails(log)}
               onKeyDown={(event) => {
                 if (event.key === "Enter" || event.key === " ") {
                   event.preventDefault()
-                  setSelectedLog(log)
+                  openLogDetails(log)
                 }
               }}
             >
@@ -478,7 +514,7 @@ export function LogsContent() {
         }}
       />
 
-      <Dialog open={Boolean(selectedLog)} onOpenChange={(open) => !open && setSelectedLog(null)}>
+      <Dialog open={logDetailsOpen} onOpenChange={handleLogDetailsOpenChange}>
         <DialogContent className="flex max-h-[min(90dvh,760px)] min-w-0 flex-col gap-0 overflow-hidden p-0 max-sm:left-0 max-sm:top-0 max-sm:h-[100dvh] max-sm:max-h-none max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none max-sm:border-0 max-sm:[&_[data-slot=dialog-close]]:right-5 max-sm:[&_[data-slot=dialog-close]]:top-[calc(env(safe-area-inset-top)+1rem)] sm:max-w-3xl">
           <DialogHeader className="min-w-0 px-6 pb-3 pt-6 max-sm:px-5 max-sm:pt-[calc(env(safe-area-inset-top)+1.75rem)]">
             <DialogTitle>Detalhes do log</DialogTitle>

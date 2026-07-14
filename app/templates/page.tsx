@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ContentLoadingSkeleton } from "@/components/ui/content-loading-skeleton"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
+import { useHasAnyPermission } from "@/hooks/use-permissions"
 
 type TemplateTab = "contract" | "informative" | "certificate"
 
@@ -58,6 +59,7 @@ function TemplatesPageContent() {
   const [editorName, setEditorName] = useState("")
   const [editorCanSave, setEditorCanSave] = useState(false)
   const [editorSaving, setEditorSaving] = useState(false)
+  const canManageTemplates = useHasAnyPermission(["templates_manage"])
 
   const handleEditorStateChange = useCallback((state: EditorState) => {
     editorRef.current = state
@@ -164,7 +166,7 @@ function TemplatesPageContent() {
                   {editorSaving ? "Salvando..." : "Salvar Template"}
                 </Button>
               </>
-            ) : (
+            ) : canManageTemplates ? (
               <Button
                 type="button"
                 className="h-9 w-full min-w-0 bg-primary text-sm text-primary-foreground hover:bg-primary/90 sm:w-auto"
@@ -173,7 +175,7 @@ function TemplatesPageContent() {
                 <Plus className="h-4 w-4 shrink-0 sm:mr-2" />
                 <span className="truncate">Novo Template</span>
               </Button>
-            )
+            ) : undefined
           }
         />
 
@@ -224,7 +226,7 @@ function TemplatesPageContent() {
           >
             <TemplatesContent
               kind={activeTab}
-              openImport={importOpen}
+              openImport={canManageTemplates && importOpen}
               onImportChange={setImportOpen}
               onEditorStateChange={handleEditorStateChange}
               mobileTabs={mobileTemplateTabs}
