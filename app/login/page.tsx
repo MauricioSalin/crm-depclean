@@ -13,7 +13,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { confirmLoginCode, identifyLogin, login, requestLoginCode, requestPasswordReset } from "@/lib/api/auth"
+import { confirmLoginCode, identifyLogin, login, requestLoginCode, requestPasswordReset, type LoginCodeDeliveryChannel } from "@/lib/api/auth"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { isAuthenticated, persistSession } from "@/lib/auth/session"
 import { cn } from "@/lib/utils"
@@ -31,9 +31,11 @@ export default function LoginPage() {
   const [resetSubmitting, setResetSubmitting] = useState(false)
   const [loginCodeOpen, setLoginCodeOpen] = useState(false)
   const [loginCodeIdentifier, setLoginCodeIdentifier] = useState("")
+  const [loginCodeChannel, setLoginCodeChannel] = useState<LoginCodeDeliveryChannel>("whatsapp")
   const [loginCode, setLoginCode] = useState("")
   const [loginCodeSubmitting, setLoginCodeSubmitting] = useState(false)
   const loginCodeInputRefs = useRef<Array<HTMLInputElement | null>>([])
+  const loginCodeChannelLabel = loginCodeChannel === "email" ? "e-mail" : "WhatsApp"
 
   const loginMutation = useMutation({
     mutationFn: login,
@@ -76,11 +78,13 @@ export default function LoginPage() {
       try {
         const response = await identifyLogin({ identifier: trimmedIdentifier })
         if (response.data.authMode === "code") {
-          await requestLoginCode({ identifier: trimmedIdentifier })
+          const codeResponse = await requestLoginCode({ identifier: trimmedIdentifier })
+          const deliveryChannel = codeResponse.data.deliveryChannel ?? response.data.codeDeliveryChannel ?? "whatsapp"
           setLoginCodeIdentifier(trimmedIdentifier)
+          setLoginCodeChannel(deliveryChannel)
           setLoginCode("")
           setLoginCodeOpen(true)
-          toast.success("Enviamos um código pelo WhatsApp.")
+          toast.success(deliveryChannel === "email" ? "Enviamos um código por e-mail." : "Enviamos um código pelo WhatsApp.")
         } else {
           setLoginStep("password")
           setPassword("")
@@ -366,7 +370,7 @@ export default function LoginPage() {
           </DialogHeader>
           <form autoComplete="off" onSubmit={handleConfirmLoginCode} className="space-y-4">
             <p className="-mt-2 text-sm text-muted-foreground">
-              Informe o código enviado pelo WhatsApp para continuar.
+              Informe o código enviado por {loginCodeChannelLabel} para continuar.
             </p>
             <div className="flex justify-start gap-2">
                 {Array.from({ length: 6 }).map((_, index) => (

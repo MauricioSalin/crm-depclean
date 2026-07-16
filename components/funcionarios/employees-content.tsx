@@ -64,6 +64,10 @@ function generatePassword(length = 12) {
   return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join("")
 }
 
+function hasSystemAccessContact(employee: Pick<EmployeeRecord, "email" | "phone"> | EmployeePayload) {
+  return Boolean(employee.email?.trim() || employee.phone?.trim())
+}
+
 const EMPLOYEE_IMPORT_FIELDS: CsvImportField[] = [
   { key: "name", label: "Nome", required: true },
   { key: "email", label: "E-mail", required: false },
@@ -348,6 +352,10 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
     }
 
     if (!editingEmployee && createSystemUser) {
+      if (!hasSystemAccessContact(formData)) {
+        toast.error("Informe um e-mail ou telefone/WhatsApp para criar usuário do sistema.")
+        return
+      }
       if (permissionProfiles.length === 0) {
         toast.error("Não há perfis de permissão disponíveis para vincular.")
         return
@@ -446,6 +454,10 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
   }
 
   const handleMakeSystemUser = (employee: EmployeeRecord) => {
+    if (!hasSystemAccessContact(employee)) {
+      toast.error("Informe um e-mail ou telefone/WhatsApp no cadastro antes de transformar em usuário do sistema.")
+      return
+    }
     clearSystemUserDialogResetTimeout()
     setSystemUserEmployee(employee)
     setSystemUserForm({ password: generatePassword(), permissionProfileId: permissionProfiles[0]?.id ?? "" })
@@ -467,6 +479,10 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
     event.preventDefault()
     if (saving) return
     if (!systemUserEmployee) return
+    if (!hasSystemAccessContact(systemUserEmployee)) {
+      toast.error("Informe um e-mail ou telefone/WhatsApp no cadastro antes de transformar em usuário do sistema.")
+      return
+    }
     if (!systemUserForm.permissionProfileId) {
       toast.error("Selecione um perfil de permissão.")
       return

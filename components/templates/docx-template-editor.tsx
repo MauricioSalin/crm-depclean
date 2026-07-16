@@ -170,6 +170,7 @@ interface DocxTemplateEditorProps {
   baseFileName?: string
   kind: TemplateKind
   onBaseFileNameChange?: (fileName: string) => void
+  onDirtyChange?: (dirty: boolean) => void
   onVariableTokenClick?: (path: string) => void
   applyVariablesToEditor?: boolean
   previewDataKey?: string
@@ -305,6 +306,9 @@ type DocxLineSpacing = {
   lineRule: string
 }
 
+const DEFAULT_DOCX_PARAGRAPH_AFTER_TWIPS = "160"
+const TABLE_DOCX_PARAGRAPH_AFTER_TWIPS = "0"
+
 function getDocxLineSpacing(spacingXml: string): DocxLineSpacing | null {
   const line = spacingXml.match(/\sw:line="([^"]*)"/)?.[1]
   if (!line) return null
@@ -315,30 +319,44 @@ function getDocxLineSpacing(spacingXml: string): DocxLineSpacing | null {
   }
 }
 
-function buildDocxParagraphSpacingXml(lineSpacing?: DocxLineSpacing | null) {
-  const lineAttributes = lineSpacing ? ` w:line="${lineSpacing.line}" w:lineRule="${lineSpacing.lineRule}"` : ""
+function isDocxPositionInsideTable(xml: string, offset: number) {
+  const before = xml.slice(0, offset)
 
-  return `<w:spacing w:before="0" w:after="0"${lineAttributes}/>`
+  return before.lastIndexOf("<w:tbl") > before.lastIndexOf("</w:tbl>")
 }
 
-function normalizeDocxSpacingElement(spacingXml: string) {
+function getDocxParagraphAfterSpacing(xml: string, offset: number) {
+  return isDocxPositionInsideTable(xml, offset) ? TABLE_DOCX_PARAGRAPH_AFTER_TWIPS : DEFAULT_DOCX_PARAGRAPH_AFTER_TWIPS
+}
+
+function buildDocxParagraphSpacingXml(lineSpacing?: DocxLineSpacing | null, afterTwips = DEFAULT_DOCX_PARAGRAPH_AFTER_TWIPS) {
+  const lineAttributes = lineSpacing ? ` w:line="${lineSpacing.line}" w:lineRule="${lineSpacing.lineRule}"` : ""
+
+  return `<w:spacing w:before="0" w:after="${afterTwips}"${lineAttributes}/>`
+}
+
+function normalizeDocxSpacingElement(spacingXml: string, afterTwips = DEFAULT_DOCX_PARAGRAPH_AFTER_TWIPS) {
   const lineSpacing = getDocxLineSpacing(spacingXml)
 
-  return buildDocxParagraphSpacingXml(lineSpacing)
+  return buildDocxParagraphSpacingXml(lineSpacing, afterTwips)
 }
 
 function normalizeDocxParagraphSpacing(xml: string) {
   return xml
-    .replace(/(<w:pPr\b[^>]*>)([\s\S]*?)(<\/w:pPr>)/g, (_match, openTag, content, closeTag) => {
+    .replace(/(<w:pPr\b[^>]*>)([\s\S]*?)(<\/w:pPr>)/g, (_match, openTag, content, closeTag, offset) => {
+      const afterTwips = getDocxParagraphAfterSpacing(xml, offset)
       const normalizedContent = /<w:spacing\b[^>]*(?:\/>|><\/w:spacing>)/.test(content)
-        ? content.replace(/<w:spacing\b[^>]*(?:\/>|><\/w:spacing>)/g, normalizeDocxSpacingElement)
-        : `${buildDocxParagraphSpacingXml()}${content}`
+        ? content.replace(/<w:spacing\b[^>]*(?:\/>|><\/w:spacing>)/g, (spacingXml: string) =>
+            normalizeDocxSpacingElement(spacingXml, afterTwips),
+          )
+        : `${buildDocxParagraphSpacingXml(null, afterTwips)}${content}`
 
       return `${openTag}${normalizedContent}${closeTag}`
     })
     .replace(
       /<w:p(?!Pr)([^>]*)>(?!\s*<w:pPr\b)/g,
-      `<w:p$1><w:pPr>${buildDocxParagraphSpacingXml()}</w:pPr>`,
+      (_match: string, attributes: string, offset: number) =>
+        `<w:p${attributes}><w:pPr>${buildDocxParagraphSpacingXml(null, getDocxParagraphAfterSpacing(xml, offset))}</w:pPr>`,
     )
 }
 
@@ -1491,6 +1509,7 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
       baseFileName,
       kind,
       onBaseFileNameChange,
+      onDirtyChange,
       onVariableTokenClick,
       applyVariablesToEditor = false,
       previewDataKey,
@@ -1512,6 +1531,7 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
     const previewMountRef = useRef<HTMLDivElement | null>(null)
     const documentLabelRef = useRef("")
     const onBaseFileNameChangeRef = useRef(onBaseFileNameChange)
+    const onDirtyChangeRef = useRef(onDirtyChange)
     const onVariableTokenClickRef = useRef(onVariableTokenClick)
     const lastEditorSelectionRef = useRef<Range | null>(null)
     const lastProseMirrorSelectionRef = useRef<ProseMirrorSelectionSnapshot | null>(null)
@@ -1525,6 +1545,7 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
     const savedBufferRef = useRef<ArrayBuffer | null>(null)
     const sourceBufferRef = useRef<ArrayBuffer | null>(null)
     const latestDocumentRef = useRef<unknown | null>(null)
+    const dirtyTrackingReadyRef = useRef(false)
     const activeTableResizePmStartRef = useRef<number | null>(null)
     const activeTableWidthResizeRef = useRef<ActiveTableWidthResize | null>(null)
     const activeContextTablePmStartRef = useRef<number | null>(null)
@@ -1581,6 +1602,10 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
     useEffect(() => {
       onBaseFileNameChangeRef.current = onBaseFileNameChange
     }, [onBaseFileNameChange])
+
+    useEffect(() => {
+      onDirtyChangeRef.current = onDirtyChange
+    }, [onDirtyChange])
 
     useEffect(() => {
       onVariableTokenClickRef.current = onVariableTokenClick
@@ -2162,6 +2187,8 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
           : buffer
       const normalizedBuffer = await normalizeDocxTemplateBuffer(filledBuffer)
 
+      dirtyTrackingReadyRef.current = false
+      onDirtyChangeRef.current?.(false)
       setEditorRenderKey((current) => current + 1)
       setSourceBuffer(cloneBuffer(normalizedBuffer))
       setPreviewBuffer(cloneBuffer(normalizedBuffer))
@@ -2252,6 +2279,7 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
 
       latestDocumentRef.current = null
       editorViewRef.current = null
+      dirtyTrackingReadyRef.current = false
       safeDestroy(editorHandleRef.current)
       editorHandleRef.current = null
       if (editorMountRef.current?.parentNode === host) {
@@ -2276,6 +2304,9 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
             mode: "editing",
             onChange: (document: unknown) => {
               latestDocumentRef.current = document
+              if (dirtyTrackingReadyRef.current) {
+                onDirtyChangeRef.current?.(true)
+              }
               const view = editorViewRef.current
               if (view) {
                 window.requestAnimationFrame(() => normalizeAllDocxTableColumnWidths(view, host))
@@ -2287,6 +2318,11 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
               normalizeAllDocxTableColumnWidths(editorView, host)
               window.requestAnimationFrame(() => normalizeAllDocxTableColumnWidths(editorView, host))
               rememberProseMirrorSelection(editorView)
+              window.setTimeout(() => {
+                if (!cancelled) {
+                  dirtyTrackingReadyRef.current = true
+                }
+              }, 800)
             },
             onError: (error: Error) => setErrorMessage(error.message),
             onFontsLoaded: () => {
@@ -2561,6 +2597,7 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
           throw new Error("Clique no ponto do documento onde a variável deve entrar e tente novamente.")
         }
 
+        onDirtyChangeRef.current?.(true)
         window.setTimeout(() => {
           captureEditorSelection()
         }, 0)

@@ -120,6 +120,44 @@ type TemplateFormState = {
   certificateValidityMonths: number
 }
 
+function createEmptyTemplateFormState(): TemplateFormState {
+  return {
+    name: "",
+    description: "",
+    baseFileName: "",
+    format: "docx",
+    html: "",
+    signerId: "",
+    witnessSignerId: "",
+    isActive: true,
+    watermarkFileName: "",
+    watermarkFileUrl: "",
+    informativeSendDaysBefore: 1,
+    certificateValidityMonths: 6,
+  }
+}
+
+function createTemplateFormState(template: TemplateRecord): TemplateFormState {
+  return {
+    name: template.name,
+    description: template.description,
+    baseFileName: template.baseFileName || "",
+    format: template.format || "docx",
+    html: template.html || "",
+    signerId: template.signerId,
+    witnessSignerId: template.witnessSignerId || "",
+    isActive: template.isActive,
+    watermarkFileName: template.watermarkFileName || "",
+    watermarkFileUrl: template.watermarkFileUrl || "",
+    informativeSendDaysBefore: template.informativeSendDaysBefore ?? 1,
+    certificateValidityMonths: template.certificateValidityMonths ?? 6,
+  }
+}
+
+function serializeTemplateFormState(state: TemplateFormState) {
+  return JSON.stringify(state)
+}
+
 type TemplateEditorTab = "editor" | "preview"
 
 function getTemplateEditorTab(value: string | null): TemplateEditorTab {
@@ -564,6 +602,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
   const canManageTemplates = useHasAnyPermission(["templates_manage"])
   const docxEditorRef = useRef<DocxTemplateEditorRef | null>(null)
   const closingEditorRef = useRef(false)
+  const initialFormSnapshotRef = useRef(serializeTemplateFormState(createEmptyTemplateFormState()))
   const routeTemplateId = searchParams.get("template")
   const routeTemplateMode = searchParams.get("templateMode")
   const routeEditorTab = getTemplateEditorTab(searchParams.get("view"))
@@ -580,21 +619,10 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false)
   const [selectedWatermarkFile, setSelectedWatermarkFile] = useState<File | null>(null)
   const [selectedWatermarkPreviewUrl, setSelectedWatermarkPreviewUrl] = useState("")
+  const [isDocumentDirty, setIsDocumentDirty] = useState(false)
+  const [discardChangesOpen, setDiscardChangesOpen] = useState(false)
 
-  const [formData, setFormData] = useState<TemplateFormState>({
-    name: "",
-    description: "",
-    baseFileName: "",
-    format: "docx",
-    html: "",
-    signerId: "",
-    witnessSignerId: "",
-    isActive: true,
-    watermarkFileName: "",
-    watermarkFileUrl: "",
-    informativeSendDaysBefore: 1,
-    certificateValidityMonths: 6,
-  })
+  const [formData, setFormData] = useState<TemplateFormState>(() => createEmptyTemplateFormState())
 
   const templatesQuery = useQuery({
     queryKey: ["templates", kind, searchTerm],
@@ -703,6 +731,10 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
     schedulesQuery.dataUpdatedAt,
     servicesQuery.dataUpdatedAt,
   ].join(":")
+  const currentFormSnapshot = useMemo(() => serializeTemplateFormState(formData), [formData])
+  const hasUnsavedTemplateChanges =
+    isEditorOpen &&
+    (currentFormSnapshot !== initialFormSnapshotRef.current || Boolean(selectedWatermarkFile) || isDocumentDirty)
 
   const replaceRouteParams = useCallback(
     (updates: Record<string, string | null>) => {
@@ -740,20 +772,11 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
     setPreviewDocumentId("")
     setSelectedWatermarkFile(null)
     setSelectedWatermarkPreviewUrl("")
-    setFormData({
-      name: "",
-      description: "",
-      baseFileName: "",
-      format: "docx",
-      html: "",
-      signerId: "",
-      witnessSignerId: "",
-      isActive: true,
-      watermarkFileName: "",
-      watermarkFileUrl: "",
-      informativeSendDaysBefore: 1,
-      certificateValidityMonths: 6,
-    })
+    setIsDocumentDirty(false)
+    setDiscardChangesOpen(false)
+    const emptyForm = createEmptyTemplateFormState()
+    initialFormSnapshotRef.current = serializeTemplateFormState(emptyForm)
+    setFormData(emptyForm)
   }, [kind])
 
   useEffect(() => {
@@ -806,23 +829,14 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
   }, [kind, previewClientId])
 
   function prepareNewTemplateForm() {
+    const emptyForm = createEmptyTemplateFormState()
     setEditingTemplate(null)
     setSelectedWatermarkFile(null)
     setSelectedWatermarkPreviewUrl("")
-    setFormData({
-      name: "",
-      description: "",
-      baseFileName: "",
-      format: "docx",
-      html: "",
-      signerId: "",
-      witnessSignerId: "",
-      isActive: true,
-      watermarkFileName: "",
-      watermarkFileUrl: "",
-      informativeSendDaysBefore: 1,
-      certificateValidityMonths: 6,
-    })
+    setIsDocumentDirty(false)
+    setDiscardChangesOpen(false)
+    initialFormSnapshotRef.current = serializeTemplateFormState(emptyForm)
+    setFormData(emptyForm)
   }
 
   useEffect(() => {
@@ -883,23 +897,20 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
       })
       queryClient.invalidateQueries({ queryKey: ["templates"] })
       setEditingTemplate(savedTemplate)
-      setFormData((current) => ({
-        ...current,
-        name: savedTemplate.name,
-        description: savedTemplate.description,
-        baseFileName: savedTemplate.baseFileName || current.baseFileName,
-        format: savedTemplate.format || "docx",
-        html: savedTemplate.html || "",
-        signerId: savedTemplate.signerId || "",
-        witnessSignerId: savedTemplate.witnessSignerId || "",
-        isActive: savedTemplate.isActive,
-        watermarkFileName: savedTemplate.watermarkFileName || "",
-        watermarkFileUrl: savedTemplate.watermarkFileUrl || "",
-        informativeSendDaysBefore: savedTemplate.informativeSendDaysBefore ?? current.informativeSendDaysBefore,
-        certificateValidityMonths: savedTemplate.certificateValidityMonths ?? current.certificateValidityMonths,
-      }))
+      setFormData((current) => {
+        const nextFormData = {
+          ...createTemplateFormState(savedTemplate),
+          baseFileName: savedTemplate.baseFileName || current.baseFileName,
+          informativeSendDaysBefore: savedTemplate.informativeSendDaysBefore ?? current.informativeSendDaysBefore,
+          certificateValidityMonths: savedTemplate.certificateValidityMonths ?? current.certificateValidityMonths,
+        }
+        initialFormSnapshotRef.current = serializeTemplateFormState(nextFormData)
+        return nextFormData
+      })
       setSelectedWatermarkFile(null)
       setSelectedWatermarkPreviewUrl("")
+      setIsDocumentDirty(false)
+      setDiscardChangesOpen(false)
       replaceRouteParams({
         template: savedTemplate.id,
         templateMode: null,
@@ -998,24 +1009,15 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
   })
 
   function openTemplateEditor(template: TemplateRecord, nextTab: TemplateEditorTab = "editor") {
+    const nextFormData = createTemplateFormState(template)
     closingEditorRef.current = false
     setEditingTemplate(template)
     setSelectedWatermarkFile(null)
     setSelectedWatermarkPreviewUrl("")
-    setFormData({
-      name: template.name,
-      description: template.description,
-      baseFileName: template.baseFileName || "",
-      format: template.format || "docx",
-      html: template.html || "",
-      signerId: template.signerId,
-      witnessSignerId: template.witnessSignerId || "",
-      isActive: template.isActive,
-      watermarkFileName: template.watermarkFileName || "",
-      watermarkFileUrl: template.watermarkFileUrl || "",
-      informativeSendDaysBefore: template.informativeSendDaysBefore ?? 1,
-      certificateValidityMonths: template.certificateValidityMonths ?? 6,
-    })
+    setIsDocumentDirty(false)
+    setDiscardChangesOpen(false)
+    initialFormSnapshotRef.current = serializeTemplateFormState(nextFormData)
+    setFormData(nextFormData)
     setEditorTab(nextTab)
     setPreviewClientId("")
     setPreviewDocumentId("")
@@ -1023,24 +1025,15 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
   }
 
   function openNewTemplateEditor(nextTab: TemplateEditorTab = "editor") {
+    const emptyForm = createEmptyTemplateFormState()
     closingEditorRef.current = false
     setEditingTemplate(null)
     setSelectedWatermarkFile(null)
     setSelectedWatermarkPreviewUrl("")
-    setFormData({
-      name: "",
-      description: "",
-      baseFileName: "",
-      format: "docx",
-      html: "",
-      signerId: "",
-      witnessSignerId: "",
-      isActive: true,
-      watermarkFileName: "",
-      watermarkFileUrl: "",
-      informativeSendDaysBefore: 1,
-      certificateValidityMonths: 6,
-    })
+    setIsDocumentDirty(false)
+    setDiscardChangesOpen(false)
+    initialFormSnapshotRef.current = serializeTemplateFormState(emptyForm)
+    setFormData(emptyForm)
     setEditorTab(nextTab)
     setPreviewClientId("")
     setPreviewDocumentId("")
@@ -1101,16 +1094,33 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
     })
   }
 
-  function handleCancel() {
+  function closeTemplateEditor() {
     closingEditorRef.current = true
     setIsEditorOpen(false)
     setEditingTemplate(null)
+    setIsDocumentDirty(false)
+    setDiscardChangesOpen(false)
     replaceRouteParams({
       tab: kind,
       template: null,
       templateMode: null,
       view: null,
     })
+  }
+
+  function handleCancel() {
+    if (saveMutation.isPending) return
+
+    if (hasUnsavedTemplateChanges) {
+      setDiscardChangesOpen(true)
+      return
+    }
+
+    closeTemplateEditor()
+  }
+
+  function handleConfirmDiscardChanges() {
+    closeTemplateEditor()
   }
 
   function handleEditorTabChange(nextTab: TemplateEditorTab) {
@@ -1220,6 +1230,17 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
 
   if (isEditorOpen) {
     return (
+      <>
+      <ConfirmActionDialog
+        open={discardChangesOpen}
+        onOpenChange={setDiscardChangesOpen}
+        title="Descartar alterações?"
+        description="Você tem alterações não salvas neste template. Ao descartar, elas serão perdidas."
+        confirmLabel="Descartar"
+        cancelLabel="Continuar editando"
+        onConfirm={handleConfirmDiscardChanges}
+        confirmVariant="destructive"
+      />
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_360px] 2xl:grid-cols-[minmax(0,1fr)_400px]">
         <Tabs
           value={editorTab}
@@ -1249,6 +1270,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
                 format: "docx",
               }))
             }
+            onDirtyChange={setIsDocumentDirty}
             onVariableTokenClick={handleSelectVariablePath}
             previewDataKey={previewDataKey}
             previewVariables={previewVariables}
@@ -1586,6 +1608,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
           </CardContent>
         </Card>
       </div>
+      </>
     )
   }
 

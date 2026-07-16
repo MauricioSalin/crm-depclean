@@ -350,6 +350,10 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
           estimatedDuration: scheduleDurationToMinutes(formData.duration, formData.durationType),
           durationValue: formData.duration,
           durationType: formData.durationType,
+          informativeTemplateId: formData.informativeTemplateId,
+          certificateTemplateId: formData.certificateTemplateId,
+          autoSendInformative: formData.autoSendInformative,
+          generateCertificateRequest: formData.generateCertificateRequest,
           notes: formData.notes,
         })
       }
@@ -365,6 +369,10 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
         estimatedDuration: scheduleDurationToMinutes(formData.duration, formData.durationType),
         durationValue: formData.duration,
         durationType: formData.durationType,
+        informativeTemplateId: formData.informativeTemplateId,
+        certificateTemplateId: formData.certificateTemplateId,
+        autoSendInformative: formData.autoSendInformative,
+        generateCertificateRequest: formData.generateCertificateRequest,
         isEmergency: formData.isEmergency,
         billable: formData.createContract,
         value: formData.createContract ? formData.value : 0,

@@ -178,6 +178,9 @@ interface ContractService {
   id: string
   serviceTypeId: string
   informativeTemplateId: string
+  certificateTemplateId: string
+  autoSendInformative: boolean
+  generateCertificateRequest: boolean
   teamIds: string[]
   employeeIds: string[]
   recurrence: string
@@ -206,6 +209,7 @@ const recurrenceOptions = [
 ]
 
 const NO_INFORMATIVE_TEMPLATE_VALUE = "__none__"
+const NO_CERTIFICATE_TEMPLATE_VALUE = "__none__"
 
 function isPresent<T>(value: T | null | undefined): value is T {
   return value != null
@@ -239,6 +243,10 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
     queryKey: ["templates", "contract-form", "informative"],
     queryFn: () => listTemplates("", "informative"),
   })
+  const certificateTemplatesQuery = useQuery({
+    queryKey: ["templates", "contract-form", "certificate"],
+    queryFn: () => listTemplates("", "certificate"),
+  })
   const teamsQuery = useQuery({
     queryKey: ["teams", "catalog"],
     queryFn: () => listTeams(),
@@ -265,6 +273,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
   const serviceTypes = servicesQuery.data?.data ?? []
   const templates = templatesQuery.data?.data ?? []
   const informativeTemplates = informativeTemplatesQuery.data?.data ?? []
+  const certificateTemplates = certificateTemplatesQuery.data?.data ?? []
   const teams = teamsQuery.data?.data ?? []
   const employees = employeesQuery.data?.data ?? []
   const clientTypes = clientTypesQuery.data?.data.items ?? []
@@ -333,10 +342,15 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
   const [services, setServices] = useState<ContractService[]>(
     contract?.services.map((s) => {
       const legacyTeamId = (s as any).teamId
+      const informativeTemplateId = (s as any).informativeTemplateId ?? (contract as any)?.automationInformativeTemplateId ?? ""
+      const certificateTemplateId = (s as any).certificateTemplateId ?? (contract as any)?.automationCertificateTemplateId ?? ""
       return {
         id: s.id,
         serviceTypeId: s.serviceTypeId,
-        informativeTemplateId: (s as any).informativeTemplateId ?? (contract as any)?.automationInformativeTemplateId ?? "",
+        informativeTemplateId,
+        certificateTemplateId,
+        autoSendInformative: Boolean(informativeTemplateId) || (s as any).autoSendInformative === true,
+        generateCertificateRequest: Boolean(certificateTemplateId) || (s as any).generateCertificateRequest === true,
         teamIds: (s as any).teamIds ?? (legacyTeamId ? [legacyTeamId] : []),
         employeeIds: (s as any).additionalEmployeeIds ?? (s as any).employeeIds ?? [],
         recurrence: (s as any).recurrence ?? "monthly",
@@ -400,6 +414,10 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
     () => informativeTemplates.filter((template) => template.isActive && template.format === "docx"),
     [informativeTemplates],
   )
+  const activeCertificateTemplates = useMemo(
+    () => certificateTemplates.filter((template) => template.isActive && template.format === "docx"),
+    [certificateTemplates],
+  )
   const editingService = services.find(s => s.id === editingServiceId)
   const clausesEditingService = services.find((service) => service.id === clausesServiceId) ?? null
   const clausesEditingServiceType = clausesEditingService
@@ -431,6 +449,9 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
       id: service.id,
       serviceTypeId: service.serviceTypeId,
       informativeTemplateId: service.informativeTemplateId ?? contract.automationInformativeTemplateId ?? "",
+      certificateTemplateId: service.certificateTemplateId ?? contract.automationCertificateTemplateId ?? "",
+      autoSendInformative: service.autoSendInformative ?? false,
+      generateCertificateRequest: service.generateCertificateRequest ?? false,
       teamIds: service.teamIds ?? [],
       employeeIds: service.additionalEmployeeIds ?? [],
       recurrence: service.recurrence ?? "monthly",
@@ -503,7 +524,10 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
           teamIds: defaultSelection.teamIds,
           employeeIds: defaultSelection.employeeIds,
           clauses: service.clauses.length > 0 ? service.clauses : [...(serviceType.clauses ?? [])],
-          informativeTemplateId: service.informativeTemplateId || serviceType.defaultInformativeTemplateId || "",
+          informativeTemplateId: service.autoSendInformative ? service.informativeTemplateId : "",
+          certificateTemplateId: service.generateCertificateRequest ? service.certificateTemplateId : "",
+          autoSendInformative: service.autoSendInformative,
+          generateCertificateRequest: service.generateCertificateRequest,
         }
       }),
     )
@@ -677,7 +701,10 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
           additionalEmployeeIds: service.employeeIds,
           unitIds: selectedUnitIds,
           clauses: service.clauses?.length ? service.clauses : serviceType?.clauses ?? [],
-          informativeTemplateId: service.informativeTemplateId,
+          informativeTemplateId: service.autoSendInformative ? service.informativeTemplateId : "",
+          certificateTemplateId: service.generateCertificateRequest ? service.certificateTemplateId : "",
+          autoSendInformative: service.autoSendInformative,
+          generateCertificateRequest: service.generateCertificateRequest,
           recurrence: service.recurrence || serviceType?.defaultRecurrence || "monthly",
           duration: Math.max(1, Number(service.duration || serviceType?.defaultDuration || 1)),
           durationType: service.durationType || serviceType?.durationType || "hours",
@@ -908,6 +935,9 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
         id: `temp-${Date.now()}`,
         serviceTypeId: "",
         informativeTemplateId: "",
+        certificateTemplateId: "",
+        autoSendInformative: false,
+        generateCertificateRequest: false,
         teamIds: [],
         employeeIds: [],
         recurrence: "monthly",
@@ -922,11 +952,13 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
     setServices(services.filter(s => s.id !== id))
   }
 
-  const updateService = (id: string, field: keyof ContractService, value: string | number | string[]) => {
+  const updateService = (id: string, field: keyof ContractService, value: string | number | string[] | boolean) => {
     setServices(services.map(s => {
       if (s.id !== id) return s
       if (field === "serviceTypeId") {
         const serviceType = serviceTypes.find(st => st.id === value)
+        const autoSendInformative = serviceType?.autoSendInformative === true
+        const generateCertificateRequest = serviceType?.generateCertificateRequest === true
         const defaultSelection = normalizeTeamEmployeeSelection({
           teamIds: [...(serviceType?.teamIds ?? [])],
           employeeIds: [...(serviceType?.employeeIds ?? [])],
@@ -935,13 +967,48 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
         return {
           ...s,
           [field]: value as string,
-          informativeTemplateId: serviceType?.defaultInformativeTemplateId || "",
+          informativeTemplateId: autoSendInformative ? serviceType?.defaultInformativeTemplateId || "" : "",
+          certificateTemplateId: generateCertificateRequest ? serviceType?.defaultCertificateTemplateId || "" : "",
+          autoSendInformative,
+          generateCertificateRequest,
           teamIds: defaultSelection.teamIds,
           employeeIds: defaultSelection.employeeIds,
           recurrence: serviceType?.defaultRecurrence || "monthly",
           duration: Number(serviceType?.defaultDuration ?? 1),
           durationType: serviceType?.durationType || "hours",
           clauses: [...(serviceType?.clauses ?? [])],
+        }
+      }
+      if (field === "autoSendInformative") {
+        const autoSendInformative = value === true
+        return {
+          ...s,
+          autoSendInformative,
+          informativeTemplateId: autoSendInformative ? s.informativeTemplateId : "",
+        }
+      }
+      if (field === "generateCertificateRequest") {
+        const generateCertificateRequest = value === true
+        return {
+          ...s,
+          generateCertificateRequest,
+          certificateTemplateId: generateCertificateRequest ? s.certificateTemplateId : "",
+        }
+      }
+      if (field === "informativeTemplateId") {
+        const informativeTemplateId = value as string
+        return {
+          ...s,
+          informativeTemplateId,
+          autoSendInformative: Boolean(informativeTemplateId),
+        }
+      }
+      if (field === "certificateTemplateId") {
+        const certificateTemplateId = value as string
+        return {
+          ...s,
+          certificateTemplateId,
+          generateCertificateRequest: Boolean(certificateTemplateId),
         }
       }
       return { ...s, [field]: value }
@@ -1081,11 +1148,6 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
 
     if (services.filter((service) => service.serviceTypeId).length === 0) {
       toast.error("Adicione ao menos um serviço ao contrato.")
-      return
-    }
-
-    if (createAutomatedInformatives && services.some((service) => service.serviceTypeId && !service.informativeTemplateId)) {
-      toast.error("Selecione o template de informativo em todos os serviços do contrato.")
       return
     }
 
@@ -1744,11 +1806,12 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
 
         {services.length > 0 ? (
           <div className="overflow-x-auto rounded-lg">
-            <Table className="min-w-[1440px]">
+            <Table className="min-w-[1760px]">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
                   <TableHead className="w-[300px]">Serviço</TableHead>
                   <TableHead className="w-[260px]">Informativo</TableHead>
+                  <TableHead className="w-[260px]">Certificado</TableHead>
                   <TableHead className="w-[210px]">Duração</TableHead>
                   <TableHead className="w-[180px]">Recorrência</TableHead>
                   <TableHead>Equipes / Funcionários</TableHead>
@@ -1778,29 +1841,78 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
                         </Select>
                       </TableCell>
                       <TableCell className="w-[260px] py-3 align-top">
-                        <Select
-                          value={service.informativeTemplateId || NO_INFORMATIVE_TEMPLATE_VALUE}
-                          onValueChange={(value) =>
-                            updateService(
-                              service.id,
-                              "informativeTemplateId",
-                              value === NO_INFORMATIVE_TEMPLATE_VALUE ? "" : value,
-                            )
-                          }
-                          disabled={!service.serviceTypeId || activeInformativeTemplates.length === 0}
-                        >
-                          <SelectTrigger className="w-full min-w-[230px]">
-                            <SelectValue placeholder={activeInformativeTemplates.length > 0 ? "Selecione" : "Nenhum template"} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value={NO_INFORMATIVE_TEMPLATE_VALUE}>Sem informativo</SelectItem>
-                            {activeInformativeTemplates.map((template) => (
-                              <SelectItem key={template.id} value={template.id}>
-                                {template.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <div className="space-y-2">
+                          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <Checkbox
+                              checked={service.autoSendInformative}
+                              onCheckedChange={(checked) => updateService(service.id, "autoSendInformative", checked === true)}
+                              disabled={!service.serviceTypeId}
+                            />
+                            Enviar automaticamente
+                          </label>
+                          {service.autoSendInformative ? (
+                            <Select
+                              value={service.informativeTemplateId || NO_INFORMATIVE_TEMPLATE_VALUE}
+                              onValueChange={(value) =>
+                                updateService(
+                                  service.id,
+                                  "informativeTemplateId",
+                                  value === NO_INFORMATIVE_TEMPLATE_VALUE ? "" : value,
+                                )
+                              }
+                              disabled={!service.serviceTypeId || activeInformativeTemplates.length === 0}
+                            >
+                              <SelectTrigger className="w-full min-w-[230px]">
+                                <SelectValue placeholder={activeInformativeTemplates.length > 0 ? "Selecione" : "Nenhum template"} />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value={NO_INFORMATIVE_TEMPLATE_VALUE}>Sem informativo</SelectItem>
+                                {activeInformativeTemplates.map((template) => (
+                                  <SelectItem key={template.id} value={template.id}>
+                                    {template.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : null}
+                        </div>
+                      </TableCell>
+                      <TableCell className="w-[260px] py-3 align-top">
+                        <div className="space-y-2">
+                          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <Checkbox
+                              checked={service.generateCertificateRequest}
+                              onCheckedChange={(checked) => updateService(service.id, "generateCertificateRequest", checked === true)}
+                              disabled={!service.serviceTypeId}
+                            />
+                            Gerar solicitação
+                          </label>
+                          {service.generateCertificateRequest ? (
+                            <Select
+                              value={service.certificateTemplateId || NO_CERTIFICATE_TEMPLATE_VALUE}
+                              onValueChange={(value) =>
+                                updateService(
+                                  service.id,
+                                  "certificateTemplateId",
+                                  value === NO_CERTIFICATE_TEMPLATE_VALUE ? "" : value,
+                                )
+                              }
+                              disabled={!service.serviceTypeId || activeCertificateTemplates.length === 0}
+                            >
+                              <SelectTrigger className="w-full min-w-[230px]">
+                                <SelectValue placeholder={activeCertificateTemplates.length > 0 ? "Selecione" : "Nenhum template"} />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value={NO_CERTIFICATE_TEMPLATE_VALUE}>Sem certificado</SelectItem>
+                                {activeCertificateTemplates.map((template) => (
+                                  <SelectItem key={template.id} value={template.id}>
+                                    {template.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : null}
+                        </div>
                       </TableCell>
                       <TableCell className="py-3 align-top">
                         <div className="flex gap-2">

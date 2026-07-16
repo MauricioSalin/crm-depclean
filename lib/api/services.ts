@@ -11,11 +11,16 @@ export type ServiceRecord = {
   id: string
   name: string
   description: string
+  serviceKind: "standard" | "grouped" | "component"
+  componentServiceIds: string[]
   baseValue: number
   defaultDuration: number
   durationType: "hours" | "shift" | "days"
   defaultRecurrence: string
   defaultInformativeTemplateId: string
+  defaultCertificateTemplateId: string
+  autoSendInformative: boolean
+  generateCertificateRequest: boolean
   recurrenceRules: ServiceRecurrenceRuleRecord[]
   teamIds: string[]
   employeeIds: string[]
@@ -28,15 +33,20 @@ export type ServiceRecord = {
 export type ServicePayload = {
   name: string
   description?: string
+  serviceKind?: "standard" | "grouped" | "component"
+  componentServiceIds?: string[]
   baseValue?: number
   defaultDuration: number
   durationType: "hours" | "shift" | "days"
   defaultRecurrence: string
   defaultInformativeTemplateId?: string
+  defaultCertificateTemplateId?: string
+  autoSendInformative?: boolean
+  generateCertificateRequest?: boolean
   recurrenceRules?: ServiceRecurrenceRuleRecord[]
   teamIds?: string[]
   employeeIds?: string[]
-  clauses: string[]
+  clauses?: string[]
   isActive?: boolean
 }
 

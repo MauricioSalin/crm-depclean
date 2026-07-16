@@ -9,6 +9,7 @@ type ConfirmActionDialogProps = {
   title: string
   description: string
   confirmLabel: string
+  cancelLabel?: string
   onOpenChange: (open: boolean) => void
   onConfirm: () => void | Promise<void>
   confirmVariant?: "default" | "destructive"
@@ -21,6 +22,7 @@ export function ConfirmActionDialog({
   title,
   description,
   confirmLabel,
+  cancelLabel = "Voltar",
   onOpenChange,
   onConfirm,
   confirmVariant = "destructive",
@@ -36,7 +38,7 @@ export function ConfirmActionDialog({
         </DialogHeader>
         <DialogFooter className="gap-2 sm:gap-2">
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-            Voltar
+            {cancelLabel}
           </Button>
           <Button
             type="button"

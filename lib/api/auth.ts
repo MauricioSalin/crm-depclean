@@ -14,8 +14,11 @@ export type IdentifyLoginResponse = {
   success: true
   data: {
     authMode: "password" | "code"
+    codeDeliveryChannel: LoginCodeDeliveryChannel | null
   }
 }
+
+export type LoginCodeDeliveryChannel = "whatsapp" | "email"
 
 export type RequestLoginCodePayload = {
   identifier: string
@@ -47,7 +50,7 @@ export async function identifyLogin(payload: IdentifyLoginPayload) {
 }
 
 export async function requestLoginCode(payload: RequestLoginCodePayload) {
-  const response = await api.post<{ success: true; data: null }>("/auth/login-code/request", payload)
+  const response = await api.post<{ success: true; data: { deliveryChannel: LoginCodeDeliveryChannel | null } }>("/auth/login-code/request", payload)
   return response.data
 }
 

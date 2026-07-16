@@ -24,6 +24,10 @@ export type ScheduleRecord = {
   serviceTypeId: string
   serviceTypeIds: string[]
   serviceTypeName: string
+  informativeTemplateId: string
+  certificateTemplateId: string
+  autoSendInformative: boolean
+  generateCertificateRequest: boolean
   teamId?: string
   teamName?: string
   teams: Array<{ id: string; name: string; color: string }>
@@ -61,7 +65,15 @@ export type ScheduleRecord = {
 export type SchedulePayload = {
   clientId: string
   unitId: string
+  contractId?: string
+  contractServiceId?: string
+  contractServiceIds?: string[]
   serviceTypeId: string
+  serviceTypeIds?: string[]
+  informativeTemplateId?: string
+  certificateTemplateId?: string
+  autoSendInformative?: boolean
+  generateCertificateRequest?: boolean
   teamIds?: string[]
   additionalEmployeeIds?: string[]
   scheduledDate: string
@@ -70,6 +82,7 @@ export type SchedulePayload = {
   durationValue?: number
   durationType?: "hours" | "shift" | "days"
   isEmergency?: boolean
+  isLegacyImport?: boolean
   billable?: boolean
   value?: number
   billingStatus?: "pending" | "paid" | "overdue" | "cancelled"

@@ -117,6 +117,14 @@ export function CertificateEditorContent({ scheduleId }: { scheduleId: string })
     [context, selectedTemplate],
   )
 
+  useEffect(() => {
+    if (selectedTemplateId || !context || templates.length === 0) return
+    const preferredTemplateId = context.schedule.certificateTemplateId || context.service.defaultCertificateTemplateId || ""
+    if (preferredTemplateId && templates.some((template) => template.id === preferredTemplateId)) {
+      setSelectedTemplateId(preferredTemplateId)
+    }
+  }, [context, selectedTemplateId, templates])
+
   const sendMutation = useMutation({
     mutationFn: async () => {
       if (!selectedTemplate) {

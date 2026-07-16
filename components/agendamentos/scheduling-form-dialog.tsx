@@ -1,6 +1,7 @@
 "use client"
 
 import { useDeferredValue, useEffect, useMemo, useState } from "react"
+import { useQuery } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -47,6 +48,7 @@ import type { ClientRecord } from "@/lib/api/clients"
 import type { EmployeeRecord } from "@/lib/api/employees"
 import type { ServiceRecord } from "@/lib/api/services"
 import type { TeamRecord } from "@/lib/api/teams"
+import { listTemplates } from "@/lib/api/templates"
 
 export interface SchedulingFormData {
   clientId: string
@@ -57,6 +59,10 @@ export interface SchedulingFormData {
   time: string
   durationType: ScheduleDurationType
   duration: number
+  informativeTemplateId: string
+  certificateTemplateId: string
+  autoSendInformative: boolean
+  generateCertificateRequest: boolean
   value: number
   createContract: boolean
   isEmergency: boolean
@@ -69,6 +75,10 @@ interface EditingSchedule {
   isManual?: boolean
   clientId: string
   serviceTypeId: string
+  informativeTemplateId?: string
+  certificateTemplateId?: string
+  autoSendInformative?: boolean
+  generateCertificateRequest?: boolean
   teamId?: string
   teamIds?: string[]
   teams?: { id: string }[]
@@ -106,11 +116,18 @@ const DEFAULT_FORM_DATA: SchedulingFormData = {
   time: "",
   durationType: "hours",
   duration: 1,
+  informativeTemplateId: "",
+  certificateTemplateId: "",
+  autoSendInformative: false,
+  generateCertificateRequest: false,
   value: 0,
   createContract: false,
   isEmergency: false,
   notes: "",
 }
+
+const NO_INFORMATIVE_TEMPLATE_VALUE = "__none__"
+const NO_CERTIFICATE_TEMPLATE_VALUE = "__none__"
 
 export function SchedulingFormDialog({
   open,
@@ -134,6 +151,17 @@ export function SchedulingFormDialog({
   const deferredClientSearchTerm = useDeferredValue(clientSearchTerm)
   const deferredTeamSearchTerm = useDeferredValue(teamSearchTerm)
   const deferredEmployeeSearchTerm = useDeferredValue(employeeSearchTerm)
+
+  const informativeTemplatesQuery = useQuery({
+    queryKey: ["templates", "schedule-form", "informative"],
+    queryFn: () => listTemplates("", "informative"),
+    enabled: open,
+  })
+  const certificateTemplatesQuery = useQuery({
+    queryKey: ["templates", "schedule-form", "certificate"],
+    queryFn: () => listTemplates("", "certificate"),
+    enabled: open,
+  })
 
   const filteredClients = useMemo(() => {
     const term = deferredClientSearchTerm.trim().toLowerCase()
@@ -166,6 +194,14 @@ export function SchedulingFormDialog({
   const teamById = useMemo(() => new Map(teams.map((team) => [team.id, team])), [teams])
   const employeeById = useMemo(() => new Map(employees.map((employee) => [employee.id, employee])), [employees])
   const serviceOptions = useMemo(() => serviceTypes.map((st) => ({ value: st.id, label: st.name })), [serviceTypes])
+  const activeInformativeTemplates = useMemo(
+    () => (informativeTemplatesQuery.data?.data ?? []).filter((template) => template.isActive && template.format === "docx"),
+    [informativeTemplatesQuery.data?.data],
+  )
+  const activeCertificateTemplates = useMemo(
+    () => (certificateTemplatesQuery.data?.data ?? []).filter((template) => template.isActive && template.format === "docx"),
+    [certificateTemplatesQuery.data?.data],
+  )
   const selectedClient = clientById.get(formData.clientId)
   const isEditing = Boolean(editingSchedule)
   const isRecurringSchedule = Boolean(editingSchedule?.contractId && !editingSchedule?.isManual)
@@ -201,6 +237,10 @@ export function SchedulingFormDialog({
       time: schedule.time ?? "",
       durationType: durationFields.durationType,
       duration: durationFields.duration,
+      informativeTemplateId: schedule.informativeTemplateId ?? "",
+      certificateTemplateId: schedule.certificateTemplateId ?? "",
+      autoSendInformative: Boolean(schedule.informativeTemplateId) || schedule.autoSendInformative === true,
+      generateCertificateRequest: Boolean(schedule.certificateTemplateId) || schedule.generateCertificateRequest === true,
       value: schedule.billable ? Number(schedule.value ?? 0) : 0,
       createContract: Boolean(schedule.billable),
       isEmergency: schedule.isEmergency ?? false,
@@ -252,7 +292,11 @@ export function SchedulingFormDialog({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    onSubmit(formData, !!editingSchedule)
+    onSubmit({
+      ...formData,
+      informativeTemplateId: formData.autoSendInformative ? formData.informativeTemplateId : "",
+      certificateTemplateId: formData.generateCertificateRequest ? formData.certificateTemplateId : "",
+    }, !!editingSchedule)
   }
 
   return (
@@ -336,6 +380,10 @@ export function SchedulingFormDialog({
                   employeeIds: serviceType?.employeeIds || [],
                   teams,
                 })
+                const autoSendInformative = serviceType?.autoSendInformative === true
+                const generateCertificateRequest = serviceType?.generateCertificateRequest === true
+                const informativeTemplateId = autoSendInformative ? serviceType?.defaultInformativeTemplateId ?? "" : ""
+                const certificateTemplateId = generateCertificateRequest ? serviceType?.defaultCertificateTemplateId ?? "" : ""
                 setFormData({
                   ...formData,
                   serviceTypeId: value,
@@ -343,6 +391,10 @@ export function SchedulingFormDialog({
                   employeeIds: selection.employeeIds,
                   durationType: serviceType?.durationType ?? formData.durationType,
                   duration: serviceType?.defaultDuration ?? formData.duration,
+                  informativeTemplateId,
+                  certificateTemplateId,
+                  autoSendInformative,
+                  generateCertificateRequest,
                   value: formData.createContract ? serviceType?.baseValue ?? formData.value : 0,
                 })
               }}
@@ -354,6 +406,100 @@ export function SchedulingFormDialog({
               className="w-full"
               disabled={isRecurringSchedule}
             />
+          </div>
+
+          <div className="grid gap-4 rounded-lg border bg-muted/10 p-4 md:grid-cols-2">
+            <div className="space-y-3">
+              <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Checkbox
+                  checked={formData.autoSendInformative}
+                  onCheckedChange={(checked) => {
+                    const autoSendInformative = checked === true
+                    setFormData({
+                      ...formData,
+                      autoSendInformative,
+                      informativeTemplateId: autoSendInformative ? formData.informativeTemplateId : "",
+                    })
+                  }}
+                />
+                Enviar informativo automaticamente
+              </label>
+              {formData.autoSendInformative ? (
+                <div className="space-y-2">
+                  <Label>Informativo</Label>
+                  <Select
+                    value={formData.informativeTemplateId || NO_INFORMATIVE_TEMPLATE_VALUE}
+                    onValueChange={(value) => {
+                      const informativeTemplateId = value === NO_INFORMATIVE_TEMPLATE_VALUE ? "" : value
+                      setFormData({
+                        ...formData,
+                        informativeTemplateId,
+                        autoSendInformative: Boolean(informativeTemplateId),
+                      })
+                    }}
+                    disabled={activeInformativeTemplates.length === 0}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder={activeInformativeTemplates.length > 0 ? "Selecione" : "Nenhum template"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NO_INFORMATIVE_TEMPLATE_VALUE}>Sem informativo</SelectItem>
+                      {activeInformativeTemplates.map((template) => (
+                        <SelectItem key={template.id} value={template.id}>
+                          {template.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="space-y-3">
+              <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Checkbox
+                  checked={formData.generateCertificateRequest}
+                  onCheckedChange={(checked) => {
+                    const generateCertificateRequest = checked === true
+                    setFormData({
+                      ...formData,
+                      generateCertificateRequest,
+                      certificateTemplateId: generateCertificateRequest ? formData.certificateTemplateId : "",
+                    })
+                  }}
+                />
+                Gerar solicitação de certificado
+              </label>
+              {formData.generateCertificateRequest ? (
+                <div className="space-y-2">
+                  <Label>Certificado</Label>
+                  <Select
+                    value={formData.certificateTemplateId || NO_CERTIFICATE_TEMPLATE_VALUE}
+                    onValueChange={(value) => {
+                      const certificateTemplateId = value === NO_CERTIFICATE_TEMPLATE_VALUE ? "" : value
+                      setFormData({
+                        ...formData,
+                        certificateTemplateId,
+                        generateCertificateRequest: Boolean(certificateTemplateId),
+                      })
+                    }}
+                    disabled={activeCertificateTemplates.length === 0}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder={activeCertificateTemplates.length > 0 ? "Selecione" : "Nenhum template"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NO_CERTIFICATE_TEMPLATE_VALUE}>Sem certificado</SelectItem>
+                      {activeCertificateTemplates.map((template) => (
+                        <SelectItem key={template.id} value={template.id}>
+                          {template.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : null}
+            </div>
           </div>
 
           {/* Teams */}

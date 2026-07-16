@@ -33,6 +33,7 @@ export type CertificateContextRecord = {
     time: string
     startTime: string
     endTime: string
+    certificateTemplateId: string
     serviceReport: string
     naAttachment: {
       fileName: string
@@ -62,6 +63,7 @@ export type CertificateContextRecord = {
   service: {
     id: string
     name: string
+    defaultCertificateTemplateId: string
   }
 }
 

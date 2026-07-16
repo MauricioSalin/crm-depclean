@@ -9,6 +9,7 @@ import { ArrowLeft, Check, ChevronsUpDown, Clock, ClipboardList, FileText, Plus,
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -34,6 +35,7 @@ interface ServiceFormProps {
 }
 
 const NO_INFORMATIVE_TEMPLATE_VALUE = "__none__"
+const NO_CERTIFICATE_TEMPLATE_VALUE = "__none__"
 
 export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
   const router = useRouter()
@@ -46,6 +48,9 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
     durationType: "hours" as "hours" | "shift" | "days",
     defaultRecurrence: "monthly",
     defaultInformativeTemplateId: "",
+    defaultCertificateTemplateId: "",
+    autoSendInformative: false,
+    generateCertificateRequest: false,
     teamIds: [] as string[],
     employeeIds: [] as string[],
     clauses: [] as string[],
@@ -73,10 +78,15 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
     queryKey: ["templates", "service-form", "informative"],
     queryFn: () => listTemplates("", "informative"),
   })
+  const certificateTemplatesQuery = useQuery({
+    queryKey: ["templates", "service-form", "certificate"],
+    queryFn: () => listTemplates("", "certificate"),
+  })
 
   const teams = teamsQuery.data?.data ?? []
   const employees = employeesQuery.data?.data ?? []
   const informativeTemplates = informativeTemplatesQuery.data?.data ?? []
+  const certificateTemplates = certificateTemplatesQuery.data?.data ?? []
 
   useEffect(() => {
     const service = serviceQuery.data?.data
@@ -86,13 +96,19 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
       employeeIds: service.employeeIds,
       teams,
     })
+    const defaultInformativeTemplateId = service.defaultInformativeTemplateId ?? ""
+    const defaultCertificateTemplateId = service.defaultCertificateTemplateId ?? ""
+
     setFormData({
       name: service.name,
       description: service.description,
       defaultDuration: service.defaultDuration,
       durationType: service.durationType,
       defaultRecurrence: service.defaultRecurrence,
-      defaultInformativeTemplateId: service.defaultInformativeTemplateId ?? "",
+      defaultInformativeTemplateId,
+      defaultCertificateTemplateId,
+      autoSendInformative: Boolean(defaultInformativeTemplateId) || service.autoSendInformative === true,
+      generateCertificateRequest: Boolean(defaultCertificateTemplateId) || service.generateCertificateRequest === true,
       teamIds: selection.teamIds,
       employeeIds: selection.employeeIds,
       clauses: service.clauses,
@@ -103,6 +119,10 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
   const activeInformativeTemplates = useMemo(
     () => informativeTemplates.filter((template) => template.isActive && template.format === "docx"),
     [informativeTemplates],
+  )
+  const activeCertificateTemplates = useMemo(
+    () => certificateTemplates.filter((template) => template.isActive && template.format === "docx"),
+    [certificateTemplates],
   )
   const filteredTeams = useMemo(
     () => teams.filter((team) => team.name.toLowerCase().includes(teamSearchTerm.toLowerCase())),
@@ -126,7 +146,10 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
         defaultDuration: Number(formData.defaultDuration),
         durationType: formData.durationType,
         defaultRecurrence: formData.defaultRecurrence,
-        defaultInformativeTemplateId: formData.defaultInformativeTemplateId,
+        defaultInformativeTemplateId: formData.autoSendInformative ? formData.defaultInformativeTemplateId : "",
+        defaultCertificateTemplateId: formData.generateCertificateRequest ? formData.defaultCertificateTemplateId : "",
+        autoSendInformative: formData.autoSendInformative,
+        generateCertificateRequest: formData.generateCertificateRequest,
         teamIds: formData.teamIds,
         employeeIds: formData.employeeIds,
         clauses: formData.clauses,
@@ -294,33 +317,107 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
       <Card className="p-6">
         <div className="mb-6 flex items-center gap-2">
           <FileText className="h-5 w-5 text-primary" />
-          <h3 className="text-lg font-semibold">Informativo padrão</h3>
+          <h3 className="text-lg font-semibold">Documentos automáticos</h3>
         </div>
 
-        <div className="space-y-2 md:max-w-[360px]">
-          <Label htmlFor="defaultInformativeTemplateId">Template do informativo</Label>
-          <Select
-            value={formData.defaultInformativeTemplateId || NO_INFORMATIVE_TEMPLATE_VALUE}
-            onValueChange={(value) =>
-              setFormData((current) => ({
-                ...current,
-                defaultInformativeTemplateId: value === NO_INFORMATIVE_TEMPLATE_VALUE ? "" : value,
-              }))
-            }
-            disabled={activeInformativeTemplates.length === 0}
-          >
-            <SelectTrigger id="defaultInformativeTemplateId" className="w-full">
-              <SelectValue placeholder={activeInformativeTemplates.length > 0 ? "Selecione um template" : "Nenhum template ativo"} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={NO_INFORMATIVE_TEMPLATE_VALUE}>Sem informativo padrão</SelectItem>
-              {activeInformativeTemplates.map((template) => (
-                <SelectItem key={template.id} value={template.id}>
-                  {template.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="grid gap-5 md:grid-cols-2">
+          <div className="space-y-3">
+            <label className="flex items-start gap-3 rounded-lg border bg-muted/20 p-3">
+              <Checkbox
+                checked={formData.autoSendInformative}
+                onCheckedChange={(checked) => {
+                  const autoSendInformative = checked === true
+                  setFormData((current) => ({
+                    ...current,
+                    autoSendInformative,
+                    defaultInformativeTemplateId: autoSendInformative ? current.defaultInformativeTemplateId : "",
+                  }))
+                }}
+              />
+              <span className="grid gap-0.5">
+                <span className="text-sm font-medium">Enviar informativo automaticamente</span>
+                <span className="text-xs text-muted-foreground">Só será enviado quando houver template selecionado.</span>
+              </span>
+            </label>
+            {formData.autoSendInformative ? (
+              <div className="space-y-2">
+                <Label htmlFor="defaultInformativeTemplateId">Template do informativo</Label>
+                <Select
+                  value={formData.defaultInformativeTemplateId || NO_INFORMATIVE_TEMPLATE_VALUE}
+                  onValueChange={(value) => {
+                    const defaultInformativeTemplateId = value === NO_INFORMATIVE_TEMPLATE_VALUE ? "" : value
+                    setFormData((current) => ({
+                      ...current,
+                      defaultInformativeTemplateId,
+                      autoSendInformative: Boolean(defaultInformativeTemplateId),
+                    }))
+                  }}
+                  disabled={activeInformativeTemplates.length === 0}
+                >
+                  <SelectTrigger id="defaultInformativeTemplateId" className="w-full">
+                    <SelectValue placeholder={activeInformativeTemplates.length > 0 ? "Selecione um template" : "Nenhum template ativo"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_INFORMATIVE_TEMPLATE_VALUE}>Sem informativo padrão</SelectItem>
+                    {activeInformativeTemplates.map((template) => (
+                      <SelectItem key={template.id} value={template.id}>
+                        {template.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="space-y-3">
+            <label className="flex items-start gap-3 rounded-lg border bg-muted/20 p-3">
+              <Checkbox
+                checked={formData.generateCertificateRequest}
+                onCheckedChange={(checked) => {
+                  const generateCertificateRequest = checked === true
+                  setFormData((current) => ({
+                    ...current,
+                    generateCertificateRequest,
+                    defaultCertificateTemplateId: generateCertificateRequest ? current.defaultCertificateTemplateId : "",
+                  }))
+                }}
+              />
+              <span className="grid gap-0.5">
+                <span className="text-sm font-medium">Gerar solicitação de certificado</span>
+                <span className="text-xs text-muted-foreground">Quando ativo, visitas concluídas entram na fila de certificados.</span>
+              </span>
+            </label>
+            {formData.generateCertificateRequest ? (
+              <div className="space-y-2">
+                <Label htmlFor="defaultCertificateTemplateId">Template do certificado</Label>
+                <Select
+                  value={formData.defaultCertificateTemplateId || NO_CERTIFICATE_TEMPLATE_VALUE}
+                  onValueChange={(value) => {
+                    const defaultCertificateTemplateId = value === NO_CERTIFICATE_TEMPLATE_VALUE ? "" : value
+                    setFormData((current) => ({
+                      ...current,
+                      defaultCertificateTemplateId,
+                      generateCertificateRequest: Boolean(defaultCertificateTemplateId),
+                    }))
+                  }}
+                  disabled={activeCertificateTemplates.length === 0}
+                >
+                  <SelectTrigger id="defaultCertificateTemplateId" className="w-full">
+                    <SelectValue placeholder={activeCertificateTemplates.length > 0 ? "Selecione um template" : "Nenhum template ativo"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_CERTIFICATE_TEMPLATE_VALUE}>Sem certificado padrão</SelectItem>
+                    {activeCertificateTemplates.map((template) => (
+                      <SelectItem key={template.id} value={template.id}>
+                        {template.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
+          </div>
         </div>
       </Card>
 

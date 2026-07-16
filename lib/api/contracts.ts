@@ -10,6 +10,9 @@ export type ContractServicePayload = {
   unitIds: string[]
   clauses?: string[]
   informativeTemplateId?: string
+  certificateTemplateId?: string
+  autoSendInformative?: boolean
+  generateCertificateRequest?: boolean
   recurrence?: string
   duration?: number
   durationType?: "hours" | "shift" | "days"
@@ -92,6 +95,9 @@ export type ContractRecord = {
     unitIds: string[]
     clauses: string[]
     informativeTemplateId: string
+    certificateTemplateId: string
+    autoSendInformative: boolean
+    generateCertificateRequest: boolean
     recurrence: string
     duration: number
     durationType: "hours" | "shift" | "days"
@@ -150,13 +156,16 @@ export type ContractImportRow = {
   downPaymentValue?: string
   duration: string
   startDate: string
+  firstDueDate?: string
   endDate?: string
   firstVisitDate?: string
   firstVisitTime?: string
   paymentDay: string
   installmentsCount: string
   recurrence?: string
+  status?: string
   signedAt?: string
+  paidInstallmentsThroughDate?: string
   signatureUrl?: string
   documentUrl?: string
   documentFileName?: string

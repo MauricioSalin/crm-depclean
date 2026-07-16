@@ -156,6 +156,11 @@ function splitImportList(value: string | undefined) {
     .filter(Boolean)
 }
 
+function normalizeImportBoolean(value: string | undefined) {
+  const normalized = normalizeImportLookup(value)
+  return ["1", "true", "sim", "s", "yes"].includes(normalized)
+}
+
 function uniqueImportIds(ids: string[]) {
   return Array.from(new Set(ids.map((id) => id.trim()).filter(Boolean)))
 }
@@ -335,7 +340,11 @@ function normalizeImportTime(value: string | undefined, rowIndex: number) {
 
 function normalizeImportDuration(value: string | undefined, service: ServiceRecord, rowIndex: number) {
   const normalized = String(value ?? "").trim().replace(",", ".")
-  const duration = normalized ? Number(normalized) : service.defaultDuration
+  if (!normalized) {
+    return scheduleDurationToMinutes(service.defaultDuration, service.durationType)
+  }
+
+  const duration = Number(normalized)
 
   if (!Number.isFinite(duration) || duration <= 0) {
     throw new Error(`Linha ${getImportRowNumber(rowIndex)}: duração "${value}" inválida. Informe minutos acima de zero.`)
@@ -356,7 +365,12 @@ function buildScheduleImportPayload(
 ): SchedulePayload {
   const client = resolveImportClient(row.clientId, references.clients, rowIndex)
   const unit = resolveImportUnit(row.unitId, client, rowIndex)
-  const service = resolveImportService(row.serviceTypeId, references.services, rowIndex)
+  const serviceValues = splitImportList(row.serviceTypeIds?.trim() ? row.serviceTypeIds : row.serviceTypeId)
+  const resolvedServices = serviceValues.length > 0
+    ? uniqueImportIds(serviceValues.map((serviceValue) => resolveImportService(serviceValue, references.services, rowIndex).id))
+      .map((serviceId) => references.services.find((item) => item.id === serviceId)!)
+    : [resolveImportService(row.serviceTypeId, references.services, rowIndex)]
+  const service = resolvedServices[0]
   const teamIds = row.teamIds?.trim()
     ? resolveImportTeams(row.teamIds, references.teams, rowIndex)
     : uniqueImportIds(service.teamIds ?? [])
@@ -365,11 +379,17 @@ function buildScheduleImportPayload(
     : uniqueImportIds(service.employeeIds ?? [])
   const estimatedDuration = normalizeImportDuration(row.estimatedDuration, service, rowIndex)
   const configuredDuration = minutesToScheduleDuration(estimatedDuration, service)
+  const contractServiceIds = uniqueImportIds(splitImportList(row.contractServiceIds?.trim() ? row.contractServiceIds : row.contractServiceId))
+  const contractId = row.contractId?.trim() || undefined
 
   return {
     clientId: client.id,
     unitId: unit.id,
+    contractId,
+    contractServiceId: contractServiceIds[0],
+    contractServiceIds,
     serviceTypeId: service.id,
+    serviceTypeIds: resolvedServices.map((item) => item.id),
     teamIds,
     additionalEmployeeIds,
     scheduledDate: normalizeImportDate(row.scheduledDate, rowIndex),
@@ -377,6 +397,7 @@ function buildScheduleImportPayload(
     estimatedDuration,
     durationValue: configuredDuration.duration,
     durationType: configuredDuration.durationType,
+    isLegacyImport: normalizeImportBoolean(row.isLegacyImport) || Boolean(contractId),
     notes: row.notes?.trim() ?? "",
   }
 }
@@ -384,12 +405,16 @@ function buildScheduleImportPayload(
 const SCHEDULE_IMPORT_FIELDS: CsvImportField[] = [
   { key: "clientId", label: "Cliente", required: true },
   { key: "unitId", label: "Unidade" },
+  { key: "contractId", label: "Contrato" },
+  { key: "contractServiceIds", label: "Serviços do contrato" },
   { key: "serviceTypeId", label: "Serviço", required: true },
+  { key: "serviceTypeIds", label: "Serviços anexos" },
   { key: "teamIds", label: "Equipes" },
   { key: "additionalEmployeeIds", label: "Funcionários avulsos" },
   { key: "scheduledDate", label: "Data", required: true },
   { key: "scheduledTime", label: "Horário", required: true },
   { key: "estimatedDuration", label: "Duração em minutos", required: true },
+  { key: "isLegacyImport", label: "Importação legada" },
   { key: "notes", label: "Observações" },
 ]
 
@@ -559,6 +584,10 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
           estimatedDuration: scheduleDurationToMinutes(formData.duration, formData.durationType),
           durationValue: formData.duration,
           durationType: formData.durationType,
+          informativeTemplateId: formData.informativeTemplateId,
+          certificateTemplateId: formData.certificateTemplateId,
+          autoSendInformative: formData.autoSendInformative,
+          generateCertificateRequest: formData.generateCertificateRequest,
           notes: formData.notes,
         })
       }
@@ -574,6 +603,10 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
         estimatedDuration: scheduleDurationToMinutes(formData.duration, formData.durationType),
         durationValue: formData.duration,
         durationType: formData.durationType,
+        informativeTemplateId: formData.informativeTemplateId,
+        certificateTemplateId: formData.certificateTemplateId,
+        autoSendInformative: formData.autoSendInformative,
+        generateCertificateRequest: formData.generateCertificateRequest,
         isEmergency: formData.isEmergency,
         billable: formData.createContract,
         value: formData.createContract ? formData.value : 0,
