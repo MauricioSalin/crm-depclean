@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, type TableSortState } from "@/components/ui/table"
 import { TableSkeletonRows } from "@/components/ui/table-skeleton"
 import { listClients } from "@/lib/api/clients"
 import { listEmployees } from "@/lib/api/employees"
@@ -74,6 +74,8 @@ const TYPE_BADGE_CLASS: Record<string, string> = {
   update: "bg-yellow-100 text-yellow-700 hover:bg-yellow-100",
   upload: "bg-pink-100 text-pink-700 hover:bg-pink-100",
 }
+
+const AUDIT_LOG_TABLE_SORT_FIELDS = ["createdAt", "type", "title", "clientName", "actorName", "status"] as const
 
 function toApiDateTime(value: string) {
   if (!value) return undefined
@@ -157,6 +159,7 @@ export function LogsContent() {
   const [status, setStatus] = useState<"all" | "success" | "error">("all")
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
+  const [tableSort, setTableSort] = useState<TableSortState>(null)
 
   const clearLogDetailsCloseTimeout = useCallback(() => {
     if (logDetailsCloseTimeoutRef.current === null) return
@@ -193,7 +196,7 @@ export function LogsContent() {
   }
 
   const logsQuery = useQuery({
-    queryKey: ["audit-logs", search, from, to, clientId, employeeId, type, module, status, page, pageSize],
+    queryKey: ["audit-logs", search, from, to, clientId, employeeId, type, module, status, page, pageSize, tableSort?.columnIndex, tableSort?.direction],
     queryFn: () => listAuditLogs({
       search: search.trim() || undefined,
       from: toApiDateTime(from),
@@ -205,6 +208,8 @@ export function LogsContent() {
       status,
       page,
       limit: pageSize,
+      sortBy: tableSort ? AUDIT_LOG_TABLE_SORT_FIELDS[tableSort.columnIndex] : undefined,
+      sortDirection: tableSort?.direction,
     }),
   })
 
@@ -381,7 +386,14 @@ export function LogsContent() {
 
       <div className="md:min-h-0 md:flex-1 md:overflow-hidden">
         <div className="hidden rounded-md md:block md:h-full">
-          <Table containerClassName="md:h-full">
+          <Table
+            containerClassName="md:h-full"
+            manualSorting
+            onSortChange={(sort) => {
+              setTableSort(sort)
+              setPage(1)
+            }}
+          >
             <TableHeader>
               <TableRow>
                 <TableHead>Data e hora</TableHead>

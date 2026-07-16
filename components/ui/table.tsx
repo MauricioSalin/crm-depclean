@@ -10,6 +10,7 @@ type TableSortState = { columnIndex: number; direction: SortDirection } | null
 
 type TableContextValue = {
   sort: TableSortState
+  manualSorting: boolean
   toggleSort: (columnIndex: number) => void
 }
 
@@ -129,26 +130,28 @@ function getRowCellText(row: React.ReactNode, columnIndex: number) {
 
 type TableProps = React.ComponentProps<'table'> & {
   containerClassName?: string
+  manualSorting?: boolean
+  onSortChange?: (sort: TableSortState) => void
 }
 
-function Table({ className, containerClassName, ...props }: TableProps) {
+function Table({ className, containerClassName, manualSorting = false, onSortChange, ...props }: TableProps) {
   const [sort, setSort] = React.useState<TableSortState>(null)
 
   const toggleSort = React.useCallback((columnIndex: number) => {
     setSort((current) => {
+      let nextSort: TableSortState = null
       if (!current || current.columnIndex !== columnIndex) {
-        return { columnIndex, direction: 'asc' }
+        nextSort = { columnIndex, direction: 'asc' }
+      } else if (current.direction === 'asc') {
+        nextSort = { columnIndex, direction: 'desc' }
       }
 
-      if (current.direction === 'asc') {
-        return { columnIndex, direction: 'desc' }
-      }
-
-      return null
+      onSortChange?.(nextSort)
+      return nextSort
     })
-  }, [])
+  }, [onSortChange])
 
-  const contextValue = React.useMemo(() => ({ sort, toggleSort }), [sort, toggleSort])
+  const contextValue = React.useMemo(() => ({ sort, manualSorting, toggleSort }), [manualSorting, sort, toggleSort])
 
   return (
     <div
@@ -178,18 +181,29 @@ function TableHeader({ className, ...props }: React.ComponentProps<'thead'>) {
   )
 }
 
-function TableBody({ className, children, ...props }: React.ComponentProps<'tbody'>) {
+type TableBodyProps = React.ComponentProps<'tbody'> & {
+  page?: number
+  pageSize?: number
+}
+
+function TableBody({ className, children, page, pageSize, ...props }: TableBodyProps) {
   const tableContext = React.useContext(TableContext)
 
-  const sortedChildren = React.useMemo(() => {
-    if (!tableContext?.sort) {
+  const visibleChildren = React.useMemo(() => {
+    let rows = React.Children.toArray(children)
+
+    if (!tableContext?.sort || tableContext.manualSorting) {
+      if (page && pageSize) {
+        const start = (page - 1) * pageSize
+        return rows.slice(start, start + pageSize)
+      }
+
       return children
     }
 
     const { columnIndex, direction } = tableContext.sort
-    const rows = React.Children.toArray(children)
 
-    return rows
+    rows = rows
       .map((row, index) => ({
         index,
         row,
@@ -201,7 +215,14 @@ function TableBody({ className, children, ...props }: React.ComponentProps<'tbod
         return direction === 'asc' ? stableResult : -stableResult
       })
       .map(({ row }) => row)
-  }, [children, tableContext?.sort])
+
+    if (page && pageSize) {
+      const start = (page - 1) * pageSize
+      return rows.slice(start, start + pageSize)
+    }
+
+    return rows
+  }, [children, page, pageSize, tableContext?.manualSorting, tableContext?.sort])
 
   return (
     <tbody
@@ -209,7 +230,7 @@ function TableBody({ className, children, ...props }: React.ComponentProps<'tbod
       className={cn('[&_tr:last-child]:border-0', className)}
       {...props}
     >
-      {sortedChildren}
+      {visibleChildren}
     </tbody>
   )
 }
@@ -365,6 +386,7 @@ function TableCaption({
 }
 
 export {
+  type TableSortState,
   Table,
   TableHeader,
   TableBody,

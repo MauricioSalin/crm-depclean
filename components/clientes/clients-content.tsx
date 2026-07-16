@@ -290,7 +290,7 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
 
       {viewMode === "table" ? (
         <div className="rounded-md md:min-h-0 md:flex-1 md:overflow-hidden">
-          <Table containerClassName="md:h-full">
+          <Table containerClassName="md:h-full" onSortChange={() => setCurrentPage(1)}>
             <TableHeader>
               <TableRow>
                 <TableHead>Cliente</TableHead>
@@ -301,7 +301,7 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
                 <TableHead className="text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
-            <TableBody>
+            <TableBody page={!isClientListLoading && filteredClients.length > 0 ? currentPage : undefined} pageSize={!isClientListLoading && filteredClients.length > 0 ? pageSize : undefined}>
               {isClientListLoading ? (
                 <TableSkeletonRows
                   rows={5}
@@ -314,13 +314,14 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
                     { align: "right", width: "w-8" },
                   ]}
                 />
-              ) : paginatedClients.length === 0 ? (
+              ) : filteredClients.length === 0 ? (
                 <TableEmptyState colSpan={6} icon={Building2} title="Nenhum cliente encontrado." />
               ) : (
-                paginatedClients.map((client) => {
+                filteredClients.map((client) => {
                   const clientType = getClientTypeById(client.clientTypeId)
                   const clientTypeColor = resolveColor(clientType?.color)
                   const totalContracts = contractsByClientId.get(client.id) ?? 0
+                  const clientPhone = client.phone?.trim()
 
                   return (
                     <TableRow key={client.id}>
@@ -344,7 +345,9 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
                       <TableCell className="hidden lg:table-cell">
                         <div>
                           <p className="text-sm">{client.responsibleName}</p>
-                          <p className="text-xs text-muted-foreground">{client.phone}</p>
+                          {clientPhone ? (
+                            <p className="text-xs text-muted-foreground">{client.phone}</p>
+                          ) : null}
                         </div>
                       </TableCell>
                       <TableCell className="hidden sm:table-cell">
@@ -413,6 +416,8 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
               const clientType = getClientTypeById(client.clientTypeId)
               const clientTypeColor = resolveColor(clientType?.color)
               const totalContracts = contractsByClientId.get(client.id) ?? 0
+              const clientPhone = client.phone?.trim()
+              const clientEmail = client.email?.trim()
 
               return (
                 <Card key={client.id} className="h-full overflow-hidden">
@@ -439,14 +444,18 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
                         </div>
                       </div>
                       <div className="space-y-2 text-sm">
-                        <div className="flex items-center gap-2 text-muted-foreground">
-                          <Phone className="w-4 h-4 shrink-0" />
-                          <span>{client.phone}</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-muted-foreground">
-                          <Mail className="w-4 h-4 shrink-0" />
-                          <span className="truncate">{client.email}</span>
-                        </div>
+                        {clientPhone ? (
+                          <div className="flex items-center gap-2 text-muted-foreground">
+                            <Phone className="w-4 h-4 shrink-0" />
+                            <span>{client.phone}</span>
+                          </div>
+                        ) : null}
+                        {clientEmail ? (
+                          <div className="flex items-center gap-2 text-muted-foreground">
+                            <Mail className="w-4 h-4 shrink-0" />
+                            <span className="truncate">{client.email}</span>
+                          </div>
+                        ) : null}
                         <div className="flex items-center gap-2 text-muted-foreground">
                           <FileText className="w-4 h-4 shrink-0" />
                           <span>{totalContracts} contrato(s)</span>

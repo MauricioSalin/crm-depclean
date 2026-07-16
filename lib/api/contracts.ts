@@ -113,8 +113,10 @@ export type ContractRecord = {
     envelopeId: string
     documentKey: string
     documentId: string
+    folderId?: string
     webhookId: string
     status: string
+    managementUrl?: string
     signers: Array<{
       signerId: string
       requestId: string

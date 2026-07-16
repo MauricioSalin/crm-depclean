@@ -1093,7 +1093,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
 
         {viewMode === "table" ? (
           <div className="rounded-md md:min-h-0 md:flex-1 md:overflow-hidden">
-            <Table containerClassName="md:h-full">
+            <Table containerClassName="md:h-full" onSortChange={() => setCurrentPage(1)}>
               <TableHeader>
                 <TableRow>
                   <TableHead className="min-w-[180px]">Cliente</TableHead>
@@ -1105,7 +1105,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                   <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
-              <TableBody>
+              <TableBody page={!schedulesQuery.isLoading && filteredSchedules.length > 0 ? currentPage : undefined} pageSize={!schedulesQuery.isLoading && filteredSchedules.length > 0 ? itemsPerPage : undefined}>
                 {schedulesQuery.isLoading ? (
                   <TableSkeletonRows
                     rows={5}
@@ -1119,10 +1119,10 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                       { align: "right", width: "w-20" },
                     ]}
                   />
-                ) : paginatedSchedules.length === 0 ? (
+                ) : filteredSchedules.length === 0 ? (
                   <TableEmptyState colSpan={7} icon={Calendar} title="Nenhum agendamento encontrado." />
                 ) : (
-                  paginatedSchedules.map((schedule) => (
+                  filteredSchedules.map((schedule) => (
                     <TableRow
                       key={schedule.id}
                       className="cursor-pointer"

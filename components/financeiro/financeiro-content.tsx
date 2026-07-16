@@ -449,7 +449,7 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
 
           {viewMode === "table" ? (
             <div className="rounded-md overflow-x-auto">
-              <Table>
+              <Table onSortChange={() => setCurrentPage(1)}>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Cliente</TableHead>
@@ -461,7 +461,7 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
                     <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody>
+                <TableBody page={!financialQuery.isLoading && filteredInstallments.length > 0 ? currentPage : undefined} pageSize={!financialQuery.isLoading && filteredInstallments.length > 0 ? pageSize : undefined}>
                   {financialQuery.isLoading ? (
                     <TableSkeletonRows
                       rows={5}
@@ -475,10 +475,10 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
                         { align: "right", width: "w-10" },
                       ]}
                     />
-                  ) : paginatedInstallments.length === 0 ? (
+                  ) : filteredInstallments.length === 0 ? (
                     <TableEmptyState colSpan={7} icon={DollarSign} title="Nenhuma parcela encontrada." />
                   ) : (
-                    paginatedInstallments.map((installment) => (
+                    filteredInstallments.map((installment) => (
                       <TableRow key={installment.id}>
                         <TableCell>
                           <Link href={withReturnTo(`/clientes/${installment.clientId}`, currentHref)} className="hover:text-primary">

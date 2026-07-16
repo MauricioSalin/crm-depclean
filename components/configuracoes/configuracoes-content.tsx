@@ -451,9 +451,6 @@ export function ConfiguracoesContent() {
     }
   }, [activeSection, isAdmin, setActiveSection])
 
-  const paginatedTypes = useMemo(() => filteredTypes.slice((typePage - 1) * typePageSize, typePage * typePageSize), [filteredTypes, typePage, typePageSize])
-  const paginatedProfiles = useMemo(() => filteredProfiles.slice((profilePage - 1) * profilePageSize, profilePage * profilePageSize), [filteredProfiles, profilePage, profilePageSize])
-  const paginatedUsers = useMemo(() => filteredUsers.slice((userPage - 1) * userPageSize, userPage * userPageSize), [filteredUsers, userPage, userPageSize])
   const paginatedRules = useMemo(() => filteredRules.slice((rulePage - 1) * rulePageSize, rulePage * rulePageSize), [filteredRules, rulePage, rulePageSize])
 
   const clearDialogResetTimeout = (timeoutRef: { current: number | null }) => {
@@ -1325,7 +1322,7 @@ export function ConfiguracoesContent() {
           </div>
 
           <div className="overflow-x-auto rounded-md">
-            <Table>
+            <Table onSortChange={() => setTypePage(1)}>
               <TableHeader>
                 <TableRow>
                   <TableHead>Cor</TableHead>
@@ -1335,11 +1332,11 @@ export function ConfiguracoesContent() {
                   {canManageSettings ? <TableHead className="text-right">Ações</TableHead> : null}
                 </TableRow>
               </TableHeader>
-              <TableBody>
-                {paginatedTypes.length === 0 ? (
+              <TableBody page={filteredTypes.length > 0 ? typePage : undefined} pageSize={filteredTypes.length > 0 ? typePageSize : undefined}>
+                {filteredTypes.length === 0 ? (
                   <TableEmptyState colSpan={canManageSettings ? 5 : 4} icon={Building} title="Nenhum tipo encontrado." />
                 ) : (
-                  paginatedTypes.map((item) => (
+                  filteredTypes.map((item) => (
                     <TableRow key={item.id}>
                       <TableCell><span className="inline-flex h-5 w-5 rounded-full" style={{ backgroundColor: item.color }} /></TableCell>
                       <TableCell className="font-medium">{item.name}</TableCell>
@@ -1443,7 +1440,7 @@ export function ConfiguracoesContent() {
           </div>
 
           <div className="overflow-x-auto rounded-md">
-            <Table>
+            <Table onSortChange={() => setProfilePage(1)}>
               <TableHeader>
                 <TableRow>
                   <TableHead>Nome</TableHead>
@@ -1452,11 +1449,11 @@ export function ConfiguracoesContent() {
                   {canManageSettings ? <TableHead className="text-right">Ações</TableHead> : null}
                 </TableRow>
               </TableHeader>
-              <TableBody>
-                {paginatedProfiles.length === 0 ? (
+              <TableBody page={filteredProfiles.length > 0 ? profilePage : undefined} pageSize={filteredProfiles.length > 0 ? profilePageSize : undefined}>
+                {filteredProfiles.length === 0 ? (
                   <TableEmptyState colSpan={canManageSettings ? 4 : 3} icon={Shield} title="Nenhum perfil encontrado." />
                 ) : (
-                  paginatedProfiles.map((item) => (
+                  filteredProfiles.map((item) => (
                     <TableRow key={item.id}>
                       <TableCell className="font-medium">{item.name}</TableCell>
                       <TableCell>{item.description || "Sem descrição"}</TableCell>
@@ -1596,7 +1593,7 @@ export function ConfiguracoesContent() {
           </div>
 
           <div className="overflow-x-auto rounded-md">
-            <Table>
+            <Table onSortChange={() => setUserPage(1)}>
               <TableHeader>
                 <TableRow>
                   <TableHead>Nome</TableHead>
@@ -1607,11 +1604,11 @@ export function ConfiguracoesContent() {
                   {canManageSettings ? <TableHead className="text-right">Ações</TableHead> : null}
                 </TableRow>
               </TableHeader>
-              <TableBody>
-                {paginatedUsers.length === 0 ? (
+              <TableBody page={filteredUsers.length > 0 ? userPage : undefined} pageSize={filteredUsers.length > 0 ? userPageSize : undefined}>
+                {filteredUsers.length === 0 ? (
                   <TableEmptyState colSpan={canManageSettings ? 6 : 5} icon={Users} title="Nenhum usuário encontrado." />
                 ) : (
-                  paginatedUsers.map((item) => (
+                  filteredUsers.map((item) => (
                     <TableRow key={item.id}>
                       <TableCell className="font-medium">
                         <div className="flex items-center gap-3">

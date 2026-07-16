@@ -35,7 +35,7 @@ import { CsvImportDialog, type CsvImportField } from "@/components/ui/csv-import
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { importSignedContracts, listContracts, type ContractImportRow, type ContractRecord } from "@/lib/api/contracts"
-import { getContractClicksignSigningUrl } from "@/lib/clicksign"
+import { getContractClicksignUrl } from "@/lib/clicksign"
 import { formatCivilDate } from "@/lib/date-utils"
 import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
@@ -263,18 +263,18 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
 
       {viewMode === "table" ? (
         <div className="rounded-xl md:min-h-0 md:flex-1 md:overflow-hidden">
-          <Table containerClassName="md:h-full">
+          <Table containerClassName="md:h-full" onSortChange={() => setCurrentPage(1)}>
             <TableHeader>
               <TableRow>
-                <TableHead className="min-w-[200px]">Contrato</TableHead>
-                <TableHead className="hidden w-[300px] sm:table-cell">Cliente</TableHead>
+                <TableHead className="w-[300px] min-w-[300px]">Contrato</TableHead>
+                <TableHead className="hidden w-[420px] min-w-[380px] sm:table-cell">Cliente</TableHead>
                 <TableHead className="hidden md:table-cell">Valor</TableHead>
                 <TableHead className="hidden lg:table-cell">Vigência</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
-            <TableBody>
+            <TableBody page={!contractsQuery.isLoading && filteredContracts.length > 0 ? currentPage : undefined} pageSize={!contractsQuery.isLoading && filteredContracts.length > 0 ? pageSize : undefined}>
               {contractsQuery.isLoading ? (
                 <TableSkeletonRows
                   rows={5}
@@ -287,29 +287,29 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
                     { align: "right", width: "w-10" },
                   ]}
                 />
-              ) : paginatedContracts.length === 0 ? (
+              ) : filteredContracts.length === 0 ? (
                 <TableEmptyState colSpan={6} icon={FileText} title="Nenhum contrato encontrado." />
               ) : (
-                paginatedContracts.map((contract) => {
+                filteredContracts.map((contract) => {
                   const paidInstallments = contract.installments.filter((item) => item.status === "paid").length
-                  const clicksignUrl = getContractClicksignSigningUrl(contract)
+                  const clicksignUrl = getContractClicksignUrl(contract)
                   return (
                     <TableRow key={contract.id}>
-                      <TableCell>
+                      <TableCell className="w-[300px] max-w-[300px]">
                         <Link href={getContractProfileHref(contract.id)} className="flex items-center gap-3">
                           <div className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 sm:flex">
                             <FileText className="h-5 w-5 text-primary" />
                           </div>
-                          <div>
-                            <p className="font-medium">{contract.contractNumber}</p>
+                          <div className="min-w-0">
+                            <p className="truncate font-medium">{contract.contractNumber}</p>
                             <p className="text-xs text-muted-foreground sm:hidden">{contract.clientCompanyName}</p>
                           </div>
                         </Link>
                       </TableCell>
-                      <TableCell className="hidden sm:table-cell">
+                      <TableCell className="hidden w-[420px] max-w-[420px] sm:table-cell">
                         <Link href={getClientProfileHref(contract.clientId)} className="group flex items-center gap-2 hover:text-primary">
                           <Building2 className="h-4 w-4 text-muted-foreground transition-colors group-hover:text-primary" />
-                          <span className="max-w-[250px] truncate">{contract.clientCompanyName}</span>
+                          <span className="max-w-[360px] truncate">{contract.clientCompanyName}</span>
                         </Link>
                       </TableCell>
                       <TableCell className="hidden md:table-cell">

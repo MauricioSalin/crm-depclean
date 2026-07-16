@@ -118,9 +118,6 @@ const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingm
 const formatDate = (value?: string) =>
   formatCivilDate(value)
 
-const paginateItems = <T,>(items: T[], page: number, pageSize: number) =>
-  items.slice((page - 1) * pageSize, page * pageSize)
-
 const informativePdfFileName = (fileName: string) => {
   const cleanName = fileName.trim() || "informativo.pdf"
   if (/\.pdf$/i.test(cleanName)) return cleanName
@@ -641,23 +638,6 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
   const servicesTotalPages = Math.max(1, Math.ceil(completedServices.length / servicesPageSize))
   const agendaTotalPages = Math.max(1, Math.ceil(scheduledServices.length / agendaPageSize))
   const attachmentsTotalPages = Math.max(1, Math.ceil(clientAttachments.length / attachmentsPageSize))
-  const paginatedInstallments = useMemo(
-    () => paginateItems(allInstallments, installmentsPage, installmentsPageSize),
-    [allInstallments, installmentsPage, installmentsPageSize],
-  )
-  const paginatedServices = useMemo(
-    () => paginateItems(completedServices, servicesPage, servicesPageSize),
-    [completedServices, servicesPage, servicesPageSize],
-  )
-  const paginatedAgenda = useMemo(
-    () => paginateItems(scheduledServices, agendaPage, agendaPageSize),
-    [scheduledServices, agendaPage, agendaPageSize],
-  )
-  const paginatedAttachments = useMemo(
-    () => paginateItems(clientAttachments, attachmentsPage, attachmentsPageSize),
-    [clientAttachments, attachmentsPage, attachmentsPageSize],
-  )
-
   useEffect(() => {
     if (installmentsPage > installmentsTotalPages) setInstallmentsPage(installmentsTotalPages)
   }, [installmentsPage, installmentsTotalPages])
@@ -714,6 +694,10 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
       </Card>
     )
   }
+
+  const clientPhone = client.phone?.trim()
+  const clientEmail = client.email?.trim()
+  const hasClientDirectContact = Boolean(clientPhone || clientEmail)
 
   const getAttachmentTypeLabel = (type: ClientAttachmentRecord["type"]) => {
     switch (type) {
@@ -853,17 +837,23 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
               </div>
               <p className="font-mono text-sm text-muted-foreground">{formatCNPJ(client.cnpj)}</p>
 
-              <div className="space-y-2 text-sm">
-                <div className="flex min-w-0 items-center gap-2 text-muted-foreground">
-                  <Phone className="h-4 w-4 shrink-0" />
-                  <span>{client.phone}</span>
-                </div>
+              {hasClientDirectContact ? (
+                <div className="space-y-2 text-sm">
+                  {clientPhone ? (
+                    <div className="flex min-w-0 items-center gap-2 text-muted-foreground">
+                      <Phone className="h-4 w-4 shrink-0" />
+                      <span>{client.phone}</span>
+                    </div>
+                  ) : null}
 
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Mail className="h-4 w-4 shrink-0" />
-                  <span className="truncate">{client.email}</span>
+                  {clientEmail ? (
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Mail className="h-4 w-4 shrink-0" />
+                      <span className="truncate">{client.email}</span>
+                    </div>
+                  ) : null}
                 </div>
-              </div>
+              ) : null}
             </div>
           </div>
         </CardContent>
@@ -1156,11 +1146,11 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                     {canManageInstallments ? <TableHead className="text-right">Ações</TableHead> : null}
                   </TableRow>
                 </TableHeader>
-                <TableBody>
+                <TableBody page={allInstallments.length > 0 ? installmentsPage : undefined} pageSize={allInstallments.length > 0 ? installmentsPageSize : undefined}>
                   {allInstallments.length === 0 ? (
                     <TableEmptyState colSpan={canManageInstallments ? 6 : 5} icon={DollarSign} title="Nenhuma parcela encontrada." />
                   ) : (
-                    paginatedInstallments.map((installment) => (
+                    allInstallments.map((installment) => (
                       <TableRow key={installment.id}>
                         <TableCell className="text-sm">{installment.contractNumber}</TableCell>
                         <TableCell>
@@ -1217,7 +1207,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
         <TabsContent value="servicos" className="mt-4">
           <div className="space-y-3">
             <div className="overflow-x-auto rounded-md">
-              <Table>
+              <Table onSortChange={() => setServicesPage(1)}>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Serviço</TableHead>
@@ -1226,8 +1216,8 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                     <TableHead>Data</TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody>
-                  {paginatedServices.map((service) => {
+                <TableBody page={completedServices.length > 0 ? servicesPage : undefined} pageSize={completedServices.length > 0 ? servicesPageSize : undefined}>
+                  {completedServices.map((service) => {
                       const serviceTeams =
                         service.teams.length > 0
                           ? service.teams
@@ -1277,7 +1267,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
         <TabsContent value="agenda" className="mt-4">
           <div className="space-y-3">
             <div className="overflow-x-auto rounded-md">
-              <Table>
+              <Table onSortChange={() => setAgendaPage(1)}>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Serviço</TableHead>
@@ -1288,8 +1278,8 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                     <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody>
-                  {paginatedAgenda.map((service) => {
+                <TableBody page={scheduledServices.length > 0 ? agendaPage : undefined} pageSize={scheduledServices.length > 0 ? agendaPageSize : undefined}>
+                  {scheduledServices.map((service) => {
                       const serviceTeams =
                         service.teams.length > 0
                           ? service.teams
@@ -1344,7 +1334,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
         <TabsContent value="anexos" className="mt-4">
           <div className="space-y-3">
             <div className="overflow-x-auto rounded-md">
-              <Table>
+              <Table onSortChange={() => setAttachmentsPage(1)}>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Tipo</TableHead>
@@ -1354,8 +1344,8 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                     <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody>
-                  {paginatedAttachments.map((attachment) => (
+                <TableBody page={!attachmentsQuery.isLoading && clientAttachments.length > 0 ? attachmentsPage : undefined} pageSize={!attachmentsQuery.isLoading && clientAttachments.length > 0 ? attachmentsPageSize : undefined}>
+                  {clientAttachments.map((attachment) => (
                     <TableRow key={attachment.id}>
                       <TableCell>
                         {getAttachmentTypeBadge(attachment.type)}

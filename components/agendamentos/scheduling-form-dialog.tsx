@@ -408,8 +408,8 @@ export function SchedulingFormDialog({
             />
           </div>
 
-          <div className="grid gap-4 rounded-lg border bg-muted/10 p-4 md:grid-cols-2">
-            <div className="space-y-3">
+          <div className="space-y-4">
+            <div className="space-y-3 rounded-lg border bg-muted/10 p-4">
               <label className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Checkbox
                   checked={formData.autoSendInformative}
@@ -455,7 +455,7 @@ export function SchedulingFormDialog({
               ) : null}
             </div>
 
-            <div className="space-y-3">
+            <div className="space-y-3 rounded-lg border bg-muted/10 p-4">
               <label className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Checkbox
                   checked={formData.generateCertificateRequest}

@@ -1828,7 +1828,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
         {mobileTabs ? <div className="sm:hidden">{mobileTabs}</div> : null}
 
         <div className="rounded-md md:min-h-0 md:flex-1 md:overflow-hidden">
-          <Table containerClassName="md:h-full">
+          <Table containerClassName="md:h-full" onSortChange={() => setCurrentPage(1)}>
             <TableHeader>
               <TableRow>
                 <TableHead>Template</TableHead>
@@ -1839,7 +1839,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
                 {canManageTemplates ? <TableHead className="text-right">Ações</TableHead> : null}
               </TableRow>
             </TableHeader>
-            <TableBody>
+            <TableBody page={!templatesQuery.isLoading && templates.length > 0 ? currentPage : undefined} pageSize={!templatesQuery.isLoading && templates.length > 0 ? pageSize : undefined}>
               {templatesQuery.isLoading ? (
                 <TableSkeletonRows
                   rows={5}
@@ -1852,10 +1852,10 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
                     ...(canManageTemplates ? [{ align: "right" as const, width: "w-16" }] : []),
                   ]}
                 />
-              ) : paginatedTemplates.length === 0 ? (
+              ) : templates.length === 0 ? (
                 <TableEmptyState colSpan={tableColumnCount} icon={FileText} title="Nenhum template encontrado." />
               ) : (
-                paginatedTemplates.map((template) => (
+                templates.map((template) => (
                   <TableRow key={template.id}>
                     <TableCell>
                       <div className="flex items-center gap-3">

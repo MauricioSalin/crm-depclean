@@ -181,7 +181,7 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
 
       {viewMode === "table" ? (
         <div className="rounded-md md:min-h-0 md:flex-1 md:overflow-hidden">
-          <Table containerClassName="md:h-full">
+          <Table containerClassName="md:h-full" onSortChange={() => setCurrentPage(1)}>
             <TableHeader>
               <TableRow>
                 <TableHead>Serviço</TableHead>
@@ -191,7 +191,7 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
                 {canManageServices ? <TableHead className="text-right">Ações</TableHead> : null}
               </TableRow>
             </TableHeader>
-            <TableBody>
+            <TableBody page={!isLoading && filteredTypes.length > 0 ? currentPage : undefined} pageSize={!isLoading && filteredTypes.length > 0 ? itemsPerPage : undefined}>
               {isLoading ? (
                 <TableSkeletonRows
                   rows={5}
@@ -206,7 +206,7 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
               ) : filteredTypes.length === 0 ? (
                 <TableEmptyState colSpan={canManageServices ? 5 : 4} icon={ClipboardList} title="Nenhum tipo de serviço encontrado." />
               ) : (
-                paginatedTypes.map((type) => (
+                filteredTypes.map((type) => (
                   <TableRow
                     key={type.id}
                     role="button"

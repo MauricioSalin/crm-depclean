@@ -366,7 +366,7 @@ export function CertificatesContent({ viewMode, viewToggle, createOpen = false, 
 
         {viewMode === "table" ? (
           <div className="rounded-md md:min-h-0 md:flex-1 md:overflow-hidden">
-            <Table containerClassName="md:h-full">
+            <Table containerClassName="md:h-full" onSortChange={() => setCurrentPage(1)}>
               <TableHeader>
                 <TableRow>
                   <TableHead className="min-w-[190px]">Cliente</TableHead>
@@ -377,7 +377,7 @@ export function CertificatesContent({ viewMode, viewToggle, createOpen = false, 
                   <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
-              <TableBody>
+              <TableBody page={!certificatesQuery.isLoading && filteredRecords.length > 0 ? currentPage : undefined} pageSize={!certificatesQuery.isLoading && filteredRecords.length > 0 ? itemsPerPage : undefined}>
                 {certificatesQuery.isLoading ? (
                   <TableSkeletonRows
                     rows={5}
@@ -390,10 +390,10 @@ export function CertificatesContent({ viewMode, viewToggle, createOpen = false, 
                       { align: "right", width: "w-16" },
                     ]}
                   />
-                ) : paginatedRecords.length === 0 ? (
+                ) : filteredRecords.length === 0 ? (
                   <TableEmptyState colSpan={6} icon={Award} title="Nenhum certificado encontrado." />
                 ) : (
-                  paginatedRecords.map((record) => {
+                  filteredRecords.map((record) => {
                     const canIssue = canIssueCertificate(record)
                     const certificateUrl = getCertificateUrl(record)
 

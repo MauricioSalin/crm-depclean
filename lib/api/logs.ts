@@ -50,6 +50,8 @@ export type AuditLogsQuery = {
   status?: "all" | AuditLogStatus
   page?: number
   limit?: number
+  sortBy?: "createdAt" | "type" | "title" | "clientName" | "actorName" | "status"
+  sortDirection?: "asc" | "desc"
 }
 
 export async function listAuditLogs(query: AuditLogsQuery = {}) {

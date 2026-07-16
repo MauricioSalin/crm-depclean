@@ -37,6 +37,8 @@ export type EmployeeListQuery = {
   status?: "active" | "inactive"
   page?: number
   limit?: number
+  sortBy?: "name" | "cpf" | "role" | "contact" | "status" | "isSystemUser"
+  sortDirection?: "asc" | "desc"
 }
 
 export type PaginatedEmployees = {

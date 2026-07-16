@@ -44,13 +44,13 @@ import { toast } from "@/components/ui/use-toast"
 import { ServiceClausesDialog } from "@/components/servicos/service-clauses-dialog"
 import { buildApiFileUrl } from "@/lib/api/client"
 import { getClientAttachments, getClientById, type ClientAttachmentRecord } from "@/lib/api/clients"
-import { getContractById, remindContractSigner, sendContractToClicksign, updateInstallment, type ContractRecord } from "@/lib/api/contracts"
+import { getContractById, remindContractSigner, sendContractToClicksign, syncContractClicksign, updateInstallment, type ContractRecord } from "@/lib/api/contracts"
 import { listEmployees } from "@/lib/api/employees"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { listSchedules } from "@/lib/api/schedules"
 import { listServices, type ServiceRecurrenceRuleRecord } from "@/lib/api/services"
 import { listTeams } from "@/lib/api/teams"
-import { getContractClicksignSigningUrl } from "@/lib/clicksign"
+import { getContractClicksignUrl } from "@/lib/clicksign"
 import { formatCivilDate } from "@/lib/date-utils"
 import { useHasAnyPermission } from "@/hooks/use-permissions"
 import { buildPathWithSearchParams, getSafeReturnTo, withReturnTo } from "@/lib/navigation"
@@ -103,9 +103,6 @@ const formatCurrency = (value: number) =>
 
 const formatDate = (value?: string) =>
   formatCivilDate(value)
-
-const paginateItems = <T,>(items: T[], page: number, pageSize: number) =>
-  items.slice((page - 1) * pageSize, page * pageSize)
 
 const formatDuration = (duration: number, durationType: "hours" | "shift" | "days") => {
   if (durationType === "hours") return `${duration} hora${duration === 1 ? "" : "s"}`
@@ -374,10 +371,12 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const canEditContracts = useHasAnyPermission(["contracts_edit"])
+  const canSyncClicksign = useHasAnyPermission(["contracts_view", "contracts_edit"])
   const canManageContractInstallments = useHasAnyPermission(["contracts_edit", "financial_manage"])
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null)
   const [serviceClausesOpen, setServiceClausesOpen] = useState(false)
   const serviceClausesCloseTimeoutRef = useRef<number | null>(null)
+  const autoSyncedClicksignEnvelopeRef = useRef<string | null>(null)
   const [schedulePage, setSchedulePage] = useState(1)
   const [schedulePageSize, setSchedulePageSize] = useState(10)
   const [remindingSignerIds, setRemindingSignerIds] = useState<string[]>([])
@@ -476,11 +475,6 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
     [schedulesQuery.data?.data, resolvedContractId],
   )
   const scheduleTotalPages = Math.max(1, Math.ceil(contractSchedules.length / schedulePageSize))
-  const paginatedContractSchedules = useMemo(
-    () => paginateItems(contractSchedules, schedulePage, schedulePageSize),
-    [contractSchedules, schedulePage, schedulePageSize],
-  )
-
   useEffect(() => {
     if (schedulePage > scheduleTotalPages) setSchedulePage(scheduleTotalPages)
   }, [schedulePage, scheduleTotalPages])
@@ -539,7 +533,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
   }, [clientAttachments, contract])
 
   const clicksignUrl = useMemo(() => {
-    return getContractClicksignSigningUrl(contract)
+    return getContractClicksignUrl(contract)
   }, [contract])
 
   const units = useMemo(() => {
@@ -636,6 +630,48 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
     },
     onError: clicksignErrorToast,
   })
+
+  const syncClicksignMutation = useMutation({
+    mutationFn: () => {
+      if (!canSyncClicksign) {
+        throw new Error("Sem permissão para sincronizar o contrato no ClickSign.")
+      }
+
+      return syncContractClicksign(resolvedContractId)
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["contract", contractId] })
+      await queryClient.invalidateQueries({ queryKey: ["contract", resolvedContractId] })
+      await queryClient.invalidateQueries({ queryKey: ["contracts"] })
+      toast({
+        title: "ClickSign sincronizado",
+        description: "Os dados do envelope foram atualizados.",
+      })
+    },
+    onError: clicksignErrorToast,
+  })
+
+  useEffect(() => {
+    const envelopeId = String(contract?.clicksign?.envelopeId ?? "").trim()
+    if (!envelopeId || !canSyncClicksign) return
+    if (autoSyncedClicksignEnvelopeRef.current === envelopeId) return
+
+    autoSyncedClicksignEnvelopeRef.current = envelopeId
+    let cancelled = false
+
+    void syncContractClicksign(resolvedContractId)
+      .then(async () => {
+        if (cancelled) return
+        await queryClient.invalidateQueries({ queryKey: ["contract", contractId] })
+        await queryClient.invalidateQueries({ queryKey: ["contract", resolvedContractId] })
+        await queryClient.invalidateQueries({ queryKey: ["contracts"] })
+      })
+      .catch(() => undefined)
+
+    return () => {
+      cancelled = true
+    }
+  }, [canSyncClicksign, contract?.clicksign?.envelopeId, contractId, queryClient, resolvedContractId])
 
   const remindSignerMutation = useMutation({
     mutationFn: (signerId: string) => {
@@ -883,11 +919,36 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
           <Badge variant="secondary">
             {getClicksignStatusLabel(contract.clicksign?.status)}
           </Badge>
+          {contract.clicksign?.envelopeId && canSyncClicksign ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="ml-auto gap-2"
+              onClick={() => syncClicksignMutation.mutate()}
+              disabled={syncClicksignMutation.isPending}
+            >
+              <RefreshCw className={cn("h-4 w-4", syncClicksignMutation.isPending && "animate-spin")} />
+              Sincronizar
+            </Button>
+          ) : null}
         </div>
-        <div className="grid gap-3 text-sm md:grid-cols-2">
+        <div className="grid gap-3 text-sm md:grid-cols-5">
           <div>
             <p className="text-muted-foreground">Envelope</p>
             <p className="font-mono text-xs">{contract.clicksign?.envelopeId || "-"}</p>
+          </div>
+          <div>
+            <p className="text-muted-foreground">Documento</p>
+            <p className="font-mono text-xs">{contract.clicksign?.documentId || contract.clicksign?.documentKey || "-"}</p>
+          </div>
+          <div>
+            <p className="text-muted-foreground">Pasta</p>
+            <p className="font-mono text-xs">{contract.clicksign?.folderId || "-"}</p>
+          </div>
+          <div>
+            <p className="text-muted-foreground">Signatários</p>
+            <p>{contract.clicksign?.signers?.length ?? 0}</p>
           </div>
           <div>
             <p className="text-muted-foreground">Última sincronização</p>
@@ -903,6 +964,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                   <TableHead sortable={false}>Papel</TableHead>
                   <TableHead sortable={false}>E-mail</TableHead>
                   <TableHead sortable={false}>Status</TableHead>
+                  <TableHead sortable={false}>Assinado em</TableHead>
                   {canEditContracts ? <TableHead className="text-right">Ações</TableHead> : null}
                 </TableRow>
               </TableHeader>
@@ -919,6 +981,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                       </TableCell>
                       <TableCell>{signer.email}</TableCell>
                       <TableCell>{getClicksignSignerStatusBadge(displayStatus)}</TableCell>
+                      <TableCell>{formatDate(signer.signedAt)}</TableCell>
                       {canEditContracts ? (
                         <TableCell className="text-right">
                           {isSignerReminderAvailable(displayStatus) ? (
@@ -1240,11 +1303,11 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                   <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>
-              <TableBody>
+              <TableBody page={contractSchedules.length > 0 ? schedulePage : undefined} pageSize={contractSchedules.length > 0 ? schedulePageSize : undefined}>
                 {contractSchedules.length === 0 ? (
                   <TableEmptyState colSpan={6} icon={Calendar} title="Nenhum agendamento vinculado a este contrato." />
                 ) : (
-                  paginatedContractSchedules.map((schedule) => {
+                  contractSchedules.map((schedule) => {
                     const scheduleTeams =
                       schedule.teams.length > 0
                         ? schedule.teams

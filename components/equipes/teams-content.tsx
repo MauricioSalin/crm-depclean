@@ -455,7 +455,7 @@ export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle 
           </div>
         ) : (
           <div className="rounded-md md:min-h-0 md:flex-1 md:overflow-hidden">
-            <Table containerClassName="md:h-full">
+            <Table containerClassName="md:h-full" onSortChange={() => setCurrentPage(1)}>
               <TableHeader>
                 <TableRow>
                   <TableHead>Equipe</TableHead>
@@ -464,7 +464,7 @@ export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle 
                   {canManageTeams ? <TableHead className="text-right">Ações</TableHead> : null}
                 </TableRow>
               </TableHeader>
-              <TableBody>
+              <TableBody page={!teamsQuery.isLoading && teamsView.length > 0 ? currentPage : undefined} pageSize={!teamsQuery.isLoading && teamsView.length > 0 ? pageSize : undefined}>
                 {teamsQuery.isLoading ? (
                   <TableSkeletonRows
                     rows={5}
@@ -477,7 +477,7 @@ export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle 
                   />
                 ) : teamsView.length === 0 ? (
                   <TableEmptyState colSpan={canManageTeams ? 4 : 3} icon={Users} title="Nenhuma equipe encontrada." />
-                ) : paginatedTeams.map((team) => (
+                ) : teamsView.map((team) => (
                   <TableRow key={team.id}>
                     <TableCell>
                       <div className="flex items-center gap-3">

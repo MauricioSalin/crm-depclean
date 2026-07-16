@@ -31,8 +31,24 @@ const START_HOUR = 0
 const END_HOUR = 24
 const TOTAL_HOURS = END_HOUR - START_HOUR
 const LUNCH_HOUR = 12
+const EVENT_COLUMN_GUTTER = 6
+const EVENT_STACK_X_OFFSET = 8
+const EVENT_STACK_Y_OFFSET = 16
+const EVENT_STACK_MAX_X = 40
+const EVENT_STACK_MAX_Y = 64
+const MIN_EVENT_HEIGHT = 54
 
 const DAY_LABELS_SHORT = ["DOM.", "SEG.", "TER.", "QUA.", "QUI.", "SEX.", "SÁB."]
+
+type PositionedTimelineEvent = TimelineEvent & {
+  top: number
+  height: number
+  stackIndex: number
+  stackSize: number
+  stackX: number
+  stackY: number
+  stackMaxX: number
+}
 
 function getWeekDays(date: Date): Date[] {
   const key = toCivilDateKey(date)
@@ -49,6 +65,66 @@ function timeToMinutes(time: string): number {
 
 function isToday(date: Date): boolean {
   return toCivilDateKey(date) === toCivilDateKey(new Date())
+}
+
+function getEventEndMinutes(event: TimelineEvent) {
+  return timeToMinutes(event.time) + Math.max(15, event.duration)
+}
+
+function positionDayEvents(events: TimelineEvent[]): PositionedTimelineEvent[] {
+  const sortedEvents = [...events].sort((left, right) => {
+    const startDiff = timeToMinutes(left.time) - timeToMinutes(right.time)
+    if (startDiff !== 0) return startDiff
+    const durationDiff = right.duration - left.duration
+    if (durationDiff !== 0) return durationDiff
+    return left.title.localeCompare(right.title, "pt-BR", { sensitivity: "base" })
+  })
+
+  const groups: TimelineEvent[][] = []
+  let currentGroup: TimelineEvent[] = []
+  let currentGroupEnd = -1
+
+  for (const event of sortedEvents) {
+    const startMinutes = timeToMinutes(event.time)
+    const endMinutes = getEventEndMinutes(event)
+
+    if (currentGroup.length === 0 || startMinutes < currentGroupEnd) {
+      currentGroup.push(event)
+      currentGroupEnd = Math.max(currentGroupEnd, endMinutes)
+      continue
+    }
+
+    groups.push(currentGroup)
+    currentGroup = [event]
+    currentGroupEnd = endMinutes
+  }
+
+  if (currentGroup.length > 0) {
+    groups.push(currentGroup)
+  }
+
+  return groups.flatMap((group) => {
+    const stackMaxX = Math.min(EVENT_STACK_MAX_X, Math.max(0, group.length - 1) * EVENT_STACK_X_OFFSET)
+
+    return group.map((event, index) => {
+      const startMinutes = timeToMinutes(event.time)
+      const top = ((startMinutes - START_HOUR * 60) / 60) * HOUR_HEIGHT
+      const height = Math.max((event.duration / 60) * HOUR_HEIGHT, MIN_EVENT_HEIGHT)
+      const stackX = Math.min(EVENT_STACK_MAX_X, index * EVENT_STACK_X_OFFSET)
+      const stackY = Math.min(EVENT_STACK_MAX_Y, index * EVENT_STACK_Y_OFFSET)
+
+      return {
+        ...event,
+        top: Math.max(top, 0),
+        height,
+        stackIndex: index,
+        stackSize: group.length,
+        stackX,
+        stackY,
+        stackMaxX,
+      }
+    })
+  })
 }
 
 export function WeekTimeline({
@@ -79,14 +155,16 @@ export function WeekTimeline({
     onDateChange(new Date())
   }
 
-  // Group events by date
-  const eventsByDate = useMemo(() => {
+  const positionedEventsByDate = useMemo(() => {
     const map: Record<string, TimelineEvent[]> = {}
     for (const ev of events) {
       if (!map[ev.date]) map[ev.date] = []
       map[ev.date].push(ev)
     }
-    return map
+
+    return Object.fromEntries(
+      Object.entries(map).map(([date, dayEvents]) => [date, positionDayEvents(dayEvents)]),
+    ) as Record<string, PositionedTimelineEvent[]>
   }, [events])
 
   // Current time indicator
@@ -203,7 +281,7 @@ export function WeekTimeline({
 
             {weekDays.map((day, dayIndex) => {
               const dateStr = toCivilDateKey(day)
-              const dayEvents = eventsByDate[dateStr] || []
+              const dayEvents = positionedEventsByDate[dateStr] || []
               const isSelected = selectedDate?.toDateString() === day.toDateString()
 
               return (
@@ -243,42 +321,66 @@ export function WeekTimeline({
                     )
                   })}
                   {dayEvents.map((ev) => {
-                    const startMinutes = timeToMinutes(ev.time)
-                    const top = ((startMinutes - START_HOUR * 60) / 60) * HOUR_HEIGHT
-                    const height = Math.max((ev.duration / 60) * HOUR_HEIGHT, 20)
                     const color = ev.teamColor || "#9CA3AF" // gray for no team
+                    const isStacked = ev.stackSize > 1
+                    const eventWidth = `calc(100% - ${ev.stackMaxX + EVENT_COLUMN_GUTTER * 2}px)`
+                    const opacity = Math.max(0.82, 0.96 - ev.stackIndex * 0.035)
+                    const textShadow = isStacked ? "0 1px 0 rgba(255,255,255,0.65)" : undefined
 
                     return (
-                      <div
+                      <button
                         key={ev.id}
-                        onClick={(e) => {
-                          e.stopPropagation()
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation()
                           onEventClick?.(ev.id)
                           onDaySelect(day)
                         }}
-                        className="absolute left-0.5 right-0.5 rounded-md px-1.5 py-0.5 overflow-hidden cursor-pointer hover:opacity-90 transition-opacity z-10 border-l-[3px]"
+                        className="group absolute overflow-hidden rounded-md border border-transparent border-l-[3px] px-1.5 py-1 text-left transition-[opacity,box-shadow,transform,background-color] duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 hover:!opacity-100 hover:shadow-lg"
                         style={{
-                          top: Math.max(top, 0),
-                          height,
-                          backgroundColor: `${color}20`,
+                          top: ev.top + ev.stackY,
+                          left: EVENT_COLUMN_GUTTER + ev.stackX,
+                          width: eventWidth,
+                          height: ev.height,
+                          zIndex: 10 + ev.stackIndex,
+                          opacity,
+                          backgroundColor: `${color}${isStacked ? "38" : "24"}`,
+                          borderColor: `${color}66`,
                           borderLeftColor: color,
+                          boxShadow: isStacked
+                            ? "0 10px 24px rgba(15, 23, 42, 0.12), 0 1px 2px rgba(15, 23, 42, 0.12)"
+                            : "0 1px 2px rgba(15, 23, 42, 0.08)",
+                          transform: isStacked
+                            ? `rotate(${Math.max(-1.1, Math.min(1.1, (ev.stackIndex % 2 === 0 ? -0.45 : 0.45) * ev.stackIndex))}deg)`
+                            : undefined,
                         }}
                         title={`${ev.title} - ${ev.subtitle}`}
                       >
-                        <p className="text-[10px] font-medium text-foreground/80 truncate leading-tight">
+                        {isStacked ? (
+                          <span
+                            className="absolute right-1.5 top-1 rounded-full bg-background/75 px-1 text-[8px] font-semibold text-foreground/70 shadow-sm"
+                            aria-hidden="true"
+                          >
+                            {ev.stackIndex + 1}/{ev.stackSize}
+                          </span>
+                        ) : null}
+                        <p
+                          className="max-w-[calc(100%-1.6rem)] truncate text-[10px] font-semibold leading-tight text-foreground/90"
+                          style={{ textShadow }}
+                        >
                           {ev.title}
                         </p>
-                        {height > 30 && (
-                          <p className="text-[9px] text-muted-foreground truncate leading-tight">
+                        {ev.height > 30 && (
+                          <p className="truncate text-[9px] leading-tight text-foreground/70">
                             {ev.time} - {formatEndTime(ev.time, ev.duration)}
                           </p>
                         )}
-                        {height > 45 && (
-                          <p className="text-[9px] text-muted-foreground truncate leading-tight">
+                        {ev.height > 45 && (
+                          <p className="truncate text-[9px] leading-tight text-foreground/65">
                             {ev.subtitle}
                           </p>
                         )}
-                      </div>
+                      </button>
                     )
                   })}
                 </div>

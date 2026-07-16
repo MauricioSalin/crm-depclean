@@ -20,7 +20,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, type TableSortState } from "@/components/ui/table"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { CsvImportDialog, type CsvImportField } from "@/components/ui/csv-import-dialog"
@@ -77,6 +77,8 @@ const EMPLOYEE_IMPORT_FIELDS: CsvImportField[] = [
   { key: "status", label: "Status" },
 ]
 
+const EMPLOYEE_TABLE_SORT_FIELDS = ["name", "cpf", "role", "contact", "status", "isSystemUser"] as const
+
 export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewToggle, openImport = false, onImportChange }: EmployeesContentProps) {
   const queryClient = useQueryClient()
   const mobileFiltersOpen = useMobileFiltersOpen()
@@ -96,6 +98,7 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
 
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
+  const [tableSort, setTableSort] = useState<TableSortState>(null)
   const deferredSearchTerm = useDeferredValue(searchTerm)
   const dialogResetTimeoutRef = useRef<number | null>(null)
   const systemUserDialogResetTimeoutRef = useRef<number | null>(null)
@@ -121,12 +124,14 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
   const shouldLoadPermissionProfiles = canManageSettings && (isDialogOpen || isSystemUserDialogOpen || createSystemUser)
 
   const employeesQuery = useQuery({
-    queryKey: ["employees", "page", deferredSearchTerm, statusFilter, currentPage, pageSize],
+    queryKey: ["employees", "page", deferredSearchTerm, statusFilter, currentPage, pageSize, tableSort?.columnIndex, tableSort?.direction],
     queryFn: () => listEmployeesPage({
       search: deferredSearchTerm,
       status: statusFilter === "all" ? undefined : (statusFilter as "active" | "inactive"),
       page: currentPage,
       limit: pageSize,
+      sortBy: tableSort ? EMPLOYEE_TABLE_SORT_FIELDS[tableSort.columnIndex] : undefined,
+      sortDirection: tableSort?.direction,
     }),
     enabled: Boolean(currentUser),
     staleTime: 60_000,
@@ -760,7 +765,14 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
 
         {viewMode === "table" ? (
           <div className="rounded-md md:min-h-0 md:flex-1 md:overflow-hidden">
-            <Table containerClassName="md:h-full">
+            <Table
+              containerClassName="md:h-full"
+              manualSorting
+              onSortChange={(sort) => {
+                setTableSort(sort)
+                setCurrentPage(1)
+              }}
+            >
               <TableHeader>
                 <TableRow>
                   <TableHead className="min-w-[180px]">Funcionário</TableHead>
@@ -792,6 +804,9 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
                   paginatedEmployees.map((employee) => {
                     const canShowDeleteEmployee = canDeleteEmployees && currentUser?.employeeId !== employee.id
                     const canShowEmployeeActions = canManageEmployeeSystemAccess || canEditEmployees || canShowDeleteEmployee
+                    const employeePhone = employee.phone?.trim()
+                    const employeeEmail = employee.email?.trim()
+                    const hasEmployeeContact = Boolean(employeePhone || employeeEmail)
 
                     return (
                     <TableRow key={employee.id}>
@@ -812,16 +827,24 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
                       <TableCell className="hidden min-w-[150px] whitespace-nowrap font-mono text-sm md:table-cell">{formatCPF(employee.cpf)}</TableCell>
                       <TableCell className="hidden sm:table-cell">{employee.role || "-"}</TableCell>
                       <TableCell className="hidden lg:table-cell">
-                        <div className="space-y-1 text-sm">
-                          <div className="flex items-center gap-1.5 text-muted-foreground">
-                            <Phone className="h-3 w-3" />
-                            {employee.phone || "-"}
+                        {hasEmployeeContact ? (
+                          <div className="space-y-1 text-sm">
+                            {employeePhone ? (
+                              <div className="flex items-center gap-1.5 text-muted-foreground">
+                                <Phone className="h-3 w-3" />
+                                {employee.phone}
+                              </div>
+                            ) : null}
+                            {employeeEmail ? (
+                              <div className="flex items-center gap-1.5 text-muted-foreground">
+                                <Mail className="h-3 w-3" />
+                                {employee.email}
+                              </div>
+                            ) : null}
                           </div>
-                          <div className="flex items-center gap-1.5 text-muted-foreground">
-                            <Mail className="h-3 w-3" />
-                            {employee.email}
-                          </div>
-                        </div>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">-</span>
+                        )}
                       </TableCell>
                       <TableCell>{getStatusBadge(employee.status)}</TableCell>
                       <TableCell>
@@ -923,6 +946,8 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
               ) : paginatedEmployees.map((employee) => {
                 const canShowDeleteEmployee = canDeleteEmployees && currentUser?.employeeId !== employee.id
                 const canShowEmployeeActions = canManageEmployeeSystemAccess || canEditEmployees || canShowDeleteEmployee
+                const employeePhone = employee.phone?.trim()
+                const employeeEmail = employee.email?.trim()
 
                 return (
                 <Card key={employee.id} className="h-full overflow-hidden">
@@ -948,14 +973,18 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
                         <User className="h-4 w-4 shrink-0" />
                         <span className="font-mono">{formatCPF(employee.cpf)}</span>
                       </div>
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <Phone className="h-4 w-4 shrink-0" />
-                        <span>{employee.phone || "-"}</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <Mail className="h-4 w-4 shrink-0" />
-                        <span className="truncate">{employee.email}</span>
-                      </div>
+                      {employeePhone ? (
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <Phone className="h-4 w-4 shrink-0" />
+                          <span>{employee.phone}</span>
+                        </div>
+                      ) : null}
+                      {employeeEmail ? (
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <Mail className="h-4 w-4 shrink-0" />
+                          <span className="truncate">{employee.email}</span>
+                        </div>
+                      ) : null}
                     </div>
 
                     <div className="mt-4 flex flex-wrap gap-2">
