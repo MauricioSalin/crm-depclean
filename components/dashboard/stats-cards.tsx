@@ -28,6 +28,7 @@ const emptyStats: DashboardStatsRecord = {
   activeContractsGlobalValue: 0,
   monthlyRevenue: 0,
   monthlyRevenueChange: 0,
+  monthlyRevenueMonthLabel: "",
   scheduledServices: 0,
   scheduledServicesChange: 0,
   completedServices: 0,
@@ -54,13 +55,15 @@ export function StatsCards(period: DashboardPeriodProps = {}) {
   })
   const isLoading = dashboardQuery.isLoading || (dashboardQuery.isFetching && !dashboardQuery.data)
   const dashboardStats = dashboardQuery.data?.data.stats ?? emptyStats
+  const monthlyRevenueChange = Number(dashboardStats.monthlyRevenueChange ?? 0)
 
   const stats = [
     {
       title: "Faturamento Mensal",
       value: formatCurrency(dashboardStats.monthlyRevenue),
-      change: `+${dashboardStats.monthlyRevenueChange}%`,
-      isPositive: true,
+      change: `${monthlyRevenueChange >= 0 ? "+" : ""}${monthlyRevenueChange}%`,
+      isPositive: monthlyRevenueChange >= 0,
+      badge: dashboardStats.monthlyRevenueMonthLabel,
       icon: DollarSign,
       bgColor: "bg-card",
       textColor: "text-foreground",
@@ -106,7 +109,14 @@ export function StatsCards(period: DashboardPeriodProps = {}) {
               }`}
           >
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-xs font-medium opacity-90">{stat.title}</h3>
+              <div className="flex min-w-0 items-center gap-2">
+                <h3 className="truncate text-xs font-medium opacity-90">{stat.title}</h3>
+                {stat.badge ? (
+                  <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold leading-none text-primary">
+                    {stat.badge}
+                  </span>
+                ) : null}
+              </div>
               <div
                 className={`w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center transition-transform duration-300 ${hoveredCard === index ? "scale-110" : ""
                   }`}

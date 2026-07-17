@@ -4,6 +4,7 @@ export type MonthlyRevenuePoint = {
   month: string
   value: number
   paidValue: number
+  pendingValue: number
   lateValue: number
   overdueValue: number
   lateOverdueValue: number
@@ -44,6 +45,7 @@ export type DashboardStatsRecord = {
   activeContractsGlobalValue: number
   monthlyRevenue: number
   monthlyRevenueChange: number
+  monthlyRevenueMonthLabel: string
   scheduledServices: number
   scheduledServicesChange: number
   completedServices: number

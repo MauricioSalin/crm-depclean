@@ -23,12 +23,12 @@ function formatCurrency(value: number) {
 }
 
 const EMPTY_MONTHLY_REVENUE_DATA = [
-  { month: "Mês 1", value: 0, paidValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
-  { month: "Mês 2", value: 0, paidValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
-  { month: "Mês 3", value: 0, paidValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
-  { month: "Mês 4", value: 0, paidValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
-  { month: "Mês 5", value: 0, paidValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
-  { month: "Mês 6", value: 0, paidValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
+  { month: "Mês 1", value: 0, paidValue: 0, pendingValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
+  { month: "Mês 2", value: 0, paidValue: 0, pendingValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
+  { month: "Mês 3", value: 0, paidValue: 0, pendingValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
+  { month: "Mês 4", value: 0, paidValue: 0, pendingValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
+  { month: "Mês 5", value: 0, paidValue: 0, pendingValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
+  { month: "Mês 6", value: 0, paidValue: 0, pendingValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
 ]
 
 const EMPTY_SERVICES_BY_PERIOD_DATA = [
@@ -48,7 +48,12 @@ export function ProjectAnalytics(period: DashboardAnalyticsParams = {}) {
   const isLoading = dashboardQuery.isLoading || (dashboardQuery.isFetching && !dashboardQuery.data)
   const monthlyRevenueData = dashboardQuery.data?.data.monthlyRevenueData ?? []
   const servicesByPeriodData = dashboardQuery.data?.data.servicesByPeriodData ?? []
-  const hasMonthlyRevenueData = monthlyRevenueData.some((item) => item.paidValue > 0 || item.lateValue > 0 || item.overdueValue > 0)
+  const hasMonthlyRevenueData = monthlyRevenueData.some((item) =>
+    item.paidValue > 0 ||
+    item.pendingValue > 0 ||
+    item.lateValue > 0 ||
+    item.overdueValue > 0,
+  )
   const monthlyRevenueChartData = monthlyRevenueData.length > 0 ? monthlyRevenueData : EMPTY_MONTHLY_REVENUE_DATA
   const hasServicesByPeriodData = servicesByPeriodData.some((item) => item.completed > 0 || item.scheduled > 0 || item.emergency > 0)
   const servicesByPeriodChartData = servicesByPeriodData.length > 0 ? servicesByPeriodData : EMPTY_SERVICES_BY_PERIOD_DATA
@@ -100,7 +105,15 @@ export function ProjectAnalytics(period: DashboardAnalyticsParams = {}) {
                     }}
                     formatter={(value: number, name: string) => [
                       formatCurrency(value),
-                      name === "paidValue" ? "Pagas" : name === "lateValue" ? "Em atraso" : name === "overdueValue" ? "Vencidas" : "Faturamento",
+                      name === "paidValue"
+                        ? "Pagas"
+                        : name === "pendingValue"
+                          ? "Pendentes"
+                          : name === "lateValue"
+                            ? "Em atraso"
+                            : name === "overdueValue"
+                              ? "Vencidas"
+                              : "Faturamento",
                     ]}
                   />
                   <Legend />
@@ -112,6 +125,17 @@ export function ProjectAnalytics(period: DashboardAnalyticsParams = {}) {
                     radius={[4, 4, 0, 0]}
                     isAnimationActive
                     animationBegin={120}
+                    animationDuration={900}
+                    animationEasing="ease-out"
+                  />
+                  <Bar
+                    dataKey="pendingValue"
+                    name="Pendentes"
+                    fill={hasMonthlyRevenueData ? "#94A3B8" : "#ECEFF3"}
+                    minPointSize={hasMonthlyRevenueData ? 0 : 3}
+                    radius={[4, 4, 0, 0]}
+                    isAnimationActive
+                    animationBegin={170}
                     animationDuration={900}
                     animationEasing="ease-out"
                   />
