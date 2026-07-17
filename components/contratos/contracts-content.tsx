@@ -25,6 +25,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { FilterSearchInput } from "@/components/ui/filter-search-input"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -222,19 +223,16 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
 
       <div className="flex min-h-0 flex-1 flex-col gap-4">
       <div className={`${mobileFiltersOpen ? "grid" : "hidden"} -m-1 shrink-0 grid-cols-2 gap-2 overflow-visible p-1 sm:flex sm:items-center`}>
-        <div className="relative focus-within:z-[70] sm:w-80 sm:flex-none">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Buscar por número ou cliente..."
-            value={searchTerm}
-            spellCheck={false}
-            onChange={(event) => {
-              setSearchTerm(event.target.value)
-              setCurrentPage(1)
-            }}
-            className="pl-10"
-          />
-        </div>
+        <FilterSearchInput
+          wrapperClassName="sm:w-80 sm:flex-none"
+          placeholder="Buscar por número ou cliente..."
+          value={searchTerm}
+          spellCheck={false}
+          onValueChange={(value) => {
+            setSearchTerm(value)
+            setCurrentPage(1)
+          }}
+        />
 
         <SearchableSelect
           value={statusFilter}

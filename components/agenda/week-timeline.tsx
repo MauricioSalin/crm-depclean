@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useEffect, useRef } from "react"
+import { useMemo, useEffect, useRef, useState } from "react"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { addCivilDaysKey, BRASILIA_TIME_ZONE, minutesFromBrasiliaDate, parseCivilDate, toCivilDateKey } from "@/lib/date-utils"
@@ -32,10 +32,7 @@ const END_HOUR = 24
 const TOTAL_HOURS = END_HOUR - START_HOUR
 const LUNCH_HOUR = 12
 const EVENT_COLUMN_GUTTER = 6
-const EVENT_STACK_X_OFFSET = 8
-const EVENT_STACK_Y_OFFSET = 16
-const EVENT_STACK_MAX_X = 40
-const EVENT_STACK_MAX_Y = 64
+const EVENT_COLUMN_GAP = 4
 const MIN_EVENT_HEIGHT = 54
 
 const DAY_LABELS_SHORT = ["DOM.", "SEG.", "TER.", "QUA.", "QUI.", "SEX.", "SÁB."]
@@ -43,11 +40,8 @@ const DAY_LABELS_SHORT = ["DOM.", "SEG.", "TER.", "QUA.", "QUI.", "SEX.", "SÁB.
 type PositionedTimelineEvent = TimelineEvent & {
   top: number
   height: number
-  stackIndex: number
-  stackSize: number
-  stackX: number
-  stackY: number
-  stackMaxX: number
+  columnIndex: number
+  columnCount: number
 }
 
 function getWeekDays(date: Date): Date[] {
@@ -104,26 +98,32 @@ function positionDayEvents(events: TimelineEvent[]): PositionedTimelineEvent[] {
   }
 
   return groups.flatMap((group) => {
-    const stackMaxX = Math.min(EVENT_STACK_MAX_X, Math.max(0, group.length - 1) * EVENT_STACK_X_OFFSET)
-
-    return group.map((event, index) => {
+    const laneEnds: number[] = []
+    const positioned = group.map((event) => {
       const startMinutes = timeToMinutes(event.time)
+      const endMinutes = getEventEndMinutes(event)
       const top = ((startMinutes - START_HOUR * 60) / 60) * HOUR_HEIGHT
       const height = Math.max((event.duration / 60) * HOUR_HEIGHT, MIN_EVENT_HEIGHT)
-      const stackX = Math.min(EVENT_STACK_MAX_X, index * EVENT_STACK_X_OFFSET)
-      const stackY = Math.min(EVENT_STACK_MAX_Y, index * EVENT_STACK_Y_OFFSET)
+      let columnIndex = laneEnds.findIndex((laneEnd) => laneEnd <= startMinutes)
+
+      if (columnIndex === -1) {
+        columnIndex = laneEnds.length
+        laneEnds.push(endMinutes)
+      } else {
+        laneEnds[columnIndex] = endMinutes
+      }
 
       return {
         ...event,
         top: Math.max(top, 0),
         height,
-        stackIndex: index,
-        stackSize: group.length,
-        stackX,
-        stackY,
-        stackMaxX,
+        columnIndex,
+        columnCount: 1,
       }
     })
+
+    const columnCount = Math.max(1, laneEnds.length)
+    return positioned.map((event) => ({ ...event, columnCount }))
   })
 }
 
@@ -138,6 +138,7 @@ export function WeekTimeline({
 }: WeekTimelineProps) {
   const weekDays = useMemo(() => getWeekDays(currentDate), [currentDate])
   const scrollRef = useRef<HTMLDivElement>(null)
+  const [activeEventId, setActiveEventId] = useState<string | null>(null)
 
   // Auto-scroll to 06:00 on mount
   useEffect(() => {
@@ -322,61 +323,62 @@ export function WeekTimeline({
                   })}
                   {dayEvents.map((ev) => {
                     const color = ev.teamColor || "#9CA3AF" // gray for no team
-                    const isStacked = ev.stackSize > 1
-                    const eventWidth = `calc(100% - ${ev.stackMaxX + EVENT_COLUMN_GUTTER * 2}px)`
-                    const opacity = Math.max(0.82, 0.96 - ev.stackIndex * 0.035)
-                    const textShadow = isStacked ? "0 1px 0 rgba(255,255,255,0.65)" : undefined
-
+                    const isOverlapping = ev.columnCount > 1
+                    const isActive = activeEventId === ev.id
+                    const fixedWidth = EVENT_COLUMN_GUTTER * 2 + Math.max(0, ev.columnCount - 1) * EVENT_COLUMN_GAP
+                    const columnWidthPercent = 100 / ev.columnCount
+                    const columnWidthAdjustment = fixedWidth / ev.columnCount
+                    const eventWidth = `calc(${columnWidthPercent}% - ${columnWidthAdjustment}px)`
+                    const eventLeft = `calc(${columnWidthPercent * ev.columnIndex}% + ${
+                      EVENT_COLUMN_GUTTER + ev.columnIndex * (EVENT_COLUMN_GAP - columnWidthAdjustment)
+                    }px)`
                     return (
                       <button
                         key={ev.id}
                         type="button"
                         onClick={(event) => {
                           event.stopPropagation()
+                          setActiveEventId(ev.id)
                           onEventClick?.(ev.id)
                           onDaySelect(day)
                         }}
-                        className="group absolute overflow-hidden rounded-md border border-transparent border-l-[3px] px-1.5 py-1 text-left transition-[opacity,box-shadow,transform,background-color] duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 hover:!opacity-100 hover:shadow-lg"
+                        onPointerDown={() => setActiveEventId(ev.id)}
+                        onMouseEnter={() => setActiveEventId(ev.id)}
+                        onMouseLeave={() => {
+                          setActiveEventId((current) => (current === ev.id ? null : current))
+                        }}
+                        onFocus={() => setActiveEventId(ev.id)}
+                        onBlur={() => {
+                          setActiveEventId((current) => (current === ev.id ? null : current))
+                        }}
+                        className="group absolute flex min-w-0 cursor-pointer flex-col items-start justify-start gap-0.5 overflow-hidden rounded-md border border-transparent border-l-[3px] px-1.5 py-1 text-left transition-[box-shadow,background-color,transform] duration-200 ease-out hover:-translate-y-0.5 hover:scale-[1.015] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 active:scale-[0.99]"
                         style={{
-                          top: ev.top + ev.stackY,
-                          left: EVENT_COLUMN_GUTTER + ev.stackX,
+                          top: ev.top,
+                          left: eventLeft,
                           width: eventWidth,
                           height: ev.height,
-                          zIndex: 10 + ev.stackIndex,
-                          opacity,
-                          backgroundColor: `${color}${isStacked ? "38" : "24"}`,
-                          borderColor: `${color}66`,
+                          zIndex: isActive ? 100 : 10 + ev.columnIndex,
+                          backgroundColor: "#efefef",
+                          borderColor: color,
                           borderLeftColor: color,
-                          boxShadow: isStacked
-                            ? "0 10px 24px rgba(15, 23, 42, 0.12), 0 1px 2px rgba(15, 23, 42, 0.12)"
+                          boxShadow: isActive
+                            ? "0 16px 36px rgba(15, 23, 42, 0.22), 0 2px 6px rgba(15, 23, 42, 0.16)"
+                            : isOverlapping
+                            ? "0 6px 14px rgba(15, 23, 42, 0.10), 0 1px 2px rgba(15, 23, 42, 0.10)"
                             : "0 1px 2px rgba(15, 23, 42, 0.08)",
-                          transform: isStacked
-                            ? `rotate(${Math.max(-1.1, Math.min(1.1, (ev.stackIndex % 2 === 0 ? -0.45 : 0.45) * ev.stackIndex))}deg)`
-                            : undefined,
                         }}
                         title={`${ev.title} - ${ev.subtitle}`}
                       >
-                        {isStacked ? (
-                          <span
-                            className="absolute right-1.5 top-1 rounded-full bg-background/75 px-1 text-[8px] font-semibold text-foreground/70 shadow-sm"
-                            aria-hidden="true"
-                          >
-                            {ev.stackIndex + 1}/{ev.stackSize}
-                          </span>
-                        ) : null}
-                        <p
-                          className="max-w-[calc(100%-1.6rem)] truncate text-[10px] font-semibold leading-tight text-foreground/90"
-                          style={{ textShadow }}
-                        >
+                        <p className="w-full min-w-0 truncate text-[10px] font-semibold leading-tight text-foreground/90">
                           {ev.title}
                         </p>
                         {ev.height > 30 && (
-                          <p className="truncate text-[9px] leading-tight text-foreground/70">
+                          <p className="w-full min-w-0 truncate text-[9px] leading-tight text-foreground/70">
                             {ev.time} - {formatEndTime(ev.time, ev.duration)}
                           </p>
                         )}
                         {ev.height > 45 && (
-                          <p className="truncate text-[9px] leading-tight text-foreground/65">
+                          <p className="w-full min-w-0 truncate text-[9px] leading-tight text-foreground/65">
                             {ev.subtitle}
                           </p>
                         )}

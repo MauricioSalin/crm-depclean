@@ -14,6 +14,8 @@ import {
   Edit,
   Loader2,
   MapPin,
+  PanelRightClose,
+  PanelRightOpen,
   RotateCcw,
   Search,
   X,
@@ -30,6 +32,7 @@ import { getStoredUser } from "@/lib/auth/session"
 import { addCivilDaysKey, addCivilMonthsKey, parseCivilDate, toBrasiliaTimeKey, toCivilDateKey } from "@/lib/date-utils"
 import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
+import { cn } from "@/lib/utils"
 import { checkScheduleAvailability, formatAvailabilitySlot } from "@/lib/schedule-availability"
 import { canStartSchedule } from "@/lib/schedule-permissions"
 import type { RecurrenceType } from "@/lib/types"
@@ -45,6 +48,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { FilterSearchInput } from "@/components/ui/filter-search-input"
 import { Label } from "@/components/ui/label"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { EmptyState } from "@/components/ui/empty-state"
@@ -74,6 +78,8 @@ type AgendaScheduledServiceRow = ScheduleRecord & {
 
 const AGENDA_WORKDAY_START_TIME = "08:00"
 const AGENDA_DAY_DURATION_MINUTES = 9 * 60
+const DAY_PANEL_CONTENT_HIDE_MS = 80
+const DAY_PANEL_DRAWER_MS = 500
 
 const DEFAULT_RECURRENCE: AgendaRecurrenceConfig = {
   type: "none",
@@ -199,6 +205,8 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   const deferredSearchTerm = useDeferredValue(searchTerm)
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [viewMode, setViewMode] = useState<"month" | "week">("week")
+  const [dayPanelOpen, setDayPanelOpen] = useState(true)
+  const [dayPanelContentVisible, setDayPanelContentVisible] = useState(true)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingService, setEditingService] = useState<AgendaScheduledServiceRow | null>(null)
   const [initialFormData, setInitialFormData] = useState<Partial<SchedulingFormData> | null>(null)
@@ -217,6 +225,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   const [completionEndTime, setCompletionEndTime] = useState("")
   const [completionFiles, setCompletionFiles] = useState<File[]>([])
   const scheduleDialogResetTimeoutRef = useRef<number | null>(null)
+  const dayPanelTransitionTimeoutRef = useRef<number | null>(null)
   const [currentUser, setCurrentUser] = useState<ReturnType<typeof getStoredUser>>(null)
   const canManageAgenda = hasAnyPermission(currentUser, ["agenda_manage"])
   const canManageLockedSchedules = hasAnyPermission(currentUser, ["agenda_manage_locked"])
@@ -286,7 +295,10 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   }, [openDialog, isDialogOpen, selectedDate, editingService, initialFormData])
 
   useEffect(() => {
-    return () => clearScheduleDialogResetTimeout()
+    return () => {
+      clearScheduleDialogResetTimeout()
+      clearDayPanelTransitionTimeout()
+    }
   }, [])
 
   const clearScheduleDialogResetTimeout = () => {
@@ -294,6 +306,33 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       window.clearTimeout(scheduleDialogResetTimeoutRef.current)
       scheduleDialogResetTimeoutRef.current = null
     }
+  }
+
+  const clearDayPanelTransitionTimeout = () => {
+    if (dayPanelTransitionTimeoutRef.current) {
+      window.clearTimeout(dayPanelTransitionTimeoutRef.current)
+      dayPanelTransitionTimeoutRef.current = null
+    }
+  }
+
+  const toggleDayPanel = () => {
+    clearDayPanelTransitionTimeout()
+
+    if (dayPanelOpen) {
+      setDayPanelContentVisible(false)
+      dayPanelTransitionTimeoutRef.current = window.setTimeout(() => {
+        setDayPanelOpen(false)
+        dayPanelTransitionTimeoutRef.current = null
+      }, DAY_PANEL_CONTENT_HIDE_MS)
+      return
+    }
+
+    setDayPanelContentVisible(false)
+    setDayPanelOpen(true)
+    dayPanelTransitionTimeoutRef.current = window.setTimeout(() => {
+      setDayPanelContentVisible(true)
+      dayPanelTransitionTimeoutRef.current = null
+    }, DAY_PANEL_DRAWER_MS)
   }
 
   const resetScheduleDialogState = () => {
@@ -978,59 +1017,76 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
         </DialogContent>
       </Dialog>
 
-      <div className={`${mobileFiltersOpen ? "grid" : "hidden"} -m-1 grid-cols-2 gap-2 overflow-visible p-1 sm:flex sm:items-center`}>
-        <div className="relative focus-within:z-[70] sm:w-80">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
+      <div className={`${mobileFiltersOpen ? "grid" : "hidden"} -m-1 grid-cols-2 gap-2 overflow-visible p-1 sm:flex sm:w-full sm:items-center sm:justify-between`}>
+        <div className="contents sm:flex sm:min-w-0 sm:items-center sm:gap-2">
+          <FilterSearchInput
+            wrapperClassName="sm:w-80"
             placeholder="Buscar cliente, serviço, equipe..."
             value={searchTerm}
             spellCheck={false}
-            onChange={(event) => setSearchTerm(event.target.value)}
-            className="pl-10"
+            onValueChange={setSearchTerm}
           />
+
+          <SearchableSelect
+            value={statusFilter}
+            onValueChange={setStatusFilter}
+            options={[
+              { value: "draft", label: "Rascunho" },
+              { value: "scheduled", label: "Agendado" },
+              { value: "in_progress", label: "Em andamento" },
+              { value: "completed", label: "Concluído" },
+              { value: "cancelled", label: "Cancelado" },
+            ]}
+            placeholder="Status"
+            searchPlaceholder="Buscar status..."
+            allLabel="Todos os status"
+            className="sm:w-[160px]"
+          />
+
+          <Tabs
+            value={viewMode}
+            onValueChange={(value) => {
+              const mode = value as "month" | "week"
+              if (mode === "week") {
+                setCurrentDate(selectedDate || new Date())
+              }
+              setViewMode(mode)
+            }}
+            className="hidden shrink-0 sm:block"
+          >
+            <TabsList className="h-9">
+              <TabsTrigger value="month" className="px-3 text-xs">
+                Mês
+              </TabsTrigger>
+              <TabsTrigger value="week" className="px-3 text-xs">
+                Semana
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
         </div>
 
-        <SearchableSelect
-          value={statusFilter}
-          onValueChange={setStatusFilter}
-          options={[
-            { value: "draft", label: "Rascunho" },
-            { value: "scheduled", label: "Agendado" },
-            { value: "in_progress", label: "Em andamento" },
-            { value: "completed", label: "Concluído" },
-            { value: "cancelled", label: "Cancelado" },
-          ]}
-          placeholder="Status"
-          searchPlaceholder="Buscar status..."
-          allLabel="Todos os status"
-          className="sm:w-[160px]"
-        />
-
-        <Tabs
-          value={viewMode}
-          onValueChange={(value) => {
-            const mode = value as "month" | "week"
-            if (mode === "week") {
-              setCurrentDate(selectedDate || new Date())
-            }
-            setViewMode(mode)
-          }}
-          className="hidden shrink-0 sm:block"
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="-ml-1 hidden h-8 w-8 shrink-0 rounded-lg text-muted-foreground/55 transition-colors duration-200 hover:bg-secondary/60 hover:text-muted-foreground lg:inline-flex"
+          title={dayPanelOpen ? "Recolher detalhes do dia" : "Mostrar detalhes do dia"}
+          aria-label={dayPanelOpen ? "Recolher detalhes do dia" : "Mostrar detalhes do dia"}
+          aria-pressed={!dayPanelOpen}
+          onClick={toggleDayPanel}
         >
-          <TabsList className="h-9">
-            <TabsTrigger value="month" className="px-3 text-xs">
-              Mês
-            </TabsTrigger>
-            <TabsTrigger value="week" className="px-3 text-xs">
-              Semana
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+          {dayPanelOpen ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
+        </Button>
       </div>
 
       {viewMode === "month" ? (
-        <div className="grid gap-4 lg:flex-1 lg:grid-cols-5 lg:overflow-hidden">
-          <Card className="flex h-full min-h-[420px] flex-col lg:col-span-3 lg:overflow-hidden xl:col-span-3">
+        <div
+          className={cn(
+            "grid gap-4 lg:flex lg:flex-1 lg:overflow-hidden lg:transition-[gap] lg:duration-500 lg:ease-[cubic-bezier(.22,1,.36,1)]",
+            dayPanelOpen ? "lg:gap-4" : "lg:gap-0",
+          )}
+        >
+          <Card className="flex h-full min-h-[420px] min-w-0 flex-col lg:flex-1 lg:overflow-hidden">
             <CardHeader className="shrink-0 px-4 py-2">
               <div className="flex items-center justify-between">
                 <Button variant="ghost" size="icon" className="h-10 w-10" onClick={() => navigateMonth(-1)}>
@@ -1076,20 +1132,15 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                       <div className="flex h-full flex-col items-center justify-center">
                         <span className={`font-medium ${isToday(date) ? "text-primary" : ""}`}>{Number(toCivilDateKey(date).slice(8, 10))}</span>
                         {services.length > 0 ? (
-                          <div className="mt-1 flex flex-wrap items-center justify-center gap-1">
-                            {[...new Set(services.map((service) => service.teamId))].slice(0, 4).map((teamId) => (
+                          <div className="mt-1 grid grid-cols-8 place-items-center gap-1">
+                            {services.map((service) => (
                               <div
-                                key={teamId || "no-team"}
+                                key={service.id}
                                 className="h-2 w-2 rounded-full"
-                                style={{ backgroundColor: getTeamColor(teamId) }}
-                                title={`${services.filter((service) => service.teamId === teamId).length} serviço(s)`}
+                                style={{ backgroundColor: getTeamColor(service.teamId) }}
+                                title={`${service.clientName} - ${service.serviceTypeName}`}
                               />
                             ))}
-                            {[...new Set(services.map((service) => service.teamId))].length > 4 ? (
-                              <span className="text-[9px] text-muted-foreground">
-                                +{[...new Set(services.map((service) => service.teamId))].length - 4}
-                              </span>
-                            ) : null}
                           </div>
                         ) : null}
                       </div>
@@ -1100,29 +1151,43 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
             </CardContent>
           </Card>
 
-          <Card className="flex flex-col lg:col-span-2 lg:overflow-hidden xl:col-span-2">
-            <CardHeader className="px-4 py-3">
-              <CardTitle className="flex items-center gap-2 text-sm">
-                <CalendarIcon className="h-4 w-4" />
-                {selectedDate
-                  ? selectedDate
-                      .toLocaleDateString("pt-BR", {
-                        weekday: "long",
-                        day: "numeric",
-                        month: "long",
-                      })
-                      .replace(/^\w/, (value) => value.toUpperCase())
-                  : "Selecione uma data"}
-              </CardTitle>
-            </CardHeader>
+          <Card
+            aria-hidden={!dayPanelOpen}
+            className={cn(
+              "flex min-w-0 flex-col overflow-hidden lg:shrink-0 lg:transition-[width,opacity,border-color] lg:duration-500 lg:ease-[cubic-bezier(.22,1,.36,1)]",
+              dayPanelOpen
+                ? "lg:w-[380px] lg:opacity-100 xl:w-[420px]"
+                : "lg:pointer-events-none lg:w-0 lg:border-transparent lg:opacity-0",
+            )}
+          >
+            <div
+              className={cn(
+                "flex h-full min-w-0 flex-col transition-opacity duration-100 ease-out lg:min-w-[380px] xl:min-w-[420px]",
+                dayPanelContentVisible ? "opacity-100 delay-75" : "opacity-0",
+              )}
+            >
+              <CardHeader className="px-4 py-3">
+                <CardTitle className="flex items-center gap-2 text-sm">
+                  <CalendarIcon className="h-4 w-4" />
+                  {selectedDate
+                    ? selectedDate
+                        .toLocaleDateString("pt-BR", {
+                          weekday: "long",
+                          day: "numeric",
+                          month: "long",
+                        })
+                        .replace(/^\w/, (value) => value.toUpperCase())
+                    : "Selecione uma data"}
+                </CardTitle>
+              </CardHeader>
 
-            <CardContent className="flex-1 px-0 lg:overflow-hidden">
+              <CardContent className="flex-1 px-0 lg:overflow-hidden">
               {selectedDate ? (
                 selectedDateServices.length > 0 ? (
                   <ScrollArea className="lg:h-full">
                     <div className="grid grid-cols-1 gap-3 px-6 sm:grid-cols-2 lg:grid-cols-1">
                       {selectedDateServices.map((service) => (
-                        <Card key={service.id} className="cursor-pointer" onClick={() => openSchedule(service)}>
+                        <Card key={service.id} className="group cursor-pointer border-border/70 transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:bg-primary/[0.03] hover:shadow-lg hover:shadow-primary/10" onClick={() => openSchedule(service)}>
                           <CardContent>
                             <div className="mb-4 flex items-start justify-between gap-3">
                               <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -1246,12 +1311,18 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                   <p className="text-sm">Clique em uma data para ver os detalhes.</p>
                 </div>
               )}
-            </CardContent>
+              </CardContent>
+            </div>
           </Card>
         </div>
       ) : (
-        <div className="grid gap-4 lg:flex-1 lg:grid-cols-5 lg:overflow-hidden">
-          <Card className="flex flex-col lg:col-span-3 lg:overflow-hidden xl:col-span-3">
+        <div
+          className={cn(
+            "grid gap-4 lg:flex lg:flex-1 lg:overflow-hidden lg:transition-[gap] lg:duration-500 lg:ease-[cubic-bezier(.22,1,.36,1)]",
+            dayPanelOpen ? "lg:gap-4" : "lg:gap-0",
+          )}
+        >
+          <Card className="flex min-w-0 flex-col lg:flex-1 lg:overflow-hidden">
             <CardContent className="flex min-h-0 flex-1 flex-col p-0 lg:h-[calc(100vh-280px)]">
               <WeekTimeline
                 events={timelineEvents}
@@ -1270,29 +1341,43 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
             </CardContent>
           </Card>
 
-          <Card className="flex flex-col lg:col-span-2 lg:overflow-hidden xl:col-span-2">
-            <CardHeader className="px-4 py-3">
-              <CardTitle className="flex items-center gap-2 text-sm">
-                <CalendarIcon className="h-4 w-4" />
-                {selectedDate
-                  ? selectedDate
-                      .toLocaleDateString("pt-BR", {
-                        weekday: "long",
-                        day: "numeric",
-                        month: "long",
-                      })
-                      .replace(/^\w/, (value) => value.toUpperCase())
-                  : "Selecione uma data"}
-              </CardTitle>
-            </CardHeader>
+          <Card
+            aria-hidden={!dayPanelOpen}
+            className={cn(
+              "flex min-w-0 flex-col overflow-hidden lg:shrink-0 lg:transition-[width,opacity,border-color] lg:duration-500 lg:ease-[cubic-bezier(.22,1,.36,1)]",
+              dayPanelOpen
+                ? "lg:w-[380px] lg:opacity-100 xl:w-[420px]"
+                : "lg:pointer-events-none lg:w-0 lg:border-transparent lg:opacity-0",
+            )}
+          >
+            <div
+              className={cn(
+                "flex h-full min-w-0 flex-col transition-opacity duration-100 ease-out lg:min-w-[380px] xl:min-w-[420px]",
+                dayPanelContentVisible ? "opacity-100 delay-75" : "opacity-0",
+              )}
+            >
+              <CardHeader className="px-4 py-3">
+                <CardTitle className="flex items-center gap-2 text-sm">
+                  <CalendarIcon className="h-4 w-4" />
+                  {selectedDate
+                    ? selectedDate
+                        .toLocaleDateString("pt-BR", {
+                          weekday: "long",
+                          day: "numeric",
+                          month: "long",
+                        })
+                        .replace(/^\w/, (value) => value.toUpperCase())
+                    : "Selecione uma data"}
+                </CardTitle>
+              </CardHeader>
 
-            <CardContent className="flex-1 px-0 lg:overflow-hidden">
+              <CardContent className="flex-1 px-0 lg:overflow-hidden">
               {selectedDate ? (
                 selectedDateServices.length > 0 ? (
                   <ScrollArea className="lg:h-full">
                     <div className="grid grid-cols-1 gap-3 px-6 sm:grid-cols-2 lg:grid-cols-1">
                       {selectedDateServices.map((service) => (
-                        <Card key={service.id} className="cursor-pointer" onClick={() => openSchedule(service)}>
+                        <Card key={service.id} className="group cursor-pointer border-border/70 transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:bg-primary/[0.03] hover:shadow-lg hover:shadow-primary/10" onClick={() => openSchedule(service)}>
                           <CardContent>
                             <div className="mb-4 flex items-start justify-between gap-3">
                               <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -1416,7 +1501,8 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                   <p className="text-sm">Clique em uma data para ver os detalhes.</p>
                 </div>
               )}
-            </CardContent>
+              </CardContent>
+            </div>
           </Card>
         </div>
       )}

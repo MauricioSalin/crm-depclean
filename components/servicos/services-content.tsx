@@ -8,6 +8,7 @@ import { Search, Edit, Trash2, Clock, ClipboardList, MoreHorizontal } from "luci
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { FilterSearchInput } from "@/components/ui/filter-search-input"
 import { Badge } from "@/components/ui/badge"
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
 import { DataPagination } from "@/components/ui/data-pagination"
@@ -164,18 +165,15 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
       <div className={`${mobileFiltersOpen ? "flex" : "hidden"} -m-1 shrink-0 items-center gap-2 overflow-visible p-1 sm:flex`}>
-        <div className="relative w-full focus-within:z-[70] sm:max-w-sm">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Buscar tipos de serviço..."
-            value={searchTerm}
-            onChange={(e) => {
-              setSearchTerm(e.target.value)
-              setCurrentPage(1)
-            }}
-            className="pl-10"
-          />
-        </div>
+        <FilterSearchInput
+          wrapperClassName="w-full sm:max-w-sm"
+          placeholder="Buscar tipos de serviço..."
+          value={searchTerm}
+          onValueChange={(value) => {
+            setSearchTerm(value)
+            setCurrentPage(1)
+          }}
+        />
         {viewToggle ? <div className="hidden shrink-0 sm:block">{viewToggle}</div> : null}
       </div>
 

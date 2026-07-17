@@ -11,6 +11,7 @@ import { DataPagination } from "@/components/ui/data-pagination"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { EmptyState, TableEmptyState } from "@/components/ui/empty-state"
 import { Input } from "@/components/ui/input"
+import { FilterSearchInput } from "@/components/ui/filter-search-input"
 import { Label } from "@/components/ui/label"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -254,18 +255,14 @@ export function LogsContent() {
       <div className="flex flex-wrap items-end gap-x-2 gap-y-5">
         <div className="w-full space-y-1 sm:w-[280px]">
           <Label>Busca</Label>
-          <div className="relative focus-within:z-[70]">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(event) => {
-                setSearch(event.target.value)
-                resetPage()
-              }}
-              placeholder="Buscar ação, usuário, cliente..."
-              className="pl-10"
-            />
-          </div>
+          <FilterSearchInput
+            value={search}
+            onValueChange={(value) => {
+              setSearch(value)
+              resetPage()
+            }}
+            placeholder="Buscar ação, usuário, cliente..."
+          />
         </div>
         <div className="w-full space-y-1 sm:w-[190px]">
           <Label>De</Label>

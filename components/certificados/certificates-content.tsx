@@ -32,6 +32,7 @@ import {
 import { EmptyState, TableEmptyState } from "@/components/ui/empty-state"
 import { CardSkeletonGrid, TableSkeletonRows } from "@/components/ui/table-skeleton"
 import { Input } from "@/components/ui/input"
+import { FilterSearchInput } from "@/components/ui/filter-search-input"
 import { Label } from "@/components/ui/label"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -333,19 +334,16 @@ export function CertificatesContent({ viewMode, viewToggle, createOpen = false, 
 
       <div className="flex min-h-0 flex-1 flex-col gap-4">
         <div className={`${mobileFiltersOpen ? "grid" : "hidden"} -m-1 shrink-0 grid-cols-2 gap-2 overflow-visible p-1 sm:flex sm:items-center`}>
-          <div className="relative col-span-2 focus-within:z-[70] sm:w-80">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={searchTerm}
-              spellCheck={false}
-              onChange={(event) => {
-                setSearchTerm(event.target.value)
-                setCurrentPage(1)
-              }}
-              placeholder="Buscar cliente, serviço, equipe..."
-              className="pl-10"
-            />
-          </div>
+          <FilterSearchInput
+            wrapperClassName="col-span-2 sm:w-80"
+            value={searchTerm}
+            spellCheck={false}
+            onValueChange={(value) => {
+              setSearchTerm(value)
+              setCurrentPage(1)
+            }}
+            placeholder="Buscar cliente, serviço, equipe..."
+          />
           <SearchableSelect
             value={statusFilter}
             onValueChange={(value) => {

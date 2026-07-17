@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { FilterSearchInput } from "@/components/ui/filter-search-input"
 import { Badge } from "@/components/ui/badge"
 import { 
   Table, 
@@ -420,16 +421,13 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
       {/* Installments Table */}
       <div className="space-y-4">
           <div className="-mx-1 -mt-1 mb-4 grid grid-cols-2 gap-2 overflow-visible p-1 sm:flex sm:items-center">
-              <div className="relative focus-within:z-[70] sm:w-80 sm:flex-none">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar por contrato ou cliente..."
-                  value={searchTerm}
-                  spellCheck={false}
-                  onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1) }}
-                  className="pl-10"
-                />
-              </div>
+              <FilterSearchInput
+                wrapperClassName="sm:w-80 sm:flex-none"
+                placeholder="Buscar por contrato ou cliente..."
+                value={searchTerm}
+                spellCheck={false}
+                onValueChange={(value) => { setSearchTerm(value); setCurrentPage(1) }}
+              />
               <SearchableSelect
                 value={tabFilter}
                 onValueChange={(value) => { setTabFilter(value); setCurrentPage(1) }}

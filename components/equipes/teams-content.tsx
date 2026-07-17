@@ -17,6 +17,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
+import { FilterSearchInput } from "@/components/ui/filter-search-input"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -380,15 +381,12 @@ export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle 
 
       <div className="flex min-h-0 flex-1 flex-col gap-4">
         <div className={`${mobileFiltersOpen ? "flex" : "hidden"} -m-1 shrink-0 items-center gap-2 overflow-visible p-1 sm:flex`}>
-          <div className="relative w-full focus-within:z-[70] sm:max-w-sm">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Buscar equipes..."
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
-              className="pl-10"
-            />
-          </div>
+          <FilterSearchInput
+            wrapperClassName="w-full sm:max-w-sm"
+            placeholder="Buscar equipes..."
+            value={searchTerm}
+            onValueChange={setSearchTerm}
+          />
           {viewToggle ? <div className="hidden shrink-0 sm:block">{viewToggle}</div> : null}
         </div>
 

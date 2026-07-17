@@ -357,7 +357,7 @@ export function SchedulingFormDialog({
             </div>
           ) : null}
 
-          <fieldset disabled={!canEditDetails} className="contents">
+          <fieldset disabled={!canEditDetails} className="m-0 grid min-w-0 gap-5 border-0 p-0">
           {/* Client Selection */}
           <div className="space-y-2">
             <Label>Cliente *</Label>
@@ -448,7 +448,7 @@ export function SchedulingFormDialog({
             />
           </div>
 
-          <div className="space-y-4">
+          <div className="grid gap-4">
             <div className="space-y-3 rounded-lg border bg-muted/10 p-4">
               <label className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Checkbox
@@ -692,7 +692,7 @@ export function SchedulingFormDialog({
 
           {/* Date, Time, Duration */}
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
+            <div className="space-y-3">
               <Label>Data *</Label>
               <Input
                 type="date"

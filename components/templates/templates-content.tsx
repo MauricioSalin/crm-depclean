@@ -26,6 +26,7 @@ import {
 import { TableEmptyState } from "@/components/ui/empty-state"
 import { TableSkeletonRows } from "@/components/ui/table-skeleton"
 import { Input } from "@/components/ui/input"
+import { FilterSearchInput } from "@/components/ui/filter-search-input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -1811,18 +1812,15 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
 
       <div className="flex flex-col gap-4 md:min-h-0 md:flex-1 md:overflow-hidden">
         <div className={`${mobileFiltersOpen ? "flex" : "hidden"} -m-1 flex-col gap-3 overflow-visible p-1 sm:flex sm:flex-row sm:items-center`}>
-          <div className="relative w-full focus-within:z-[70] sm:max-w-md">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder={`Buscar ${config.pluralLabel}...`}
-              value={searchTerm}
-              onChange={(event) => {
-                setSearchTerm(event.target.value)
-                setCurrentPage(1)
-              }}
-              className="pl-10"
-            />
-          </div>
+          <FilterSearchInput
+            wrapperClassName="w-full sm:max-w-md"
+            placeholder={`Buscar ${config.pluralLabel}...`}
+            value={searchTerm}
+            onValueChange={(value) => {
+              setSearchTerm(value)
+              setCurrentPage(1)
+            }}
+          />
         </div>
 
         {mobileTabs ? <div className="sm:hidden">{mobileTabs}</div> : null}
