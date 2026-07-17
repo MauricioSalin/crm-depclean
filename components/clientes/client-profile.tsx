@@ -655,12 +655,14 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
   }, [attachmentsPage, attachmentsTotalPages])
 
   const paidInstallments = allInstallments.filter((installment) => installment.status === "paid")
-  const overdueInstallments = allInstallments.filter((installment) => ["late", "overdue"].includes(installment.status))
+  const lateInstallments = allInstallments.filter((installment) => installment.status === "late")
+  const overdueInstallments = allInstallments.filter((installment) => installment.status === "overdue")
   const pendingInstallments = allInstallments.filter((installment) => installment.status === "pending")
   const totalPaid = paidInstallments.reduce(
     (accumulator, installment) => accumulator + (installment.paidValue ?? installment.value),
     0,
   )
+  const totalLate = lateInstallments.reduce((accumulator, installment) => accumulator + installment.value, 0)
   const totalOverdue = overdueInstallments.reduce((accumulator, installment) => accumulator + installment.value, 0)
   const totalPending = pendingInstallments.reduce((accumulator, installment) => accumulator + installment.value, 0)
 
@@ -859,7 +861,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <Card className="p-4">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
@@ -892,6 +894,18 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
             <div>
               <p className="text-sm text-muted-foreground">Pendente</p>
               <p className="text-xl font-semibold text-amber-600/80">{formatCurrency(totalPending)}</p>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-50">
+              <AlertTriangle className="h-5 w-5 text-orange-500" />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Em atraso</p>
+              <p className="text-xl font-semibold text-orange-600/80">{formatCurrency(totalLate)}</p>
             </div>
           </div>
         </Card>

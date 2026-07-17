@@ -149,14 +149,16 @@ const getInstallmentStatusBadge = (status: string) => {
   switch (status) {
     case "paid":
       return <Badge className="bg-green-100 text-green-700 hover:bg-green-100">Paga</Badge>
+    case "pending":
+      return <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">Pendente</Badge>
     case "late":
       return <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100">Atrasada</Badge>
     case "overdue":
       return <Badge className="bg-red-100 text-red-700 hover:bg-red-100">Vencida</Badge>
     case "cancelled":
-      return <Badge className="bg-gray-100 text-gray-700 hover:bg-gray-100">Cancelada</Badge>
+      return <Badge variant="secondary">Cancelada</Badge>
     default:
-      return <Badge variant="secondary">Pendente</Badge>
+      return <Badge variant="secondary">{status}</Badge>
   }
 }
 
@@ -494,7 +496,17 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
   )
 
   const overdueInstallments = useMemo(
-    () => contract?.installments.filter((installment) => ["late", "overdue"].includes(installment.status)) ?? [],
+    () => contract?.installments.filter((installment) => installment.status === "overdue") ?? [],
+    [contract?.installments],
+  )
+
+  const lateInstallments = useMemo(
+    () => contract?.installments.filter((installment) => installment.status === "late") ?? [],
+    [contract?.installments],
+  )
+
+  const pendingInstallments = useMemo(
+    () => contract?.installments.filter((installment) => installment.status === "pending") ?? [],
     [contract?.installments],
   )
 
@@ -510,6 +522,16 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
   const totalOverdue = useMemo(
     () => overdueInstallments.reduce((accumulator, installment) => accumulator + Number(installment.value ?? 0), 0),
     [overdueInstallments],
+  )
+
+  const totalLate = useMemo(
+    () => lateInstallments.reduce((accumulator, installment) => accumulator + Number(installment.value ?? 0), 0),
+    [lateInstallments],
+  )
+
+  const totalPending = useMemo(
+    () => pendingInstallments.reduce((accumulator, installment) => accumulator + Number(installment.value ?? 0), 0),
+    [pendingInstallments],
   )
 
   const progress = contract && contract.installmentsCount > 0 ? (paidInstallments.length / contract.installmentsCount) * 100 : 0
@@ -860,7 +882,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
         </div>
       </Card>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <Card className="p-4">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
@@ -893,8 +915,20 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
             <div>
               <p className="text-sm text-muted-foreground">Pendente</p>
               <p className="text-xl font-semibold text-amber-600/80">
-                {formatCurrency(Math.max(contract.totalValue - totalPaid, 0))}
+                {formatCurrency(totalPending)}
               </p>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-50">
+              <AlertTriangle className="h-5 w-5 text-orange-500" />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Em atraso</p>
+              <p className="text-xl font-semibold text-orange-600/80">{formatCurrency(totalLate)}</p>
             </div>
           </div>
         </Card>

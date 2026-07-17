@@ -71,12 +71,12 @@ interface FinanceiroContentProps {
 type InstallmentStatusAction = "pending" | "paid" | "overdue"
 
 const EMPTY_MONTHLY_REVENUE_DATA = [
-  { month: "Mês 1", value: 0, paidValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
-  { month: "Mês 2", value: 0, paidValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
-  { month: "Mês 3", value: 0, paidValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
-  { month: "Mês 4", value: 0, paidValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
-  { month: "Mês 5", value: 0, paidValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
-  { month: "Mês 6", value: 0, paidValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
+  { month: "Mês 1", value: 0, paidValue: 0, pendingValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
+  { month: "Mês 2", value: 0, paidValue: 0, pendingValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
+  { month: "Mês 3", value: 0, paidValue: 0, pendingValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
+  { month: "Mês 4", value: 0, paidValue: 0, pendingValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
+  { month: "Mês 5", value: 0, paidValue: 0, pendingValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
+  { month: "Mês 6", value: 0, paidValue: 0, pendingValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
 ]
 
 const EMPTY_DONUT_DATA = [{ name: "Sem dados", value: 1 }]
@@ -127,7 +127,21 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
     }
   }, [])
 
-  const FINANCE_COLORS = ["#22C55E", "#F59E0B", "#EF4444"]
+  const getFinanceColor = (name: string) => {
+    switch (name) {
+      case "Pagas":
+        return "#22C55E"
+      case "A receber":
+      case "Pendentes":
+        return "#EAB308"
+      case "Em atraso":
+        return "#F97316"
+      case "Vencidas":
+        return "#EF4444"
+      default:
+        return "#94A3B8"
+    }
+  }
 
   const financialQuery = useQuery({
     queryKey: ["analytics", "financial", dateFrom, dateTo],
@@ -194,14 +208,20 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
     totalCount: 0,
     adherenceRate: 0,
   }
-  const totalReceivable = summary.totalReceivable ?? summary.totalPending + summary.totalLate + summary.totalOverdue
+  const totalReceivable = summary.totalPending ?? 0
   const monthlyRevenueData = financialQuery.data?.data.monthlyRevenueData ?? []
-  const financeHealthData = financialQuery.data?.data.financeHealthData ?? [
+  const financeHealthData = (financialQuery.data?.data.financeHealthData ?? [
     { name: "Pagas", value: 0 },
+    { name: "A receber", value: 0 },
     { name: "Em atraso", value: 0 },
     { name: "Vencidas", value: 0 },
-  ]
-  const hasMonthlyRevenueData = monthlyRevenueData.some((item) => item.paidValue > 0 || item.lateValue > 0 || item.overdueValue > 0)
+  ]).map((item) => item.name === "Pendentes" ? { ...item, name: "A receber" } : item)
+  const hasMonthlyRevenueData = monthlyRevenueData.some((item) =>
+    item.paidValue > 0 ||
+    item.pendingValue > 0 ||
+    item.lateValue > 0 ||
+    item.overdueValue > 0,
+  )
   const monthlyRevenueChartData = monthlyRevenueData.length > 0 ? monthlyRevenueData : EMPTY_MONTHLY_REVENUE_DATA
   const hasFinanceHealthData = financeHealthData.some((item) => item.value > 0)
   const financeHealthChartData = hasFinanceHealthData ? financeHealthData : EMPTY_DONUT_DATA
@@ -271,12 +291,12 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
         </Card>
         <Card className="p-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
-              <Clock className="w-5 h-5 text-blue-500" />
+            <div className="w-10 h-10 rounded-lg bg-yellow-50 flex items-center justify-center">
+              <Clock className="w-5 h-5 text-yellow-500" />
             </div>
             <div>
               <p className="text-sm text-muted-foreground">A Receber</p>
-              <p className="text-xl font-semibold text-blue-600/80">{formatCurrency(totalReceivable)}</p>
+              <p className="text-xl font-semibold text-yellow-600/80">{formatCurrency(totalReceivable)}</p>
             </div>
           </div>
         </Card>
@@ -334,7 +354,15 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
                   }}
                   formatter={(value: number, name: string) => [
                     formatCurrency(value),
-                    name === "paidValue" ? "Pagas" : name === "lateValue" ? "Em atraso" : name === "overdueValue" ? "Vencidas" : "Faturamento",
+                    name === "paidValue"
+                      ? "Pagas"
+                      : name === "pendingValue"
+                        ? "A receber"
+                        : name === "lateValue"
+                          ? "Em atraso"
+                          : name === "overdueValue"
+                            ? "Vencidas"
+                            : "Faturamento",
                   ]}
                 />
                 <Legend />
@@ -346,9 +374,16 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
                   radius={[4, 4, 0, 0]}
                 />
                 <Bar
+                  dataKey="pendingValue"
+                  name="A receber"
+                  fill={hasMonthlyRevenueData ? "#EAB308" : "#FEF3C7"}
+                  minPointSize={hasMonthlyRevenueData ? 0 : 3}
+                  radius={[4, 4, 0, 0]}
+                />
+                <Bar
                   dataKey="lateValue"
                   name="Em atraso"
-                  fill={hasMonthlyRevenueData ? "#F59E0B" : "#F6EFE4"}
+                  fill={hasMonthlyRevenueData ? "#F97316" : "#FFEDD5"}
                   minPointSize={hasMonthlyRevenueData ? 0 : 3}
                   radius={[4, 4, 0, 0]}
                 />
@@ -383,7 +418,7 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
                     {financeHealthChartData.map((entry, index) => (
                       <Cell
                         key={`cell-${index}`}
-                        fill={hasFinanceHealthData ? FINANCE_COLORS[index % FINANCE_COLORS.length] : EMPTY_CHART_COLOR}
+                        fill={hasFinanceHealthData ? getFinanceColor(String(entry.name)) : EMPTY_CHART_COLOR}
                       />
                     ))}
                   </Pie>
@@ -408,7 +443,7 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
                 <div key={item.name} className="flex items-center gap-1.5">
                   <div
                     className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: FINANCE_COLORS[index] }}
+                    style={{ backgroundColor: getFinanceColor(item.name) }}
                   />
                   <span className="text-muted-foreground whitespace-nowrap">{item.name}</span>
                 </div>

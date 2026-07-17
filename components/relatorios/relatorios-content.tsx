@@ -94,6 +94,7 @@ const emptyReports: ReportsAnalyticsRecord = {
     activeContractsGlobalValue: 0,
     monthlyRevenue: 0,
     monthlyRevenueChange: 0,
+    monthlyRevenueMonthLabel: "",
     scheduledServices: 0,
     scheduledServicesChange: 0,
     completedServices: 0,
@@ -305,12 +306,12 @@ function formatUrlIds(ids: string[]) {
 }
 
 const EMPTY_MONTHLY_REVENUE_DATA = [
-  { month: "Mês 1", value: 0, paidValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
-  { month: "Mês 2", value: 0, paidValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
-  { month: "Mês 3", value: 0, paidValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
-  { month: "Mês 4", value: 0, paidValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
-  { month: "Mês 5", value: 0, paidValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
-  { month: "Mês 6", value: 0, paidValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
+  { month: "Mês 1", value: 0, paidValue: 0, pendingValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
+  { month: "Mês 2", value: 0, paidValue: 0, pendingValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
+  { month: "Mês 3", value: 0, paidValue: 0, pendingValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
+  { month: "Mês 4", value: 0, paidValue: 0, pendingValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
+  { month: "Mês 5", value: 0, paidValue: 0, pendingValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
+  { month: "Mês 6", value: 0, paidValue: 0, pendingValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
 ]
 
 type ExcelCell = string | number | boolean | null | undefined
@@ -748,9 +749,13 @@ function styleDataSheet(sheet: Worksheet, rows: ExcelCell[][]) {
 function buildReportCharts(reportId: ReportId, data: ReportsAnalyticsRecord): ReportChartImage[] {
   if (reportId === "financial") {
     const monthlyData = data.monthlyRevenueData.length > 0 ? data.monthlyRevenueData : EMPTY_MONTHLY_REVENUE_DATA
-    const hasMonthlyData = data.monthlyRevenueData.some((item) => item.paidValue > 0 || item.lateValue > 0 || item.overdueValue > 0)
-    const receivable = data.financialSummary.totalReceivable ??
-      data.financialSummary.totalPending + data.financialSummary.totalLate + data.financialSummary.totalOverdue
+    const hasMonthlyData = data.monthlyRevenueData.some((item) =>
+      item.paidValue > 0 ||
+      item.pendingValue > 0 ||
+      item.lateValue > 0 ||
+      item.overdueValue > 0,
+    )
+    const receivable = data.financialSummary.totalPending ?? 0
 
     return [
       {
@@ -764,8 +769,9 @@ function buildReportCharts(reportId: ReportId, data: ReportsAnalyticsRecord): Re
           valueFormatter: formatCompactCurrency,
           series: [
             { key: "paidValue", label: "Pagas", color: hasMonthlyData ? "#84CC16" : EMPTY_CHART_COLOR },
-            { key: "lateValue", label: "Em atraso", color: hasMonthlyData ? STATUS_COLORS.emergency : "#EAF4DF" },
-            { key: "overdueValue", label: "Vencidas", color: hasMonthlyData ? STATUS_COLORS.cancelled : "#EAF4DF" },
+            { key: "pendingValue", label: "A receber", color: hasMonthlyData ? "#EAB308" : "#FEF3C7" },
+            { key: "lateValue", label: "Em atraso", color: hasMonthlyData ? "#F97316" : "#FFEDD5" },
+            { key: "overdueValue", label: "Vencidas", color: hasMonthlyData ? "#EF4444" : "#F3E7E7" },
           ],
         }),
       },
@@ -780,9 +786,9 @@ function buildReportCharts(reportId: ReportId, data: ReportsAnalyticsRecord): Re
           valueFormatter: formatCompactCurrency,
           entries: [
             { label: "Recebido", value: data.financialSummary.totalPaid, color: "#22C55E" },
-            { label: "A receber", value: receivable, color: STATUS_COLORS.scheduled },
-            { label: "Em atraso", value: data.financialSummary.totalLate, color: STATUS_COLORS.emergency },
-            { label: "Vencidas", value: data.financialSummary.totalOverdue, color: STATUS_COLORS.cancelled },
+            { label: "A receber", value: receivable, color: "#EAB308" },
+            { label: "Em atraso", value: data.financialSummary.totalLate, color: "#F97316" },
+            { label: "Vencidas", value: data.financialSummary.totalOverdue, color: "#EF4444" },
           ],
         }),
       },
@@ -1096,29 +1102,30 @@ export function RelatoriosContent() {
 
     if (selectedReport === "financial") {
       return [
-        ["Relatório", "Item", "Valor", "Pagas", "Em atraso", "Vencidas"],
-        ["Resumo financeiro", "Faturamento do mês", data.dashboardStats.monthlyRevenue, "", "", ""],
-        ["Resumo financeiro", "Recebido", data.financialSummary.totalPaid, "", "", ""],
+        ["Relatório", "Item", "Valor", "Pagas", "A receber", "Em atraso", "Vencidas"],
+        ["Resumo financeiro", "Faturamento do mês", data.dashboardStats.monthlyRevenue, "", "", "", ""],
+        ["Resumo financeiro", "Recebido", data.financialSummary.totalPaid, "", "", "", ""],
         [
           "Resumo financeiro",
           "A receber",
-          data.financialSummary.totalReceivable ??
-            data.financialSummary.totalPending + data.financialSummary.totalLate + data.financialSummary.totalOverdue,
+          data.financialSummary.totalPending ?? 0,
+          "",
           "",
           "",
           "",
         ],
-        ["Resumo financeiro", "Em atraso", data.financialSummary.totalLate ?? 0, "", "", ""],
-        ["Resumo financeiro", "Vencidas", data.financialSummary.totalOverdue, "", "", ""],
-        ["Indicadores", "Taxa de adimplência", `${data.financialSummary.adherenceRate}%`, "", "", ""],
-        ["Indicadores", "Ticket médio", data.dashboardStats.activeClients > 0 ? data.dashboardStats.monthlyRevenue / data.dashboardStats.activeClients : 0, "", "", ""],
-        ["Indicadores", "Contratos ativos", data.contracts.filter((contract) => ["signed", "active"].includes(contract.status)).length, "", "", ""],
-        ["Faturamento mensal", "Período", "Total", "Pagas", "Em atraso", "Vencidas"],
+        ["Resumo financeiro", "Em atraso", data.financialSummary.totalLate ?? 0, "", "", "", ""],
+        ["Resumo financeiro", "Vencidas", data.financialSummary.totalOverdue, "", "", "", ""],
+        ["Indicadores", "Taxa de adimplência", `${data.financialSummary.adherenceRate}%`, "", "", "", ""],
+        ["Indicadores", "Ticket médio", data.dashboardStats.activeClients > 0 ? data.dashboardStats.monthlyRevenue / data.dashboardStats.activeClients : 0, "", "", "", ""],
+        ["Indicadores", "Contratos ativos", data.contracts.filter((contract) => ["signed", "active"].includes(contract.status)).length, "", "", "", ""],
+        ["Faturamento mensal", "Período", "Total", "Pagas", "A receber", "Em atraso", "Vencidas"],
         ...data.monthlyRevenueData.map((item) => [
           "Faturamento mensal",
           item.month,
           item.value,
           item.paidValue,
+          item.pendingValue,
           item.lateValue,
           item.overdueValue,
         ]),
