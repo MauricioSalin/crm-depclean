@@ -31,6 +31,7 @@ import {
   listSchedules,
   reactivateSchedule,
   startSchedule,
+  updateScheduleStatus,
   type SchedulePayload,
   type ScheduleRecord,
   updateSchedule,
@@ -449,6 +450,8 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
   const [currentUser, setCurrentUser] = useState<ReturnType<typeof getStoredUser>>(null)
   const canManageAgenda = hasAnyPermission(currentUser, ["agenda_manage"])
   const canManageLockedSchedules = hasAnyPermission(currentUser, ["agenda_manage_locked"])
+  const canManageScheduleStatus = hasAnyPermission(currentUser, ["agenda_manage_status"])
+  const canOpenScheduleEditor = canManageAgenda || canManageScheduleStatus
 
   useEffect(() => {
     const sync = () => setCurrentUser(getStoredUser())
@@ -575,8 +578,12 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
       }
 
       const isRecurringScheduleUpdate = Boolean(scheduleId && editingSchedule?.contractId && !editingSchedule.isManual)
+      if (scheduleId && !canManageAgenda && canManageScheduleStatus) {
+        return updateScheduleStatus(scheduleId, formData.status)
+      }
+
       if (scheduleId && isRecurringScheduleUpdate) {
-        return updateSchedule(scheduleId, {
+        const response = await updateSchedule(scheduleId, {
           teamIds: formData.teamIds,
           additionalEmployeeIds: formData.employeeIds,
           scheduledDate: formData.date,
@@ -590,6 +597,12 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
           generateCertificateRequest: formData.generateCertificateRequest,
           notes: formData.notes,
         })
+
+        if (canManageScheduleStatus && editingSchedule?.status !== formData.status) {
+          return updateScheduleStatus(scheduleId, formData.status)
+        }
+
+        return response
       }
 
       const payload = {
@@ -614,7 +627,12 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
       }
 
       if (scheduleId) {
-        return updateSchedule(scheduleId, payload)
+        const response = await updateSchedule(scheduleId, payload)
+        if (canManageScheduleStatus && editingSchedule?.status !== formData.status) {
+          return updateScheduleStatus(scheduleId, formData.status)
+        }
+
+        return response
       }
 
       return createSchedule(payload)
@@ -812,9 +830,17 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
   const paginatedSchedules = filteredSchedules.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
 
   const handleFormSubmit = (formData: SchedulingFormData, isEditing: boolean) => {
-    if (!canManageAgenda) return
-
     const scheduleId = isEditing ? editingSchedule?.id : undefined
+    const statusOnlyChange = Boolean(isEditing && scheduleId && canManageScheduleStatus && editingSchedule?.status !== formData.status)
+    if (!canManageAgenda && !statusOnlyChange) return
+    if (!canManageAgenda && statusOnlyChange) {
+      saveMutation.mutate({
+        formData,
+        scheduleId,
+      })
+      return
+    }
+
     const availability = checkScheduleAvailability({
       schedules,
       teams,
@@ -842,8 +868,8 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
   }
 
   const openEditSchedule = (schedule: ScheduleRecord) => {
-    if (!canManageAgenda) return
-    if (!canEditSchedule(schedule, canManageLockedSchedules)) return
+    if (!canOpenScheduleEditor) return
+    if (canManageAgenda && !canEditSchedule(schedule, canManageLockedSchedules)) return
 
     clearScheduleDialogResetTimeout()
     setSelectedSchedule(null)
@@ -902,6 +928,8 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
         serviceTypes={services}
         teams={teams}
         employees={employees}
+        canManageStatus={canManageScheduleStatus}
+        canEditDetails={canManageAgenda}
       />
 
       <ScheduleDetailsDialog
@@ -1181,7 +1209,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                       </TableCell>
                       <TableCell>{getStatusBadge(schedule.status)}</TableCell>
                       <TableCell className="text-right">
-                        {canManageAgenda ? (
+                        {canOpenScheduleEditor ? (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="icon" onClick={(event) => event.stopPropagation()}>
@@ -1189,7 +1217,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            {canEditSchedule(schedule, canManageLockedSchedules) && (
+                            {(canManageScheduleStatus || (canManageAgenda && canEditSchedule(schedule, canManageLockedSchedules))) && (
                               <DropdownMenuItem
                                 className="cursor-pointer"
                                 onClick={(event) => {
@@ -1201,7 +1229,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                                 Editar
                               </DropdownMenuItem>
                             )}
-                            {schedule.status === "in_progress" && (
+                            {canManageAgenda && schedule.status === "in_progress" && (
                               <DropdownMenuItem
                                 className="cursor-pointer"
                                 onClick={(event) => {
@@ -1213,7 +1241,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                                 Concluir
                               </DropdownMenuItem>
                             )}
-                            {schedule.status === "cancelled" && (
+                            {canManageAgenda && schedule.status === "cancelled" && (
                               <DropdownMenuItem
                                 className="cursor-pointer"
                                 disabled={reactivateMutation.isPending && reactivateMutation.variables?.id === schedule.id}
@@ -1230,7 +1258,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                                 Reativar
                               </DropdownMenuItem>
                             )}
-                            {canCancelSchedule(schedule) && (
+                            {canManageAgenda && canCancelSchedule(schedule) && (
                               <DropdownMenuItem
                                 className="cursor-pointer"
                                 onClick={(event) => {
@@ -1319,21 +1347,21 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                         ))}
                       </div>
                     ) : null}
-                    {canManageAgenda ? (
+                    {canOpenScheduleEditor ? (
                     <div className="mt-auto grid grid-cols-2 gap-2 pt-3 [&>*:only-child]:col-span-2" onClick={(event) => event.stopPropagation()}>
-                      {canEditSchedule(schedule, canManageLockedSchedules) && (
+                      {(canManageScheduleStatus || (canManageAgenda && canEditSchedule(schedule, canManageLockedSchedules))) && (
                         <Button type="button" variant="outline" size="sm" className="h-8 rounded-full" onClick={() => openEditSchedule(schedule)}>
                           <Edit className="mr-2 h-4 w-4" />
                           Editar
                         </Button>
                       )}
-                      {schedule.status === "in_progress" && (
+                      {canManageAgenda && schedule.status === "in_progress" && (
                         <Button type="button" variant="outline" size="sm" className="h-8 rounded-full" onClick={() => openCompletionDialog(schedule)}>
                           <Check className="mr-2 h-4 w-4" />
                           Concluir
                         </Button>
                       )}
-                      {schedule.status === "cancelled" && (
+                      {canManageAgenda && schedule.status === "cancelled" && (
                         <Button
                           type="button"
                           variant="outline"
@@ -1350,7 +1378,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                           Reativar
                         </Button>
                       )}
-                      {canCancelSchedule(schedule) && (
+                      {canManageAgenda && canCancelSchedule(schedule) && (
                         <Button
                           type="button"
                           variant="outline"

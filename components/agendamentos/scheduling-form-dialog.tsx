@@ -50,6 +50,8 @@ import type { ServiceRecord } from "@/lib/api/services"
 import type { TeamRecord } from "@/lib/api/teams"
 import { listTemplates } from "@/lib/api/templates"
 
+type ScheduleManualStatus = "draft" | "scheduled" | "in_progress" | "completed" | "cancelled" | "rescheduled"
+
 export interface SchedulingFormData {
   clientId: string
   serviceTypeId: string
@@ -66,6 +68,7 @@ export interface SchedulingFormData {
   value: number
   createContract: boolean
   isEmergency: boolean
+  status: ScheduleManualStatus
   notes: string
 }
 
@@ -91,6 +94,7 @@ interface EditingSchedule {
   billable?: boolean
   value?: number
   isEmergency?: boolean
+  status: ScheduleManualStatus
   notes?: string
 }
 
@@ -105,6 +109,8 @@ interface SchedulingFormDialogProps {
   serviceTypes?: ServiceRecord[]
   teams?: TeamRecord[]
   employees?: EmployeeRecord[]
+  canManageStatus?: boolean
+  canEditDetails?: boolean
 }
 
 const DEFAULT_FORM_DATA: SchedulingFormData = {
@@ -123,11 +129,20 @@ const DEFAULT_FORM_DATA: SchedulingFormData = {
   value: 0,
   createContract: false,
   isEmergency: false,
+  status: "scheduled",
   notes: "",
 }
 
 const NO_INFORMATIVE_TEMPLATE_VALUE = "__none__"
 const NO_CERTIFICATE_TEMPLATE_VALUE = "__none__"
+const SCHEDULE_STATUS_OPTIONS: Array<{ value: ScheduleManualStatus; label: string }> = [
+  { value: "draft", label: "Rascunho" },
+  { value: "scheduled", label: "Agendado" },
+  { value: "in_progress", label: "Em andamento" },
+  { value: "completed", label: "Concluído" },
+  { value: "cancelled", label: "Cancelado" },
+  { value: "rescheduled", label: "Reagendado" },
+]
 
 export function SchedulingFormDialog({
   open,
@@ -139,6 +154,8 @@ export function SchedulingFormDialog({
   serviceTypes = [],
   teams = [],
   employees = [],
+  canManageStatus = false,
+  canEditDetails = true,
 }: SchedulingFormDialogProps) {
   const [formData, setFormData] = useState<SchedulingFormData>(DEFAULT_FORM_DATA)
 
@@ -244,6 +261,7 @@ export function SchedulingFormDialog({
       value: schedule.billable ? Number(schedule.value ?? 0) : 0,
       createContract: Boolean(schedule.billable),
       isEmergency: schedule.isEmergency ?? false,
+      status: schedule.status,
       notes: schedule.notes || "",
     }
   }
@@ -318,6 +336,28 @@ export function SchedulingFormDialog({
             ) : null}
           </div>
 
+          {isEditing && canManageStatus ? (
+            <div className="space-y-2 rounded-lg border bg-muted/10 p-4">
+              <Label>Status manual</Label>
+              <Select
+                value={formData.status}
+                onValueChange={(status) => setFormData({ ...formData, status: status as ScheduleManualStatus })}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Selecione o status" />
+                </SelectTrigger>
+                <SelectContent>
+                  {SCHEDULE_STATUS_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : null}
+
+          <fieldset disabled={!canEditDetails} className="contents">
           {/* Client Selection */}
           <div className="space-y-2">
             <Label>Cliente *</Label>
@@ -767,6 +807,7 @@ export function SchedulingFormDialog({
               </div>
             </div>
           )}
+          </fieldset>
 
         </form>
         <DialogFooter className="shrink-0 px-6 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-3">

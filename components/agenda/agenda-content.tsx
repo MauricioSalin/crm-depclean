@@ -22,7 +22,7 @@ import {
 import { listClients } from "@/lib/api/clients"
 import { listEmployees } from "@/lib/api/employees"
 import { getApiErrorMessage } from "@/lib/api/errors"
-import { listSchedules, createSchedule, updateSchedule, startSchedule, completeSchedule, cancelSchedule, reactivateSchedule, uploadScheduleNa, type ScheduleRecord } from "@/lib/api/schedules"
+import { listSchedules, createSchedule, updateSchedule, updateScheduleStatus, startSchedule, completeSchedule, cancelSchedule, reactivateSchedule, uploadScheduleNa, type ScheduleRecord } from "@/lib/api/schedules"
 import { listServices } from "@/lib/api/services"
 import { listTeams } from "@/lib/api/teams"
 import { hasAnyPermission } from "@/lib/auth/permissions"
@@ -220,6 +220,8 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   const [currentUser, setCurrentUser] = useState<ReturnType<typeof getStoredUser>>(null)
   const canManageAgenda = hasAnyPermission(currentUser, ["agenda_manage"])
   const canManageLockedSchedules = hasAnyPermission(currentUser, ["agenda_manage_locked"])
+  const canManageScheduleStatus = hasAnyPermission(currentUser, ["agenda_manage_status"])
+  const canOpenScheduleEditor = canManageAgenda || canManageScheduleStatus
 
   useEffect(() => {
     const sync = () => setCurrentUser(getStoredUser())
@@ -341,8 +343,12 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       }
 
       const isRecurringScheduleUpdate = Boolean(scheduleId && editingService?.contractId && !editingService.isManual)
+      if (scheduleId && !canManageAgenda && canManageScheduleStatus) {
+        return updateScheduleStatus(scheduleId, formData.status)
+      }
+
       if (scheduleId && isRecurringScheduleUpdate) {
-        return updateSchedule(scheduleId, {
+        const response = await updateSchedule(scheduleId, {
           teamIds: formData.teamIds,
           additionalEmployeeIds: formData.employeeIds,
           scheduledDate: formData.date,
@@ -356,6 +362,12 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
           generateCertificateRequest: formData.generateCertificateRequest,
           notes: formData.notes,
         })
+
+        if (canManageScheduleStatus && editingService?.status !== formData.status) {
+          return updateScheduleStatus(scheduleId, formData.status)
+        }
+
+        return response
       }
 
       const payload = {
@@ -380,7 +392,12 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       }
 
       if (scheduleId) {
-        return updateSchedule(scheduleId, payload)
+        const response = await updateSchedule(scheduleId, payload)
+        if (canManageScheduleStatus && editingService?.status !== formData.status) {
+          return updateScheduleStatus(scheduleId, formData.status)
+        }
+
+        return response
       }
 
       return createSchedule(payload)
@@ -570,9 +587,14 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   }
 
   const handleFormSubmit = (formData: SchedulingFormData, isEditing: boolean) => {
-    if (!canManageAgenda) return
-
     const scheduleId = isEditing ? editingService?.id : undefined
+    const statusOnlyChange = Boolean(isEditing && scheduleId && canManageScheduleStatus && editingService?.status !== formData.status)
+    if (!canManageAgenda && !statusOnlyChange) return
+    if (!canManageAgenda && statusOnlyChange) {
+      saveMutation.mutate({ formData, scheduleId })
+      return
+    }
+
     const availability = checkScheduleAvailability({
       schedules,
       teams,
@@ -601,8 +623,8 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   }
 
   const handleEditService = (service: AgendaScheduledServiceRow) => {
-    if (!canManageAgenda) return
-    if (!canEditSchedule(service, canManageLockedSchedules)) return
+    if (!canOpenScheduleEditor) return
+    if (canManageAgenda && !canEditSchedule(service, canManageLockedSchedules)) return
 
     clearScheduleDialogResetTimeout()
     setSelectedSchedule(null)
@@ -644,7 +666,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   }
 
   const openSchedule = (schedule: AgendaScheduledServiceRow) => {
-    if (schedule.status === "in_progress") {
+    if (canManageAgenda && schedule.status === "in_progress") {
       openCompletionDialog(schedule)
       return
     }
@@ -748,6 +770,8 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
         serviceTypes={serviceTypes}
         teams={teams}
         employees={employees}
+        canManageStatus={canManageScheduleStatus}
+        canEditDetails={canManageAgenda}
       />
 
       <ScheduleDetailsDialog
@@ -1151,9 +1175,9 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                               </div>
                             ) : null}
 
-                            {canManageAgenda ? (
+                            {canOpenScheduleEditor ? (
                             <div className="mt-2 flex gap-1" onClick={(event) => event.stopPropagation()}>
-                              {canEditSchedule(service, canManageLockedSchedules) && (
+                              {(canManageScheduleStatus || (canManageAgenda && canEditSchedule(service, canManageLockedSchedules))) && (
                                 <Button
                                   variant="outline"
                                   size="sm"
@@ -1164,7 +1188,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                                   Editar
                                 </Button>
                               )}
-                              {service.status === "cancelled" && (
+                              {canManageAgenda && service.status === "cancelled" && (
                                 <Button
                                   variant="outline"
                                   size="sm"
@@ -1180,7 +1204,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                                   Reativar
                                 </Button>
                               )}
-                              {service.status === "in_progress" && (
+                              {canManageAgenda && service.status === "in_progress" && (
                                 <Button
                                   variant="outline"
                                   size="sm"
@@ -1193,7 +1217,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                                   Concluir
                                 </Button>
                               )}
-                              {canCancelSchedule(service) && (
+                              {canManageAgenda && canCancelSchedule(service) && (
                                 <Button
                                   variant="outline"
                                   size="sm"
@@ -1321,9 +1345,9 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                               </div>
                             ) : null}
 
-                            {canManageAgenda ? (
+                            {canOpenScheduleEditor ? (
                             <div className="mt-2 flex gap-1" onClick={(event) => event.stopPropagation()}>
-                              {canEditSchedule(service, canManageLockedSchedules) && (
+                              {(canManageScheduleStatus || (canManageAgenda && canEditSchedule(service, canManageLockedSchedules))) && (
                                 <Button
                                   variant="outline"
                                   size="sm"
@@ -1334,7 +1358,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                                   Editar
                                 </Button>
                               )}
-                              {service.status === "cancelled" && (
+                              {canManageAgenda && service.status === "cancelled" && (
                                 <Button
                                   variant="outline"
                                   size="sm"
@@ -1350,7 +1374,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                                   Reativar
                                 </Button>
                               )}
-                              {service.status === "in_progress" && (
+                              {canManageAgenda && service.status === "in_progress" && (
                                 <Button
                                   variant="outline"
                                   size="sm"
@@ -1363,7 +1387,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                                   Concluir
                                 </Button>
                               )}
-                              {canCancelSchedule(service) && (
+                              {canManageAgenda && canCancelSchedule(service) && (
                                 <Button
                                   variant="outline"
                                   size="sm"

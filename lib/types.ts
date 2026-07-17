@@ -352,7 +352,7 @@ export type PermissionKey =
   | "employees_view" | "employees_create" | "employees_edit" | "employees_delete"
   | "teams_view" | "teams_manage"
   | "services_view" | "services_manage"
-  | "agenda_own_view" | "agenda_view" | "agenda_manage" | "agenda_manage_locked"
+  | "agenda_own_view" | "agenda_view" | "agenda_manage" | "agenda_manage_status" | "agenda_manage_locked"
   | "financial_view" | "financial_manage"
   | "reports_view" | "reports_export"
   | "certificates_view" | "certificates_manage"

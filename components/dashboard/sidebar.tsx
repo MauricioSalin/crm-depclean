@@ -37,8 +37,8 @@ const menuItems = [
   { icon: Wrench, label: "Serviços", href: "/servicos", permissions: ["services_view", "services_manage"] },
   { icon: UsersRound, label: "Equipes", href: "/equipes", permissions: ["teams_view", "teams_manage"] },
   { icon: Users, label: "Funcionários", href: "/funcionarios", permissions: ["employees_view", "employees_create", "employees_edit", "employees_delete"] },
-  { icon: Calendar, label: "Agenda", href: "/agenda", permissions: ["agenda_own_view", "agenda_view", "agenda_manage"] },
-  { icon: CalendarClock, label: "Agendamentos", href: "/agendamentos", permissions: ["agenda_own_view", "agenda_view", "agenda_manage"] },
+  { icon: Calendar, label: "Agenda", href: "/agenda", permissions: ["agenda_own_view", "agenda_view", "agenda_manage", "agenda_manage_status"] },
+  { icon: CalendarClock, label: "Agendamentos", href: "/agendamentos", permissions: ["agenda_own_view", "agenda_view", "agenda_manage", "agenda_manage_status"] },
   { icon: Award, label: "Certificados", href: "/certificados", permissions: ["certificates_view", "certificates_manage"] },
   { icon: BarChart3, label: "Relatórios", href: "/relatorios", permissions: ["reports_view", "reports_export", "financial_view", "financial_manage"] },
 ]

@@ -125,6 +125,11 @@ export async function updateSchedule(id: string, payload: Partial<SchedulePayloa
   return response.data
 }
 
+export async function updateScheduleStatus(id: string, status: ScheduleRecord["status"]) {
+  const response = await api.patch<{ success: true; data: ScheduleRecord }>(`/schedules/${id}/status`, { status })
+  return response.data
+}
+
 export async function updateScheduleBilling(
   id: string,
   payload: Pick<SchedulePayload, "billingStatus" | "paidDate" | "paidValue" | "paymentMethod" | "billingNotes">,

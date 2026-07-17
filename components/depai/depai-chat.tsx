@@ -55,10 +55,10 @@ import { Textarea } from "@/components/ui/textarea"
 const initialMessages: DepAIMessage[] = []
 
 const suggestions = [
-  "Consultar dados de um cliente",
-  "Analisar um documento anexado",
-  "Resumir histórico de atendimento",
-  "Ajudar com uma dúvida operacional",
+  "O que preciso priorizar hoje?",
+  "Quais atendimentos tenho nos próximos dias?",
+  "Explique minhas permissões atuais",
+  "Como funciona o primeiro acesso por código?",
 ]
 
 const chartGreenPalette = ["#84cc16", "#22c55e", "#16a34a", "#65a30d", "#15803d", "#4d7c0f", "#86efac", "#a3e635"]
