@@ -337,7 +337,7 @@ export function SchedulingFormDialog({
           </div>
 
           {isEditing && canManageStatus ? (
-            <div className="space-y-2 rounded-lg border bg-muted/10 p-4">
+            <div className="space-y-2">
               <Label>Status manual</Label>
               <Select
                 value={formData.status}
@@ -446,100 +446,6 @@ export function SchedulingFormDialog({
               className="w-full"
               disabled={isRecurringSchedule}
             />
-          </div>
-
-          <div className="grid gap-4">
-            <div className="space-y-3 rounded-lg border bg-muted/10 p-4">
-              <label className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Checkbox
-                  checked={formData.autoSendInformative}
-                  onCheckedChange={(checked) => {
-                    const autoSendInformative = checked === true
-                    setFormData({
-                      ...formData,
-                      autoSendInformative,
-                      informativeTemplateId: autoSendInformative ? formData.informativeTemplateId : "",
-                    })
-                  }}
-                />
-                Enviar informativo automaticamente
-              </label>
-              {formData.autoSendInformative ? (
-                <div className="space-y-2">
-                  <Label>Informativo</Label>
-                  <Select
-                    value={formData.informativeTemplateId || NO_INFORMATIVE_TEMPLATE_VALUE}
-                    onValueChange={(value) => {
-                      const informativeTemplateId = value === NO_INFORMATIVE_TEMPLATE_VALUE ? "" : value
-                      setFormData({
-                        ...formData,
-                        informativeTemplateId,
-                        autoSendInformative: Boolean(informativeTemplateId),
-                      })
-                    }}
-                    disabled={activeInformativeTemplates.length === 0}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder={activeInformativeTemplates.length > 0 ? "Selecione" : "Nenhum template"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={NO_INFORMATIVE_TEMPLATE_VALUE}>Sem informativo</SelectItem>
-                      {activeInformativeTemplates.map((template) => (
-                        <SelectItem key={template.id} value={template.id}>
-                          {template.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              ) : null}
-            </div>
-
-            <div className="space-y-3 rounded-lg border bg-muted/10 p-4">
-              <label className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Checkbox
-                  checked={formData.generateCertificateRequest}
-                  onCheckedChange={(checked) => {
-                    const generateCertificateRequest = checked === true
-                    setFormData({
-                      ...formData,
-                      generateCertificateRequest,
-                      certificateTemplateId: generateCertificateRequest ? formData.certificateTemplateId : "",
-                    })
-                  }}
-                />
-                Gerar solicitação de certificado
-              </label>
-              {formData.generateCertificateRequest ? (
-                <div className="space-y-2">
-                  <Label>Certificado</Label>
-                  <Select
-                    value={formData.certificateTemplateId || NO_CERTIFICATE_TEMPLATE_VALUE}
-                    onValueChange={(value) => {
-                      const certificateTemplateId = value === NO_CERTIFICATE_TEMPLATE_VALUE ? "" : value
-                      setFormData({
-                        ...formData,
-                        certificateTemplateId,
-                        generateCertificateRequest: Boolean(certificateTemplateId),
-                      })
-                    }}
-                    disabled={activeCertificateTemplates.length === 0}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder={activeCertificateTemplates.length > 0 ? "Selecione" : "Nenhum template"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={NO_CERTIFICATE_TEMPLATE_VALUE}>Sem certificado</SelectItem>
-                      {activeCertificateTemplates.map((template) => (
-                        <SelectItem key={template.id} value={template.id}>
-                          {template.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              ) : null}
-            </div>
           </div>
 
           {/* Teams */}
@@ -807,6 +713,58 @@ export function SchedulingFormDialog({
               </div>
             </div>
           )}
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Select
+              value={formData.informativeTemplateId || NO_INFORMATIVE_TEMPLATE_VALUE}
+              onValueChange={(value) => {
+                const informativeTemplateId = value === NO_INFORMATIVE_TEMPLATE_VALUE ? "" : value
+                setFormData({
+                  ...formData,
+                  informativeTemplateId,
+                  autoSendInformative: Boolean(informativeTemplateId),
+                })
+              }}
+              disabled={activeInformativeTemplates.length === 0}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Sem informativo" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_INFORMATIVE_TEMPLATE_VALUE}>Sem informativo</SelectItem>
+                {activeInformativeTemplates.map((template) => (
+                  <SelectItem key={template.id} value={template.id}>
+                    {template.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={formData.certificateTemplateId || NO_CERTIFICATE_TEMPLATE_VALUE}
+              onValueChange={(value) => {
+                const certificateTemplateId = value === NO_CERTIFICATE_TEMPLATE_VALUE ? "" : value
+                setFormData({
+                  ...formData,
+                  certificateTemplateId,
+                  generateCertificateRequest: Boolean(certificateTemplateId),
+                })
+              }}
+              disabled={activeCertificateTemplates.length === 0}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Sem certificado" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_CERTIFICATE_TEMPLATE_VALUE}>Sem certificado</SelectItem>
+                {activeCertificateTemplates.map((template) => (
+                  <SelectItem key={template.id} value={template.id}>
+                    {template.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           </fieldset>
 
         </form>

@@ -39,6 +39,15 @@ const EMPTY_SERVICES_BY_PERIOD_DATA = [
 ]
 
 const EMPTY_CHART_COLOR = "#DDE7D5"
+const FINANCIAL_CHART_COLORS = {
+  paid: "#84CC16",
+  pending: "#EAB308",
+  late: "#F97316",
+  overdue: "#EF4444",
+  pendingEmpty: "#FEF3C7",
+  lateEmpty: "#FFEDD5",
+  overdueEmpty: "#F3E7E7",
+}
 
 export function ProjectAnalytics(period: DashboardAnalyticsParams = {}) {
   const dashboardQuery = useQuery({
@@ -108,7 +117,7 @@ export function ProjectAnalytics(period: DashboardAnalyticsParams = {}) {
                       name === "paidValue"
                         ? "Pagas"
                         : name === "pendingValue"
-                          ? "Pendentes"
+                          ? "A receber"
                           : name === "lateValue"
                             ? "Em atraso"
                             : name === "overdueValue"
@@ -120,7 +129,7 @@ export function ProjectAnalytics(period: DashboardAnalyticsParams = {}) {
                   <Bar
                     dataKey="paidValue"
                     name="Pagas"
-                    fill={hasMonthlyRevenueData ? "var(--primary)" : EMPTY_CHART_COLOR}
+                    fill={hasMonthlyRevenueData ? FINANCIAL_CHART_COLORS.paid : EMPTY_CHART_COLOR}
                     minPointSize={hasMonthlyRevenueData ? 0 : 3}
                     radius={[4, 4, 0, 0]}
                     isAnimationActive
@@ -130,8 +139,8 @@ export function ProjectAnalytics(period: DashboardAnalyticsParams = {}) {
                   />
                   <Bar
                     dataKey="pendingValue"
-                    name="Pendentes"
-                    fill={hasMonthlyRevenueData ? "#94A3B8" : "#ECEFF3"}
+                    name="A receber"
+                    fill={hasMonthlyRevenueData ? FINANCIAL_CHART_COLORS.pending : FINANCIAL_CHART_COLORS.pendingEmpty}
                     minPointSize={hasMonthlyRevenueData ? 0 : 3}
                     radius={[4, 4, 0, 0]}
                     isAnimationActive
@@ -142,7 +151,7 @@ export function ProjectAnalytics(period: DashboardAnalyticsParams = {}) {
                   <Bar
                     dataKey="lateValue"
                     name="Em atraso"
-                    fill={hasMonthlyRevenueData ? "#F59E0B" : "#F6EFE4"}
+                    fill={hasMonthlyRevenueData ? FINANCIAL_CHART_COLORS.late : FINANCIAL_CHART_COLORS.lateEmpty}
                     minPointSize={hasMonthlyRevenueData ? 0 : 3}
                     radius={[4, 4, 0, 0]}
                     isAnimationActive
@@ -153,7 +162,7 @@ export function ProjectAnalytics(period: DashboardAnalyticsParams = {}) {
                   <Bar
                     dataKey="overdueValue"
                     name="Vencidas"
-                    fill={hasMonthlyRevenueData ? "#EF4444" : "#F3E7E7"}
+                    fill={hasMonthlyRevenueData ? FINANCIAL_CHART_COLORS.overdue : FINANCIAL_CHART_COLORS.overdueEmpty}
                     minPointSize={hasMonthlyRevenueData ? 0 : 3}
                     radius={[4, 4, 0, 0]}
                     isAnimationActive

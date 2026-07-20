@@ -1112,7 +1112,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
               setCurrentPage(1)
             }}
             placeholder="Filtrar data"
-            className="sm:w-[218px]"
+            className="sm:w-[320px]"
           />
           {viewToggle ? <div className="hidden shrink-0 sm:block">{viewToggle}</div> : null}
         </div>

@@ -1265,7 +1265,7 @@ export function RelatoriosContent() {
                 value={dateRange}
                 onChange={setDateRange}
                 placeholder="Selecionar período"
-                className="w-full sm:w-[218px]"
+                className="w-full sm:w-[320px]"
               />
             </div>
 

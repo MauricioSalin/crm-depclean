@@ -115,7 +115,7 @@ export function DashboardContent() {
               onChange={handleDateRangeChange}
               open={isCustomDatePickerOpen}
               onOpenChange={setIsCustomDatePickerOpen}
-              className="w-full sm:w-[218px]"
+              className="w-full sm:w-[320px]"
             />
           </motion.div>
         )}
