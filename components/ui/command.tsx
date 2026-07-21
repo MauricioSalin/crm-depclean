@@ -84,8 +84,31 @@ function CommandInput({
 
 function CommandList({
   className,
+  onWheel,
   ...props
 }: React.ComponentProps<typeof CommandPrimitive.List>) {
+  const handleWheel = (event: React.WheelEvent<HTMLDivElement>) => {
+    onWheel?.(event)
+
+    const list = event.currentTarget
+    const maxScrollTop = list.scrollHeight - list.clientHeight
+    if (maxScrollTop <= 0) return
+
+    const delta =
+      event.deltaMode === WheelEvent.DOM_DELTA_LINE
+        ? event.deltaY * 16
+        : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+          ? event.deltaY * list.clientHeight
+          : event.deltaY
+    const nextScrollTop = Math.max(0, Math.min(maxScrollTop, list.scrollTop + delta))
+
+    if (nextScrollTop === list.scrollTop) return
+
+    list.scrollTop = nextScrollTop
+    event.preventDefault()
+    event.stopPropagation()
+  }
+
   return (
     <CommandPrimitive.List
       data-slot="command-list"
@@ -93,6 +116,7 @@ function CommandList({
         'max-h-[300px] scroll-py-1 overflow-x-hidden overflow-y-auto',
         className,
       )}
+      onWheel={handleWheel}
       {...props}
     />
   )

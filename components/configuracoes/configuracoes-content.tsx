@@ -1092,7 +1092,7 @@ export function ConfiguracoesContent() {
     if (activeSection === "usuarios") {
       return (
         <div className={className}>
-          <FilterSearchInput wrapperClassName="w-full sm:max-w-md" placeholder="Buscar usu?rios..." value={userSearch} onValueChange={(value) => { setUserSearch(value); setUserPage(1) }} />
+          <FilterSearchInput wrapperClassName="w-full sm:max-w-md" placeholder="Buscar usuários..." value={userSearch} onValueChange={(value) => { setUserSearch(value); setUserPage(1) }} />
         </div>
       )
     }
@@ -1127,7 +1127,7 @@ export function ConfiguracoesContent() {
 
   return (
     <div className="space-y-6">
-      {renderActiveSectionFilters(`${mobileFiltersOpen ? "flex" : "hidden"} -m-1 flex-col gap-3 overflow-visible p-1 sm:hidden`)}
+      {renderActiveSectionFilters(`${mobileFiltersOpen ? "flex" : "hidden"} flex-col gap-3 overflow-visible p-1 sm:hidden`)}
 
       <div className="flex gap-2 overflow-x-auto pb-2 sm:hidden">
         {settingsCards.map((card) => (
@@ -1303,7 +1303,7 @@ export function ConfiguracoesContent() {
 
       {activeSection === "tipos-cliente" && (
         <div className="space-y-4">
-          <div className="hidden -m-1 flex-col gap-3 overflow-visible p-1 sm:flex sm:flex-row sm:items-center">
+          <div className="hidden flex-col gap-3 overflow-visible p-1 sm:flex sm:flex-row sm:items-center">
             <FilterSearchInput wrapperClassName="w-full sm:max-w-md" placeholder="Buscar tipos..." value={typeSearch} onValueChange={(value) => { setTypeSearch(value); setTypePage(1) }} />
           </div>
 
@@ -1418,7 +1418,7 @@ export function ConfiguracoesContent() {
 
       {activeSection === "permissoes" && (
         <div className="space-y-4">
-          <div className="hidden -m-1 flex-col gap-3 overflow-visible p-1 sm:flex sm:flex-row sm:items-center">
+          <div className="hidden flex-col gap-3 overflow-visible p-1 sm:flex sm:flex-row sm:items-center">
             <FilterSearchInput wrapperClassName="w-full sm:max-w-md" placeholder="Buscar perfis..." value={profileSearch} onValueChange={(value) => { setProfileSearch(value); setProfilePage(1) }} />
           </div>
 
@@ -1568,8 +1568,8 @@ export function ConfiguracoesContent() {
 
       {activeSection === "usuarios" && (
         <div className="space-y-4">
-          <div className="hidden -m-1 flex-col gap-3 overflow-visible p-1 sm:flex sm:flex-row sm:items-center">
-            <FilterSearchInput wrapperClassName="w-full sm:max-w-md" placeholder="Buscar usu?rios..." value={userSearch} onValueChange={(value) => { setUserSearch(value); setUserPage(1) }} />
+          <div className="hidden flex-col gap-3 overflow-visible p-1 sm:flex sm:flex-row sm:items-center">
+            <FilterSearchInput wrapperClassName="w-full sm:max-w-md" placeholder="Buscar usuários..." value={userSearch} onValueChange={(value) => { setUserSearch(value); setUserPage(1) }} />
           </div>
 
           <div className="overflow-x-auto rounded-md">
@@ -1784,7 +1784,7 @@ export function ConfiguracoesContent() {
 
       {activeSection === "notificações" && (
         <div className="space-y-4">
-          <div className="hidden -m-1 flex-col gap-3 overflow-visible p-1 sm:flex sm:flex-row sm:items-center">
+          <div className="hidden flex-col gap-3 overflow-visible p-1 sm:flex sm:flex-row sm:items-center">
             <FilterSearchInput wrapperClassName="w-full sm:max-w-md" placeholder="Buscar regras..." value={ruleSearch} onValueChange={(value) => { setRuleSearch(value); setRulePage(1) }} />
           </div>
 
@@ -2084,4 +2084,3 @@ export function ConfiguracoesContent() {
     </div>
   )
 }
-
