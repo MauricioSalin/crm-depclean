@@ -1,18 +1,22 @@
 "use client"
 
-import { useMemo, useEffect, useRef, useState } from "react"
+import { useMemo, useEffect, useLayoutEffect, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { addCivilDaysKey, BRASILIA_TIME_ZONE, minutesFromBrasiliaDate, parseCivilDate, toCivilDateKey } from "@/lib/date-utils"
 
 interface TimelineEvent {
   id: string
+  scheduleId?: string
+  hoverGroupId?: string
   title: string
   subtitle: string
   date: string
   time: string
   duration: number
   teamColor: string | null
+  teamNames?: string[]
   status: string
 }
 
@@ -34,6 +38,9 @@ const LUNCH_HOUR = 12
 const EVENT_COLUMN_GUTTER = 6
 const EVENT_COLUMN_GAP = 4
 const MIN_EVENT_HEIGHT = 54
+const POINTER_TOOLTIP_DELAY_MS = 1000
+const POINTER_TOOLTIP_OFFSET = 14
+const POINTER_TOOLTIP_VIEWPORT_MARGIN = 8
 
 const DAY_LABELS_SHORT = ["DOM.", "SEG.", "TER.", "QUA.", "QUI.", "SEX.", "SÁB."]
 
@@ -63,6 +70,27 @@ function isToday(date: Date): boolean {
 
 function getEventEndMinutes(event: TimelineEvent) {
   return timeToMinutes(event.time) + Math.max(15, event.duration)
+}
+
+function formatTimelineDate(date: string) {
+  const parsedDate = parseCivilDate(date)
+  if (!parsedDate) return date
+  return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" })
+    .format(parsedDate)
+    .replace(".", "")
+}
+
+function formatTimelineStatus(status: string) {
+  const labels: Record<string, string> = {
+    draft: "Rascunho",
+    scheduled: "Agendado",
+    in_progress: "Em andamento",
+    completed: "Concluído",
+    cancelled: "Cancelado",
+    rescheduled: "Reagendado",
+  }
+
+  return labels[status] ?? status
 }
 
 function positionDayEvents(events: TimelineEvent[]): PositionedTimelineEvent[] {
@@ -138,12 +166,81 @@ export function WeekTimeline({
 }: WeekTimelineProps) {
   const weekDays = useMemo(() => getWeekDays(currentDate), [currentDate])
   const scrollRef = useRef<HTMLDivElement>(null)
-  const [activeEventId, setActiveEventId] = useState<string | null>(null)
+  const pointerTooltipRef = useRef<HTMLDivElement>(null)
+  const pointerTooltipTimerRef = useRef<number | null>(null)
+  const pointerTooltipEventIdRef = useRef<string | null>(null)
+  const pointerPositionRef = useRef({ x: 0, y: 0 })
+  const [activeEventGroupId, setActiveEventGroupId] = useState<string | null>(null)
+  const [pointerTooltipEvent, setPointerTooltipEvent] = useState<TimelineEvent | null>(null)
+
+  const positionPointerTooltip = () => {
+    const tooltip = pointerTooltipRef.current
+    if (!tooltip) return
+
+    const { x, y } = pointerPositionRef.current
+    const { offsetWidth: width, offsetHeight: height } = tooltip
+    let left = x + POINTER_TOOLTIP_OFFSET
+    let top = y + POINTER_TOOLTIP_OFFSET
+
+    if (left + width > window.innerWidth - POINTER_TOOLTIP_VIEWPORT_MARGIN) {
+      left = x - width - POINTER_TOOLTIP_OFFSET
+    }
+    if (top + height > window.innerHeight - POINTER_TOOLTIP_VIEWPORT_MARGIN) {
+      top = y - height - POINTER_TOOLTIP_OFFSET
+    }
+
+    tooltip.style.left = `${Math.max(POINTER_TOOLTIP_VIEWPORT_MARGIN, left)}px`
+    tooltip.style.top = `${Math.max(POINTER_TOOLTIP_VIEWPORT_MARGIN, top)}px`
+    tooltip.style.visibility = "visible"
+  }
+
+  const clearPointerTooltip = () => {
+    pointerTooltipEventIdRef.current = null
+    if (pointerTooltipTimerRef.current !== null) {
+      window.clearTimeout(pointerTooltipTimerRef.current)
+      pointerTooltipTimerRef.current = null
+    }
+    setPointerTooltipEvent(null)
+  }
+
+  const beginPointerTooltip = (event: TimelineEvent, x: number, y: number) => {
+    pointerPositionRef.current = { x, y }
+    pointerTooltipEventIdRef.current = event.id
+
+    if (pointerTooltipTimerRef.current !== null) {
+      window.clearTimeout(pointerTooltipTimerRef.current)
+    }
+
+    pointerTooltipTimerRef.current = window.setTimeout(() => {
+      if (pointerTooltipEventIdRef.current === event.id) {
+        setPointerTooltipEvent(event)
+      }
+      pointerTooltipTimerRef.current = null
+    }, POINTER_TOOLTIP_DELAY_MS)
+  }
+
+  const movePointerTooltip = (eventId: string, x: number, y: number) => {
+    if (pointerTooltipEventIdRef.current !== eventId) return
+    pointerPositionRef.current = { x, y }
+    positionPointerTooltip()
+  }
+
+  useLayoutEffect(() => {
+    if (pointerTooltipEvent) positionPointerTooltip()
+  }, [pointerTooltipEvent])
 
   // Auto-scroll to 06:00 on mount
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = 6 * HOUR_HEIGHT
+    }
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (pointerTooltipTimerRef.current !== null) {
+        window.clearTimeout(pointerTooltipTimerRef.current)
+      }
     }
   }, [])
 
@@ -237,7 +334,11 @@ export function WeekTimeline({
       </div>
 
       {/* Timeline grid */}
-      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-scroll overflow-x-hidden">
+      <div
+        ref={scrollRef}
+        className="flex-1 min-h-0 overflow-y-scroll overflow-x-hidden"
+        onScroll={clearPointerTooltip}
+      >
         <div className="relative flex pt-2 pb-4">
           {/* Time labels */}
           <div className="w-14 shrink-0">
@@ -324,7 +425,8 @@ export function WeekTimeline({
                   {dayEvents.map((ev) => {
                     const color = ev.teamColor || "#9CA3AF" // gray for no team
                     const isOverlapping = ev.columnCount > 1
-                    const isActive = activeEventId === ev.id
+                    const hoverGroupId = ev.hoverGroupId ?? ev.scheduleId ?? ev.id
+                    const isActive = activeEventGroupId === hoverGroupId
                     const fixedWidth = EVENT_COLUMN_GUTTER * 2 + Math.max(0, ev.columnCount - 1) * EVENT_COLUMN_GAP
                     const columnWidthPercent = 100 / ev.columnCount
                     const columnWidthAdjustment = fixedWidth / ev.columnCount
@@ -336,52 +438,67 @@ export function WeekTimeline({
                       <button
                         key={ev.id}
                         type="button"
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          setActiveEventId(ev.id)
-                          onEventClick?.(ev.id)
-                          onDaySelect(day)
-                        }}
-                        onPointerDown={() => setActiveEventId(ev.id)}
-                        onMouseEnter={() => setActiveEventId(ev.id)}
-                        onMouseLeave={() => {
-                          setActiveEventId((current) => (current === ev.id ? null : current))
-                        }}
-                        onFocus={() => setActiveEventId(ev.id)}
-                        onBlur={() => {
-                          setActiveEventId((current) => (current === ev.id ? null : current))
-                        }}
-                        className="group absolute flex min-w-0 cursor-pointer flex-col items-start justify-start gap-0.5 overflow-hidden rounded-md border border-transparent border-l-[3px] px-1.5 py-1 text-left transition-[box-shadow,background-color,transform] duration-200 ease-out hover:-translate-y-0.5 hover:scale-[1.015] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 active:scale-[0.99]"
-                        style={{
-                          top: ev.top,
-                          left: eventLeft,
-                          width: eventWidth,
-                          height: ev.height,
-                          zIndex: isActive ? 100 : 10 + ev.columnIndex,
-                          backgroundColor: "#efefef",
-                          borderColor: color,
-                          borderLeftColor: color,
-                          boxShadow: isActive
-                            ? "0 16px 36px rgba(15, 23, 42, 0.22), 0 2px 6px rgba(15, 23, 42, 0.16)"
-                            : isOverlapping
-                            ? "0 6px 14px rgba(15, 23, 42, 0.10), 0 1px 2px rgba(15, 23, 42, 0.10)"
-                            : "0 1px 2px rgba(15, 23, 42, 0.08)",
-                        }}
-                        title={`${ev.title} - ${ev.subtitle}`}
-                      >
-                        <p className="w-full min-w-0 truncate text-[10px] font-semibold leading-tight text-foreground/90">
-                          {ev.title}
-                        </p>
-                        {ev.height > 30 && (
-                          <p className="w-full min-w-0 truncate text-[9px] leading-tight text-foreground/70">
-                            {ev.time} - {formatEndTime(ev.time, ev.duration)}
-                          </p>
-                        )}
-                        {ev.height > 45 && (
-                          <p className="w-full min-w-0 truncate text-[9px] leading-tight text-foreground/65">
-                            {ev.subtitle}
-                          </p>
-                        )}
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              setActiveEventGroupId(hoverGroupId)
+                              onEventClick?.(ev.scheduleId ?? ev.id)
+                              onDaySelect(day)
+                            }}
+                            onPointerDown={() => setActiveEventGroupId(hoverGroupId)}
+                            onMouseEnter={(event) => {
+                              setActiveEventGroupId(hoverGroupId)
+                              beginPointerTooltip(ev, event.clientX, event.clientY)
+                            }}
+                            onMouseMove={(event) => {
+                              movePointerTooltip(ev.id, event.clientX, event.clientY)
+                            }}
+                            onMouseLeave={() => {
+                              setActiveEventGroupId((current) => (current === hoverGroupId ? null : current))
+                              clearPointerTooltip()
+                            }}
+                            onFocus={(event) => {
+                              setActiveEventGroupId(hoverGroupId)
+                              if (event.currentTarget.matches(":focus-visible")) {
+                                const rect = event.currentTarget.getBoundingClientRect()
+                                beginPointerTooltip(ev, rect.left + Math.min(rect.width / 2, 40), rect.top + 16)
+                              }
+                            }}
+                            onBlur={() => {
+                              setActiveEventGroupId((current) => (current === hoverGroupId ? null : current))
+                              clearPointerTooltip()
+                            }}
+                            className={`group absolute flex min-w-0 cursor-pointer flex-col items-start justify-start gap-0.5 overflow-hidden rounded-md border border-transparent border-l-[3px] px-1.5 py-1 text-left transition-[box-shadow,background-color,transform] duration-200 ease-out hover:-translate-y-0.5 hover:scale-[1.015] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 active:scale-[0.99] ${
+                              isActive ? "-translate-y-0.5 scale-[1.015]" : ""
+                            }`}
+                            style={{
+                              top: ev.top,
+                              left: eventLeft,
+                              width: eventWidth,
+                              height: ev.height,
+                              zIndex: isActive ? 100 : 10 + ev.columnIndex,
+                              backgroundColor: "#efefef",
+                              borderColor: color,
+                              borderLeftColor: color,
+                              boxShadow: isActive
+                                ? "0 16px 36px rgba(15, 23, 42, 0.22), 0 2px 6px rgba(15, 23, 42, 0.16)"
+                                : isOverlapping
+                                ? "0 6px 14px rgba(15, 23, 42, 0.10), 0 1px 2px rgba(15, 23, 42, 0.10)"
+                                : "0 1px 2px rgba(15, 23, 42, 0.08)",
+                            }}
+                          >
+                            <p className="w-full min-w-0 truncate text-[10px] font-semibold leading-tight text-foreground/90">
+                              {ev.title}
+                            </p>
+                            {ev.height > 30 && (
+                              <p className="w-full min-w-0 truncate text-[9px] leading-tight text-foreground/70">
+                                {ev.time} - {formatEndTime(ev.time, ev.duration)}
+                              </p>
+                            )}
+                            {ev.height > 45 && (
+                              <p className="w-full min-w-0 truncate text-[9px] leading-tight text-foreground/65">
+                                {ev.subtitle}
+                              </p>
+                            )}
                       </button>
                     )
                   })}
@@ -391,6 +508,32 @@ export function WeekTimeline({
           </div>
         </div>
       </div>
+      {pointerTooltipEvent && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              ref={pointerTooltipRef}
+              role="tooltip"
+              className="pointer-events-none fixed z-[200] max-w-[280px] space-y-2 rounded-md bg-foreground/95 px-3 py-2 text-xs text-background shadow-lg"
+              style={{ left: 0, top: 0, visibility: "hidden" }}
+            >
+              <div className="space-y-0.5">
+                <p className="font-semibold">{pointerTooltipEvent.title}</p>
+                <p className="text-background/75">{pointerTooltipEvent.subtitle}</p>
+              </div>
+              <div className="space-y-1 text-background/80">
+                <p>
+                  {formatTimelineDate(pointerTooltipEvent.date)} · {pointerTooltipEvent.time} -{" "}
+                  {formatEndTime(pointerTooltipEvent.time, pointerTooltipEvent.duration)}
+                </p>
+                <p>Status: {formatTimelineStatus(pointerTooltipEvent.status)}</p>
+                {pointerTooltipEvent.teamNames?.length ? (
+                  <p>Equipe: {pointerTooltipEvent.teamNames.join(", ")}</p>
+                ) : null}
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   )
 }

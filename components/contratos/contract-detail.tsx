@@ -51,10 +51,15 @@ import { listSchedules } from "@/lib/api/schedules"
 import { listServices, type ServiceRecurrenceRuleRecord } from "@/lib/api/services"
 import { listTeams } from "@/lib/api/teams"
 import { getContractClicksignUrl } from "@/lib/clicksign"
-import { formatCivilDate } from "@/lib/date-utils"
+import {
+  getClicksignContractStatusLabel,
+  isClosedClicksignContractStatus,
+  normalizeClicksignContractStatus,
+} from "@/lib/contract-status"
+import { BRASILIA_TIME_ZONE, formatCivilDate } from "@/lib/date-utils"
 import { useHasAnyPermission } from "@/hooks/use-permissions"
 import { buildPathWithSearchParams, getSafeReturnTo, withReturnTo } from "@/lib/navigation"
-import { cn } from "@/lib/utils"
+import { cn, formatContractNumber } from "@/lib/utils"
 
 interface ContractDetailProps {
   contractId: string
@@ -104,6 +109,18 @@ const formatCurrency = (value: number) =>
 const formatDate = (value?: string) =>
   formatCivilDate(value)
 
+const formatDateTime = (value?: string | Date) => {
+  if (!value) return "-"
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return "-"
+
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: BRASILIA_TIME_ZONE,
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(date)
+}
+
 const formatDuration = (duration: number, durationType: "hours" | "shift" | "days") => {
   if (durationType === "hours") return `${duration} hora${duration === 1 ? "" : "s"}`
   if (durationType === "days") return `${duration} dia${duration === 1 ? "" : "s"}`
@@ -124,25 +141,15 @@ const getRecurrenceLabel = (value: string) =>
   )[value] ?? value
 
 const getStatusBadge = (status: string) => {
-  switch (status) {
-    case "signed":
-    case "active":
-      return <Badge className="shrink-0 bg-green-100 text-green-700 hover:bg-green-100">Assinado</Badge>
-    case "pending_signature":
-      return <Badge className="shrink-0 bg-amber-100 text-amber-700 hover:bg-amber-100">Aguardando assinatura</Badge>
-    case "overdue":
-      return <Badge className="shrink-0 bg-red-100 text-red-700 hover:bg-red-100">Em atraso</Badge>
-    case "refused":
-      return <Badge className="shrink-0 bg-orange-100 text-orange-700 hover:bg-orange-100">Recusado</Badge>
-    case "expired":
-      return <Badge className="shrink-0 bg-gray-100 text-gray-700 hover:bg-gray-100">Expirado</Badge>
-    case "deadline_expired":
-      return <Badge className="shrink-0 bg-purple-100 text-purple-700 hover:bg-purple-100">Prazo expirado</Badge>
-    case "cancelled":
-      return <Badge className="shrink-0 bg-red-100 text-red-700 hover:bg-red-100">Cancelado</Badge>
-    default:
-      return <Badge variant="secondary" className="shrink-0">Rascunho</Badge>
-  }
+  const normalized = normalizeClicksignContractStatus(status)
+  const className = normalized === "closed"
+    ? "bg-green-100 text-green-700 hover:bg-green-100"
+    : normalized === "running"
+      ? "bg-amber-100 text-amber-700 hover:bg-amber-100"
+      : normalized === "canceled"
+        ? "bg-red-100 text-red-700 hover:bg-red-100"
+        : "bg-gray-100 text-gray-700 hover:bg-gray-100"
+  return <Badge className={`shrink-0 ${className}`}>{getClicksignContractStatusLabel(normalized)}</Badge>
 }
 
 const getInstallmentStatusBadge = (status: string) => {
@@ -378,7 +385,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null)
   const [serviceClausesOpen, setServiceClausesOpen] = useState(false)
   const serviceClausesCloseTimeoutRef = useRef<number | null>(null)
-  const autoSyncedClicksignEnvelopeRef = useRef<string | null>(null)
+  const autoSyncedClicksignReferenceRef = useRef<string | null>(null)
   const [schedulePage, setSchedulePage] = useState(1)
   const [schedulePageSize, setSchedulePageSize] = useState(10)
   const [remindingSignerIds, setRemindingSignerIds] = useState<string[]>([])
@@ -558,6 +565,16 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
     return getContractClicksignUrl(contract)
   }, [contract])
 
+  const clicksignReference = useMemo(
+    () => String(
+      contract?.clicksign?.envelopeId ||
+      contract?.clicksign?.documentKey ||
+      contract?.clicksign?.documentId ||
+      "",
+    ).trim(),
+    [contract?.clicksign?.documentId, contract?.clicksign?.documentKey, contract?.clicksign?.envelopeId],
+  )
+
   const units = useMemo(() => {
     if (!client?.units?.length || !contract) return []
     const directUnitIds = contract.unitIds ?? []
@@ -653,32 +670,11 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
     onError: clicksignErrorToast,
   })
 
-  const syncClicksignMutation = useMutation({
-    mutationFn: () => {
-      if (!canSyncClicksign) {
-        throw new Error("Sem permissão para sincronizar o contrato no ClickSign.")
-      }
-
-      return syncContractClicksign(resolvedContractId)
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["contract", contractId] })
-      await queryClient.invalidateQueries({ queryKey: ["contract", resolvedContractId] })
-      await queryClient.invalidateQueries({ queryKey: ["contracts"] })
-      toast({
-        title: "ClickSign sincronizado",
-        description: "Os dados do envelope foram atualizados.",
-      })
-    },
-    onError: clicksignErrorToast,
-  })
-
   useEffect(() => {
-    const envelopeId = String(contract?.clicksign?.envelopeId ?? "").trim()
-    if (!envelopeId || !canSyncClicksign) return
-    if (autoSyncedClicksignEnvelopeRef.current === envelopeId) return
+    if (!clicksignReference || !canSyncClicksign) return
+    if (autoSyncedClicksignReferenceRef.current === clicksignReference) return
 
-    autoSyncedClicksignEnvelopeRef.current = envelopeId
+    autoSyncedClicksignReferenceRef.current = clicksignReference
     let cancelled = false
 
     void syncContractClicksign(resolvedContractId)
@@ -693,7 +689,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
     return () => {
       cancelled = true
     }
-  }, [canSyncClicksign, contract?.clicksign?.envelopeId, contractId, queryClient, resolvedContractId])
+  }, [canSyncClicksign, clicksignReference, contractId, queryClient, resolvedContractId])
 
   const remindSignerMutation = useMutation({
     mutationFn: (signerId: string) => {
@@ -803,7 +799,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
             </div>
             <div className="min-w-0 flex-1">
               <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-1">
-                <h2 className="min-w-0 break-words text-xl font-bold">{contract.contractNumber}</h2>
+                <h2 className="min-w-0 break-words text-xl font-bold">{formatContractNumber(contract.contractNumber)}</h2>
                 <span className="inline-flex shrink-0">{getStatusBadge(contract.status)}</span>
               </div>
               <Link
@@ -836,7 +832,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                   </a>
                 </Button>
               ) : null}
-              {isSignedStatus(contract.status) || isSignedStatus(contract.clicksign?.status) ? (
+              {isClosedClicksignContractStatus(contract.status) ? (
                 clientAttachmentsQuery.isLoading ? (
                   <Skeleton className="h-9 flex-1 rounded-full sm:w-24 sm:flex-none" />
                 ) : (
@@ -951,26 +947,15 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
           <ExternalLink className="h-5 w-5 text-primary" />
           <h3 className="font-semibold">ClickSign</h3>
           <Badge variant="secondary">
-            {getClicksignStatusLabel(contract.clicksign?.status)}
+            {getClicksignContractStatusLabel(contract.clicksign?.status)}
           </Badge>
-          {contract.clicksign?.envelopeId && canSyncClicksign ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="ml-auto gap-2"
-              onClick={() => syncClicksignMutation.mutate()}
-              disabled={syncClicksignMutation.isPending}
-            >
-              <RefreshCw className={cn("h-4 w-4", syncClicksignMutation.isPending && "animate-spin")} />
-              Sincronizar
-            </Button>
-          ) : null}
         </div>
         <div className="grid gap-3 text-sm md:grid-cols-5">
           <div>
             <p className="text-muted-foreground">Envelope</p>
-            <p className="font-mono text-xs">{contract.clicksign?.envelopeId || "-"}</p>
+            <p className="font-mono text-xs">
+              {contract.clicksign?.envelopeId || (contract.clicksign?.documentKey ? "Não se aplica (API v1)" : "-")}
+            </p>
           </div>
           <div>
             <p className="text-muted-foreground">Documento</p>
@@ -989,7 +974,11 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
             <p>{formatDate(contract.clicksign?.lastSyncedAt)}</p>
           </div>
         </div>
-        {contract.clicksign?.signers?.length ? (
+        {!clicksignReference ? (
+          <p className="mt-4 text-sm text-muted-foreground">
+            Este contrato legado não possui uma referência ClickSign para consultar os signatários.
+          </p>
+        ) : contract.clicksign?.signers?.length ? (
           <div className="mt-4 overflow-hidden rounded-xl">
             <Table>
               <TableHeader>
@@ -1015,7 +1004,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                       </TableCell>
                       <TableCell>{signer.email}</TableCell>
                       <TableCell>{getClicksignSignerStatusBadge(displayStatus)}</TableCell>
-                      <TableCell>{formatDate(signer.signedAt)}</TableCell>
+                      <TableCell>{formatDateTime(signer.signedAt)}</TableCell>
                       {canEditContracts ? (
                         <TableCell className="text-right">
                           {isSignerReminderAvailable(displayStatus) ? (
@@ -1039,61 +1028,73 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
               </TableBody>
             </Table>
           </div>
-        ) : null}
+        ) : (
+          <p className="mt-4 text-sm text-muted-foreground">
+            Os dados de assinatura ainda não foram sincronizados com a ClickSign.
+          </p>
+        )}
       </Card>
 
-      <Card className="p-6">
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          <RefreshCw className="h-5 w-5 text-primary" />
-          <h3 className="font-semibold">Recorrência das visitas</h3>
-          <Badge variant="secondary">
-            {getRecurrenceLabel(contract.recurrence)}
-          </Badge>
-        </div>
+      {recurrenceRules.length > 0 ? (
+        <Card className="p-6">
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <RefreshCw className="h-5 w-5 text-primary" />
+            <h3 className="font-semibold">Recorrência das visitas</h3>
+            <Badge variant="secondary">
+              {getRecurrenceLabel(contract.recurrence)}
+            </Badge>
+          </div>
 
-        <p className="mb-4 text-sm text-muted-foreground">
-          Total de unidades vinculadas:{" "}
-          <span className="font-medium text-foreground">
-            {totalUnitCount}
-          </span>
-        </p>
+          <p className="mb-4 text-sm text-muted-foreground">
+            Total de unidades vinculadas:{" "}
+            <span className="font-medium text-foreground">
+              {totalUnitCount}
+            </span>
+          </p>
 
-        <div className="overflow-x-auto rounded-xl">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead sortable={false}>Tipo</TableHead>
-                <TableHead sortable={false}>Condição</TableHead>
-                <TableHead sortable={false}>Recorrência</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {recurrenceRules.map((rule, index) => {
-                const isSelectedRule = index === selectedRecurrenceRuleIndex
+          <div className="overflow-x-auto rounded-xl">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead sortable={false}>Tipo</TableHead>
+                  <TableHead sortable={false}>Condição</TableHead>
+                  <TableHead sortable={false}>Recorrência</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {recurrenceRules.map((rule, index) => {
+                  const isSelectedRule = index === selectedRecurrenceRuleIndex
+                  const previousRange = recurrenceRules
+                    .slice(0, index)
+                    .reverse()
+                    .find((candidate) => candidate.type === "range")
 
-                return (
-                  <TableRow
-                    key={`${rule.type}-${index}`}
-                    className={cn(
-                      isSelectedRule && "bg-primary/10 hover:bg-primary/10 [&>td]:font-semibold",
-                    )}
-                  >
-                    <TableCell>
-                      <Badge variant={isSelectedRule ? "secondary" : "outline"}>{rule.type === "range" ? "De - Até" : "Acima de"}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      {rule.type === "range"
-                        ? `${rule.minUnits} até ${rule.maxUnits} unidades`
-                        : `Acima de ${rule.minUnits} unidades`}
-                    </TableCell>
-                    <TableCell>{getRecurrenceLabel(rule.recurrence)}</TableCell>
-                  </TableRow>
-                )
-              })}
-            </TableBody>
-          </Table>
-        </div>
-      </Card>
+                  return (
+                    <TableRow
+                      key={`${rule.type}-${index}`}
+                      className={cn(
+                        isSelectedRule && "bg-primary/10 hover:bg-primary/10 [&>td]:font-semibold",
+                      )}
+                    >
+                      <TableCell>
+                        <Badge variant={isSelectedRule ? "secondary" : "outline"}>{rule.type === "range" ? "De - Até" : "Acima de"}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        {rule.type === "range"
+                          ? rule.minUnits <= 1
+                            ? `Até ${rule.maxUnits} unidades`
+                            : `De ${previousRange?.maxUnits ?? rule.minUnits} até ${rule.maxUnits} unidades`
+                          : `Acima de ${rule.minUnits} unidades`}
+                      </TableCell>
+                      <TableCell>{getRecurrenceLabel(rule.recurrence)}</TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        </Card>
+      ) : null}
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
         <div className="w-full overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">

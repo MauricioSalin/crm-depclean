@@ -696,7 +696,7 @@ export function SchedulingFormDialog({
                 </div>
               </div>
 
-              <div className="flex items-center space-x-2 p-3 bg-red-50 border border-red-100 rounded-lg dark:bg-red-950/30 dark:border-red-900/40">
+              <div className="flex items-center space-x-2 rounded-lg border border-amber-100 bg-amber-50 p-3 dark:border-amber-900/40 dark:bg-amber-950/30">
                 <Checkbox
                   id="isEmergency"
                   checked={formData.isEmergency}

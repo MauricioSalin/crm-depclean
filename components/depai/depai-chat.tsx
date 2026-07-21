@@ -22,19 +22,33 @@ import ReactMarkdown from "react-markdown"
 import rehypeSanitize from "rehype-sanitize"
 import remarkGfm from "remark-gfm"
 import {
+  Area,
+  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
   Cell,
+  ComposedChart,
+  Funnel,
+  FunnelChart,
+  LabelList,
   Legend,
   Line,
   LineChart,
   Pie,
   PieChart,
+  PolarAngleAxis,
+  PolarGrid,
+  PolarRadiusAxis,
+  Radar,
+  RadarChart,
   ResponsiveContainer,
+  Scatter,
+  ScatterChart,
   Tooltip as ChartTooltip,
   XAxis,
   YAxis,
+  ZAxis,
 } from "recharts"
 import { toast } from "sonner"
 
@@ -43,10 +57,12 @@ import {
   listDepAIConversations,
   sendDepAIMessage,
   type DepAIArtifact,
+  type DepAIChartType,
   type DepAIConversation,
   type DepAIFile,
   type DepAIMessage,
 } from "@/lib/api/depai"
+import { buildApiFileUrl } from "@/lib/api/client"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { Button } from "@/components/ui/button"
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
@@ -63,6 +79,11 @@ const suggestions = [
 
 const chartGreenPalette = ["#84cc16", "#22c55e", "#16a34a", "#65a30d", "#15803d", "#4d7c0f", "#86efac", "#a3e635"]
 const emptyChartColor = "#DDE7D5"
+const spreadsheetDecimalFormatter = new Intl.NumberFormat("pt-BR", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+})
+const excelDecimalNumberFormat = "#,##0.00"
 
 function createConversationId() {
   return `chat-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
@@ -411,11 +432,98 @@ function extractDocumentContent(content: string) {
 }
 
 function parseNumericValue(value: string) {
-  const match = value.match(/-?\d[\d.,]*/)
+  const match = value.replace(/\s/g, "").match(/-?\d[\d.,]*/)
   if (!match) return null
-  const normalized = match[0].replace(/\./g, "").replace(",", ".")
+
+  const raw = match[0]
+  const lastComma = raw.lastIndexOf(",")
+  const lastDot = raw.lastIndexOf(".")
+  let normalized = raw
+
+  if (lastComma >= 0 && lastDot >= 0) {
+    normalized = lastComma > lastDot
+      ? raw.replace(/\./g, "").replace(",", ".")
+      : raw.replace(/,/g, "")
+  } else if (lastComma >= 0) {
+    const decimalLength = raw.length - lastComma - 1
+    normalized = decimalLength === 3 ? raw.replace(/,/g, "") : raw.replace(",", ".")
+  } else if (lastDot >= 0) {
+    const decimalLength = raw.length - lastDot - 1
+    normalized = decimalLength === 3 ? raw.replace(/\./g, "") : raw
+  }
+
   const parsed = Number(normalized)
   return Number.isFinite(parsed) ? parsed : null
+}
+
+function getMonetaryColumnIndexes(headers: string[]) {
+  const normalizedHeaders = headers.map(normalizeSearchText)
+  const explicitMoneyPattern = /r\$|valor|faturamento|receita|saldo|preco|custo|ticket|a receber/
+  const statusPattern = /pagas?|pagos?|pendentes?|vencidas?|vencidos?|em atraso|atrasadas?|atrasados?/
+  const hasExplicitMoneyColumn = normalizedHeaders.some((header) => explicitMoneyPattern.test(header))
+  const statusColumnCount = normalizedHeaders.filter((header) => statusPattern.test(header)).length
+  const hasFinancialContext = hasExplicitMoneyColumn || statusColumnCount >= 2
+
+  return new Set(
+    normalizedHeaders.flatMap((header, index) => {
+      if (/parcela|quantidade|qtd|numero/.test(header)) return []
+      if (explicitMoneyPattern.test(header)) return [index]
+      if (hasFinancialContext && (statusPattern.test(header) || header === "total")) return [index]
+      return []
+    }),
+  )
+}
+
+function formatSpreadsheetDisplayCell(headers: string[], columnIndex: number, value: string) {
+  if (!getMonetaryColumnIndexes(headers).has(columnIndex)) return value
+
+  return formatSpreadsheetNumber(value)
+}
+
+function formatSpreadsheetNumber(value: string) {
+  const parsed = parseNumericValue(value)
+  if (parsed === null) return value
+
+  const formatted = spreadsheetDecimalFormatter.format(parsed)
+  return /r\$/i.test(value) ? `R$ ${formatted}` : formatted
+}
+
+function formatMarkdownSpreadsheetValues(content: string) {
+  const lines = content.split(/\r?\n/)
+  let insideCodeFence = false
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const currentLine = lines[index] ?? ""
+    if (/^\s*(```|~~~)/.test(currentLine)) {
+      insideCodeFence = !insideCodeFence
+      continue
+    }
+    if (insideCodeFence) continue
+
+    const headerLine = currentLine.trim()
+    const separatorLine = lines[index + 1]?.trim() ?? ""
+    if (!headerLine.startsWith("|") || !separatorLine.startsWith("|") || !/^\|?[\s:|-]+\|?$/.test(separatorLine)) {
+      continue
+    }
+
+    const headers = headerLine.split("|").slice(1, -1).map(cleanCell)
+    const monetaryColumns = getMonetaryColumnIndexes(headers)
+    index += 2
+
+    while (index < lines.length && (lines[index]?.trim() ?? "").startsWith("|")) {
+      const cells = (lines[index] ?? "").trim().split("|").slice(1, -1)
+      const formattedCells = cells.map((cell, columnIndex) => {
+        if (!monetaryColumns.has(columnIndex)) return cell.trim()
+        return formatSpreadsheetNumber(cleanCell(cell))
+      })
+      lines[index] = `| ${formattedCells.join(" | ")} |`
+      index += 1
+    }
+
+    index -= 1
+  }
+
+  return lines.join("\n")
 }
 
 function parseChartData(content: string) {
@@ -428,7 +536,6 @@ function parseChartData(content: string) {
         return value === undefined ? null : { name: row[0] || "Item", value }
       })
       .filter((item): item is { name: string; value: number } => Boolean(item))
-      .slice(0, 8)
   }
 
   return content
@@ -440,7 +547,6 @@ function parseChartData(content: string) {
       return value === null ? null : { name: cleanCell(match[1] ?? "Item"), value }
     })
     .filter((item): item is { name: string; value: number } => Boolean(item))
-    .slice(0, 8)
 }
 
 type ChartDataset = {
@@ -459,7 +565,7 @@ function parseChartDataset(content: string): ChartDataset {
     if (numericIndexes.length > 0) {
       return {
         series: numericIndexes.map(({ header }) => header || "Valor"),
-        data: table.rows.slice(0, 12).map((row) => {
+        data: table.rows.map((row) => {
           const datum: Record<string, string | number> = { name: row[0] || "Item" }
           for (const { header, index } of numericIndexes) {
             datum[header || "Valor"] = parseNumericValue(row[index] ?? "") ?? 0
@@ -479,11 +585,11 @@ function parseChartDataset(content: string): ChartDataset {
   }
 }
 
-function inferChartType(content: string) {
+function inferLegacyChartType(content: string): DepAIChartType {
   const normalized = normalizeSearchText(content)
 
   if (normalized.includes("pizza") || normalized.includes("pie") || normalized.includes("rosca") || normalized.includes("donut")) {
-    return "pie"
+    return normalized.includes("rosca") || normalized.includes("donut") ? "donut" : "pie"
   }
 
   if (normalized.includes("linha") || normalized.includes("line") || normalized.includes("evolucao") || normalized.includes("tendencia")) {
@@ -537,13 +643,52 @@ async function downloadExcelWorkbook(
 ) {
   const XLSX = await import("xlsx")
   const workbook = XLSX.utils.book_new()
-  const dataSheet = XLSX.utils.aoa_to_sheet([table.headers, ...table.rows])
+  const monetaryColumns = getMonetaryColumnIndexes(table.headers)
+  const normalizedRows = table.rows.map((row) =>
+    row.map((cell, columnIndex) => {
+      if (!monetaryColumns.has(columnIndex)) return cell
+      return parseNumericValue(cell) ?? cell
+    }),
+  )
+  const dataSheet = XLSX.utils.aoa_to_sheet([table.headers, ...normalizedRows])
+
+  dataSheet["!cols"] = table.headers.map((header, columnIndex) => ({
+    wch: Math.min(
+      40,
+      Math.max(
+        12,
+        header.length + 2,
+        ...table.rows.map((row) => {
+          const value = row[columnIndex] ?? ""
+          const displayValue = monetaryColumns.has(columnIndex) ? formatSpreadsheetNumber(value) : value
+          return displayValue.length + 2
+        }),
+      ),
+    ),
+  }))
+
+  monetaryColumns.forEach((columnIndex) => {
+    normalizedRows.forEach((_row, rowIndex) => {
+      const cell = dataSheet[XLSX.utils.encode_cell({ r: rowIndex + 1, c: columnIndex })]
+      if (cell?.t === "n") cell.z = excelDecimalNumberFormat
+    })
+  })
 
   XLSX.utils.book_append_sheet(workbook, dataSheet, "Dados")
 
   const chartRows = chartDatasetToRows(chartDataset)
   if (chartRows.length > 0) {
     const chartSheet = XLSX.utils.aoa_to_sheet([["Série", "Item", "Valor", "Barra visual"], ...chartRows])
+    const monetarySeriesIndexes = getMonetaryColumnIndexes(chartDataset.series)
+    const monetarySeries = new Set(
+      chartDataset.series.filter((_series, index) => monetarySeriesIndexes.has(index)),
+    )
+
+    chartRows.forEach((row, rowIndex) => {
+      if (!monetarySeries.has(String(row[0] ?? ""))) return
+      const valueCell = chartSheet[XLSX.utils.encode_cell({ r: rowIndex + 1, c: 2 })]
+      if (valueCell?.t === "n") valueCell.z = excelDecimalNumberFormat
+    })
     XLSX.utils.book_append_sheet(workbook, chartSheet, "Gráficos")
   }
 
@@ -942,107 +1087,240 @@ function ArtifactIcon({ kind }: { kind: DepAIArtifact["kind"] }) {
   return <FileText className="h-4 w-4" />
 }
 
-function ArtifactPreview({ artifact, sourceContent, chartRef }: { artifact: DepAIArtifact; sourceContent: string; chartRef: RefObject<HTMLDivElement | null> }) {
-  const tables = useMemo(() => parseMarkdownTables(sourceContent), [sourceContent])
+function DepAIChartPreview({
+  artifact,
+  sourceContent,
+  chartRef,
+}: {
+  artifact: DepAIArtifact
+  sourceContent: string
+  chartRef: RefObject<HTMLDivElement | null>
+}) {
   const chartDataset = useMemo(() => parseChartDataset(sourceContent), [sourceContent])
-  const chartType = useMemo(() => inferChartType(sourceContent), [sourceContent])
-  const documentContent = useMemo(() => extractDocumentContent(sourceContent), [sourceContent])
-  const table = tables[0]
+  const chartType = artifact.chartType ?? inferLegacyChartType(sourceContent)
+  const primarySeries = chartDataset.series[0] ?? "Valor"
   const chartHasValues = chartDataset.data.some((item) =>
     chartDataset.series.some((series) => Math.abs(Number(item[series]) || 0) > 0),
   )
   const pieChartData = chartHasValues
     ? chartDataset.data
-    : [{ name: "Sem dados", [chartDataset.series[0] ?? "Valor"]: 1 }]
+    : [{ name: "Sem dados", [primarySeries]: 1 }]
+  const scatterData = chartDataset.data.map((item, index) => ({
+    name: String(item.name ?? `Item ${index + 1}`),
+    x: chartDataset.series.length > 1 ? Number(item[chartDataset.series[0]]) || 0 : index + 1,
+    y: Number(item[chartDataset.series[chartDataset.series.length > 1 ? 1 : 0]]) || 0,
+  }))
+  const funnelData = pieChartData.map((item, index) => ({
+    name: String(item.name ?? `Item ${index + 1}`),
+    value: Number(item[primarySeries]) || 0,
+    fill: chartHasValues ? chartGreenPalette[index % chartGreenPalette.length] : emptyChartColor,
+  }))
+  const chartHeight = ["horizontal_bar", "funnel"].includes(chartType)
+    ? Math.max(256, chartDataset.data.length * 42)
+    : 256
+  const formatChartValue = (value: unknown) => chartHasValues
+    ? Number(value).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : "0,00"
 
-  if (artifact.kind === "chart") {
-    if (chartDataset.data.length === 0 || chartDataset.series.length === 0) {
-      return <p className="mt-3 rounded-2xl bg-muted/50 p-3 text-xs text-muted-foreground">Não encontrei uma tabela ou pares de valores na resposta para montar o gráfico.</p>
+  if (chartDataset.data.length === 0 || chartDataset.series.length === 0) {
+    return <p className="mt-3 rounded-2xl bg-muted/50 p-3 text-xs text-muted-foreground">Não encontrei uma tabela ou pares de valores na resposta para montar o gráfico.</p>
+  }
+
+  const renderChart = () => {
+    if (chartType === "pie" || chartType === "donut") {
+      return (
+        <PieChart>
+          <Pie
+            data={pieChartData}
+            dataKey={primarySeries}
+            nameKey="name"
+            innerRadius={chartType === "donut" ? 48 : 0}
+            outerRadius={88}
+            paddingAngle={2}
+          >
+            {pieChartData.map((entry, index) => (
+              <Cell
+                key={`slice-${String(entry.name)}-${index}`}
+                fill={chartHasValues ? chartGreenPalette[index % chartGreenPalette.length] : emptyChartColor}
+              />
+            ))}
+          </Pie>
+          <ChartTooltip formatter={formatChartValue} />
+          <Legend />
+        </PieChart>
+      )
+    }
+
+    if (chartType === "line") {
+      return (
+        <LineChart data={chartDataset.data} margin={{ top: 10, right: 16, left: 0, bottom: 42 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#dfe6d7" />
+          <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#4b5563" }} interval="preserveStartEnd" angle={-18} textAnchor="end" height={58} />
+          <YAxis tick={{ fontSize: 11, fill: "#4b5563" }} width={72} />
+          <ChartTooltip formatter={formatChartValue} />
+          <Legend />
+          {chartDataset.series.map((series, index) => (
+            <Line key={series} type="monotone" dataKey={series} stroke={chartGreenPalette[index % chartGreenPalette.length]} strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+          ))}
+        </LineChart>
+      )
+    }
+
+    if (chartType === "area") {
+      return (
+        <AreaChart data={chartDataset.data} margin={{ top: 10, right: 16, left: 0, bottom: 42 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#dfe6d7" />
+          <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#4b5563" }} interval="preserveStartEnd" angle={-18} textAnchor="end" height={58} />
+          <YAxis tick={{ fontSize: 11, fill: "#4b5563" }} width={72} />
+          <ChartTooltip formatter={formatChartValue} />
+          <Legend />
+          {chartDataset.series.map((series, index) => (
+            <Area key={series} type="monotone" dataKey={series} stroke={chartGreenPalette[index % chartGreenPalette.length]} fill={chartGreenPalette[index % chartGreenPalette.length]} fillOpacity={0.24} strokeWidth={2} />
+          ))}
+        </AreaChart>
+      )
+    }
+
+    if (chartType === "radar") {
+      return (
+        <RadarChart data={chartDataset.data} outerRadius="72%">
+          <PolarGrid stroke="#dfe6d7" />
+          <PolarAngleAxis dataKey="name" tick={{ fontSize: 11, fill: "#4b5563" }} />
+          <PolarRadiusAxis tick={{ fontSize: 10, fill: "#6b7280" }} />
+          <ChartTooltip formatter={formatChartValue} />
+          <Legend />
+          {chartDataset.series.map((series, index) => (
+            <Radar key={series} name={series} dataKey={series} stroke={chartGreenPalette[index % chartGreenPalette.length]} fill={chartGreenPalette[index % chartGreenPalette.length]} fillOpacity={0.2} />
+          ))}
+        </RadarChart>
+      )
+    }
+
+    if (chartType === "scatter") {
+      return (
+        <ScatterChart margin={{ top: 10, right: 20, left: 0, bottom: 24 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#dfe6d7" />
+          <XAxis type="number" dataKey="x" name={chartDataset.series.length > 1 ? chartDataset.series[0] : "Item"} tick={{ fontSize: 11, fill: "#4b5563" }} />
+          <YAxis type="number" dataKey="y" name={chartDataset.series[chartDataset.series.length > 1 ? 1 : 0]} tick={{ fontSize: 11, fill: "#4b5563" }} width={72} />
+          <ZAxis dataKey="name" name="Item" />
+          <ChartTooltip cursor={{ strokeDasharray: "3 3" }} formatter={formatChartValue} />
+          <Legend />
+          <Scatter name="Dados" data={scatterData} fill={chartGreenPalette[0]} />
+        </ScatterChart>
+      )
+    }
+
+    if (chartType === "funnel") {
+      return (
+        <FunnelChart>
+          <ChartTooltip formatter={formatChartValue} />
+          <Funnel dataKey="value" data={funnelData} isAnimationActive>
+            <LabelList position="right" fill="#0f172a" stroke="none" dataKey="name" />
+          </Funnel>
+        </FunnelChart>
+      )
+    }
+
+    if (chartType === "composed") {
+      return (
+        <ComposedChart data={chartDataset.data} margin={{ top: 10, right: 16, left: 0, bottom: 42 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#dfe6d7" />
+          <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#4b5563" }} interval="preserveStartEnd" angle={-18} textAnchor="end" height={58} />
+          <YAxis tick={{ fontSize: 11, fill: "#4b5563" }} width={72} />
+          <ChartTooltip formatter={formatChartValue} />
+          <Legend />
+          <Bar dataKey={primarySeries} fill={chartGreenPalette[0]} radius={[8, 8, 0, 0]} />
+          {chartDataset.series.slice(1).map((series, index) => (
+            <Line key={series} type="monotone" dataKey={series} stroke={chartGreenPalette[(index + 1) % chartGreenPalette.length]} strokeWidth={3} />
+          ))}
+        </ComposedChart>
+      )
+    }
+
+    if (chartType === "horizontal_bar") {
+      return (
+        <BarChart data={chartDataset.data} layout="vertical" margin={{ top: 8, right: 24, left: 24, bottom: 8 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#dfe6d7" />
+          <XAxis type="number" tick={{ fontSize: 11, fill: "#4b5563" }} />
+          <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: "#4b5563" }} width={110} />
+          <ChartTooltip formatter={formatChartValue} />
+          <Legend />
+          {chartDataset.series.map((series, index) => (
+            <Bar key={series} dataKey={series} fill={chartGreenPalette[index % chartGreenPalette.length]} radius={[0, 8, 8, 0]} />
+          ))}
+        </BarChart>
+      )
     }
 
     return (
-      <div ref={chartRef} className="mt-3 rounded-2xl bg-background p-3">
-        <div className="h-64 w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            {chartType === "pie" ? (
-              <PieChart>
-                <Pie
-                  data={pieChartData}
-                  dataKey={chartDataset.series[0]}
-                  nameKey="name"
-                  innerRadius={sourceContent.toLowerCase().includes("rosca") || sourceContent.toLowerCase().includes("donut") ? 48 : 0}
-                  outerRadius={88}
-                  paddingAngle={2}
-                >
-                  {pieChartData.map((entry, index) => (
-                    <Cell
-                      key={`slice-${String(entry.name)}-${index}`}
-                      fill={chartHasValues ? chartGreenPalette[index % chartGreenPalette.length] : emptyChartColor}
-                    />
-                  ))}
-                </Pie>
-                <ChartTooltip formatter={(value) => chartHasValues ? Number(value).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "0,00"} />
-                <Legend />
-              </PieChart>
-            ) : chartType === "line" ? (
-              <LineChart data={chartDataset.data} margin={{ top: 10, right: 16, left: 0, bottom: 42 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#dfe6d7" />
-                <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#4b5563" }} interval={0} angle={-18} textAnchor="end" height={58} />
-                <YAxis
-                  tick={{ fontSize: 11, fill: "#4b5563" }}
-                  width={72}
-                  domain={[0, (dataMax: number) => Math.max(Number(dataMax) || 0, 1)]}
-                />
-                <ChartTooltip formatter={(value) => Number(value).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} />
-                <Legend />
-                {chartDataset.series.map((series, index) => (
-                  <Line
-                    key={series}
-                    type="monotone"
-                    dataKey={series}
-                    stroke={chartHasValues ? chartGreenPalette[index % chartGreenPalette.length] : emptyChartColor}
-                    strokeWidth={3}
-                    dot={{ r: 4, fill: chartHasValues ? chartGreenPalette[index % chartGreenPalette.length] : emptyChartColor }}
-                    activeDot={{ r: 6 }}
-                  />
-                ))}
-              </LineChart>
-            ) : (
-              <BarChart data={chartDataset.data} margin={{ top: 10, right: 12, left: 0, bottom: 42 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#dfe6d7" />
-                <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#4b5563" }} interval={0} angle={-18} textAnchor="end" height={58} />
-                <YAxis
-                  tick={{ fontSize: 11, fill: "#4b5563" }}
-                  width={72}
-                  domain={[0, (dataMax: number) => Math.max(Number(dataMax) || 0, 1)]}
-                />
-                <ChartTooltip formatter={(value) => Number(value).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} />
-                <Legend />
-                {chartDataset.series.map((series, seriesIndex) => (
-                  <Bar
-                    key={series}
-                    dataKey={series}
-                    fill={chartHasValues ? chartGreenPalette[seriesIndex % chartGreenPalette.length] : emptyChartColor}
-                    minPointSize={chartHasValues ? 0 : 3}
-                    radius={[8, 8, 0, 0]}
-                  >
-                    {chartDataset.series.length === 1 && chartDataset.data.map((entry, index) => (
-                      <Cell
-                        key={`bar-${String(entry.name)}-${index}`}
-                        fill={chartHasValues ? chartGreenPalette[index % chartGreenPalette.length] : emptyChartColor}
-                      />
-                    ))}
-                  </Bar>
-                ))}
-              </BarChart>
-            )}
-          </ResponsiveContainer>
-        </div>
-      </div>
+      <BarChart data={chartDataset.data} margin={{ top: 10, right: 12, left: 0, bottom: 42 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="#dfe6d7" />
+        <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#4b5563" }} interval="preserveStartEnd" angle={-18} textAnchor="end" height={58} />
+        <YAxis tick={{ fontSize: 11, fill: "#4b5563" }} width={72} />
+        <ChartTooltip formatter={formatChartValue} />
+        <Legend />
+        {chartDataset.series.map((series, seriesIndex) => (
+          <Bar
+            key={series}
+            dataKey={series}
+            stackId={chartType === "stacked_bar" ? "total" : undefined}
+            fill={chartGreenPalette[seriesIndex % chartGreenPalette.length]}
+            radius={chartType === "stacked_bar" ? 0 : [8, 8, 0, 0]}
+          >
+            {chartType === "bar" && chartDataset.series.length === 1 && chartDataset.data.map((entry, index) => (
+              <Cell key={`bar-${String(entry.name)}-${index}`} fill={chartGreenPalette[index % chartGreenPalette.length]} />
+            ))}
+          </Bar>
+        ))}
+      </BarChart>
     )
   }
 
+  return (
+    <div ref={chartRef} className="mt-3 overflow-auto rounded-2xl bg-background p-3">
+      <div className="w-full" style={{ height: chartHeight }}>
+        <ResponsiveContainer width="100%" height="100%">
+          {renderChart()}
+        </ResponsiveContainer>
+      </div>
+    </div>
+  )
+}
+
+function isDepAIArtifactExpired(artifact: DepAIArtifact) {
+  if (artifact.status === "expired") return true
+  if (!artifact.expiresAt) return false
+
+  const expiresAt = new Date(artifact.expiresAt)
+  return !Number.isNaN(expiresAt.getTime()) && expiresAt.getTime() <= Date.now()
+}
+
+function ArtifactPreview({ artifact, sourceContent, chartRef }: { artifact: DepAIArtifact; sourceContent: string; chartRef: RefObject<HTMLDivElement | null> }) {
+  const tables = useMemo(() => parseMarkdownTables(sourceContent), [sourceContent])
+  const documentContent = useMemo(() => extractDocumentContent(sourceContent), [sourceContent])
+  const table = tables[0]
+
+  if (isDepAIArtifactExpired(artifact)) {
+    return (
+      <p className="mt-3 rounded-2xl bg-muted/50 p-3 text-xs leading-relaxed text-muted-foreground">
+        Este arquivo expirou após 7 dias. Solicite um novo arquivo à DepAI para receber dados atualizados.
+      </p>
+    )
+  }
+
+  if (artifact.kind === "chart") {
+    return <DepAIChartPreview artifact={artifact} sourceContent={sourceContent} chartRef={chartRef} />
+  }
+
   if (artifact.kind === "xlsx") {
+    if (artifact.downloadUrl) {
+      return (
+        <p className="mt-3 rounded-2xl bg-muted/50 p-3 text-xs leading-relaxed text-muted-foreground">
+          O arquivo completo foi montado diretamente com todos os registros permitidos. Use o botão de download para abrir a planilha em Excel.
+        </p>
+      )
+    }
+
     if (!table) {
       return <p className="mt-3 rounded-2xl bg-muted/50 p-3 text-xs text-muted-foreground">Peça a resposta em formato de tabela para visualizar e baixar como planilha.</p>
     }
@@ -1061,7 +1339,9 @@ function ArtifactPreview({ artifact, sourceContent, chartRef }: { artifact: DepA
             {table.rows.map((row, index) => (
               <tr key={`${row.join("-")}-${index}`}>
                 {row.map((cell, cellIndex) => (
-                  <td key={`${cell}-${cellIndex}`} className="max-w-[260px] whitespace-nowrap px-3 py-2 text-foreground">{cell}</td>
+                  <td key={`${cell}-${cellIndex}`} className="max-w-[260px] whitespace-nowrap px-3 py-2 text-foreground">
+                    {formatSpreadsheetDisplayCell(table.headers, cellIndex, cell)}
+                  </td>
                 ))}
               </tr>
             ))}
@@ -1081,9 +1361,34 @@ function ArtifactPreview({ artifact, sourceContent, chartRef }: { artifact: DepA
 function ArtifactCard({ artifact, sourceContent }: { artifact: DepAIArtifact; sourceContent: string }) {
   const [expanded, setExpanded] = useState(artifact.kind === "chart" || artifact.kind === "xlsx")
   const chartRef = useRef<HTMLDivElement | null>(null)
+  const artifactTitle = artifact.title.replace(/\s+sugerid[oa]\b/giu, "").trim()
+  const artifactExpired = isDepAIArtifactExpired(artifact)
 
   const downloadArtifact = async () => {
     try {
+      if (artifactExpired) {
+        toast.error("Este arquivo expirou após 7 dias. Solicite um novo arquivo à DepAI.")
+        return
+      }
+
+      if (artifact.downloadUrl) {
+        const response = await fetch(buildApiFileUrl(artifact.downloadUrl))
+        if (!response.ok) {
+          if (response.status === 410) {
+            const body = await response.json().catch(() => null) as { message?: string } | null
+            throw new Error(body?.message || "Este arquivo expirou após 7 dias. Solicite um novo arquivo à DepAI.")
+          }
+          throw new Error("Não foi possível baixar o arquivo gerado.")
+        }
+        const blob = await response.blob()
+        downloadBlob(
+          blob,
+          artifact.fileName || "arquivo-depai",
+          artifact.mimeType || blob.type || "application/octet-stream",
+        )
+        return
+      }
+
       if (artifact.kind === "chart") {
         if (!chartRef.current) {
           toast.error("Abra a prévia do gráfico antes de baixar.")
@@ -1117,10 +1422,13 @@ function ArtifactCard({ artifact, sourceContent }: { artifact: DepAIArtifact; so
             <ArtifactIcon kind={artifact.kind} />
           </div>
           <div className="min-w-0">
-            <p className="truncate text-sm font-medium text-foreground">{artifact.title}</p>
+            <p className="truncate text-sm font-medium text-foreground">{artifactTitle}</p>
             <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{artifact.description}</p>
             {artifact.fileName && (
               <p className="mt-1 truncate text-[11px] text-muted-foreground">{artifact.fileName}</p>
+            )}
+            {artifactExpired && (
+              <p className="mt-1 text-[11px] font-medium text-destructive">Arquivo expirado. Solicite uma nova geração.</p>
             )}
           </div>
         </div>
@@ -1128,7 +1436,7 @@ function ArtifactCard({ artifact, sourceContent }: { artifact: DepAIArtifact; so
           <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={() => setExpanded((current) => !current)} title={expanded ? "Ocultar prévia" : "Ver prévia"}>
             <Eye className="h-4 w-4" />
           </Button>
-          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={downloadArtifact} title="Baixar">
+          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={downloadArtifact} title={artifactExpired ? "Arquivo expirado" : "Baixar"}>
             <Download className="h-4 w-4" />
           </Button>
         </div>
@@ -1373,6 +1681,8 @@ function MarkdownMessage({ content }: { content: string }) {
 }
 
 function MarkdownText({ content }: { content: string }) {
+  const formattedContent = useMemo(() => formatMarkdownSpreadsheetValues(content), [content])
+
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
@@ -1419,7 +1729,7 @@ function MarkdownText({ content }: { content: string }) {
         ul: ({ children }) => <ul className="my-3 list-disc space-y-1 pl-5">{children}</ul>,
       }}
     >
-      {content}
+      {formattedContent}
     </ReactMarkdown>
   )
 }
@@ -1457,8 +1767,11 @@ function ThinkingMessage() {
 
 function MessageRow({ message }: { message: DepAIMessage }) {
   const artifacts = message.artifacts ?? []
-  const hasSheetArtifact = artifacts.some((artifact) => artifact.kind === "xlsx")
-  const displayContent = hasSheetArtifact ? removeMarkdownTables(message.content) : message.content
+  const hasStructuredDataArtifact = artifacts.some((artifact) => artifact.kind === "xlsx" || artifact.kind === "chart")
+  const displayContent = hasStructuredDataArtifact ? removeMarkdownTables(message.content) : message.content
+  const artifactFallback = artifacts.some((artifact) => artifact.kind === "chart")
+    ? "Gráfico pronto para visualização e download abaixo."
+    : "Planilha pronta para visualização e download abaixo."
 
   if (message.role === "user") {
     return (
@@ -1485,7 +1798,7 @@ function MessageRow({ message }: { message: DepAIMessage }) {
     <div className="group mx-auto flex w-full max-w-3xl gap-4 px-4 py-5 transition-colors hover:bg-muted/20">
       <Avatar role={message.role} />
       <div className="min-w-0 flex-1 pt-1 text-sm leading-7 text-foreground md:text-[15px]">
-        <MarkdownMessage content={displayContent || "Planilha pronta para visualização e download abaixo."} />
+        <MarkdownMessage content={displayContent || artifactFallback} />
         {message.files && message.files.length > 0 && (
           <div className="mt-4 flex flex-wrap gap-2">
             {message.files.map((file) => (

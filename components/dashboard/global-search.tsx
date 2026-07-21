@@ -12,8 +12,9 @@ import { listContracts, type ContractRecord } from "@/lib/api/contracts"
 import { listServices, type ServiceRecord } from "@/lib/api/services"
 import { hasAnyPermission } from "@/lib/auth/permissions"
 import { getStoredUser } from "@/lib/auth/session"
+import { getClicksignContractStatusLabel } from "@/lib/contract-status"
 import { buildPathWithSearchParams, withReturnTo } from "@/lib/navigation"
-import { cn } from "@/lib/utils"
+import { cn, formatContractNumber } from "@/lib/utils"
 
 type SearchItemKind = "client" | "contract" | "service" | "view-all" | "depai"
 
@@ -30,15 +31,6 @@ type SearchItem = {
 
 const MIN_QUERY_LENGTH = 1
 const MAX_SECTION_RESULTS = 5
-
-const contractStatusLabels: Record<string, string> = {
-  draft: "Rascunho",
-  pending_signature: "Aguardando assinatura",
-  signed: "Assinado",
-  active: "Ativo",
-  expired: "Encerrado",
-  cancelled: "Cancelado",
-}
 
 const durationTypeLabels: Record<ServiceRecord["durationType"], string> = {
   hours: "hora",
@@ -68,7 +60,7 @@ function getClientDescription(client: ClientRecord) {
 }
 
 function getContractDescription(contract: ContractRecord) {
-  const status = contractStatusLabels[contract.status] ?? contract.status
+  const status = getClicksignContractStatusLabel(contract.status)
   return [contract.clientCompanyName, status, formatCurrency(contract.totalValue)].filter(Boolean).join(" • ")
 }
 
@@ -182,7 +174,7 @@ export function GlobalSearch() {
         items: (data?.contracts ?? []).slice(0, MAX_SECTION_RESULTS).map<SearchItem>((contract) => ({
           id: `contract-${contract.id}`,
           kind: "contract",
-          title: contract.contractNumber,
+          title: formatContractNumber(contract.contractNumber),
           description: getContractDescription(contract),
           href: withReturnTo(`/contratos/${contract.id}`, currentHref),
           icon: <FileText className="h-4 w-4" />,

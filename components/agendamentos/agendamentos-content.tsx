@@ -1112,7 +1112,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
               setCurrentPage(1)
             }}
             placeholder="Filtrar data"
-            className="sm:w-[320px]"
+            className="sm:w-[360px]"
           />
           {viewToggle ? <div className="hidden shrink-0 sm:block">{viewToggle}</div> : null}
         </div>
@@ -1172,7 +1172,12 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                         <p className="text-xs text-muted-foreground">{formatConfiguredScheduleDuration(schedule)}</p>
                       </TableCell>
                       <TableCell className="hidden lg:table-cell">
-                        <ScheduleTypeBadge schedule={schedule} />
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <ScheduleTypeBadge schedule={schedule} />
+                          {schedule.isClientDelinquent ? (
+                            <Badge className="bg-red-100 text-red-700 hover:bg-red-100">Inadimplente</Badge>
+                          ) : null}
+                        </div>
                       </TableCell>
                       <TableCell className="hidden md:table-cell">
                         <div className="flex flex-wrap gap-1.5">
@@ -1312,8 +1317,11 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                       </div>
                       {getStatusBadge(schedule.status)}
                     </div>
-                    <div className="mb-2">
+                    <div className="mb-2 flex flex-wrap items-center gap-1.5">
                       <ScheduleTypeBadge schedule={schedule} />
+                      {schedule.isClientDelinquent ? (
+                        <Badge className="bg-red-100 text-red-700 hover:bg-red-100">Inadimplente</Badge>
+                      ) : null}
                     </div>
                     <div className="space-y-1 text-xs text-muted-foreground">
                       <div className="flex items-center gap-2">

@@ -1,6 +1,6 @@
 "use client"
 
-import { useDeferredValue, useMemo, useState } from "react"
+import { useDeferredValue, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { usePathname, useSearchParams } from "next/navigation"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
@@ -37,7 +37,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { importSignedContracts, listContracts, type ContractImportRow, type ContractRecord } from "@/lib/api/contracts"
 import { getContractClicksignUrl } from "@/lib/clicksign"
+import {
+  getClicksignContractStatusLabel,
+  isClosedClicksignContractStatus,
+  isOperationallyActiveContract,
+  normalizeClicksignContractStatus,
+} from "@/lib/contract-status"
 import { formatCivilDate } from "@/lib/date-utils"
+import { formatContractNumber } from "@/lib/utils"
 import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 import { buildPathWithSearchParams, withReturnTo } from "@/lib/navigation"
@@ -85,8 +92,19 @@ const CONTRACT_IMPORT_FIELDS: CsvImportField[] = [
 ]
 
 const isContractSigned = (contract: Pick<ContractRecord, "status" | "clicksign">) => {
-  const clicksignStatus = contract.clicksign?.status?.toLowerCase() ?? ""
-  return ["signed", "active"].includes(contract.status) || ["closed", "finished", "completed", "done"].includes(clicksignStatus)
+  return isClosedClicksignContractStatus(contract.status)
+}
+
+const CONTRACT_STATUS_FILTER_VALUES = new Set([
+  "all",
+  "draft",
+  "running",
+  "closed",
+  "canceled",
+])
+
+function normalizeContractStatusFilter(value: string) {
+  return CONTRACT_STATUS_FILTER_VALUES.has(value) ? value : "all"
 }
 
 function formatCurrency(value: number) {
@@ -107,7 +125,9 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
   const mobileFiltersOpen = useMobileFiltersOpen()
   const canEditContracts = useHasAnyPermission(["contracts_edit"])
   const [searchTerm, setSearchTerm] = useUrlQueryState("q")
-  const [statusFilter, setStatusFilter] = useState<string>("all")
+  const [statusFilterParam, setStatusFilter] = useUrlQueryState("status", "all", { debounceMs: 0 })
+  const statusFilter = normalizeContractStatusFilter(statusFilterParam)
+  const validityFilter = searchParams.get("validity")
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const deferredSearchTerm = useDeferredValue(searchTerm)
@@ -141,8 +161,19 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
   const getContractEditHref = (contractId: string) => withReturnTo(`/contratos/${contractId}/editar`, getContractProfileHref(contractId))
   const getClientProfileHref = (clientId: string) => withReturnTo(`/clientes/${clientId}`, currentHref)
   const filteredContracts = useMemo(() => {
-    return contracts.filter((contract) => statusFilter === "all" || contract.status === statusFilter)
-  }, [contracts, statusFilter])
+    return contracts.filter((contract) => {
+      if (statusFilter === "all") return true
+      return normalizeClicksignContractStatus(contract.status) === statusFilter
+    }).filter((contract) => {
+      if (validityFilter === "active") return isOperationallyActiveContract(contract)
+      if (validityFilter === "inactive") return !isOperationallyActiveContract(contract)
+      return true
+    })
+  }, [contracts, statusFilter, validityFilter])
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [statusFilter, validityFilter])
 
   const totalPages = Math.max(1, Math.ceil(filteredContracts.length / pageSize))
   const paginatedContracts = useMemo(() => {
@@ -151,25 +182,15 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
   }, [currentPage, filteredContracts, pageSize])
 
   const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "signed":
-      case "active":
-        return <Badge className="shrink-0 bg-green-100 text-green-700 hover:bg-green-100">Assinado</Badge>
-      case "pending_signature":
-        return <Badge className="shrink-0 bg-amber-100 text-amber-700 hover:bg-amber-100">Aguardando Assinatura</Badge>
-      case "overdue":
-        return <Badge className="shrink-0 bg-red-100 text-red-700 hover:bg-red-100">Em Atraso</Badge>
-      case "refused":
-        return <Badge className="shrink-0 bg-orange-100 text-orange-700 hover:bg-orange-100">Recusado</Badge>
-      case "expired":
-        return <Badge className="shrink-0 bg-gray-100 text-gray-700 hover:bg-gray-100">Expirado</Badge>
-      case "deadline_expired":
-        return <Badge className="shrink-0 bg-purple-100 text-purple-700 hover:bg-purple-100">Prazo Expirado</Badge>
-      case "cancelled":
-        return <Badge className="shrink-0 bg-red-100 text-red-700 hover:bg-red-100">Cancelado</Badge>
-      default:
-        return <Badge variant="secondary" className="shrink-0">Rascunho</Badge>
-    }
+    const normalized = normalizeClicksignContractStatus(status)
+    const className = normalized === "closed"
+      ? "bg-green-100 text-green-700 hover:bg-green-100"
+      : normalized === "running"
+        ? "bg-amber-100 text-amber-700 hover:bg-amber-100"
+        : normalized === "canceled"
+          ? "bg-red-100 text-red-700 hover:bg-red-100"
+          : "bg-gray-100 text-gray-700 hover:bg-gray-100"
+    return <Badge className={`shrink-0 ${className}`}>{getClicksignContractStatusLabel(normalized)}</Badge>
   }
 
   const importContracts = async (rows: Array<Record<string, string>>) => {
@@ -242,13 +263,9 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
           }}
           options={[
             { value: "draft", label: "Rascunho" },
-            { value: "pending_signature", label: "Aguardando Assinatura" },
-            { value: "signed", label: "Assinado" },
-            { value: "overdue", label: "Em Atraso" },
-            { value: "refused", label: "Recusado" },
-            { value: "expired", label: "Expirado" },
-            { value: "deadline_expired", label: "Prazo Expirado" },
-            { value: "cancelled", label: "Cancelado" },
+            { value: "running", label: "Em processo" },
+            { value: "closed", label: "Finalizado" },
+            { value: "canceled", label: "Cancelado" },
           ]}
           placeholder="Status"
           searchPlaceholder="Buscar status..."
@@ -299,7 +316,7 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
                             <FileText className="h-5 w-5 text-primary" />
                           </div>
                           <div className="min-w-0">
-                            <p className="truncate font-medium">{contract.contractNumber}</p>
+                            <p className="truncate font-medium">{formatContractNumber(contract.contractNumber)}</p>
                             <p className="text-xs text-muted-foreground sm:hidden">{contract.clientCompanyName}</p>
                           </div>
                         </Link>
@@ -392,7 +409,7 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                            <h3 className="min-w-0 break-words text-sm font-semibold">{contract.contractNumber}</h3>
+                            <h3 className="min-w-0 break-words text-sm font-semibold">{formatContractNumber(contract.contractNumber)}</h3>
                             <span className="inline-flex shrink-0">
                               {getStatusBadge(contract.status)}
                             </span>

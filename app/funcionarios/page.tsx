@@ -7,13 +7,12 @@ import { EmployeesContent } from "@/components/funcionarios/employees-content"
 import { Button } from "@/components/ui/button"
 import { ContentLoadingSkeleton } from "@/components/ui/content-loading-skeleton"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { FileUp, Plus, List, LayoutGrid } from "lucide-react"
+import { Plus, List, LayoutGrid } from "lucide-react"
 import { useResponsiveDefaultViewMode } from "@/hooks/use-responsive-default-view-mode"
 import { useHasAnyPermission } from "@/hooks/use-permissions"
 
 export default function FuncionariosPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [importOpen, setImportOpen] = useState(false)
   const [viewMode, setViewMode] = useResponsiveDefaultViewMode("table", "cards")
   const canCreateEmployees = useHasAnyPermission(["employees_create"])
 
@@ -41,17 +40,6 @@ export default function FuncionariosPage() {
           actions={canCreateEmployees ? (
             <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
               <Button
-                type="button"
-                variant="outline"
-                onClick={() => setImportOpen(true)}
-                className="h-9 w-9 shrink-0 px-0 sm:w-auto sm:px-4"
-                aria-label="Importar funcionários"
-                title="Importar funcionários"
-              >
-                <FileUp className="h-4 w-4 sm:mr-2" />
-                <span className="hidden sm:inline">Importar</span>
-              </Button>
-              <Button
                 onClick={() => setDialogOpen(true)}
                 className="h-9 min-w-0 flex-1 bg-primary text-sm text-primary-foreground hover:bg-primary/90 sm:w-auto sm:flex-none"
               >
@@ -67,8 +55,6 @@ export default function FuncionariosPage() {
             viewToggle={toggle}
             openDialog={canCreateEmployees && dialogOpen}
             onDialogChange={setDialogOpen}
-            openImport={canCreateEmployees && importOpen}
-            onImportChange={setImportOpen}
           />
         </Suspense>
       </main>

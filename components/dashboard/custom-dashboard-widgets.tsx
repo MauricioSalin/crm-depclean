@@ -16,27 +16,47 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { listSchedules, type ScheduleRecord } from "@/lib/api/schedules"
 import { formatCivilDate } from "@/lib/date-utils"
 
-const STATUS_OPTIONS: Array<{ value: ScheduleRecord["status"] | "all"; label: string }> = [
-  { value: "in_progress", label: "Em atendimento" },
+type LiveServiceStatusFilter = "scheduled" | "in_progress" | "emergency" | "cancelled"
+
+const STATUS_OPTIONS: Array<{ value: LiveServiceStatusFilter; label: string }> = [
   { value: "scheduled", label: "Agendados" },
-  { value: "rescheduled", label: "Reagendados" },
-  { value: "all", label: "Todos abertos" },
+  { value: "in_progress", label: "Em andamento" },
+  { value: "emergency", label: "Emergenciais" },
+  { value: "cancelled", label: "Cancelados" },
 ]
 
-function isOpenStatus(status: ScheduleRecord["status"]) {
-  return ["scheduled", "in_progress", "rescheduled"].includes(status)
+function matchesStatusFilter(schedule: ScheduleRecord, filter: LiveServiceStatusFilter) {
+  switch (filter) {
+    case "scheduled":
+      return schedule.status === "scheduled" || schedule.status === "rescheduled"
+    case "in_progress":
+      return schedule.status === "in_progress"
+    case "emergency":
+      return schedule.isEmergency
+    case "cancelled":
+      return schedule.status === "cancelled"
+  }
 }
 
-function getStatusBadge(status: ScheduleRecord["status"]) {
-  switch (status) {
+function getStatusBadge(
+  schedule: Pick<ScheduleRecord, "status" | "isEmergency">,
+  filter: LiveServiceStatusFilter,
+) {
+  if (filter === "emergency" && schedule.isEmergency) {
+    return <Badge className="bg-orange-100 text-orange-800">Emergencial</Badge>
+  }
+
+  switch (schedule.status) {
     case "in_progress":
-      return <Badge className="bg-yellow-100 text-yellow-800">Em atendimento</Badge>
+      return <Badge className="bg-yellow-100 text-yellow-800">Em andamento</Badge>
     case "rescheduled":
       return <Badge className="bg-purple-100 text-purple-800">Reagendado</Badge>
     case "scheduled":
       return <Badge className="bg-blue-100 text-blue-800">Agendado</Badge>
+    case "cancelled":
+      return <Badge className="bg-red-100 text-red-800">Cancelado</Badge>
     default:
-      return <Badge variant="secondary">{status}</Badge>
+      return <Badge variant="secondary">{schedule.status}</Badge>
   }
 }
 
@@ -45,7 +65,7 @@ type LiveServicesWidgetProps = {
 }
 
 export function LiveServicesWidget({ storageKey }: LiveServicesWidgetProps = {}) {
-  const [statusFilter, setStatusFilter] = useState<ScheduleRecord["status"] | "all">("in_progress")
+  const [statusFilter, setStatusFilter] = useState<LiveServiceStatusFilter>("in_progress")
   const schedulesQuery = useQuery({
     queryKey: ["schedules", "dashboard-live-services"],
     queryFn: () => listSchedules(),
@@ -54,11 +74,11 @@ export function LiveServicesWidget({ storageKey }: LiveServicesWidgetProps = {})
     if (!storageKey) return
     const stored = window.localStorage.getItem(storageKey)
     if (stored && STATUS_OPTIONS.some((option) => option.value === stored)) {
-      setStatusFilter(stored as ScheduleRecord["status"] | "all")
+      setStatusFilter(stored as LiveServiceStatusFilter)
     }
   }, [storageKey])
 
-  const handleStatusFilterChange = (value: ScheduleRecord["status"] | "all") => {
+  const handleStatusFilterChange = (value: LiveServiceStatusFilter) => {
     setStatusFilter(value)
     if (storageKey) window.localStorage.setItem(storageKey, value)
   }
@@ -66,8 +86,7 @@ export function LiveServicesWidget({ storageKey }: LiveServicesWidgetProps = {})
   const schedules = schedulesQuery.data?.data ?? []
   const filtered = useMemo(() => {
     return schedules
-      .filter((schedule) => isOpenStatus(schedule.status))
-      .filter((schedule) => statusFilter === "all" || schedule.status === statusFilter)
+      .filter((schedule) => matchesStatusFilter(schedule, statusFilter))
       .sort((left, right) => `${left.date} ${left.time}`.localeCompare(`${right.date} ${right.time}`))
   }, [schedules, statusFilter])
 
@@ -79,7 +98,7 @@ export function LiveServicesWidget({ storageKey }: LiveServicesWidgetProps = {})
             <h2 className="text-base font-semibold text-foreground">Atendimentos em tempo real</h2>
           </div>
         </div>
-        <Select value={statusFilter} onValueChange={(value) => handleStatusFilterChange(value as ScheduleRecord["status"] | "all")}>
+        <Select value={statusFilter} onValueChange={(value) => handleStatusFilterChange(value as LiveServiceStatusFilter)}>
           <SelectTrigger className="h-9 w-full rounded-full sm:w-[170px]">
             <SelectValue />
           </SelectTrigger>
@@ -109,7 +128,7 @@ export function LiveServicesWidget({ storageKey }: LiveServicesWidgetProps = {})
                   <p className="truncate text-sm font-semibold text-foreground">{schedule.clientName}</p>
                   <p className="mt-0.5 truncate text-xs text-muted-foreground">{schedule.serviceTypeName}</p>
                 </div>
-                {getStatusBadge(schedule.status)}
+                {getStatusBadge(schedule, statusFilter)}
               </div>
               <p className="mt-2 text-xs text-muted-foreground">
                 {formatCivilDate(schedule.date, schedule.date)} às {schedule.time || "08:00"}

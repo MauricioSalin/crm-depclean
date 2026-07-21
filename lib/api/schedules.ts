@@ -16,6 +16,7 @@ export type ScheduleRecord = {
   contractServiceId: string | null
   contractServiceIds: string[]
   isManual: boolean
+  isClientDelinquent: boolean
   clientId: string
   clientName: string
   unitId: string

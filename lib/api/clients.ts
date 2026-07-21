@@ -83,6 +83,28 @@ export type ClientAttachmentRecord = {
   }
 }
 
+export type ClientExtraStatus = "pending" | "paid" | "late" | "overdue" | "cancelled"
+
+export type ClientExtraRecord = {
+  id: string
+  clientId: string
+  value: number
+  createdDate: string
+  dueDate: string
+  status: ClientExtraStatus
+  paidDate?: string
+  paidValue?: number
+  createdAt: string
+  updatedAt: string
+}
+
+export type CreateClientExtraPayload = {
+  value: number
+  createdDate: string
+  dueDate: string
+  status: ClientExtraStatus
+}
+
 export type ClientPayload = {
   companyName: string
   cnpj: string
@@ -145,6 +167,24 @@ export async function getClientById(id: string) {
 
 export async function getClientAttachments(id: string) {
   const response = await api.get<{ success: true; data: ClientAttachmentRecord[] }>(`/clients/${resolveClientId(id)}/attachments`)
+  return response.data
+}
+
+export async function listClientExtras(id: string) {
+  const response = await api.get<{ success: true; data: ClientExtraRecord[] }>(`/clients/${resolveClientId(id)}/extras`)
+  return response.data
+}
+
+export async function createClientExtra(id: string, payload: CreateClientExtraPayload) {
+  const response = await api.post<{ success: true; data: ClientExtraRecord }>(`/clients/${resolveClientId(id)}/extras`, payload)
+  return response.data
+}
+
+export async function updateClientExtraStatus(id: string, extraId: string, status: ClientExtraStatus) {
+  const response = await api.patch<{ success: true; data: ClientExtraRecord }>(
+    `/clients/${resolveClientId(id)}/extras/${extraId}/status`,
+    { status },
+  )
   return response.data
 }
 

@@ -56,7 +56,7 @@ import { useHasAnyPermission } from "@/hooks/use-permissions"
 import { BRASILIA_TIME_ZONE, formatCivilDate, formatCivilLongDate, parseCivilDate } from "@/lib/date-utils"
 import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
-import { cn } from "@/lib/utils"
+import { cn, formatContractNumber } from "@/lib/utils"
 
 export type ContractTemplate = TemplateRecord
 
@@ -551,7 +551,7 @@ function buildPreviewVariables(params: {
         installmentValue: formatCurrency(installmentValue),
         installmentsCount: String(contract.installmentsCount),
         remainingInstallmentsCount: String(hasDownPayment ? remainingInstallmentsCount : 0),
-        number: contract.contractNumber,
+        number: formatContractNumber(contract.contractNumber),
         paymentDay: String(contract.paymentDay).padStart(2, "0"),
         recurrence: recurrenceLabel(contract.recurrence),
         recurrenceTable: buildRecurrenceTableHtml(clientTypeName, contract.recurrenceRules),
@@ -1340,7 +1340,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
                       <SelectContent className={FORM_SELECT_CONTENT_CLASS_NAME}>
                         {kind === "contract"
                           ? previewContracts.map((contract) => {
-                              const label = `${contract.contractNumber} - ${contract.templateName || contract.status}`
+                              const label = `${formatContractNumber(contract.contractNumber)} - ${contract.templateName || contract.status}`
                               return (
                                 <SelectItem key={contract.id} value={contract.id} textValue={label} className="max-w-full">
                                   <span className="block min-w-0 truncate">{label}</span>

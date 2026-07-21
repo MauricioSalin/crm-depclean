@@ -77,7 +77,7 @@ import {
   Phone,
   DollarSign,
 } from "lucide-react"
-import { cn, getColorFromClass } from "@/lib/utils"
+import { cn, formatContractNumber, getColorFromClass } from "@/lib/utils"
 import { useHasAnyPermission } from "@/hooks/use-permissions"
 import { withReturnTo } from "@/lib/navigation"
 import { addCivilDaysKey, addCivilMonthsKey, formatCivilDate, formatCivilLongDate, toCivilDateKey } from "@/lib/date-utils"
@@ -96,6 +96,7 @@ import {
   type ContractPayload,
 } from "@/lib/api/contracts"
 import { getApiErrorMessage } from "@/lib/api/errors"
+import { isClosedClicksignContractStatus } from "@/lib/contract-status"
 import { formatCNPJ, formatCPF, formatPhone } from "@/lib/masks"
 import { listServices } from "@/lib/api/services"
 import { listTemplates } from "@/lib/api/templates"
@@ -217,8 +218,7 @@ function isPresent<T>(value: T | null | undefined): value is T {
 
 const isContractSigned = (contract?: { status?: string; clicksign?: { status?: string } } | null) => {
   if (!contract) return false
-  const clicksignStatus = contract.clicksign?.status?.toLowerCase() ?? ""
-  return ["signed", "active"].includes(contract.status ?? "") || ["closed", "finished", "completed", "done"].includes(clicksignStatus)
+  return isClosedClicksignContractStatus(contract.status)
 }
 
 export function ContractForm({ contractId, isEditing = false, returnTo }: ContractFormProps) {
@@ -777,7 +777,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
         installmentValue: formatCurrency(regularInstallmentValue),
         installmentsCount: String(installmentsCount),
         remainingInstallmentsCount: String(hasDownPayment ? remainingInstallmentsCount : 0),
-        number: draftPreview.contractNumber,
+        number: formatContractNumber(draftPreview.contractNumber),
         paymentDay: String(dueDay).padStart(2, "0"),
         recurrence: getRecurrenceLabel(contractRecurrence),
         recurrenceTable: buildRecurrenceTableHtml(),
@@ -1132,7 +1132,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
 
 
     if (!startDate) {
-      toast.error("Preencha a data de início do contrato.")
+      toast.error("Preencha a data de referência financeira do contrato.")
       return
     }
 
@@ -1300,7 +1300,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
               sourceFile={importedDocxFile}
               templateFormat={selectedTemplate?.format ?? "docx"}
               templateId={selectedTemplate?.id}
-              templateName={draftPreview?.contractNumber || selectedTemplate?.name || "Contrato"}
+              templateName={formatContractNumber(draftPreview?.contractNumber) || selectedTemplate?.name || "Contrato"}
             />
           </div>
         </Tabs>
@@ -1409,11 +1409,11 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
           <p className="text-sm text-muted-foreground mt-1">
             {createdContractSendError ? (
               <>
-                O contrato <span className="font-medium text-foreground">{contractNumber}</span> foi gerado, mas o envio ao ClickSign falhou: {createdContractSendError}
+                O contrato <span className="font-medium text-foreground">{formatContractNumber(contractNumber)}</span> foi gerado, mas o envio ao ClickSign falhou: {createdContractSendError}
               </>
             ) : (
               <>
-                O contrato <span className="font-medium text-foreground">{contractNumber}</span> foi gerado e seguirá para assinatura no ClickSign.
+                O contrato <span className="font-medium text-foreground">{formatContractNumber(contractNumber)}</span> foi gerado e seguirá para assinatura no ClickSign.
               </>
             )}
           </p>
@@ -1442,7 +1442,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
           Cliente
         </h3>
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <div className="space-y-2 md:w-[340px] lg:col-span-2">
+          <div className="space-y-2 md:w-[380px] lg:col-span-2">
             <Label>Selecionar Cliente *</Label>
             <Popover open={clientPopoverOpen} onOpenChange={setClientPopoverOpen}>
               <PopoverTrigger asChild>
@@ -1458,7 +1458,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-[min(calc(100vw-2.5rem),400px)] p-0" align="start">
+              <PopoverContent className="w-[min(calc(100vw-2.5rem),440px)] p-0" align="start">
                 <Command>
                   <CommandInput placeholder="Buscar cliente..." />
                   <CommandList>
@@ -1474,13 +1474,13 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
                               setSelectedClientId(c.id)
                               setClientPopoverOpen(false)
                             }}
-                            className="cursor-pointer"
+                            className="grid w-full grid-cols-[1rem_minmax(0,1fr)_auto] items-center gap-2 cursor-pointer"
                           >
-                            <Check className={cn("mr-2 h-4 w-4", selectedClientId === c.id ? "opacity-100" : "opacity-0")} />
-                            <span>{c.companyName}</span>
-                            {totalUnits > 0 && (
-                              <span className="text-xs text-muted-foreground ml-1">({totalUnits} unidades)</span>
-                            )}
+                            <Check className={cn("h-4 w-4", selectedClientId === c.id ? "opacity-100" : "opacity-0")} />
+                            <span className="min-w-0 leading-5">{c.companyName}</span>
+                            <Badge variant="secondary" className="shrink-0 tabular-nums">
+                              {totalUnits}
+                            </Badge>
                           </CommandItem>
                         )
                       })}
@@ -1750,7 +1750,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
         </h3>
         <div className="flex flex-wrap gap-4">
           <div className="space-y-2">
-            <Label>Data Início *</Label>
+            <Label>Data de referência financeira *</Label>
             <Input
               type="date"
               value={startDate}
@@ -1781,11 +1781,11 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
           </div>
         </div>
         <p className="mt-3 max-w-xl text-xs text-muted-foreground">
-          A primeira parcela vence 7 dias após a data de início do contrato. As demais parcelas seguem o dia de vencimento informado.
+          A vigência começa quando o contrato é concluído no Clicksign. A primeira parcela vence 7 dias após a data de referência; as demais seguem o dia de vencimento informado.
         </p>
         {startDate && installmentsCount > 0 && (
           <div className="mt-4 flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted-foreground">
-            <span>Vigência: <strong className="text-foreground">{formatCivilDate(startDate)}</strong> até <strong className="text-foreground">{formatCivilDate(endDate)}</strong></span>
+            <span>Prazo contratual: <strong className="text-foreground">{installmentsCount} {installmentsCount === 1 ? "mês" : "meses"}</strong></span>
             <span>1ª parcela: <strong className="text-foreground">{formatCivilDate(firstInstallmentDueDate)}</strong></span>
           </div>
         )}
@@ -2120,7 +2120,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
         open={canDeleteContracts && removeDialogOpen}
         title="Remover contrato"
         description={`Tem certeza que deseja remover ${
-          contract?.contractNumber ? `o contrato ${contract.contractNumber}` : "este contrato"
+          contract?.contractNumber ? `o contrato ${formatContractNumber(contract.contractNumber)}` : "este contrato"
         }? Esta ação não pode ser desfeita.`}
         confirmLabel="Remover"
         busy={deleteMutation.isPending}

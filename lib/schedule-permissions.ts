@@ -24,10 +24,11 @@ export function isScheduleResponsible(
 }
 
 export function canStartSchedule(
-  schedule: Pick<ScheduleRecord, "status" | "teams" | "additionalEmployees" | "canStartAttendance">,
+  schedule: Pick<ScheduleRecord, "status" | "teams" | "additionalEmployees" | "canStartAttendance" | "isClientDelinquent">,
   user: SchedulePermissionUser,
   teams: TeamRecord[],
 ) {
+  if (schedule.isClientDelinquent && !canManageScheduleStatus(user)) return false
   if (["scheduled", "rescheduled"].includes(schedule.status) && canManageScheduleStatus(user)) return true
   if (schedule.canStartAttendance !== undefined) return schedule.canStartAttendance
 

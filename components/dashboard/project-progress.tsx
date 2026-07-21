@@ -7,13 +7,18 @@ import {
   getDashboardAnalytics,
   getFinancialAnalytics,
   type DashboardAnalyticsParams,
-  type ServicesByTeamPoint,
+  type ServicesByStatusPoint,
 } from "@/lib/api/analytics"
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts"
 
-const COLORS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)"]
 const EMPTY_CHART_COLOR = "#DDE7D5"
-type ServicesByTeamChartPoint = ServicesByTeamPoint & { isEmpty?: boolean }
+const SERVICE_STATUS_META: Record<ServicesByStatusPoint["status"], { label: string; color: string }> = {
+  completed: { label: "Concluídos", color: "#65A30D" },
+  scheduled: { label: "Agendados", color: "#22C55E" },
+  cancelled: { label: "Cancelados", color: "#EF4444" },
+  emergency: { label: "Emergências", color: "#D97706" },
+}
+type ServicesByStatusChartPoint = ServicesByStatusPoint & { label: string; color: string; isEmpty?: boolean }
 
 export function ServiceDistribution({
   showDescription = true,
@@ -24,19 +29,22 @@ export function ServiceDistribution({
     queryFn: () => getDashboardAnalytics(period),
   })
   const isLoading = dashboardQuery.isLoading || (dashboardQuery.isFetching && !dashboardQuery.data)
-  const servicesByTeamData = dashboardQuery.data?.data.servicesByTeamData ?? []
-  const hasServicesByTeamData = servicesByTeamData.some((item) => item.services > 0)
-  const chartData: ServicesByTeamChartPoint[] = hasServicesByTeamData
-    ? servicesByTeamData
-    : [{ team: "Sem dados", services: 1, isEmpty: true }]
-  const total = hasServicesByTeamData ? servicesByTeamData.reduce((acc, curr) => acc + curr.services, 0) : 0
+  const servicesByStatusData = dashboardQuery.data?.data.servicesByStatusData ?? []
+  const chartData: ServicesByStatusChartPoint[] = servicesByStatusData
+    .filter((item) => item.services > 0)
+    .map((item) => ({ ...item, ...SERVICE_STATUS_META[item.status] }))
+  const hasServicesByStatusData = chartData.length > 0
+  const chartEntries = hasServicesByStatusData
+    ? chartData
+    : [{ status: "scheduled", label: "Sem dados", color: EMPTY_CHART_COLOR, services: 1, isEmpty: true }]
+  const total = hasServicesByStatusData ? chartData.reduce((acc, curr) => acc + curr.services, 0) : 0
 
   return (
     <Card className="flex h-full min-h-[360px] flex-col overflow-hidden hover:shadow-xl transition-all duration-500">
       <CardHeader className="pb-3">
-        <CardTitle className="text-base">Serviços por Equipe</CardTitle>
+        <CardTitle className="text-base">Serviços por Período</CardTitle>
         {showDescription && (
-          <CardDescription>Distribuição de serviços entre as equipes</CardDescription>
+          <CardDescription>Distribuição por status operacional no período</CardDescription>
         )}
       </CardHeader>
       <CardContent className="flex flex-1 flex-col items-center justify-center gap-4">
@@ -59,13 +67,13 @@ export function ServiceDistribution({
             <ResponsiveContainer width="100%" height={200}>
               <PieChart>
                 <Pie
-                  data={chartData}
+                  data={chartEntries}
                   cx="50%"
                   cy="50%"
                   innerRadius={55}
                   outerRadius={90}
                   dataKey="services"
-                  nameKey="team"
+                  nameKey="label"
                   startAngle={90}
                   endAngle={450}
                   isAnimationActive
@@ -73,8 +81,8 @@ export function ServiceDistribution({
                   animationDuration={950}
                   animationEasing="ease-out"
                 >
-                  {chartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.isEmpty ? EMPTY_CHART_COLOR : COLORS[index % COLORS.length]} />
+                  {chartEntries.map((entry) => (
+                    <Cell key={entry.label} fill={entry.color} />
                   ))}
                 </Pie>
                 <Tooltip
@@ -88,14 +96,14 @@ export function ServiceDistribution({
               </PieChart>
             </ResponsiveContainer>
             <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 w-full">
-              {chartData.map((entry, index) => (
-                <div key={entry.team} className="flex items-center gap-1.5 text-xs">
+              {chartEntries.map((entry) => (
+                <div key={entry.label} className="flex items-center gap-1.5 text-xs">
                   <div
                     className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: entry.isEmpty ? EMPTY_CHART_COLOR : COLORS[index % COLORS.length] }}
+                    style={{ backgroundColor: entry.color }}
                   />
                   <span className="text-muted-foreground whitespace-nowrap">
-                    {entry.team}: {entry.isEmpty || total === 0 ? 0 : Math.round((entry.services / total) * 100)}%
+                    {entry.label}: {entry.isEmpty || total === 0 ? 0 : Math.round((entry.services / total) * 100)}%
                   </span>
                 </div>
               ))}
@@ -107,7 +115,7 @@ export function ServiceDistribution({
   )
 }
 
-const FINANCE_COLORS = ['#22C55E', '#F59E0B', '#EF4444']
+const FINANCE_COLORS = ["#84CC16", "#EAB308", "#F97316", "#EF4444"]
 
 export function FinancialOverview() {
   const financialQuery = useQuery({
@@ -117,6 +125,7 @@ export function FinancialOverview() {
   const isLoading = financialQuery.isLoading || (financialQuery.isFetching && !financialQuery.data)
   const financeData = financialQuery.data?.data.financeHealthData ?? [
     { name: 'Pagas', value: 0 },
+    { name: 'A receber', value: 0 },
     { name: 'Em atraso', value: 0 },
     { name: 'Vencidas', value: 0 },
   ]
@@ -149,8 +158,10 @@ export function FinancialOverview() {
                     outerRadius={70}
                     paddingAngle={2}
                     dataKey="value"
+                    nameKey="name"
                     startAngle={90}
                     endAngle={450}
+                    cursor="pointer"
                     isAnimationActive
                     animationBegin={120}
                     animationDuration={950}
@@ -160,18 +171,22 @@ export function FinancialOverview() {
                       <Cell key={`cell-${index}`} fill={hasFinanceData ? FINANCE_COLORS[index % FINANCE_COLORS.length] : EMPTY_CHART_COLOR} />
                     ))}
                   </Pie>
-                  <Tooltip 
-                    contentStyle={{ 
-                      backgroundColor: 'var(--card)',
-                      border: '1px solid var(--border)',
-                      borderRadius: '8px',
-                      fontSize: '12px'
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "var(--card)",
+                      border: "1px solid var(--border)",
+                      borderRadius: "8px",
+                      fontSize: "12px",
                     }}
-                    formatter={(value: number) => [hasFinanceData ? `${value}%` : "0%", '']}
+                    wrapperStyle={{ pointerEvents: "none", zIndex: 20 }}
+                    formatter={(value: number, _name, item) => [
+                      `${hasFinanceData ? value : 0}%`,
+                      item.payload.name,
+                    ]}
                   />
                 </PieChart>
               </ResponsiveContainer>
-              <div className="absolute inset-0 flex flex-col items-center justify-center">
+              <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
                 <span className="text-3xl font-bold text-foreground">{paidPercentage}%</span>
                 <span className="text-xs text-muted-foreground mt-1">Adimplência</span>
               </div>

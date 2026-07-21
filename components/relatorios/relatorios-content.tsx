@@ -12,6 +12,7 @@ import { DateRangePicker } from "@/components/ui/date-range-picker"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { MultiSelect } from "@/components/ui/multi-select"
 import { FinanceiroContent } from "@/components/financeiro/financeiro-content"
+import { ServicesPeriodLineChart } from "@/components/analytics/operational-charts"
 import type { DateRange } from "react-day-picker"
 import {
   BarChart3,
@@ -30,14 +31,13 @@ import {
 import { getReportsAnalytics, type ReportsAnalyticsRecord } from "@/lib/api/analytics"
 import { hasAnyPermission } from "@/lib/auth/permissions"
 import { getStoredUser } from "@/lib/auth/session"
+import { isOperationallyActiveContract } from "@/lib/contract-status"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 import { addCivilDaysKey, addCivilMonthsKey, parseCivilDate, toCivilDateKey } from "@/lib/date-utils"
 import { cn } from "@/lib/utils"
 import {
   BarChart,
   Bar,
-  LineChart,
-  Line,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -60,11 +60,12 @@ const REPORT_IDS = REPORT_TYPES.map((type) => type.id)
 type ReportId = (typeof REPORT_IDS)[number]
 
 const COLORS = ["#84CC16", "#65A30D", "#A3E635", "#4D7C0F", "#BEF264", "#22C55E"]
+const OTHER_SERVICES_COLOR = "#D1D5DB"
 const STATUS_COLORS = {
   completed: "#65A30D",
   scheduled: "#22C55E",
-  cancelled: "#FCA5A5",
-  emergency: "#A3E635",
+  cancelled: "#EF4444",
+  emergency: "#D97706",
 }
 const EMPTY_CHART_COLOR = "#DDE7D5"
 
@@ -99,6 +100,7 @@ const emptyReports: ReportsAnalyticsRecord = {
     scheduledServicesChange: 0,
     completedServices: 0,
     completedServicesChange: 0,
+    cancelledServices: 0,
     emergencyServices: 0,
     completionRate: 0,
     overdueInstallments: 0,
@@ -123,6 +125,7 @@ const emptyReports: ReportsAnalyticsRecord = {
   servicesByPeriodData: [],
   servicesByTeamData: [],
   servicesSummaryData: [],
+  servicesParticipationData: [],
   services: [],
   clients: [],
   contracts: [],
@@ -154,6 +157,9 @@ function normalizeReports(data?: Partial<ReportsAnalyticsRecord> | null): Report
     servicesByPeriodData: Array.isArray(data?.servicesByPeriodData) ? data.servicesByPeriodData : [],
     servicesByTeamData: Array.isArray(data?.servicesByTeamData) ? data.servicesByTeamData : [],
     servicesSummaryData: Array.isArray(data?.servicesSummaryData) ? data.servicesSummaryData : [],
+    servicesParticipationData: Array.isArray(data?.servicesParticipationData)
+      ? data.servicesParticipationData
+      : Array.isArray(data?.servicesSummaryData) ? data.servicesSummaryData : [],
     services: Array.isArray(data?.services) ? data.services : [],
     clients: Array.isArray(data?.clients) ? data.clients : [],
     contracts: Array.isArray(data?.contracts) ? data.contracts : [],
@@ -166,8 +172,8 @@ function ReportContentSkeleton({ reportId }: { reportId: ReportId }) {
   if (reportId === "services") {
     return (
       <div className="space-y-4" aria-live="polite">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, index) => (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-5">
+          {Array.from({ length: 5 }).map((_, index) => (
             <Card key={index} className="p-4">
               <div className="flex items-center gap-3">
                 <Skeleton className="h-10 w-10 rounded-lg" />
@@ -242,20 +248,54 @@ const EMPTY_SERVICES_BY_TEAM_DATA: ServicesByTeamChartPoint[] = [
   { team: "Sem dados", services: 1, isEmpty: true },
 ]
 
-const EMPTY_SERVICES_SUMMARY_DATA: ServicesSummaryChartPoint[] = [
-  {
-    serviceId: "sem-servico",
-    serviceName: "Sem dados",
-    completed: 0,
-    scheduled: 0,
-    cancelled: 0,
-    emergency: 0,
-    total: 1,
-    completionRate: 0,
-    averageDurationMinutes: 0,
-    isEmpty: true,
-  },
-]
+type ServiceParticipationSlice = {
+  serviceId: string
+  serviceName: string
+  total: number
+  color: string
+  isEmpty?: boolean
+}
+
+function buildServiceParticipationData(
+  summaryData: ServicesSummaryChartPoint[],
+  selectedServiceIds: string[],
+  serviceNamesById: Map<string, string>,
+): ServiceParticipationSlice[] {
+  const totalServices = summaryData.reduce((sum, item) => sum + item.total, 0)
+  if (totalServices === 0) {
+    return [{ serviceId: "sem-servico", serviceName: "Sem dados", total: 1, color: EMPTY_CHART_COLOR, isEmpty: true }]
+  }
+
+  if (selectedServiceIds.length === 0) {
+    return summaryData.map((item, index) => ({
+      serviceId: item.serviceId,
+      serviceName: item.serviceName,
+      total: item.total,
+      color: COLORS[index % COLORS.length],
+    }))
+  }
+
+  const servicesById = new Map(summaryData.map((item) => [item.serviceId, item] as const))
+  const selectedServices = selectedServiceIds.map((serviceId, index) => {
+    const service = servicesById.get(serviceId)
+
+    return {
+      serviceId,
+      serviceName: service?.serviceName ?? serviceNamesById.get(serviceId) ?? "Serviço selecionado",
+      total: service?.total ?? 0,
+      color: COLORS[index % COLORS.length],
+    }
+  })
+  const selectedTotal = selectedServices.reduce((sum, service) => sum + service.total, 0)
+  const otherServices = totalServices - selectedTotal
+
+  return [
+    ...selectedServices,
+    ...(otherServices > 0
+      ? [{ serviceId: "outros", serviceName: "Outros", total: otherServices, color: OTHER_SERVICES_COLOR }]
+      : []),
+  ]
+}
 
 const EMPTY_TEAM_PRODUCTIVITY: ReportsAnalyticsRecord["dashboardStats"]["teamProductivity"] = [
   {
@@ -339,6 +379,7 @@ const CHART_HEIGHT = 420
 const DONUT_CHART_HEIGHT = 380
 const EXCEL_HEADER_FILL = "FFEBF5E5"
 const EXCEL_BORDER_COLOR = "FFDDE7D5"
+const EXCEL_DECIMAL_NUMBER_FORMAT = "#,##0.00"
 
 function downloadBlob(fileName: string, blob: Blob) {
   const url = URL.createObjectURL(blob)
@@ -352,6 +393,10 @@ function downloadBlob(fileName: string, blob: Blob) {
 }
 
 function reportFileName(reportId: string, dateRange?: DateRange) {
+  if (!dateRange?.from && !dateRange?.to) {
+    return `depclean-${reportId}-toda-base.xlsx`
+  }
+
   const from = formatDateParam(dateRange?.from) ?? "inicio"
   const to = formatDateParam(dateRange?.to) ?? toCivilDateKey(new Date())
   return `depclean-${reportId}-${from}-${to}.xlsx`
@@ -725,28 +770,93 @@ function columnLetter(columnIndex: number) {
 
 function styleDataSheet(sheet: Worksheet, rows: ExcelCell[][]) {
   const columnCount = Math.max(1, ...rows.map((row) => row.length))
+  const isEmptyRow = (row: ExcelCell[] | undefined) =>
+    !row || row.every((value) => value === null || value === undefined || value === "")
+  const headerRowNumbers = new Set(
+    rows.flatMap((row, index) => (index === 0 || isEmptyRow(rows[index - 1])) && !isEmptyRow(row) ? [index + 1] : []),
+  )
+  const firstSeparatorIndex = rows.findIndex((row) => isEmptyRow(row))
+  const firstTableEndRow = firstSeparatorIndex === -1 ? rows.length : firstSeparatorIndex
+  const headersByRow = new Map<number, string[]>()
+  let activeHeaders: string[] = []
+
+  rows.forEach((sourceRow, index) => {
+    const rowNumber = index + 1
+    if (headerRowNumbers.has(rowNumber)) {
+      activeHeaders = sourceRow.map((value) => String(value ?? ""))
+    }
+    headersByRow.set(rowNumber, activeHeaders)
+  })
 
   sheet.columns = Array.from({ length: columnCount }, (_, index) => {
-    const maxLength = Math.max(12, ...rows.map((row) => String(row[index] ?? "").length + 2))
+    const maxLength = Math.max(
+      12,
+      ...rows.map((row) => {
+        const value = row[index]
+        const displayValue = typeof value === "number"
+          ? value.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+          : String(value ?? "")
+        return displayValue.length + 2
+      }),
+    )
     return { width: Math.min(maxLength, 42) }
   })
   sheet.views = [{ state: "frozen", ySplit: 1 }]
-  sheet.autoFilter = `A1:${columnLetter(columnCount)}1`
+  sheet.autoFilter = `A1:${columnLetter(Math.max(1, rows[0]?.length ?? 1))}${Math.max(1, firstTableEndRow)}`
 
   sheet.eachRow((row, rowNumber) => {
-    row.eachCell((cell) => {
+    if (isEmptyRow(rows[rowNumber - 1])) {
+      row.height = 8
+      return
+    }
+
+    row.eachCell((cell, columnNumber) => {
       cell.alignment = { vertical: "middle", wrapText: true }
       cell.border = { bottom: { style: "thin", color: { argb: EXCEL_BORDER_COLOR } } }
+
+      if (
+        !headerRowNumbers.has(rowNumber) &&
+        typeof cell.value === "number" &&
+        shouldFormatReportCurrency(headersByRow.get(rowNumber) ?? [], columnNumber - 1, rows[rowNumber - 1] ?? [])
+      ) {
+        cell.numFmt = EXCEL_DECIMAL_NUMBER_FORMAT
+      }
     })
 
-    if (rowNumber === 1) {
+    if (headerRowNumbers.has(rowNumber)) {
       row.font = { bold: true, color: { argb: "FF111827" } }
       row.fill = { type: "pattern", pattern: "solid", fgColor: { argb: EXCEL_HEADER_FILL } }
     }
   })
 }
 
-function buildReportCharts(reportId: ReportId, data: ReportsAnalyticsRecord): ReportChartImage[] {
+function normalizeSpreadsheetLabel(value: ExcelCell) {
+  return String(value ?? "")
+    .toLocaleLowerCase("pt-BR")
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .trim()
+}
+
+function shouldFormatReportCurrency(headers: string[], columnIndex: number, row: ExcelCell[]) {
+  const normalizedHeaders = headers.map(normalizeSpreadsheetLabel)
+  const header = normalizedHeaders[columnIndex] ?? ""
+  const rowLabel = row.map(normalizeSpreadsheetLabel).join(" ")
+  const hasFinancialContext = normalizedHeaders.some((value) =>
+    /faturamento|receita|a receber|em atraso|vencid|pagas?/.test(value),
+  )
+  const isCurrencyColumn = /valor|total|faturamento|receita|a receber|em atraso|vencid|pagas?|ticket/.test(header)
+  const isCountOrRate = /contratos ativos|quantidade|numero|taxa|percentual/.test(rowLabel)
+
+  return hasFinancialContext && isCurrencyColumn && !isCountOrRate
+}
+
+function buildReportCharts(
+  reportId: ReportId,
+  data: ReportsAnalyticsRecord,
+  selectedServiceIds: string[] = [],
+  serviceNamesById: Map<string, string> = new Map(),
+): ReportChartImage[] {
   if (reportId === "financial") {
     const monthlyData = data.monthlyRevenueData.length > 0 ? data.monthlyRevenueData : EMPTY_MONTHLY_REVENUE_DATA
     const hasMonthlyData = data.monthlyRevenueData.some((item) =>
@@ -759,11 +869,11 @@ function buildReportCharts(reportId: ReportId, data: ReportsAnalyticsRecord): Re
 
     return [
       {
-        title: "Faturamento Mensal",
+        title: "Faturamento por Período",
         width: CHART_WIDTH,
         height: CHART_HEIGHT,
         svg: makeGroupedBarChartSvg({
-          title: "Faturamento Mensal",
+          title: "Faturamento por Período",
           data: monthlyData,
           labelKey: "month",
           valueFormatter: formatCompactCurrency,
@@ -800,10 +910,9 @@ function buildReportCharts(reportId: ReportId, data: ReportsAnalyticsRecord): Re
     const hasPeriodData = data.servicesByPeriodData.some(
       (item) => item.completed > 0 || item.scheduled > 0 || item.cancelled > 0 || item.emergency > 0,
     )
-    const summaryData: ServicesSummaryChartPoint[] = data.servicesSummaryData.length > 0
-      ? data.servicesSummaryData
-      : EMPTY_SERVICES_SUMMARY_DATA
-    const totalServices = data.servicesSummaryData.reduce((sum, item) => sum + item.total, 0)
+    const summaryData = data.servicesParticipationData
+    const totalServices = summaryData.reduce((sum, item) => sum + item.total, 0)
+    const participationData = buildServiceParticipationData(summaryData, selectedServiceIds, serviceNamesById)
 
     return [
       {
@@ -818,7 +927,7 @@ function buildReportCharts(reportId: ReportId, data: ReportsAnalyticsRecord): Re
             { key: "completed", label: "Concluídos", color: hasPeriodData ? STATUS_COLORS.completed : EMPTY_CHART_COLOR },
             { key: "scheduled", label: "Agendados", color: hasPeriodData ? STATUS_COLORS.scheduled : "#C9D6BF" },
             { key: "cancelled", label: "Cancelados", color: hasPeriodData ? STATUS_COLORS.cancelled : EMPTY_CHART_COLOR },
-            { key: "emergency", label: "Emergências", color: hasPeriodData ? STATUS_COLORS.emergency : "#EAF4DF" },
+            { key: "emergency", label: "Emergências", color: hasPeriodData ? STATUS_COLORS.emergency : "#FCE8C4" },
           ],
         }),
       },
@@ -830,26 +939,26 @@ function buildReportCharts(reportId: ReportId, data: ReportsAnalyticsRecord): Re
           title: "Participação por Serviço",
           centerValue: formatInteger(totalServices),
           centerLabel: "serviços",
-          entries: summaryData.map((item, index) => ({
+          entries: participationData.map((item) => ({
             label: item.serviceName,
             value: item.isEmpty ? 0 : item.total,
-            color: item.isEmpty ? EMPTY_CHART_COLOR : COLORS[index % COLORS.length],
+            color: item.color,
           })),
         }),
       },
       {
-        title: "Volume por Semana",
+        title: "Análise Operacional",
         width: CHART_WIDTH,
         height: CHART_HEIGHT,
         svg: makeLineChartSvg({
-          title: "Volume por Semana",
+          title: "Análise Operacional",
           data: periodData,
           labelKey: "period",
           series: [
             { key: "completed", label: "Concluídos", color: hasPeriodData ? STATUS_COLORS.completed : EMPTY_CHART_COLOR },
             { key: "scheduled", label: "Agendados", color: hasPeriodData ? STATUS_COLORS.scheduled : "#C9D6BF" },
             { key: "cancelled", label: "Cancelados", color: hasPeriodData ? STATUS_COLORS.cancelled : EMPTY_CHART_COLOR },
-            { key: "emergency", label: "Emergências", color: hasPeriodData ? STATUS_COLORS.emergency : "#EAF4DF" },
+            { key: "emergency", label: "Emergências", color: hasPeriodData ? STATUS_COLORS.emergency : "#FCE8C4" },
           ],
         }),
       },
@@ -1021,7 +1130,7 @@ export function RelatoriosContent() {
     dashboardStats,
     servicesByPeriodData,
     servicesByTeamData,
-    servicesSummaryData,
+    servicesParticipationData,
   } = reports
   const hasServicesByPeriodData = servicesByPeriodData.some(
     (item) => item.completed > 0 || item.scheduled > 0 || (item.cancelled ?? 0) > 0 || (item.emergency ?? 0) > 0,
@@ -1031,9 +1140,12 @@ export function RelatoriosContent() {
   const servicesByTeamChartData: ServicesByTeamChartPoint[] = hasServicesByTeamData ? servicesByTeamData : EMPTY_SERVICES_BY_TEAM_DATA
   const servicesByTeamTotal = hasServicesByTeamData ? servicesByTeamData.reduce((acc, curr) => acc + curr.services, 0) : 0
   const serviceOptions = reports.services.filter((service) => service.isActive)
-  const teamOptions = reports.teams
+  const serviceNamesById = new Map(reports.services.map((service) => [service.id, service.name] as const))
+  const teamIdsWithServices = new Set(dashboardStats.teamProductivity.map((team) => team.teamId))
+  const employeeIdsWithServices = new Set(dashboardStats.employeeProductivity.map((employee) => employee.employeeId))
+  const teamOptions = reports.teams.filter((team) => teamIdsWithServices.has(team.id))
   const employeeOptions = reports.employees
-    .filter((employee) => employee.status === "active")
+    .filter((employee) => employee.status === "active" && employeeIdsWithServices.has(employee.id))
     .map((employee) => ({
       id: employee.id,
       name: employee.name,
@@ -1042,11 +1154,15 @@ export function RelatoriosContent() {
   const selectedServiceOptions = serviceOptions.filter((service) => selectedServiceIds.includes(service.id))
   const selectedTeamOptions = teamOptions.filter((team) => selectedTeamIds.includes(team.id))
   const selectedEmployeeOptions = employeeOptions.filter((employee) => selectedEmployeeIds.includes(employee.id))
-  const hasServicesSummaryData = servicesSummaryData.some((item) => item.total > 0)
-  const servicesSummaryChartData: ServicesSummaryChartPoint[] = hasServicesSummaryData ? servicesSummaryData : EMPTY_SERVICES_SUMMARY_DATA
-  const servicesSummaryTotal = hasServicesSummaryData ? servicesSummaryData.reduce((acc, curr) => acc + curr.total, 0) : 0
-  const teamsForChart = dashboardStats.teamProductivity.length > 0 ? dashboardStats.teamProductivity : EMPTY_TEAM_PRODUCTIVITY
-  const employeesForChart = dashboardStats.employeeProductivity.length > 0 ? dashboardStats.employeeProductivity : EMPTY_EMPLOYEE_PRODUCTIVITY
+  const isFullBase = !dateRange?.from && !dateRange?.to
+  const servicesParticipationTotal = servicesParticipationData.reduce((sum, item) => sum + item.total, 0)
+  const servicesParticipationChartData = buildServiceParticipationData(
+    servicesParticipationData,
+    selectedServiceIds,
+    serviceNamesById,
+  )
+  const teamsForChart = dashboardStats.teamProductivity
+  const employeesForChart = dashboardStats.employeeProductivity
 
   const financialViewToggle = (
     <Tabs value={financialViewMode} onValueChange={(value) => setFinancialViewMode(value as "table" | "cards")}>
@@ -1070,20 +1186,24 @@ export function RelatoriosContent() {
   const buildReportRows = (data: ReportsAnalyticsRecord): ExcelCell[][] => {
     if (selectedReport === "services") {
       return [
-        ["Relatório", "Período/Serviço", "Concluídos", "Agendados", "Cancelados", "Emergências", "Total", "Taxa de conclusão", "Duração média"],
+        ["Item", "Valor"],
+        ["Concluídos", data.dashboardStats.completedServices],
+        ["Agendados", data.dashboardStats.scheduledServices],
+        ["Cancelados", data.dashboardStats.cancelledServices],
+        ["Emergências", data.dashboardStats.emergencyServices],
+        ["Taxa de conclusão", `${data.dashboardStats.completionRate}%`],
+        [null],
+        ["Período", "Concluídos", "Agendados", "Cancelados", "Emergências"],
         ...data.servicesByPeriodData.map((item) => [
-          "Serviços por período",
           item.period,
           item.completed,
           item.scheduled,
           item.cancelled ?? 0,
           item.emergency ?? 0,
-          "",
-          "",
-          "",
         ]),
+        [null],
+        ["Serviço", "Concluídos", "Agendados", "Cancelados", "Emergências", "Total", "Taxa de conclusão", "Duração média (min)"],
         ...data.servicesSummaryData.map((item) => [
-          "Serviços por tipo",
           item.serviceName,
           item.completed,
           item.scheduled,
@@ -1093,10 +1213,6 @@ export function RelatoriosContent() {
           `${item.completionRate}%`,
           item.averageDurationMinutes,
         ]),
-        ["Resumo", "Serviços concluídos", data.dashboardStats.completedServices, "", "", "", "", "", ""],
-        ["Resumo", "Serviços agendados", "", data.dashboardStats.scheduledServices, "", "", "", "", ""],
-        ["Resumo", "Emergências", "", "", "", data.dashboardStats.emergencyServices, "", "", ""],
-        ["Resumo", "Taxa de conclusão", "", "", "", "", "", `${data.dashboardStats.completionRate}%`, ""],
       ]
     }
 
@@ -1118,10 +1234,10 @@ export function RelatoriosContent() {
         ["Resumo financeiro", "Vencidas", data.financialSummary.totalOverdue, "", "", "", ""],
         ["Indicadores", "Taxa de adimplência", `${data.financialSummary.adherenceRate}%`, "", "", "", ""],
         ["Indicadores", "Ticket médio", data.dashboardStats.activeClients > 0 ? data.dashboardStats.monthlyRevenue / data.dashboardStats.activeClients : 0, "", "", "", ""],
-        ["Indicadores", "Contratos ativos", data.contracts.filter((contract) => ["signed", "active"].includes(contract.status)).length, "", "", "", ""],
-        ["Faturamento mensal", "Período", "Total", "Pagas", "A receber", "Em atraso", "Vencidas"],
+        ["Indicadores", "Contratos ativos", data.contracts.filter((contract) => isOperationallyActiveContract(contract)).length, "", "", "", ""],
+        [null],
+        ["Período", "Total", "Pagas", "A receber", "Em atraso", "Vencidas"],
         ...data.monthlyRevenueData.map((item) => [
-          "Faturamento mensal",
           item.month,
           item.value,
           item.paidValue,
@@ -1171,7 +1287,11 @@ export function RelatoriosContent() {
       setIsExporting(true)
       const result = await reportsQuery.refetch()
       const data = result.data?.data ?? reports
-      await downloadExcelReport(reportFileName(selectedReport, dateRange), buildReportRows(data), buildReportCharts(selectedReport, data))
+      await downloadExcelReport(
+        reportFileName(selectedReport, dateRange),
+        buildReportRows(data),
+        buildReportCharts(selectedReport, data, selectedServiceIds, serviceNamesById),
+      )
     } finally {
       setIsExporting(false)
     }
@@ -1260,12 +1380,19 @@ export function RelatoriosContent() {
         <CardContent>
           <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start">
             <div className="flex flex-col gap-2 w-full sm:w-auto shrink-0">
-              <Label>Período</Label>
+              <Label className="flex items-center gap-2">
+                Período
+                {isFullBase ? (
+                  <span className="inline-flex h-6 shrink-0 items-center rounded-full bg-primary/10 px-2 text-[10px] font-semibold leading-none text-primary">
+                    Toda a base de dados
+                  </span>
+                ) : null}
+              </Label>
               <DateRangePicker
                 value={dateRange}
                 onChange={setDateRange}
                 placeholder="Selecionar período"
-                className="w-full sm:w-[320px]"
+                className="w-full sm:w-[360px]"
               />
             </div>
 
@@ -1392,14 +1519,14 @@ export function RelatoriosContent() {
 
         {!isInitialReportsLoading && selectedReport === "services" && (
           <div className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-5">
               <Card className="p-4">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
                     <CheckCircle className="w-5 h-5 text-primary/80" />
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Serviços Concluídos</p>
+                    <p className="text-sm text-muted-foreground">Concluídos</p>
                     <p className="text-xl font-semibold text-primary/80">{dashboardStats.completedServices}</p>
                   </div>
                 </div>
@@ -1410,19 +1537,30 @@ export function RelatoriosContent() {
                     <Calendar className="w-5 h-5 text-emerald-600" />
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Serviços Agendados</p>
+                    <p className="text-sm text-muted-foreground">Agendados</p>
                     <p className="text-xl font-semibold text-emerald-700/80">{dashboardStats.scheduledServices}</p>
                   </div>
                 </div>
               </Card>
               <Card className="p-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-lime-50 flex items-center justify-center">
-                    <AlertTriangle className="w-5 h-5 text-lime-600" />
+                  <div className="w-10 h-10 rounded-lg bg-red-50 flex items-center justify-center">
+                    <X className="w-5 h-5 text-red-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Cancelados</p>
+                    <p className="text-xl font-semibold text-red-700/80">{dashboardStats.cancelledServices}</p>
+                  </div>
+                </div>
+              </Card>
+              <Card className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center">
+                    <AlertTriangle className="w-5 h-5 text-amber-700" />
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Emergências</p>
-                    <p className="text-xl font-semibold text-lime-700/80">{dashboardStats.emergencyServices}</p>
+                    <p className="text-xl font-semibold text-amber-800/80">{dashboardStats.emergencyServices}</p>
                   </div>
                 </div>
               </Card>
@@ -1439,8 +1577,8 @@ export function RelatoriosContent() {
               </Card>
             </div>
 
-            <div className="grid gap-4 lg:grid-cols-2">
-              <Card data-report-chart="servicos-periodo">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+              <Card data-report-chart="servicos-periodo" className="lg:col-span-2">
                 <CardHeader>
                   <CardTitle>Serviços por Período</CardTitle>
                   <CardDescription>Comparativo entre agenda prevista e serviços concluídos</CardDescription>
@@ -1480,6 +1618,20 @@ export function RelatoriosContent() {
                             name="Agendados"
                             radius={[4, 4, 0, 0]}
                           />
+                          <Bar
+                            dataKey="cancelled"
+                            fill={hasServicesByPeriodData ? STATUS_COLORS.cancelled : EMPTY_CHART_COLOR}
+                            minPointSize={hasServicesByPeriodData ? 0 : 3}
+                            name="Cancelados"
+                            radius={[4, 4, 0, 0]}
+                          />
+                          <Bar
+                            dataKey="emergency"
+                            fill={hasServicesByPeriodData ? STATUS_COLORS.emergency : "#FCE8C4"}
+                            minPointSize={hasServicesByPeriodData ? 0 : 3}
+                            name="Emergências"
+                            radius={[4, 4, 0, 0]}
+                          />
                         </BarChart>
                       </ResponsiveContainer>
                     </div>
@@ -1496,7 +1648,7 @@ export function RelatoriosContent() {
                   <ResponsiveContainer width="100%" height={260}>
                     <PieChart>
                       <Pie
-                        data={servicesSummaryChartData}
+                        data={servicesParticipationChartData}
                         cx="50%"
                         cy="50%"
                         innerRadius={65}
@@ -1504,8 +1656,8 @@ export function RelatoriosContent() {
                         dataKey="total"
                         nameKey="serviceName"
                       >
-                        {servicesSummaryChartData.map((entry, index) => (
-                          <Cell key={entry.serviceId} fill={entry.isEmpty ? EMPTY_CHART_COLOR : COLORS[index % COLORS.length]} />
+                        {servicesParticipationChartData.map((entry) => (
+                          <Cell key={entry.serviceId} fill={entry.color} />
                         ))}
                       </Pie>
                       <Tooltip
@@ -1522,14 +1674,14 @@ export function RelatoriosContent() {
                     </PieChart>
                   </ResponsiveContainer>
                   <div className="flex w-full flex-wrap justify-center gap-x-4 gap-y-2">
-                    {servicesSummaryChartData.map((entry, index) => (
+                    {servicesParticipationChartData.map((entry) => (
                       <div key={entry.serviceId} className="flex items-center gap-1.5 text-xs">
                         <div
                           className="h-2.5 w-2.5 flex-shrink-0 rounded-full"
-                          style={{ backgroundColor: entry.isEmpty ? EMPTY_CHART_COLOR : COLORS[index % COLORS.length] }}
+                          style={{ backgroundColor: entry.color }}
                         />
                         <span className="whitespace-nowrap text-muted-foreground">
-                          {entry.serviceName}: {entry.isEmpty || servicesSummaryTotal === 0 ? 0 : Math.round((entry.total / servicesSummaryTotal) * 100)}%
+                          {entry.serviceName}: {entry.isEmpty || servicesParticipationTotal === 0 ? 0 : Math.round((entry.total / servicesParticipationTotal) * 100)}%
                         </span>
                       </div>
                     ))}
@@ -1538,71 +1690,15 @@ export function RelatoriosContent() {
               </Card>
             </div>
 
-            <Card data-report-chart="volume-semanal-servicos">
+            <Card data-report-chart="analise-operacional-servicos">
               <CardHeader>
-                <CardTitle>Volume por Semana</CardTitle>
-                <CardDescription>Curvas semanais por status operacional</CardDescription>
+                <CardTitle>Análise Operacional</CardTitle>
+                <CardDescription>Evolução dos atendimentos por status no período selecionado</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="-mx-1 overflow-x-auto px-1 pb-2">
-                  <div className="h-[320px] min-w-[560px] sm:min-w-0">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={servicesByPeriodChartData} margin={{ top: 12, right: 16, left: 0, bottom: 24 }}>
-                        <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                        <XAxis dataKey="period" className="text-xs" />
-                        <YAxis
-                          width={34}
-                          allowDecimals={false}
-                          domain={[0, (dataMax: number) => Math.max(Number(dataMax) || 0, 1)]}
-                          className="text-xs"
-                        />
-                        <Tooltip
-                          contentStyle={{
-                            backgroundColor: "var(--card)",
-                            border: "1px solid var(--border)",
-                            borderRadius: "8px",
-                          }}
-                          formatter={(value: number, name) => [`${value} serviços`, name]}
-                        />
-                        <Legend />
-                        <Line
-                          dataKey="completed"
-                          type="monotone"
-                          stroke={hasServicesByPeriodData ? STATUS_COLORS.completed : EMPTY_CHART_COLOR}
-                          strokeWidth={2}
-                          name="Concluídos"
-                          dot={{ r: 4, fill: hasServicesByPeriodData ? STATUS_COLORS.completed : EMPTY_CHART_COLOR }}
-                          activeDot={{ r: 6 }}
-                        />
-                        <Line
-                          dataKey="scheduled"
-                          type="monotone"
-                          stroke={hasServicesByPeriodData ? STATUS_COLORS.scheduled : "#C9D6BF"}
-                          strokeWidth={2}
-                          name="Agendados"
-                          dot={{ r: 4, fill: hasServicesByPeriodData ? STATUS_COLORS.scheduled : "#C9D6BF" }}
-                          activeDot={{ r: 6 }}
-                        />
-                        <Line
-                          dataKey="cancelled"
-                          type="monotone"
-                          stroke={hasServicesByPeriodData ? STATUS_COLORS.cancelled : EMPTY_CHART_COLOR}
-                          strokeWidth={2}
-                          name="Cancelados"
-                          dot={{ r: 4, fill: hasServicesByPeriodData ? STATUS_COLORS.cancelled : EMPTY_CHART_COLOR }}
-                          activeDot={{ r: 6 }}
-                        />
-                        <Line
-                          dataKey="emergency"
-                          type="monotone"
-                          stroke={hasServicesByPeriodData ? STATUS_COLORS.emergency : "#EAF4DF"}
-                          strokeWidth={2}
-                          name="Emergências"
-                          dot={{ r: 4, fill: hasServicesByPeriodData ? STATUS_COLORS.emergency : "#EAF4DF" }}
-                          activeDot={{ r: 6 }}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
+                  <div className="h-[280px] min-w-[540px] sm:min-w-0">
+                    <ServicesPeriodLineChart data={servicesByPeriodData} />
                   </div>
                 </div>
               </CardContent>
@@ -1620,8 +1716,21 @@ export function RelatoriosContent() {
         )}
 
         {!isInitialReportsLoading && selectedReport === "teams" && (
-          <div className="grid gap-4 lg:grid-cols-2">
-            {teamsForChart.map((team) => {
+          teamsForChart.length === 0 ? (
+            <Card className="border-dashed">
+              <CardContent className="flex min-h-[260px] flex-col items-center justify-center gap-3 text-center">
+                <div className="rounded-lg bg-primary/10 p-3">
+                  <Users className="h-6 w-6 text-primary" />
+                </div>
+                <div className="space-y-1">
+                  <p className="font-medium">Nenhuma equipe com atendimentos</p>
+                  <p className="text-sm text-muted-foreground">Ajuste os filtros ou escolha outro período.</p>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid gap-4 lg:grid-cols-2">
+              {teamsForChart.map((team) => {
               const statusData = buildProductivityStatusPieData(team)
               const total = statusData.reduce((sum, item) => sum + (item.isEmpty ? 0 : item.services), 0)
 
@@ -1675,13 +1784,27 @@ export function RelatoriosContent() {
                   </CardContent>
                 </Card>
               )
-            })}
-          </div>
+              })}
+            </div>
+          )
         )}
 
         {!isInitialReportsLoading && selectedReport === "employees" && (
-          <div className="grid gap-4 lg:grid-cols-2">
-            {employeesForChart.map((employee) => {
+          employeesForChart.length === 0 ? (
+            <Card className="border-dashed">
+              <CardContent className="flex min-h-[260px] flex-col items-center justify-center gap-3 text-center">
+                <div className="rounded-lg bg-primary/10 p-3">
+                  <UserRound className="h-6 w-6 text-primary" />
+                </div>
+                <div className="space-y-1">
+                  <p className="font-medium">Nenhum funcionário com atendimentos</p>
+                  <p className="text-sm text-muted-foreground">Ajuste os filtros ou escolha outro período.</p>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid gap-4 lg:grid-cols-2">
+              {employeesForChart.map((employee) => {
               const statusData = buildProductivityStatusPieData(employee)
               const total = statusData.reduce((sum, item) => sum + (item.isEmpty ? 0 : item.services), 0)
 
@@ -1735,8 +1858,9 @@ export function RelatoriosContent() {
                   </CardContent>
                 </Card>
               )
-            })}
-          </div>
+              })}
+            </div>
+          )
         )}
 
       </div>

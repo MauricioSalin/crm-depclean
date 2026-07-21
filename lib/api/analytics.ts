@@ -18,6 +18,11 @@ export type ServicesByPeriodPoint = {
   emergency: number
 }
 
+export type ServicesByStatusPoint = {
+  status: "completed" | "scheduled" | "cancelled" | "emergency"
+  services: number
+}
+
 export type ServicesByTeamPoint = {
   team: string
   services: number
@@ -43,6 +48,10 @@ export type DashboardStatsRecord = {
   activeContracts: number
   inactiveContracts: number
   activeContractsGlobalValue: number
+  globalValue?: number
+  globalValueMode?: "general" | "contractual"
+  generalGlobalValue?: number
+  contractualGlobalValue?: number
   monthlyRevenue: number
   monthlyRevenueChange: number
   monthlyRevenueMonthLabel: string
@@ -50,6 +59,7 @@ export type DashboardStatsRecord = {
   scheduledServicesChange: number
   completedServices: number
   completedServicesChange: number
+  cancelledServices: number
   emergencyServices: number
   completionRate: number
   overdueInstallments: number
@@ -76,8 +86,9 @@ export type FinancialInstallmentRecord = {
   contractNumber: string
   clientId: string
   clientCompanyName: string
-  source: "contract" | "schedule"
+  source: "contract" | "schedule" | "extra"
   scheduleId?: string
+  extraId?: string
   number: number
   value: number
   dueDate: string
@@ -111,6 +122,7 @@ export type DashboardAnalyticsRecord = {
   stats: DashboardStatsRecord
   monthlyRevenueData: MonthlyRevenuePoint[]
   servicesByPeriodData: ServicesByPeriodPoint[]
+  servicesByStatusData: ServicesByStatusPoint[]
   servicesByTeamData: ServicesByTeamPoint[]
   servicesSummaryData: ServicesSummaryPoint[]
   recentClients: Array<{
@@ -149,6 +161,7 @@ export type ReportsAnalyticsRecord = {
   servicesByPeriodData: ServicesByPeriodPoint[]
   servicesByTeamData: ServicesByTeamPoint[]
   servicesSummaryData: ServicesSummaryPoint[]
+  servicesParticipationData: ServicesSummaryPoint[]
   clients: Array<{
     id: string
     companyName: string
@@ -174,6 +187,8 @@ export type DashboardAnalyticsParams = {
   days?: number
   dateFrom?: string
   dateTo?: string
+  revenueMonth?: string
+  globalValueMode?: "general" | "contractual"
 }
 
 export async function getFinancialAnalytics(params?: { dateFrom?: string; dateTo?: string }) {

@@ -35,8 +35,10 @@ import { SearchableSelect } from "@/components/ui/searchable-select"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { EmptyState, TableEmptyState } from "@/components/ui/empty-state"
 import { CardSkeletonGrid, TableSkeletonRows } from "@/components/ui/table-skeleton"
+import { FinancialPeriodBarChart } from "@/components/analytics/operational-charts"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 import { getFinancialAnalytics, type FinancialInstallmentRecord } from "@/lib/api/analytics"
+import { updateClientExtraStatus } from "@/lib/api/clients"
 import { updateInstallment } from "@/lib/api/contracts"
 import { updateScheduleBilling } from "@/lib/api/schedules"
 import { getApiErrorMessage } from "@/lib/api/errors"
@@ -44,21 +46,16 @@ import { formatCivilDate, parseCivilDate, toCivilDateKey } from "@/lib/date-util
 import { buildPathWithSearchParams, withReturnTo } from "@/lib/navigation"
 import { hasAnyPermission } from "@/lib/auth/permissions"
 import { getStoredUser } from "@/lib/auth/session"
+import { formatContractNumber } from "@/lib/utils"
 import Link from "next/link"
 import { usePathname, useSearchParams } from "next/navigation"
 import { toast } from "sonner"
 import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
   Tooltip,
   ResponsiveContainer,
   PieChart,
   Pie,
   Cell,
-  Legend,
 } from "recharts"
 
 interface FinanceiroContentProps {
@@ -69,15 +66,6 @@ interface FinanceiroContentProps {
 }
 
 type InstallmentStatusAction = "pending" | "paid" | "overdue"
-
-const EMPTY_MONTHLY_REVENUE_DATA = [
-  { month: "Mês 1", value: 0, paidValue: 0, pendingValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
-  { month: "Mês 2", value: 0, paidValue: 0, pendingValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
-  { month: "Mês 3", value: 0, paidValue: 0, pendingValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
-  { month: "Mês 4", value: 0, paidValue: 0, pendingValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
-  { month: "Mês 5", value: 0, paidValue: 0, pendingValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
-  { month: "Mês 6", value: 0, paidValue: 0, pendingValue: 0, lateValue: 0, overdueValue: 0, lateOverdueValue: 0 },
-]
 
 const EMPTY_DONUT_DATA = [{ name: "Sem dados", value: 1 }]
 const EMPTY_CHART_COLOR = "#DDE7D5"
@@ -169,6 +157,14 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
         })
       }
 
+      if (installment.source === "extra") {
+        return updateClientExtraStatus(
+          installment.clientId,
+          installment.extraId ?? installment.id.replace(/^extra-/, ""),
+          payload.status,
+        )
+      }
+
       return updateInstallment(installment.contractId, installment.id, payload)
     },
     onMutate: () => {
@@ -178,6 +174,7 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
     onSuccess: async (_data, _variables, context) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["analytics"] }),
+        queryClient.invalidateQueries({ queryKey: ["client-extras"] }),
         queryClient.invalidateQueries({ queryKey: ["contracts"] }),
         queryClient.invalidateQueries({ queryKey: ["schedules"] }),
       ])
@@ -216,13 +213,7 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
     { name: "Em atraso", value: 0 },
     { name: "Vencidas", value: 0 },
   ]).map((item) => item.name === "Pendentes" ? { ...item, name: "A receber" } : item)
-  const hasMonthlyRevenueData = monthlyRevenueData.some((item) =>
-    item.paidValue > 0 ||
-    item.pendingValue > 0 ||
-    item.lateValue > 0 ||
-    item.overdueValue > 0,
-  )
-  const monthlyRevenueChartData = monthlyRevenueData.length > 0 ? monthlyRevenueData : EMPTY_MONTHLY_REVENUE_DATA
+  const revenueChartTitle = dateFrom || dateTo ? "Faturamento por período" : "Faturamento da base"
   const hasFinanceHealthData = financeHealthData.some((item) => item.value > 0)
   const financeHealthChartData = hasFinanceHealthData ? financeHealthData : EMPTY_DONUT_DATA
 
@@ -327,75 +318,10 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
       {/* Revenue Chart + Financial Health */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card className="p-4 md:p-5 lg:col-span-2" data-report-chart="faturamento-mensal">
-          <h3 className="font-semibold text-base mb-4">Faturamento Mensal</h3>
+          <h3 className="font-semibold text-base mb-4">{revenueChartTitle}</h3>
           <div className="-mx-1 overflow-x-auto px-1 pb-2">
-          <div className="relative h-[250px] min-w-[560px] sm:min-w-0">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={monthlyRevenueChartData} margin={{ top: 5, right: 8, left: 0, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                <XAxis
-                  dataKey="month"
-                  tick={{ fontSize: 12 }}
-                  className="text-muted-foreground"
-                />
-                <YAxis
-                  width={34}
-                  tick={{ fontSize: 12 }}
-                  className="text-muted-foreground"
-                  tickFormatter={(value) => `${(value / 1000).toFixed(0)}k`}
-                  domain={[0, (dataMax: number) => Math.max(Number(dataMax) || 0, 1)]}
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: 'var(--card)',
-                    border: '1px solid var(--border)',
-                    borderRadius: '8px',
-                    fontSize: '12px'
-                  }}
-                  formatter={(value: number, name: string) => [
-                    formatCurrency(value),
-                    name === "paidValue"
-                      ? "Pagas"
-                      : name === "pendingValue"
-                        ? "A receber"
-                        : name === "lateValue"
-                          ? "Em atraso"
-                          : name === "overdueValue"
-                            ? "Vencidas"
-                            : "Faturamento",
-                  ]}
-                />
-                <Legend />
-                <Bar
-                  dataKey="paidValue"
-                  name="Pagas"
-                  fill={hasMonthlyRevenueData ? "var(--primary)" : EMPTY_CHART_COLOR}
-                  minPointSize={hasMonthlyRevenueData ? 0 : 3}
-                  radius={[4, 4, 0, 0]}
-                />
-                <Bar
-                  dataKey="pendingValue"
-                  name="A receber"
-                  fill={hasMonthlyRevenueData ? "#EAB308" : "#FEF3C7"}
-                  minPointSize={hasMonthlyRevenueData ? 0 : 3}
-                  radius={[4, 4, 0, 0]}
-                />
-                <Bar
-                  dataKey="lateValue"
-                  name="Em atraso"
-                  fill={hasMonthlyRevenueData ? "#F97316" : "#FFEDD5"}
-                  minPointSize={hasMonthlyRevenueData ? 0 : 3}
-                  radius={[4, 4, 0, 0]}
-                />
-                <Bar
-                  dataKey="overdueValue"
-                  name="Vencidas"
-                  fill={hasMonthlyRevenueData ? "#EF4444" : "#F3E7E7"}
-                  minPointSize={hasMonthlyRevenueData ? 0 : 3}
-                  radius={[4, 4, 0, 0]}
-                />
-              </BarChart>
-            </ResponsiveContainer>
+          <div className="relative h-[280px] min-w-[540px] sm:min-w-0">
+            <FinancialPeriodBarChart data={monthlyRevenueData} />
           </div>
           </div>
         </Card>
@@ -523,15 +449,19 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
                             href={
                               installment.source === "schedule"
                                 ? "/agendamentos"
-                                : withReturnTo(`/contratos/${installment.contractId}`, currentHref)
+                                : installment.source === "extra"
+                                  ? withReturnTo(`/clientes/${installment.clientId}?tab=extras`, currentHref)
+                                  : withReturnTo(`/contratos/${installment.contractId}`, currentHref)
                             }
                             className="hover:text-primary"
                           >
-                            {installment.contractNumber}
+                            {formatContractNumber(installment.contractNumber)}
                           </Link>
                         </TableCell>
                         <TableCell className="hidden sm:table-cell">
-                          <span className="text-sm">{installment.source === "schedule" ? "Avulsa" : installment.number}</span>
+                          <span className="text-sm">
+                            {installment.source === "schedule" ? "Avulsa" : installment.source === "extra" ? "Extra" : installment.number}
+                          </span>
                         </TableCell>
                         <TableCell className="font-medium">
                           {formatCurrency(installment.value)}
@@ -590,9 +520,9 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
                     </div>
                     <h3 className="font-semibold mb-1 truncate">{installment.clientCompanyName}</h3>
                     <p className="text-sm text-muted-foreground mb-3">
-                      {installment.source === "schedule"
-                        ? installment.contractNumber
-                        : `${installment.contractNumber} - Parcela ${installment.number}`}
+                      {installment.source === "schedule" || installment.source === "extra"
+                        ? formatContractNumber(installment.contractNumber)
+                        : `${formatContractNumber(installment.contractNumber)} - Parcela ${installment.number}`}
                     </p>
                     <div className="space-y-2 text-sm">
                       <div className="flex items-center justify-between">

@@ -8,6 +8,7 @@ import { ArrowLeft, Edit } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { getContractById, type ContractRecord } from "@/lib/api/contracts"
+import { isClosedClicksignContractStatus } from "@/lib/contract-status"
 import { buildPathWithSearchParams, getSafeReturnTo, withReturnTo } from "@/lib/navigation"
 import { useHasAnyPermission } from "@/hooks/use-permissions"
 
@@ -17,8 +18,7 @@ interface ContractDetailHeaderActionsProps {
 
 const isContractSigned = (contract?: Pick<ContractRecord, "status" | "clicksign"> | null) => {
   if (!contract) return false
-  const clicksignStatus = contract.clicksign?.status?.toLowerCase() ?? ""
-  return ["signed", "active"].includes(contract.status) || ["closed", "finished", "completed", "done"].includes(clicksignStatus)
+  return isClosedClicksignContractStatus(contract.status)
 }
 
 export function ContractDetailHeaderActions({ contractId }: ContractDetailHeaderActionsProps) {

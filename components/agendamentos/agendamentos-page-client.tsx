@@ -1,7 +1,7 @@
 "use client"
 
 import { Suspense, useEffect, useState } from "react"
-import { FileUp, LayoutGrid, List, Plus } from "lucide-react"
+import { LayoutGrid, List, Plus } from "lucide-react"
 
 import { AgendamentosContent } from "@/components/agendamentos/agendamentos-content"
 import { Header } from "@/components/dashboard/header"
@@ -19,7 +19,6 @@ type AgendamentosPageClientProps = {
 
 export function AgendamentosPageClient({ initialScheduleId }: AgendamentosPageClientProps) {
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [importOpen, setImportOpen] = useState(false)
   const [viewMode, setViewMode] = useResponsiveDefaultViewMode("table", "cards")
   const [currentUser, setCurrentUser] = useState<ReturnType<typeof getStoredUser>>(null)
   const canManageAgenda = hasAnyPermission(currentUser, ["agenda_manage"])
@@ -59,17 +58,6 @@ export function AgendamentosPageClient({ initialScheduleId }: AgendamentosPageCl
           actions={canManageAgenda ? (
             <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
               <Button
-                type="button"
-                variant="outline"
-                onClick={() => setImportOpen(true)}
-                className="h-9 w-9 shrink-0 px-0 sm:w-auto sm:px-4"
-                aria-label="Importar agendamentos"
-                title="Importar agendamentos"
-              >
-                <FileUp className="h-4 w-4 sm:mr-2" />
-                <span className="hidden sm:inline">Importar</span>
-              </Button>
-              <Button
                 onClick={() => setDialogOpen(true)}
                 className="h-9 min-w-0 flex-1 bg-primary text-sm text-primary-foreground hover:bg-primary/90 sm:w-auto sm:flex-none"
               >
@@ -85,8 +73,6 @@ export function AgendamentosPageClient({ initialScheduleId }: AgendamentosPageCl
             viewToggle={toggle}
             openDialog={canManageAgenda && dialogOpen}
             onDialogChange={setDialogOpen}
-            openImport={canManageAgenda && importOpen}
-            onImportChange={setImportOpen}
             initialScheduleId={initialScheduleId}
           />
         </Suspense>

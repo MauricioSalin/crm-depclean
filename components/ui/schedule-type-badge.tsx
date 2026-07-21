@@ -9,7 +9,7 @@ function getScheduleType(schedule: ScheduleTypeInput) {
   if (schedule.isEmergency) {
     return {
       label: "Emergencial",
-      className: "bg-red-100 text-red-800 hover:bg-red-100",
+      className: "bg-amber-100 text-amber-800 hover:bg-amber-100",
     }
   }
 

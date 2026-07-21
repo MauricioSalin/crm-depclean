@@ -74,7 +74,7 @@ export function ScheduleDetailsDialog({
   const [mode, setMode] = useState<"details" | "reschedule">("details")
   const [customDate, setCustomDate] = useState("")
   const [customTime, setCustomTime] = useState("")
-  const canStartAction = canStart ?? canManage
+  const canStartAction = canStart ?? (canManage && !schedule?.isClientDelinquent)
   const canRescheduleAction = canReschedule ?? canManage
 
   useEffect(() => {
@@ -151,8 +151,14 @@ export function ScheduleDetailsDialog({
 
   const isRecurringSchedule = Boolean(schedule.contractId && !schedule.isManual)
   const canStartAttendance = canStartAction && ["scheduled", "rescheduled"].includes(schedule.status)
+  const isBlockedByDelinquency = Boolean(schedule.isClientDelinquent && !canStartAction && ["scheduled", "rescheduled"].includes(schedule.status))
   const canRescheduleSchedule = canRescheduleAction && ["draft", "scheduled", "rescheduled"].includes(schedule.status)
-  const showAttendanceAction = canStartAttendance || canRescheduleSchedule || (canManage && schedule.status === "draft")
+  const showAttendanceAction = canStartAttendance || isBlockedByDelinquency || canRescheduleSchedule || (canManage && schedule.status === "draft")
+  const attendanceMessage = isBlockedByDelinquency
+    ? "Este cliente possui parcela vencida. Apenas usuários com permissão para gerenciar o status da agenda podem iniciar o atendimento."
+    : canStartAttendance
+      ? "Use o botão abaixo para iniciar o atendimento deste agendamento."
+      : "O atendimento será liberado assim que o contrato estiver assinado."
   const rescheduleOptions = optionsQuery.data?.data ?? []
 
   const submitReschedule = (date: string, time: string, validateAvailability = false) => {
@@ -327,10 +333,13 @@ export function ScheduleDetailsDialog({
               </div>
             ) : (
               <>
-            <div className={cn("flex justify-center", isMobile ? "mt-2" : "mt-4")}>
+            <div className={cn("flex flex-wrap justify-center gap-2", isMobile ? "mt-2" : "mt-4")}>
               <Badge variant={isRecurringSchedule ? "secondary" : "outline"}>
                 {isRecurringSchedule ? "Atendimento recorrente" : "Atendimento avulso"}
               </Badge>
+              {schedule.isClientDelinquent ? (
+                <Badge className="bg-red-100 text-red-700 hover:bg-red-100">Inadimplente</Badge>
+              ) : null}
             </div>
 
             <div className="mt-3 grid gap-3 md:grid-cols-2">
@@ -403,12 +412,14 @@ export function ScheduleDetailsDialog({
                   <div className="flex flex-col items-start gap-3 rounded-2xl border p-4">
                     <div>
                       <p className="text-sm font-medium text-foreground">
-                        {canStartAttendance ? "Pronto para iniciar o atendimento" : getStatusLabel(schedule.status)}
+                        {isBlockedByDelinquency
+                          ? "Atendimento bloqueado por inadimplência"
+                          : canStartAttendance
+                            ? "Pronto para iniciar o atendimento"
+                            : getStatusLabel(schedule.status)}
                       </p>
                       <p className="text-sm text-muted-foreground">
-                        {canStartAttendance
-                          ? "Use o botão abaixo para iniciar o atendimento deste agendamento."
-                          : "O atendimento será liberado assim que o contrato estiver assinado."}
+                        {attendanceMessage}
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -450,6 +461,9 @@ export function ScheduleDetailsDialog({
 
           {showAttendanceAction && isMobile && mode === "details" ? (
             <div className="shrink-0 space-y-3 bg-background px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-4">
+              {isBlockedByDelinquency ? (
+                <p className="text-center text-sm text-red-700">{attendanceMessage}</p>
+              ) : null}
               {canRescheduleSchedule ? (
                 <Button
                   type="button"

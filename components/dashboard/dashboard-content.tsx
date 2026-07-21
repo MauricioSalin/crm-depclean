@@ -104,18 +104,18 @@ export function DashboardContent() {
         {periodTab === "custom" && (
           <motion.div
             key="dashboard-date-range"
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
+            initial={{ opacity: 0, x: -8 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -8 }}
             transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-            className="w-full origin-left overflow-hidden sm:w-auto"
+            className="relative z-20 w-full overflow-visible sm:w-auto"
           >
             <DateRangePicker
               value={dateRange}
               onChange={handleDateRangeChange}
               open={isCustomDatePickerOpen}
               onOpenChange={setIsCustomDatePickerOpen}
-              className="w-full sm:w-[320px]"
+              className="w-full sm:w-[360px]"
             />
           </motion.div>
         )}

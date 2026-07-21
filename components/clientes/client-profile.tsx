@@ -9,11 +9,12 @@ import {
   AlertTriangle,
   Building2,
   Calendar,
+  CalendarCheck,
   CheckCircle,
   Clock,
   DollarSign,
   Download,
-  ExternalLink,
+  Eye,
   FileCheck2,
   FileText,
   Mail,
@@ -29,6 +30,8 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { DatePicker } from "@/components/ui/date-picker"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -36,6 +39,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { DataPagination } from "@/components/ui/data-pagination"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { TableEmptyState } from "@/components/ui/empty-state"
@@ -47,10 +53,14 @@ import { DocxTemplateEditor, type DocxTemplateEditorRef } from "@/components/tem
 import { buildApiFileUrl } from "@/lib/api/client"
 import {
   deleteClientAttachment,
+  createClientExtra,
   getClientAttachments,
   getClientById,
+  listClientExtras,
+  updateClientExtraStatus,
   uploadClientAttachment,
   type ClientAttachmentRecord,
+  type ClientExtraStatus,
 } from "@/lib/api/clients"
 import { listContracts, type ContractInstallmentRecord } from "@/lib/api/contracts"
 import { getApiErrorMessage } from "@/lib/api/errors"
@@ -59,16 +69,22 @@ import { listServices } from "@/lib/api/services"
 import { listClientTypes } from "@/lib/api/settings"
 import { listTeams } from "@/lib/api/teams"
 import { listTemplates, type TemplateRecord } from "@/lib/api/templates"
-import { formatCivilDate } from "@/lib/date-utils"
+import {
+  getClicksignContractStatusLabel,
+  isOperationallyActiveContract,
+  normalizeClicksignContractStatus,
+} from "@/lib/contract-status"
+import { formatCivilDate, parseCivilDate, toCivilDateKey } from "@/lib/date-utils"
 import { useHasAnyPermission } from "@/hooks/use-permissions"
 import { formatCPF } from "@/lib/masks"
 import { buildPathWithSearchParams, getSafeReturnTo, withReturnTo } from "@/lib/navigation"
+import { formatContractNumber } from "@/lib/utils"
 
 interface ClientProfileProps {
   clientId: string
 }
 
-const clientProfileTabs = ["dados", "contratos", "parcelas", "servicos", "agenda", "anexos"] as const
+const clientProfileTabs = ["dados", "contratos", "parcelas", "extras", "servicos", "agenda", "anexos"] as const
 
 type ClientProfileTab = (typeof clientProfileTabs)[number]
 
@@ -81,6 +97,8 @@ const clientProfileTabByUrlValue: Record<string, ClientProfileTab> = {
   contracts: "contratos",
   parcelas: "parcelas",
   installments: "parcelas",
+  extras: "extras",
+  extra: "extras",
   servicos: "servicos",
   services: "servicos",
   agenda: "agenda",
@@ -93,6 +111,7 @@ const clientProfileTabUrlValue: Record<ClientProfileTab, string> = {
   dados: "dados",
   contratos: "contratos",
   parcelas: "parcelas",
+  extras: "extras",
   servicos: "servicos",
   agenda: "agenda",
   anexos: "anexos",
@@ -102,7 +121,7 @@ const clientProfileTabTriggerClassName =
   "h-10 w-36 shrink-0 cursor-pointer rounded-full bg-muted px-4 py-2 text-sm transition-[background-color,color,transform] duration-300 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground lg:w-full"
 
 const clientProfileTabsListClassName =
-  "flex h-auto min-w-full w-max justify-start gap-2 overflow-visible bg-transparent p-0 lg:grid lg:w-full lg:grid-cols-6 [&_[data-slot=tabs-indicator]]:hidden"
+  "flex h-auto min-w-full w-max justify-start gap-2 overflow-visible bg-transparent p-0 lg:grid lg:w-full lg:grid-cols-7 [&_[data-slot=tabs-indicator]]:hidden"
 
 const getClientProfileTabFromUrl = (value: string | null): ClientProfileTab =>
   value ? clientProfileTabByUrlValue[value] ?? defaultClientProfileTab : defaultClientProfileTab
@@ -117,6 +136,30 @@ const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingm
 
 const formatDate = (value?: string) =>
   formatCivilDate(value)
+
+const createDefaultExtraForm = () => {
+  const today = toCivilDateKey(new Date())
+  return {
+    value: "",
+    createdDate: today,
+    dueDate: today,
+    status: "pending" as ClientExtraStatus,
+  }
+}
+
+const parseExtraValue = (value: string) => {
+  const normalized = value.trim().replace(/\s/g, "")
+  if (!normalized) return Number.NaN
+  if (normalized.includes(",")) {
+    return Number(normalized.replace(/\./g, "").replace(",", "."))
+  }
+
+  if (/^\d{1,3}(\.\d{3})+$/.test(normalized)) {
+    return Number(normalized.replace(/\./g, ""))
+  }
+
+  return Number(normalized)
+}
 
 const informativePdfFileName = (fileName: string) => {
   const cleanName = fileName.trim() || "informativo.pdf"
@@ -195,42 +238,33 @@ const getInstallmentStatusBadge = (status: ContractInstallmentRecord["status"]) 
   }
 }
 
+const getClientExtraStatusBadge = (status: ClientExtraStatus) => {
+  switch (status) {
+    case "paid":
+      return <Badge className="bg-green-100 text-green-700 hover:bg-green-100">Paga</Badge>
+    case "pending":
+      return <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">Pendente</Badge>
+    case "late":
+      return <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100">Atrasada</Badge>
+    case "overdue":
+      return <Badge className="bg-red-100 text-red-700 hover:bg-red-100">Vencida</Badge>
+    case "cancelled":
+      return <Badge variant="secondary">Cancelada</Badge>
+  }
+}
+
 const getClientContractStatusBadge = (status: string) => {
+  const normalized = normalizeClicksignContractStatus(status)
   const className =
-    ["signed", "active"].includes(status)
+    normalized === "closed"
       ? "bg-green-100 text-green-700 hover:bg-green-100"
-      : status === "pending_signature"
+      : normalized === "running"
         ? "bg-amber-100 text-amber-700 hover:bg-amber-100"
-        : status === "overdue"
+        : normalized === "canceled"
           ? "bg-red-100 text-red-700 hover:bg-red-100"
-          : status === "refused"
-            ? "bg-orange-100 text-orange-700 hover:bg-orange-100"
-            : status === "deadline_expired"
-              ? "bg-purple-100 text-purple-700 hover:bg-purple-100"
-              : status === "cancelled"
-                ? "bg-red-100 text-red-700 hover:bg-red-100"
-                : status === "expired"
-                  ? "bg-gray-100 text-gray-700 hover:bg-gray-100"
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-100"
+          : "bg-gray-100 text-gray-700 hover:bg-gray-100"
 
-  const label =
-    ["signed", "active"].includes(status)
-      ? "Assinado"
-      : status === "pending_signature"
-        ? "Aguardando assinatura"
-        : status === "overdue"
-          ? "Em atraso"
-          : status === "refused"
-            ? "Recusado"
-            : status === "deadline_expired"
-              ? "Prazo expirado"
-              : status === "expired"
-                ? "Expirado"
-                : status === "cancelled"
-                  ? "Cancelado"
-                  : "Rascunho"
-
-  return <Badge className={`shrink-0 ${className}`}>{label}</Badge>
+  return <Badge className={`shrink-0 ${className}`}>{getClicksignContractStatusLabel(normalized)}</Badge>
 }
 
 type ClientContactInfo = {
@@ -319,7 +353,9 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
   const queryClient = useQueryClient()
   const canEditClients = useHasAnyPermission(["clients_edit"])
   const canDeleteClients = useHasAnyPermission(["clients_delete"])
+  const canViewContracts = useHasAnyPermission(["contracts_view", "contracts_edit", "contracts_create", "contracts_delete"])
   const canManageInstallments = useHasAnyPermission(["financial_manage", "contracts_edit"])
+  const canManageExtras = useHasAnyPermission(["financial_manage"])
   const canModifyClientAttachments = canEditClients || canDeleteClients
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const informativePdfEditorRef = useRef<DocxTemplateEditorRef | null>(null)
@@ -370,6 +406,12 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
     enabled: Boolean(client?.id),
   })
 
+  const extrasQuery = useQuery({
+    queryKey: ["client-extras", resolvedClientId],
+    queryFn: () => listClientExtras(resolvedClientId),
+    enabled: Boolean(client?.id),
+  })
+
   const uploadAttachmentMutation = useMutation({
     mutationFn: (file: File) => {
       if (!canEditClients) {
@@ -412,6 +454,81 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
     },
   })
 
+  const [isCreateExtraOpen, setIsCreateExtraOpen] = useState(false)
+  const [extraForm, setExtraForm] = useState(createDefaultExtraForm)
+
+  useEffect(() => {
+    if (searchParams.get("addExtra") !== "1" || !canManageExtras) return
+
+    setExtraForm(createDefaultExtraForm())
+    setIsCreateExtraOpen(true)
+
+    const params = new URLSearchParams(searchParams.toString())
+    params.delete("addExtra")
+    const query = params.toString()
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false })
+  }, [canManageExtras, pathname, router, searchParams])
+
+  const createExtraMutation = useMutation({
+    mutationFn: () => {
+      if (!canManageExtras) {
+        throw new Error("Sem permissão para adicionar valores extras.")
+      }
+
+      const value = parseExtraValue(extraForm.value)
+      if (!Number.isFinite(value) || value <= 0) {
+        throw new Error("Informe um valor extra maior que zero.")
+      }
+
+      if (!extraForm.createdDate || !extraForm.dueDate) {
+        throw new Error("Informe as datas de criação e vencimento.")
+      }
+
+      return createClientExtra(resolvedClientId, {
+        value,
+        createdDate: extraForm.createdDate,
+        dueDate: extraForm.dueDate,
+        status: extraForm.status,
+      })
+    },
+    onMutate: () => {
+      const toastId = toast.loading("Salvando valor extra...")
+      return { toastId }
+    },
+    onSuccess: (_data, _variables, context) => {
+      queryClient.invalidateQueries({ queryKey: ["client-extras", resolvedClientId] })
+      queryClient.invalidateQueries({ queryKey: ["analytics"] })
+      setIsCreateExtraOpen(false)
+      setExtraForm(createDefaultExtraForm())
+      toast.success("Valor extra adicionado ao cliente.", { id: context?.toastId })
+    },
+    onError: (error, _variables, context) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível adicionar o valor extra."), { id: context?.toastId })
+    },
+  })
+
+  const updateExtraStatusMutation = useMutation({
+    mutationFn: ({ extraId, status }: { extraId: string; status: ClientExtraStatus }) => {
+      if (!canManageExtras) {
+        throw new Error("Sem permissão para alterar valores extras.")
+      }
+
+      return updateClientExtraStatus(resolvedClientId, extraId, status)
+    },
+    onMutate: () => {
+      const toastId = toast.loading("Atualizando status...")
+      return { toastId }
+    },
+    onSuccess: (_data, _variables, context) => {
+      queryClient.invalidateQueries({ queryKey: ["client-extras", resolvedClientId] })
+      queryClient.invalidateQueries({ queryKey: ["analytics"] })
+      toast.success("Status do valor extra atualizado.", { id: context?.toastId })
+    },
+    onError: (error, _variables, context) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível atualizar o status."), { id: context?.toastId })
+    },
+  })
+
   const [installmentOverrides, setInstallmentOverrides] = useState<
     Record<string, { status: ContractInstallmentRecord["status"]; paidDate?: string; paidValue?: number }>
   >({})
@@ -423,6 +540,8 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
   const [agendaPageSize, setAgendaPageSize] = useState(10)
   const [attachmentsPage, setAttachmentsPage] = useState(1)
   const [attachmentsPageSize, setAttachmentsPageSize] = useState(10)
+  const [extrasPage, setExtrasPage] = useState(1)
+  const [extrasPageSize, setExtrasPageSize] = useState(10)
   const activeTab = getClientProfileTabFromUrl(searchParams.get("tab"))
   const backHref = getSafeReturnTo(searchParams.get("returnTo"), "/clientes")
   const contractReturnPath = buildPathWithSearchParams(pathname, searchParams, {
@@ -452,11 +571,20 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
     () => (contractsQuery.data?.data ?? []).filter((contract) => contract.clientId === resolvedClientId),
     [contractsQuery.data?.data, resolvedClientId],
   )
+  const primaryContract = useMemo(() => {
+    return [...clientContracts].sort((left, right) => {
+      const operationalDifference = Number(isOperationallyActiveContract(right)) - Number(isOperationallyActiveContract(left))
+      if (operationalDifference !== 0) return operationalDifference
+
+      return new Date(right.startDate).getTime() - new Date(left.startDate).getTime()
+    })[0]
+  }, [clientContracts])
   const clientServices = useMemo(
     () => (schedulesQuery.data?.data ?? []).filter((service) => service.clientId === resolvedClientId),
     [schedulesQuery.data?.data, resolvedClientId],
   )
   const clientAttachments = attachmentsQuery.data?.data ?? []
+  const clientExtras = extrasQuery.data?.data ?? []
   const hasInformativeAttachments = clientAttachments.some((attachment) => attachment.type === "informative")
   const informativeTemplatesQuery = useQuery({
     queryKey: ["templates", "client-profile", "informative"],
@@ -478,7 +606,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
   )
   const clientType = (clientTypesQuery.data?.data.items ?? []).find((item) => item.id === client?.clientTypeId)
   const clientTypeColor = resolveColor(clientType?.color)
-  const activeContracts = clientContracts.filter((contract) => ["signed", "active"].includes(contract.status)).length
+  const activeContracts = clientContracts.filter((contract) => isOperationallyActiveContract(contract)).length
 
   const findInformativeTemplate = useCallback(
     async (attachment: ClientAttachmentRecord) => {
@@ -638,6 +766,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
   const servicesTotalPages = Math.max(1, Math.ceil(completedServices.length / servicesPageSize))
   const agendaTotalPages = Math.max(1, Math.ceil(scheduledServices.length / agendaPageSize))
   const attachmentsTotalPages = Math.max(1, Math.ceil(clientAttachments.length / attachmentsPageSize))
+  const extrasTotalPages = Math.max(1, Math.ceil(clientExtras.length / extrasPageSize))
   useEffect(() => {
     if (installmentsPage > installmentsTotalPages) setInstallmentsPage(installmentsTotalPages)
   }, [installmentsPage, installmentsTotalPages])
@@ -653,6 +782,10 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
   useEffect(() => {
     if (attachmentsPage > attachmentsTotalPages) setAttachmentsPage(attachmentsTotalPages)
   }, [attachmentsPage, attachmentsTotalPages])
+
+  useEffect(() => {
+    if (extrasPage > extrasTotalPages) setExtrasPage(extrasTotalPages)
+  }, [extrasPage, extrasTotalPages])
 
   const paidInstallments = allInstallments.filter((installment) => installment.status === "paid")
   const lateInstallments = allInstallments.filter((installment) => installment.status === "late")
@@ -819,8 +952,8 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
       ) : null}
 
       <Card className="overflow-hidden">
-        <CardContent className="">
-          <div className="flex items-start gap-4">
+        <CardContent className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex min-w-0 items-start gap-4">
             <div
               className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl"
               style={{ backgroundColor: `${clientTypeColor}1A` }}
@@ -857,6 +990,30 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                 </div>
               ) : null}
             </div>
+          </div>
+          <div className="flex w-full shrink-0 flex-wrap items-center justify-start gap-2 sm:w-auto sm:justify-end">
+            {canViewContracts && primaryContract ? (
+              <Link href={getContractProfileHref(primaryContract.id)}>
+                <Button variant="outline" className="h-9 bg-transparent text-sm">
+                  <FileText className="mr-2 h-4 w-4" />
+                  Acessar contrato
+                </Button>
+              </Link>
+            ) : null}
+            {canManageExtras ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="h-9 bg-transparent text-sm"
+                onClick={() => {
+                  setExtraForm(createDefaultExtraForm())
+                  setIsCreateExtraOpen(true)
+                }}
+              >
+                <DollarSign className="mr-2 h-4 w-4" />
+                Adicionar extra
+              </Button>
+            ) : null}
           </div>
         </CardContent>
       </Card>
@@ -949,6 +1106,14 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
             >
               <DollarSign className="h-4 w-4" />
               <span className="font-semibold">Parcelas ({allInstallments.length})</span>
+            </TabsTrigger>
+            <TabsTrigger
+              onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
+              value="extras"
+              className={clientProfileTabTriggerClassName}
+            >
+              <DollarSign className="h-4 w-4" />
+              <span className="font-semibold">Extras ({clientExtras.length})</span>
             </TabsTrigger>
             <TabsTrigger
               onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
@@ -1082,64 +1247,85 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
         </TabsContent>
 
         <TabsContent value="contratos" className="mt-4">
-          <div className="overflow-x-auto rounded-md">
+          <div className="overflow-x-auto rounded-xl">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Contrato</TableHead>
-                  <TableHead>Valor total</TableHead>
-                  <TableHead className="hidden md:table-cell">Vigência</TableHead>
+                  <TableHead className="w-[300px] min-w-[300px]">Contrato</TableHead>
+                  <TableHead className="hidden w-[420px] min-w-[380px] sm:table-cell">Cliente</TableHead>
+                  <TableHead className="hidden md:table-cell">Valor</TableHead>
+                  <TableHead className="hidden lg:table-cell">Vigência</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {clientContracts.map((contract) => (
-                  <TableRow
-                    key={contract.id}
-                    className="cursor-pointer"
-                    onClick={() => router.push(getContractProfileHref(contract.id))}
-                  >
-                    <TableCell>
-                      <Link
-                        href={getContractProfileHref(contract.id)}
-                        className="block hover:text-primary"
-                        onClick={(event) => event.stopPropagation()}
-                      >
-                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                          <p className="min-w-0 break-words font-medium">{contract.contractNumber}</p>
-                          {getClientContractStatusBadge(contract.status)}
+                {clientContracts.map((contract) => {
+                  const paidInstallments = contract.installments.filter((installment) => installment.status === "paid").length
+
+                  return (
+                    <TableRow key={contract.id}>
+                      <TableCell className="w-[300px] max-w-[300px]">
+                        <Link href={getContractProfileHref(contract.id)} className="flex items-center gap-3">
+                          <div className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 sm:flex">
+                            <FileText className="h-5 w-5 text-primary" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="truncate font-medium">{formatContractNumber(contract.contractNumber)}</p>
+                            <p className="text-xs text-muted-foreground sm:hidden">{client.companyName}</p>
+                          </div>
+                        </Link>
+                      </TableCell>
+                      <TableCell className="hidden w-[420px] max-w-[420px] sm:table-cell">
+                        <div className="flex items-center gap-2">
+                          <Building2 className="h-4 w-4 text-muted-foreground" />
+                          <span className="max-w-[360px] truncate">{client.companyName}</span>
                         </div>
-                        <p className="text-xs text-muted-foreground">{contract.services.length} serviço(s)</p>
-                      </Link>
-                    </TableCell>
-                    <TableCell className="font-medium">{formatCurrency(contract.totalValue)}</TableCell>
-                    <TableCell className="hidden md:table-cell text-sm">
-                      {formatDate(contract.startDate)} - {formatDate(contract.endDate)}
-                    </TableCell>
-                    <TableCell>{getClientContractStatusBadge(contract.status)}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <Button variant="ghost" size="icon" asChild>
-                          <Link
-                            href={getContractProfileHref(contract.id)}
-                            onClick={(event) => event.stopPropagation()}
-                          >
-                            <ExternalLink className="h-4 w-4" />
-                          </Link>
-                        </Button>
-                        {contract.documentUrl ? (
-                          <Button variant="ghost" size="icon" onClick={(event) => event.stopPropagation()}>
-                            <Download className="h-4 w-4" />
-                          </Button>
-                        ) : null}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell">
+                        <div>
+                          <p className="font-medium">{formatCurrency(contract.totalValue)}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {paidInstallments}/{contract.installmentsCount} parcelas
+                          </p>
+                        </div>
+                      </TableCell>
+                      <TableCell className="hidden text-sm lg:table-cell">
+                        <div className="space-y-0.5">
+                          <div className="flex items-center gap-1 text-muted-foreground">
+                            <Calendar className="h-3 w-3" />
+                            <span>{formatDate(contract.startDate)}</span>
+                          </div>
+                          <div className="flex items-center gap-1 text-muted-foreground">
+                            <CalendarCheck className="h-3 w-3" />
+                            <span>{formatDate(contract.endDate)}</span>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>{getClientContractStatusBadge(contract.status)}</TableCell>
+                      <TableCell className="text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem asChild>
+                              <Link href={getContractProfileHref(contract.id)}>
+                                <Eye className="mr-2 h-4 w-4" />
+                                Ver Detalhes
+                              </Link>
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
 
                 {clientContracts.length === 0 ? (
-                  <TableEmptyState colSpan={5} icon={FileText} title="Nenhum contrato encontrado." />
+                  <TableEmptyState colSpan={6} icon={FileText} title="Nenhum contrato encontrado." />
                 ) : null}
               </TableBody>
             </Table>
@@ -1166,7 +1352,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                   ) : (
                     allInstallments.map((installment) => (
                       <TableRow key={installment.id}>
-                        <TableCell className="text-sm">{installment.contractNumber}</TableCell>
+                        <TableCell className="text-sm">{formatContractNumber(installment.contractNumber)}</TableCell>
                         <TableCell>
                           {installment.number}/{installment.installmentsCount}
                         </TableCell>
@@ -1211,6 +1397,106 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                 onPageSizeChange={(size) => {
                   setInstallmentsPageSize(size)
                   setInstallmentsPage(1)
+                }}
+                className="md:static md:bottom-auto md:z-auto"
+              />
+            ) : null}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="extras" className="mt-4">
+          <div className="space-y-3">
+            <div className="overflow-x-auto rounded-md">
+              <Table onSortChange={() => setExtrasPage(1)}>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Data de criação</TableHead>
+                    <TableHead>Valor</TableHead>
+                    <TableHead>Vencimento</TableHead>
+                    <TableHead>Status</TableHead>
+                    {canManageExtras ? <TableHead className="text-right">Ações</TableHead> : null}
+                  </TableRow>
+                </TableHeader>
+                <TableBody
+                  page={!extrasQuery.isLoading && clientExtras.length > 0 ? extrasPage : undefined}
+                  pageSize={!extrasQuery.isLoading && clientExtras.length > 0 ? extrasPageSize : undefined}
+                >
+                  {clientExtras.map((extra) => (
+                    <TableRow key={extra.id}>
+                      <TableCell className="text-sm">{formatDate(extra.createdDate)}</TableCell>
+                      <TableCell className="font-medium">{formatCurrency(extra.value)}</TableCell>
+                      <TableCell className="text-sm">{formatDate(extra.dueDate)}</TableCell>
+                      <TableCell>{getClientExtraStatusBadge(extra.status)}</TableCell>
+                      {canManageExtras ? (
+                        <TableCell className="text-right">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                disabled={updateExtraStatusMutation.isPending}
+                                title="Alterar status"
+                              >
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => updateExtraStatusMutation.mutate({ extraId: extra.id, status: "paid" })}>
+                                Marcar como paga
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => updateExtraStatusMutation.mutate({ extraId: extra.id, status: "pending" })}>
+                                Marcar como pendente
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => updateExtraStatusMutation.mutate({ extraId: extra.id, status: "late" })}>
+                                Marcar como atrasada
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => updateExtraStatusMutation.mutate({ extraId: extra.id, status: "overdue" })}>
+                                Marcar como vencida
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => updateExtraStatusMutation.mutate({ extraId: extra.id, status: "cancelled" })}>
+                                Marcar como cancelada
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      ) : null}
+                    </TableRow>
+                  ))}
+
+                  {!extrasQuery.isLoading && clientExtras.length === 0 ? (
+                    <TableEmptyState
+                      colSpan={canManageExtras ? 5 : 4}
+                      icon={DollarSign}
+                      title="Nenhum valor extra cadastrado para este cliente."
+                    />
+                  ) : null}
+
+                  {extrasQuery.isLoading ? (
+                    <TableSkeletonRows
+                      rows={3}
+                      columns={[
+                        { width: "w-28" },
+                        { width: "w-24" },
+                        { width: "w-28" },
+                        { width: "w-20" },
+                        ...(canManageExtras ? [{ align: "right" as const, width: "w-8" }] : []),
+                      ]}
+                    />
+                  ) : null}
+                </TableBody>
+              </Table>
+            </div>
+            {!extrasQuery.isLoading && clientExtras.length > 0 ? (
+              <DataPagination
+                currentPage={extrasPage}
+                totalPages={extrasTotalPages}
+                pageSize={extrasPageSize}
+                totalItems={clientExtras.length}
+                onPageChange={setExtrasPage}
+                onPageSizeChange={(size) => {
+                  setExtrasPageSize(size)
+                  setExtrasPage(1)
                 }}
                 className="md:static md:bottom-auto md:z-auto"
               />
@@ -1454,6 +1740,94 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
           </div>
         </TabsContent>
       </Tabs>
+
+      <Dialog
+        open={isCreateExtraOpen}
+        onOpenChange={(open) => {
+          if (!createExtraMutation.isPending) setIsCreateExtraOpen(open)
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Adicionar valor extra</DialogTitle>
+            <DialogDescription>
+              Registre uma cobrança avulsa para {client.companyName}, sem vínculo com contrato ou parcela.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4">
+            <div className="grid gap-2">
+              <Label htmlFor="client-extra-value">Valor</Label>
+              <Input
+                id="client-extra-value"
+                value={extraForm.value}
+                onChange={(event) => setExtraForm((current) => ({ ...current, value: event.target.value }))}
+                inputMode="decimal"
+                placeholder="R$ 0,00"
+                autoFocus
+              />
+            </div>
+
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="grid gap-2">
+                <Label>Data de criação</Label>
+                <DatePicker
+                  value={parseCivilDate(extraForm.createdDate)}
+                  onChange={(date) => setExtraForm((current) => ({
+                    ...current,
+                    createdDate: date ? toCivilDateKey(date) : "",
+                  }))}
+                  placeholder="Selecione a criação"
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label>Data de vencimento</Label>
+                <DatePicker
+                  value={parseCivilDate(extraForm.dueDate)}
+                  onChange={(date) => setExtraForm((current) => ({
+                    ...current,
+                    dueDate: date ? toCivilDateKey(date) : "",
+                  }))}
+                  placeholder="Selecione o vencimento"
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="client-extra-status">Status</Label>
+              <Select
+                value={extraForm.status}
+                onValueChange={(status: ClientExtraStatus) => setExtraForm((current) => ({ ...current, status }))}
+              >
+                <SelectTrigger id="client-extra-status" className="w-full">
+                  <SelectValue placeholder="Selecione o status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="pending">Pendente</SelectItem>
+                  <SelectItem value="paid">Paga</SelectItem>
+                  <SelectItem value="late">Atrasada</SelectItem>
+                  <SelectItem value="overdue">Vencida</SelectItem>
+                  <SelectItem value="cancelled">Cancelada</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsCreateExtraOpen(false)}
+              disabled={createExtraMutation.isPending}
+            >
+              Cancelar
+            </Button>
+            <Button type="button" onClick={() => createExtraMutation.mutate()} disabled={createExtraMutation.isPending}>
+              {createExtraMutation.isPending ? "Salvando..." : "Adicionar extra"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

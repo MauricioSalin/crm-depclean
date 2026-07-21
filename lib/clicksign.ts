@@ -3,6 +3,9 @@ import type { ContractRecord } from "@/lib/api/contracts"
 type ClicksignSigner = NonNullable<ContractRecord["clicksign"]>["signers"][number]
 
 const defaultClicksignEndpoint = "https://sandbox.clicksign.com"
+const clicksignManagementBaseUrl = "https://app.clicksign.com"
+const clicksignManagementAccountId = "379383"
+const clicksignManagementFolderId = "49449970"
 
 function getClicksignEndpoint() {
   const endpoint = (process.env.NEXT_PUBLIC_CLICKSIGN_WEB_BASE_URL || process.env.NEXT_PUBLIC_CLICKSIGN_ENDPOINT || defaultClicksignEndpoint).replace(/\/$/, "")
@@ -80,32 +83,10 @@ export function getContractClicksignSigningUrl(contract?: Pick<ContractRecord, "
 export function getContractClicksignManagementUrl(contract?: Pick<ContractRecord, "clicksign"> | null) {
   const envelopeId = String(contract?.clicksign?.envelopeId ?? "").trim()
   const documentId = String(contract?.clicksign?.documentId || contract?.clicksign?.documentKey || "").trim()
-  const folderId = String(contract?.clicksign?.folderId ?? "").trim()
   if (!envelopeId && !documentId) return ""
 
-  const explicitUrl = String(contract?.clicksign?.managementUrl ?? "").trim()
-  if (/^https?:\/\//i.test(explicitUrl)) return explicitUrl
-
-  const accountId = String(process.env.NEXT_PUBLIC_CLICKSIGN_ACCOUNT_ID ?? "").trim()
-  const template = String(process.env.NEXT_PUBLIC_CLICKSIGN_ENVELOPE_URL_TEMPLATE ?? "").trim()
-  if (template) {
-    return template
-      .replace(/\{envelopeId\}/g, encodeURIComponent(envelopeId))
-      .replace(/\{documentId\}/g, encodeURIComponent(documentId))
-      .replace(/\{folderId\}/g, encodeURIComponent(folderId))
-      .replace(/\{accountId\}/g, encodeURIComponent(accountId))
-  }
-
-  const endpoint = getClicksignEndpoint()
-  if (accountId && folderId && documentId) {
-    return `${endpoint}/accounts/${encodeURIComponent(accountId)}/folders/${encodeURIComponent(folderId)}/documents/${encodeURIComponent(documentId)}`
-  }
-
-  if (accountId) {
-    return `${endpoint}/accounts/${encodeURIComponent(accountId)}/envelopes/${encodeURIComponent(envelopeId)}`
-  }
-
-  return `${endpoint}/envelopes/${encodeURIComponent(envelopeId)}`
+  const documentReference = envelopeId || documentId
+  return `${clicksignManagementBaseUrl}/accounts/${clicksignManagementAccountId}/folders/${clicksignManagementFolderId}/documents/${encodeURIComponent(documentReference)}`
 }
 
 export function getContractClicksignUrl(contract?: Pick<ContractRecord, "signatureUrl" | "clicksign"> | null) {

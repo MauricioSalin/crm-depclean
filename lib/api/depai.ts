@@ -11,6 +11,7 @@ export type DepAIFile = {
 }
 
 export type DepAIArtifactKind = "pdf" | "docx" | "xlsx" | "chart" | "report"
+export type DepAIChartType = "bar" | "horizontal_bar" | "stacked_bar" | "line" | "area" | "pie" | "donut" | "radar" | "scatter" | "funnel" | "composed"
 
 export type DepAIArtifact = {
   id: string
@@ -21,7 +22,9 @@ export type DepAIArtifact = {
   mimeType?: string
   downloadUrl?: string
   previewUrl?: string
-  status: "ready" | "processing"
+  expiresAt?: string
+  chartType?: DepAIChartType
+  status: "ready" | "processing" | "expired"
 }
 
 export type DepAIMessage = {

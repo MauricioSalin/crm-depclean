@@ -38,3 +38,8 @@ export function getColorFromClass(colorClass: string): string {
 export function getInitials(name: string): string {
   return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
 }
+
+export function formatContractNumber(contractNumber?: string | null): string {
+  const value = contractNumber?.trim() ?? ''
+  return value.match(/^(LEG-\d+)(?:-|$)/i)?.[1]?.toUpperCase() ?? value
+}

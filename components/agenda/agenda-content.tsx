@@ -180,7 +180,7 @@ const mapSchedule = (schedule: ScheduleRecord): AgendaScheduledServiceRow => ({
 
 function getScheduleIconTone(schedule: Pick<ScheduleRecord, "isEmergency">) {
   return schedule.isEmergency
-    ? { wrapper: "bg-red-50", icon: "text-red-600" }
+    ? { wrapper: "bg-amber-50", icon: "text-amber-700" }
     : { wrapper: "bg-primary/10", icon: "text-primary" }
 }
 
@@ -740,9 +740,12 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   const timelineEvents = useMemo(() => filteredServices.flatMap((service) => {
     const baseEvent = {
       id: service.id,
+      scheduleId: service.id,
+      hoverGroupId: service.id,
       title: service.clientName,
       subtitle: service.serviceTypeName,
       teamColor: service.teams.length > 0 ? service.teams[0].color : getTeamColor(service.teamId),
+      teamNames: [...service.teams.map((team) => team.name), ...service.additionalEmployees.map((employee) => employee.name)],
       status: service.status,
     }
 
@@ -771,6 +774,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
     for (let index = 0; index < days; index += 1) {
       events.push({
         ...baseEvent,
+        id: `${service.id}-${currentDate}`,
         subtitle: days > 1 ? `${service.serviceTypeName} (${index + 1}/${days})` : service.serviceTypeName,
         date: currentDate,
         time: AGENDA_WORKDAY_START_TIME,
@@ -1132,11 +1136,11 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                       <div className="flex h-full flex-col items-center justify-center">
                         <span className={`font-medium ${isToday(date) ? "text-primary" : ""}`}>{Number(toCivilDateKey(date).slice(8, 10))}</span>
                         {services.length > 0 ? (
-                          <div className="mt-1 grid grid-cols-8 place-items-center gap-1">
+                          <div className="mx-auto mt-1 flex w-[5.75rem] max-w-full flex-wrap justify-center gap-1">
                             {services.map((service) => (
                               <div
                                 key={service.id}
-                                className="h-2 w-2 rounded-full"
+                                className="h-2 w-2 shrink-0 rounded-full"
                                 style={{ backgroundColor: getTeamColor(service.teamId) }}
                                 title={`${service.clientName} - ${service.serviceTypeName}`}
                               />
@@ -1185,9 +1189,9 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
               {selectedDate ? (
                 selectedDateServices.length > 0 ? (
                   <ScrollArea className="lg:h-full">
-                    <div className="grid grid-cols-1 gap-3 px-6 sm:grid-cols-2 lg:grid-cols-1">
+                    <div className="grid grid-cols-1 gap-3 px-6 py-2 sm:grid-cols-2 lg:grid-cols-1">
                       {selectedDateServices.map((service) => (
-                        <Card key={service.id} className="group cursor-pointer border-border/70 transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:bg-primary/[0.03] hover:shadow-lg hover:shadow-primary/10" onClick={() => openSchedule(service)}>
+                        <Card key={service.id} className="group cursor-pointer border-border/70 transition-colors duration-200 hover:border-primary/30" onClick={() => openSchedule(service)}>
                           <CardContent>
                             <div className="mb-4 flex items-start justify-between gap-3">
                               <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -1375,9 +1379,9 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
               {selectedDate ? (
                 selectedDateServices.length > 0 ? (
                   <ScrollArea className="lg:h-full">
-                    <div className="grid grid-cols-1 gap-3 px-6 sm:grid-cols-2 lg:grid-cols-1">
+                    <div className="grid grid-cols-1 gap-3 px-6 py-2 sm:grid-cols-2 lg:grid-cols-1">
                       {selectedDateServices.map((service) => (
-                        <Card key={service.id} className="group cursor-pointer border-border/70 transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:bg-primary/[0.03] hover:shadow-lg hover:shadow-primary/10" onClick={() => openSchedule(service)}>
+                        <Card key={service.id} className="group cursor-pointer border-border/70 transition-colors duration-200 hover:border-primary/30" onClick={() => openSchedule(service)}>
                           <CardContent>
                             <div className="mb-4 flex items-start justify-between gap-3">
                               <div className="flex min-w-0 flex-1 items-center gap-2">

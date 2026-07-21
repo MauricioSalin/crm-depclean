@@ -3,7 +3,7 @@
 import * as React from "react"
 import { format, isBefore, isSameDay, isValid, parse } from "date-fns"
 import { ptBR } from "date-fns/locale"
-import { CalendarIcon } from "lucide-react"
+import { CalendarIcon, X } from "lucide-react"
 import type { DateRange } from "react-day-picker"
 
 import { cn } from "@/lib/utils"
@@ -60,6 +60,9 @@ export function DateRangePicker({
   const [fromText, setFromText] = React.useState(() => formatDateInput(value?.from))
   const [toText, setToText] = React.useState(() => formatDateInput(value?.to))
   const [activeField, setActiveField] = React.useState<ActiveField>("from")
+  const activeFieldRef = React.useRef<ActiveField>("from")
+  const fromInputRef = React.useRef<HTMLInputElement>(null)
+  const toInputRef = React.useRef<HTMLInputElement>(null)
   const isOpen = open ?? internalOpen
   const visibleRange = isOpen ? draftRange : value
 
@@ -74,11 +77,24 @@ export function DateRangePicker({
     setToText(formatDateInput(range?.to))
   }
 
+  const setActiveDateField = (field: ActiveField) => {
+    activeFieldRef.current = field
+    setActiveField(field)
+  }
+
+  const focusDateInput = (field = activeFieldRef.current) => {
+    window.requestAnimationFrame(() => {
+      const input = field === "from" ? fromInputRef.current : toInputRef.current
+      input?.focus({ preventScroll: true })
+    })
+  }
+
   const setPopoverOpen = (nextOpen: boolean) => {
     setDraftRange(value)
     syncInputText(value)
     setInternalOpen(nextOpen)
     onOpenChange?.(nextOpen)
+    if (nextOpen) focusDateInput()
   }
 
   const closePopover = () => {
@@ -99,9 +115,16 @@ export function DateRangePicker({
   }
 
   const handleInputFocus = (field: ActiveField) => {
-    setActiveField(field)
+    setActiveDateField(field)
     setInternalOpen(true)
     onOpenChange?.(true)
+  }
+
+  const handleInputClick = (field: ActiveField) => {
+    setActiveDateField(field)
+    setInternalOpen(true)
+    onOpenChange?.(true)
+    focusDateInput(field)
   }
 
   const handleInputChange = (field: ActiveField, rawValue: string) => {
@@ -133,7 +156,7 @@ export function DateRangePicker({
         ? { from: parsedDate, to: existingTo }
         : { from: parsedDate, to: undefined }
 
-      setActiveField("to")
+      setActiveDateField("to")
       updateDraftRange(nextRange)
       onChange?.(nextRange)
       return
@@ -150,6 +173,21 @@ export function DateRangePicker({
     onChange?.(nextRange)
   }
 
+  const clearDateField = (field: ActiveField) => {
+    const currentRange = isOpen ? draftRange : value
+    setActiveDateField(field)
+
+    if (field === "from") {
+      updateDraftRange(undefined)
+      onChange?.(undefined)
+      return
+    }
+
+    const nextRange = currentRange?.from ? { from: currentRange.from, to: undefined } : undefined
+    updateDraftRange(nextRange)
+    onChange?.(nextRange)
+  }
+
   const handleSelectDay = (_range: DateRange | undefined, selectedDay: Date) => {
     if (activeField === "from") {
       const existingTo = draftRange?.to
@@ -162,13 +200,13 @@ export function DateRangePicker({
         return
       }
 
-      setActiveField("to")
+      setActiveDateField("to")
       updateDraftRange(nextRange)
       return
     }
 
     if (!draftRange?.from) {
-      setActiveField("to")
+      setActiveDateField("to")
       updateDraftRange({ from: selectedDay, to: undefined })
       return
     }
@@ -183,55 +221,94 @@ export function DateRangePicker({
   }
 
   return (
-    <Popover open={isOpen} onOpenChange={setPopoverOpen}>
-      <PopoverAnchor asChild>
-        <div className={cn("grid w-full min-w-[280px] grid-cols-1 gap-2 sm:grid-cols-2", className)}>
-          <div className="relative">
-            <CalendarIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
+    <div className={cn("-m-1 overflow-visible p-1", className)}>
+      <Popover open={isOpen} onOpenChange={setPopoverOpen}>
+        <PopoverAnchor asChild>
+          <div className="grid w-full min-w-[320px] grid-cols-1 gap-2 sm:grid-cols-2">
+            <div className="relative focus-within:z-[70]">
+              <CalendarIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+              ref={fromInputRef}
               value={fromText}
               onChange={(event) => handleInputChange("from", event.target.value)}
               onFocus={() => handleInputFocus("from")}
-              onClick={() => handleInputFocus("from")}
+              onClick={() => handleInputClick("from")}
               onKeyDown={(event) => {
                 if (event.key === "Enter") closePopover()
               }}
               placeholder={fromPlaceholder}
               inputMode="numeric"
-              className="pl-9 text-sm"
+              className="pl-9 pr-9 text-sm"
               aria-label={fromPlaceholder}
-            />
-          </div>
+              />
+              {fromText ? (
+                <button
+                type="button"
+                aria-label="Limpar data inicial"
+                className="absolute right-2 top-1/2 z-10 flex h-6 w-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                onPointerDown={(event) => event.preventDefault()}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  clearDateField("from")
+                }}
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              ) : null}
+            </div>
 
-          <div className="relative">
-            <CalendarIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
+            <div className="relative focus-within:z-[70]">
+              <CalendarIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+              ref={toInputRef}
               value={toText}
               onChange={(event) => handleInputChange("to", event.target.value)}
               onFocus={() => handleInputFocus("to")}
-              onClick={() => handleInputFocus("to")}
+              onClick={() => handleInputClick("to")}
               onKeyDown={(event) => {
                 if (event.key === "Enter") closePopover()
               }}
               placeholder={toPlaceholder}
               inputMode="numeric"
-              className="pl-9 text-sm"
+              className="pl-9 pr-9 text-sm"
               aria-label={toPlaceholder}
-            />
+              />
+              {toText ? (
+                <button
+                type="button"
+                aria-label="Limpar data final"
+                className="absolute right-2 top-1/2 z-10 flex h-6 w-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                onPointerDown={(event) => event.preventDefault()}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  clearDateField("to")
+                }}
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              ) : null}
+            </div>
           </div>
-        </div>
-      </PopoverAnchor>
-      <PopoverContent className="w-auto p-0" align="start">
-        <Calendar
-          mode="range"
-          defaultMonth={visibleRange?.from ?? visibleRange?.to}
-          selected={visibleRange}
-          onSelect={handleSelectDay}
-          numberOfMonths={isMobile ? 1 : 2}
-          showOutsideDays={false}
-          locale={ptBR}
-        />
-      </PopoverContent>
-    </Popover>
+        </PopoverAnchor>
+        <PopoverContent
+          className="w-auto p-0"
+          align="start"
+          onOpenAutoFocus={(event) => {
+            event.preventDefault()
+            focusDateInput()
+          }}
+        >
+          <Calendar
+            mode="range"
+            defaultMonth={visibleRange?.from ?? visibleRange?.to}
+            selected={visibleRange}
+            onSelect={handleSelectDay}
+            numberOfMonths={isMobile ? 1 : 2}
+            showOutsideDays={false}
+            locale={ptBR}
+          />
+        </PopoverContent>
+      </Popover>
+    </div>
   )
 }

@@ -4,6 +4,7 @@ import {
   ArrowDownRight,
   ArrowRight,
   ArrowUpRight,
+  ChevronDown,
   DollarSign,
   FileCheck2,
   FileX2,
@@ -13,11 +14,20 @@ import {
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { getDashboardAnalytics, type DashboardAnalyticsParams, type DashboardStatsRecord } from "@/lib/api/analytics"
 import Link from "next/link"
 import { getColorFromClass } from "@/lib/utils"
+import { toCivilDateKey } from "@/lib/date-utils"
 
 const emptyStats: DashboardStatsRecord = {
   activeClients: 0,
@@ -26,6 +36,10 @@ const emptyStats: DashboardStatsRecord = {
   activeContracts: 0,
   inactiveContracts: 0,
   activeContractsGlobalValue: 0,
+  globalValue: 0,
+  globalValueMode: "general",
+  generalGlobalValue: 0,
+  contractualGlobalValue: 0,
   monthlyRevenue: 0,
   monthlyRevenueChange: 0,
   monthlyRevenueMonthLabel: "",
@@ -33,6 +47,7 @@ const emptyStats: DashboardStatsRecord = {
   scheduledServicesChange: 0,
   completedServices: 0,
   completedServicesChange: 0,
+  cancelledServices: 0,
   emergencyServices: 0,
   completionRate: 0,
   overdueInstallments: 0,
@@ -47,15 +62,128 @@ function formatCurrency(value: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value)
 }
 
+function getCurrentRevenuePeriod() {
+  const [year = "", month = ""] = toCivilDateKey(new Date()).split("-")
+  return { year: Number(year), month: Number(month) }
+}
+
+function formatRevenueMonthLabel(year: number, month: number) {
+  const value = new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" })
+    .format(new Date(Date.UTC(year, month - 1, 1)))
+  return value.charAt(0).toUpperCase() + value.slice(1)
+}
+
+function formatRevenueMonthName(month: number) {
+  const value = new Intl.DateTimeFormat("pt-BR", { month: "short", timeZone: "UTC" })
+    .format(new Date(Date.UTC(2026, month - 1, 1)))
+    .replace(".", "")
+  return value.charAt(0).toUpperCase() + value.slice(1)
+}
+
 export function StatsCards(period: DashboardPeriodProps = {}) {
   const [hoveredCard, setHoveredCard] = useState<number | null>(null)
+  const [selectedRevenuePeriod, setSelectedRevenuePeriod] = useState(getCurrentRevenuePeriod)
+  const [isRevenuePeriodOpen, setIsRevenuePeriodOpen] = useState(false)
+  const [globalValueMode, setGlobalValueMode] = useState<"general" | "contractual">("general")
+  const revenueMonth = `${selectedRevenuePeriod.year}-${String(selectedRevenuePeriod.month).padStart(2, "0")}`
+  const yearOptions = Array.from(
+    new Set([
+      selectedRevenuePeriod.year,
+      ...Array.from({ length: 10 }, (_, index) => getCurrentRevenuePeriod().year - index),
+    ]),
+  ).sort((left, right) => right - left)
   const dashboardQuery = useQuery({
-    queryKey: ["analytics", "dashboard", period],
-    queryFn: () => getDashboardAnalytics(period),
+    queryKey: ["analytics", "dashboard", period, revenueMonth, globalValueMode],
+    queryFn: () => getDashboardAnalytics({ ...period, revenueMonth, globalValueMode }),
   })
   const isLoading = dashboardQuery.isLoading || (dashboardQuery.isFetching && !dashboardQuery.data)
   const dashboardStats = dashboardQuery.data?.data.stats ?? emptyStats
   const monthlyRevenueChange = Number(dashboardStats.monthlyRevenueChange ?? 0)
+  const revenueMonthLabel = dashboardStats.monthlyRevenueMonthLabel || formatRevenueMonthLabel(
+    selectedRevenuePeriod.year,
+    selectedRevenuePeriod.month,
+  )
+  const revenuePeriodPicker = (
+    <DropdownMenu open={isRevenuePeriodOpen} onOpenChange={setIsRevenuePeriodOpen}>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className="inline-flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-full bg-primary/10 px-2 text-[10px] font-semibold leading-none text-primary transition-colors hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+          aria-label="Selecionar mês do faturamento"
+        >
+          <span>{revenueMonthLabel}</span>
+          <ChevronDown className="h-3 w-3" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-[252px] p-2">
+        <Select
+          value={String(selectedRevenuePeriod.year)}
+          onValueChange={(year) => setSelectedRevenuePeriod((current) => ({ ...current, year: Number(year) }))}
+        >
+          <SelectTrigger className="mb-2 w-full">
+            <SelectValue placeholder="Ano" />
+          </SelectTrigger>
+          <SelectContent>
+            {yearOptions.map((year) => (
+              <SelectItem key={year} value={String(year)}>{year}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <div className="grid grid-cols-3 gap-1">
+          {Array.from({ length: 12 }, (_, index) => index + 1).map((month) => {
+            const isSelected = selectedRevenuePeriod.month === month
+            return (
+              <button
+                key={month}
+                type="button"
+                onClick={() => {
+                  setSelectedRevenuePeriod((current) => ({ ...current, month }))
+                  setIsRevenuePeriodOpen(false)
+                }}
+                className={`h-8 rounded-md px-2 text-xs font-medium transition-colors ${
+                  isSelected
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                }`}
+              >
+                {formatRevenueMonthName(month)}
+              </button>
+            )
+          })}
+        </div>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+  const globalValuePicker = (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className="inline-flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-full bg-primary/10 px-2 text-[10px] font-semibold leading-none text-primary transition-colors hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+          aria-label="Selecionar composição do valor global"
+        >
+          <span>{globalValueMode === "general" ? "Geral" : "Contratual"}</span>
+          <ChevronDown className="h-3 w-3" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="min-w-36">
+        <DropdownMenuRadioGroup value={globalValueMode} onValueChange={(value) => setGlobalValueMode(value as "general" | "contractual") }>
+          <DropdownMenuRadioItem
+            value="general"
+            className="pl-2 data-[state=checked]:bg-accent data-[state=checked]:text-accent-foreground [&>span]:hidden"
+          >
+            Geral
+          </DropdownMenuRadioItem>
+          <DropdownMenuRadioItem
+            value="contractual"
+            className="pl-2 data-[state=checked]:bg-accent data-[state=checked]:text-accent-foreground [&>span]:hidden"
+          >
+            Contratual
+          </DropdownMenuRadioItem>
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
 
   const stats = [
     {
@@ -63,15 +191,16 @@ export function StatsCards(period: DashboardPeriodProps = {}) {
       value: formatCurrency(dashboardStats.monthlyRevenue),
       change: `${monthlyRevenueChange >= 0 ? "+" : ""}${monthlyRevenueChange}%`,
       isPositive: monthlyRevenueChange >= 0,
-      badge: dashboardStats.monthlyRevenueMonthLabel,
+      badge: revenuePeriodPicker,
       icon: DollarSign,
       bgColor: "bg-card",
       textColor: "text-foreground",
       delay: "100ms",
     },
     {
-      title: "Valor Global Ativo",
-      value: formatCurrency(dashboardStats.activeContractsGlobalValue),
+      title: "Valor Global",
+      value: formatCurrency(dashboardStats.globalValue ?? dashboardStats.activeContractsGlobalValue),
+      badge: globalValuePicker,
       icon: WalletCards,
       bgColor: "bg-card",
       textColor: "text-foreground",
@@ -81,6 +210,7 @@ export function StatsCards(period: DashboardPeriodProps = {}) {
       title: "Contratos Ativos",
       value: dashboardStats.activeContracts.toString(),
       icon: FileCheck2,
+      href: "/contratos?validity=active",
       bgColor: "bg-card",
       textColor: "text-foreground",
       delay: "150ms",
@@ -89,6 +219,7 @@ export function StatsCards(period: DashboardPeriodProps = {}) {
       title: "Contratos Inativos",
       value: dashboardStats.inactiveContracts.toString(),
       icon: FileX2,
+      href: "/contratos?validity=inactive",
       bgColor: "bg-card",
       textColor: "text-foreground",
       delay: "180ms",
@@ -99,23 +230,18 @@ export function StatsCards(period: DashboardPeriodProps = {}) {
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
       {stats.map((stat, index) => {
         const Icon = stat.icon
-        return (
+        const card = (
           <Card
-            key={stat.title}
             aria-busy={isLoading}
             onMouseEnter={() => setHoveredCard(index)}
             onMouseLeave={() => setHoveredCard(null)}
-            className={`${stat.bgColor} ${stat.textColor} p-4 transition-all duration-500 ease-out cursor-pointer ${hoveredCard === index ? "scale-105 shadow-2xl" : "shadow-lg"
+            className={`${stat.bgColor} ${stat.textColor} h-full p-4 transition-all duration-500 ease-out ${hoveredCard === index ? "scale-105 shadow-2xl" : "shadow-lg"
               }`}
           >
             <div className="flex items-center justify-between mb-3">
               <div className="flex min-w-0 items-center gap-2">
                 <h3 className="truncate text-xs font-medium opacity-90">{stat.title}</h3>
-                {stat.badge ? (
-                  <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold leading-none text-primary">
-                    {stat.badge}
-                  </span>
-                ) : null}
+                {stat.badge ?? null}
               </div>
               <div
                 className={`w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center transition-transform duration-300 ${hoveredCard === index ? "scale-110" : ""
@@ -147,6 +273,21 @@ export function StatsCards(period: DashboardPeriodProps = {}) {
               </>
             )}
           </Card>
+        )
+
+        return stat.href ? (
+          <Link
+            key={stat.title}
+            href={stat.href}
+            aria-label={`Ver ${stat.title.toLowerCase()}`}
+            className="block h-full rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+          >
+            {card}
+          </Link>
+        ) : (
+          <div key={stat.title} className="h-full">
+            {card}
+          </div>
         )
       })}
     </div>
