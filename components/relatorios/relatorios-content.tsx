@@ -11,6 +11,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { DateRangePicker } from "@/components/ui/date-range-picker"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { MultiSelect } from "@/components/ui/multi-select"
+import { DataPagination } from "@/components/ui/data-pagination"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { FinanceiroContent } from "@/components/financeiro/financeiro-content"
 import { ServicesPeriodLineChart } from "@/components/analytics/operational-charts"
 import type { DateRange } from "react-day-picker"
@@ -126,6 +128,9 @@ const emptyReports: ReportsAnalyticsRecord = {
   servicesByTeamData: [],
   servicesSummaryData: [],
   servicesParticipationData: [],
+  financialEntries: [],
+  scheduleDetails: [],
+  serviceClientSummary: [],
   services: [],
   clients: [],
   contracts: [],
@@ -160,12 +165,190 @@ function normalizeReports(data?: Partial<ReportsAnalyticsRecord> | null): Report
     servicesParticipationData: Array.isArray(data?.servicesParticipationData)
       ? data.servicesParticipationData
       : Array.isArray(data?.servicesSummaryData) ? data.servicesSummaryData : [],
+    financialEntries: Array.isArray(data?.financialEntries) ? data.financialEntries : [],
+    scheduleDetails: Array.isArray(data?.scheduleDetails) ? data.scheduleDetails : [],
+    serviceClientSummary: Array.isArray(data?.serviceClientSummary) ? data.serviceClientSummary : [],
     services: Array.isArray(data?.services) ? data.services : [],
     clients: Array.isArray(data?.clients) ? data.clients : [],
     contracts: Array.isArray(data?.contracts) ? data.contracts : [],
     teams: Array.isArray(data?.teams) ? data.teams : [],
     employees: Array.isArray(data?.employees) ? data.employees : [],
   }
+}
+
+function formatReportDate(value: string) {
+  const date = parseCivilDate(value)
+  return date ? date.toLocaleDateString("pt-BR") : "-"
+}
+
+function formatReportDuration(detail: ReportsAnalyticsRecord["scheduleDetails"][number]) {
+  if (detail.durationType === "days") {
+    const days = detail.durationValue > 0 ? detail.durationValue : Math.max(1, Math.ceil(detail.estimatedDuration / 540))
+    return `${days.toLocaleString("pt-BR")} ${days === 1 ? "dia" : "dias"}`
+  }
+
+  if (detail.durationType === "shift") return "Meio período"
+  const hours = detail.durationValue > 0 ? detail.durationValue : detail.estimatedDuration / 60
+  return `${hours.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} ${hours === 1 ? "hora" : "horas"}`
+}
+
+function reportStatusLabel(status: ReportsAnalyticsRecord["scheduleDetails"][number]["status"]) {
+  if (status === "completed") return "Concluído"
+  if (status === "cancelled") return "Cancelado"
+  if (status === "in_progress") return "Em andamento"
+  return "Agendado"
+}
+
+function reportStatusClassName(status: ReportsAnalyticsRecord["scheduleDetails"][number]["status"]) {
+  if (status === "completed") return "border-green-200 bg-green-50 text-green-700"
+  if (status === "cancelled") return "border-red-200 bg-red-50 text-red-700"
+  if (status === "in_progress") return "border-amber-200 bg-amber-50 text-amber-800"
+  return "border-emerald-200 bg-emerald-50 text-emerald-700"
+}
+
+function ServiceClientSummaryTable({ rows }: { rows: ReportsAnalyticsRecord["serviceClientSummary"] }) {
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize))
+
+  useEffect(() => setCurrentPage(1), [rows])
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(totalPages)
+  }, [currentPage, totalPages])
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Clientes atendidos por serviço</CardTitle>
+        <CardDescription>Detalhamento de quais clientes receberam cada serviço no período, com volume e situação dos atendimentos.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        <Table onSortChange={() => setCurrentPage(1)}>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Serviço</TableHead>
+              <TableHead>Cliente</TableHead>
+              <TableHead className="text-right">Total</TableHead>
+              <TableHead className="hidden text-right md:table-cell">Concluídos</TableHead>
+              <TableHead className="hidden text-right md:table-cell">Agendados</TableHead>
+              <TableHead className="hidden text-right lg:table-cell">Cancelados</TableHead>
+              <TableHead className="hidden text-right lg:table-cell">Emergências</TableHead>
+              <TableHead className="hidden text-right xl:table-cell">Conclusão</TableHead>
+              <TableHead className="hidden xl:table-cell">Período</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody page={currentPage} pageSize={pageSize}>
+            {rows.length > 0 ? rows.map((row) => (
+              <TableRow key={`${row.serviceId}-${row.clientId}`}>
+                <TableCell className="font-medium">{row.serviceName}</TableCell>
+                <TableCell>{row.clientName}</TableCell>
+                <TableCell className="text-right font-medium">{row.total}</TableCell>
+                <TableCell className="hidden text-right md:table-cell">{row.completed}</TableCell>
+                <TableCell className="hidden text-right md:table-cell">{row.scheduled}</TableCell>
+                <TableCell className="hidden text-right lg:table-cell">{row.cancelled}</TableCell>
+                <TableCell className="hidden text-right lg:table-cell">{row.emergency}</TableCell>
+                <TableCell className="hidden text-right xl:table-cell">
+                  {row.total > 0 ? Math.round((row.completed / row.total) * 100) : 0}%
+                </TableCell>
+                <TableCell className="hidden whitespace-nowrap xl:table-cell">
+                  {formatReportDate(row.firstServiceDate)} a {formatReportDate(row.lastServiceDate)}
+                </TableCell>
+              </TableRow>
+            )) : (
+              <TableRow><TableCell colSpan={9} className="py-10 text-center text-muted-foreground">Nenhum cliente atendido no período selecionado.</TableCell></TableRow>
+            )}
+          </TableBody>
+        </Table>
+        <DataPagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          pageSize={pageSize}
+          totalItems={rows.length}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={(size) => { setPageSize(size); setCurrentPage(1) }}
+        />
+      </CardContent>
+    </Card>
+  )
+}
+
+function ScheduleDetailsTable({
+  rows,
+  title = "Atendimentos detalhados",
+  description = "Relação completa dos atendimentos considerados neste relatório.",
+}: {
+  rows: ReportsAnalyticsRecord["scheduleDetails"]
+  title?: string
+  description?: string
+}) {
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize))
+
+  useEffect(() => setCurrentPage(1), [rows])
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(totalPages)
+  }, [currentPage, totalPages])
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+        <CardDescription>{description}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        <Table onSortChange={() => setCurrentPage(1)}>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Data e hora</TableHead>
+              <TableHead>Cliente</TableHead>
+              <TableHead>Serviços</TableHead>
+              <TableHead className="hidden lg:table-cell">Contrato</TableHead>
+              <TableHead className="hidden xl:table-cell">Equipe / funcionários</TableHead>
+              <TableHead className="hidden md:table-cell">Duração</TableHead>
+              <TableHead>Status</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody page={currentPage} pageSize={pageSize}>
+            {rows.length > 0 ? rows.map((row) => (
+              <TableRow key={row.id}>
+                <TableCell className="whitespace-nowrap">
+                  <span className="font-medium">{formatReportDate(row.scheduledDate)}</span>
+                  <span className="block text-xs text-muted-foreground">{row.scheduledTime || "Sem horário"}</span>
+                </TableCell>
+                <TableCell>
+                  <span className="font-medium">{row.clientName}</span>
+                  <span className="block text-xs text-muted-foreground">{row.unitName}</span>
+                </TableCell>
+                <TableCell className="max-w-[280px] whitespace-normal">{row.serviceNames.join(", ") || "Sem serviço"}</TableCell>
+                <TableCell className="hidden whitespace-nowrap lg:table-cell">{row.contractNumber}</TableCell>
+                <TableCell className="hidden max-w-[260px] whitespace-normal xl:table-cell">
+                  {[...row.teamNames, ...row.employeeNames].join(", ") || "Não definido"}
+                </TableCell>
+                <TableCell className="hidden whitespace-nowrap md:table-cell">{formatReportDuration(row)}</TableCell>
+                <TableCell>
+                  <div className="flex flex-wrap gap-1.5">
+                    <Badge variant="outline" className={reportStatusClassName(row.status)}>{reportStatusLabel(row.status)}</Badge>
+                    {row.isEmergency ? <Badge variant="outline" className="border-orange-200 bg-orange-50 text-orange-700">Emergência</Badge> : null}
+                  </div>
+                </TableCell>
+              </TableRow>
+            )) : (
+              <TableRow><TableCell colSpan={7} className="py-10 text-center text-muted-foreground">Nenhum atendimento encontrado no período selecionado.</TableCell></TableRow>
+            )}
+          </TableBody>
+        </Table>
+        <DataPagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          pageSize={pageSize}
+          totalItems={rows.length}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={(size) => { setPageSize(size); setCurrentPage(1) }}
+        />
+      </CardContent>
+    </Card>
+  )
 }
 
 function ReportContentSkeleton({ reportId }: { reportId: ReportId }) {
@@ -1116,6 +1299,7 @@ export function RelatoriosContent() {
     queryKey: ["analytics", "reports", selectedReport, selectedServiceIdsQuery, selectedTeamIdsQuery, selectedEmployeeIdsQuery, formatDateParam(dateRange?.from), formatDateParam(dateRange?.to)],
     queryFn: () =>
       getReportsAnalytics({
+        reportType: selectedReport,
         dateFrom: formatDateParam(dateRange?.from),
         dateTo: formatDateParam(dateRange?.to),
         serviceIds: selectedReport === "services" ? formatUrlIds(selectedServiceIds) : undefined,
@@ -1131,6 +1315,8 @@ export function RelatoriosContent() {
     servicesByPeriodData,
     servicesByTeamData,
     servicesParticipationData,
+    scheduleDetails,
+    serviceClientSummary,
   } = reports
   const hasServicesByPeriodData = servicesByPeriodData.some(
     (item) => item.completed > 0 || item.scheduled > 0 || (item.cancelled ?? 0) > 0 || (item.emergency ?? 0) > 0,
@@ -1183,6 +1369,25 @@ export function RelatoriosContent() {
     return total > 0 ? slices : [{ name: "Sem serviços", services: 1, color: EMPTY_CHART_COLOR, isEmpty: true }]
   }
 
+  const buildScheduleDetailRows = (data: ReportsAnalyticsRecord): ExcelCell[][] => [
+    ["Data", "Horário", "Cliente", "Unidade", "Contrato", "Serviços", "Equipes", "Funcionários", "Duração", "Status", "Emergência", "Tipo", "Valor"],
+    ...data.scheduleDetails.map((detail) => [
+      formatReportDate(detail.scheduledDate),
+      detail.scheduledTime || "Sem horário",
+      detail.clientName,
+      detail.unitName,
+      detail.contractNumber,
+      detail.serviceNames.join(", ") || "Sem serviço",
+      detail.teamNames.join(", ") || "Sem equipe",
+      detail.employeeNames.join(", ") || "Sem funcionário",
+      formatReportDuration(detail),
+      reportStatusLabel(detail.status),
+      detail.isEmergency ? "Sim" : "Não",
+      detail.isManual ? "Avulso" : "Recorrente",
+      detail.billable ? detail.value : 0,
+    ]),
+  ]
+
   const buildReportRows = (data: ReportsAnalyticsRecord): ExcelCell[][] => {
     if (selectedReport === "services") {
       return [
@@ -1213,6 +1418,22 @@ export function RelatoriosContent() {
           `${item.completionRate}%`,
           item.averageDurationMinutes,
         ]),
+        [null],
+        ["Serviço", "Cliente", "Total", "Concluídos", "Agendados", "Cancelados", "Emergências", "Taxa de conclusão", "Primeiro atendimento", "Último atendimento"],
+        ...data.serviceClientSummary.map((item) => [
+          item.serviceName,
+          item.clientName,
+          item.total,
+          item.completed,
+          item.scheduled,
+          item.cancelled,
+          item.emergency,
+          item.total > 0 ? `${Math.round((item.completed / item.total) * 100)}%` : "0%",
+          formatReportDate(item.firstServiceDate),
+          formatReportDate(item.lastServiceDate),
+        ]),
+        [null],
+        ...buildScheduleDetailRows(data),
       ]
     }
 
@@ -1245,6 +1466,19 @@ export function RelatoriosContent() {
           item.lateValue,
           item.overdueValue,
         ]),
+        [null],
+        ["Cliente", "Origem", "Contrato", "Parcela", "Valor", "Vencimento", "Pagamento", "Valor pago", "Status"],
+        ...data.financialEntries.map((entry) => [
+          entry.clientCompanyName,
+          entry.source === "contract" ? "Contrato" : entry.source === "schedule" ? "Agendamento avulso" : "Valor extra",
+          entry.contractNumber || "Sem contrato",
+          entry.number > 0 ? entry.number : "-",
+          entry.value,
+          formatReportDate(entry.dueDate),
+          entry.paidDate ? formatReportDate(entry.paidDate) : "-",
+          entry.paidValue ?? 0,
+          entry.status === "paid" ? "Pago" : entry.status === "late" ? "Em atraso" : entry.status === "overdue" ? "Vencido" : entry.status === "cancelled" ? "Cancelado" : "A receber",
+        ]),
       ]
     }
     if (selectedReport === "teams") {
@@ -1260,6 +1494,8 @@ export function RelatoriosContent() {
             total > 0 ? `${Math.round((team.completedServices / total) * 100)}%` : "0%",
           ]
         }),
+        [null],
+        ...buildScheduleDetailRows(data),
       ]
     }
 
@@ -1276,6 +1512,8 @@ export function RelatoriosContent() {
             total > 0 ? `${Math.round((employee.completedServices / total) * 100)}%` : "0%",
           ]
         }),
+        [null],
+        ...buildScheduleDetailRows(data),
       ]
     }
 
@@ -1331,7 +1569,7 @@ export function RelatoriosContent() {
   return (
     <div className="space-y-6">
       {/* Report Type Selection - tabs on mobile, cards on sm+ */}
-      <div className="flex gap-2 overflow-x-auto pb-2 sm:hidden">
+      <div className="flex gap-2 overflow-x-auto pb-2 sm:hidden [@media(max-height:719px)]:flex">
         {visibleReportTypes.map((type) => (
           <button
             key={type.id}
@@ -1347,7 +1585,7 @@ export function RelatoriosContent() {
         ))}
       </div>
 
-      <div className="hidden gap-4 sm:grid sm:grid-cols-2 xl:grid-cols-4">
+      <div className="hidden gap-4 sm:grid sm:grid-cols-2 xl:grid-cols-4 [@media(max-height:719px)]:hidden">
         {visibleReportTypes.map((type) => (
           <Card
             key={type.id}
@@ -1703,6 +1941,13 @@ export function RelatoriosContent() {
                 </div>
               </CardContent>
             </Card>
+
+            <ServiceClientSummaryTable rows={serviceClientSummary} />
+            <ScheduleDetailsTable
+              rows={scheduleDetails}
+              title="Atendimentos que compõem o relatório"
+              description="Lista completa dos atendimentos por cliente, serviço, contrato, responsáveis, duração e status."
+            />
           </div>
         )}
 
@@ -1789,6 +2034,14 @@ export function RelatoriosContent() {
           )
         )}
 
+        {!isInitialReportsLoading && selectedReport === "teams" ? (
+          <ScheduleDetailsTable
+            rows={scheduleDetails}
+            title="Atendimentos por equipe"
+            description="Clientes, serviços e contratos que compõem os indicadores das equipes selecionadas."
+          />
+        ) : null}
+
         {!isInitialReportsLoading && selectedReport === "employees" && (
           employeesForChart.length === 0 ? (
             <Card className="border-dashed">
@@ -1862,6 +2115,14 @@ export function RelatoriosContent() {
             </div>
           )
         )}
+
+        {!isInitialReportsLoading && selectedReport === "employees" ? (
+          <ScheduleDetailsTable
+            rows={scheduleDetails}
+            title="Atendimentos por funcionário"
+            description="Clientes, serviços, contratos e duração dos atendimentos atribuídos aos funcionários selecionados."
+          />
+        ) : null}
 
       </div>
     </div>

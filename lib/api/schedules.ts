@@ -59,6 +59,7 @@ export type ScheduleRecord = {
   naDocumentUrl?: string
   naAttachments: ScheduleNaAttachmentRecord[]
   canStartAttendance?: boolean
+  canAttachNa?: boolean
   createdAt: string
   updatedAt: string
 }
@@ -84,6 +85,7 @@ export type SchedulePayload = {
   durationType?: "hours" | "shift" | "days"
   isEmergency?: boolean
   isLegacyImport?: boolean
+  allowConflict?: boolean
   billable?: boolean
   value?: number
   billingStatus?: "pending" | "paid" | "overdue" | "cancelled"
@@ -144,7 +146,10 @@ export async function getScheduleRescheduleOptions(id: string) {
   return response.data
 }
 
-export async function rescheduleSchedule(id: string, payload: { scheduledDate: string; scheduledTime?: string }) {
+export async function rescheduleSchedule(
+  id: string,
+  payload: { scheduledDate: string; scheduledTime?: string; allowConflict?: boolean },
+) {
   const response = await api.patch<{ success: true; data: ScheduleRecord }>(`/schedules/${id}/reschedule`, payload)
   return response.data
 }

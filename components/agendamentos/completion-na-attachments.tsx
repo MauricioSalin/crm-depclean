@@ -1,7 +1,7 @@
 "use client"
 
 import { useRef } from "react"
-import { Camera, CheckCircle2, FileText, FileUp, ImageIcon, Paperclip, X } from "lucide-react"
+import { Camera, CheckCircle2, FileText, FileUp, ImageIcon, Loader2, Paperclip, X } from "lucide-react"
 
 import { buildApiFileUrl } from "@/lib/api/client"
 import type { ScheduleNaAttachmentRecord } from "@/lib/api/schedules"
@@ -11,6 +11,7 @@ interface CompletionNaAttachmentsProps {
   existingAttachments?: ScheduleNaAttachmentRecord[]
   files: File[]
   disabled?: boolean
+  uploading?: boolean
   onAddFiles: (files: File[]) => void
   onRemoveFile: (index: number) => void
 }
@@ -33,6 +34,7 @@ export function CompletionNaAttachments({
   existingAttachments = [],
   files,
   disabled,
+  uploading = false,
   onAddFiles,
   onRemoveFile,
 }: CompletionNaAttachmentsProps) {
@@ -58,7 +60,7 @@ export function CompletionNaAttachments({
             <div className="min-w-0">
               <p className="text-sm font-semibold">NAs da visita</p>
               <p className="text-xs text-muted-foreground">
-                Adicione uma NA por dia executado, com fotos, PDF, DOCX ou imagem.
+                Adicione uma NA por dia executado. Cada arquivo é salvo imediatamente.
               </p>
             </div>
           </div>
@@ -149,14 +151,17 @@ export function CompletionNaAttachments({
             </div>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium">{file.name}</p>
-              <p className="text-xs text-muted-foreground">Pronto para enviar • {formatFileSize(file.size)}</p>
+              <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                {uploading ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                {uploading ? "Salvando no agendamento" : "Aguardando envio"} • {formatFileSize(file.size)}
+              </p>
             </div>
             <Button
               type="button"
               variant="ghost"
               size="icon"
               className="h-8 w-8 shrink-0 rounded-full"
-              disabled={disabled}
+              disabled={disabled || uploading}
               aria-label={`Remover ${file.name}`}
               onClick={() => onRemoveFile(index)}
             >

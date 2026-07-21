@@ -11,6 +11,7 @@ import {
   Check,
   Clock,
   Edit,
+  Eye,
   Loader2,
   MoreHorizontal,
   RotateCcw,
@@ -445,7 +446,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
     formData: SchedulingFormData
     scheduleId?: string
     requested: { date: string; time: string }
-    suggested: { date: string; time: string }
+    suggested?: { date: string; time: string }
   } | null>(null)
   const scheduleDialogResetTimeoutRef = useRef<number | null>(null)
   const [currentUser, setCurrentUser] = useState<ReturnType<typeof getStoredUser>>(null)
@@ -571,7 +572,15 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
   }
 
   const saveMutation = useMutation({
-    mutationFn: async ({ formData, scheduleId }: { formData: SchedulingFormData; scheduleId?: string }) => {
+    mutationFn: async ({
+      formData,
+      scheduleId,
+      allowConflict = false,
+    }: {
+      formData: SchedulingFormData
+      scheduleId?: string
+      allowConflict?: boolean
+    }) => {
       const client = clients.find((item) => item.id === formData.clientId)
       const primaryUnit = client?.units.find((unit) => unit.isPrimary) ?? client?.units[0]
       if (!primaryUnit) {
@@ -597,6 +606,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
           autoSendInformative: formData.autoSendInformative,
           generateCertificateRequest: formData.generateCertificateRequest,
           notes: formData.notes,
+          allowConflict,
         })
 
         if (canManageScheduleStatus && editingSchedule?.status !== formData.status) {
@@ -625,6 +635,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
         billable: formData.createContract,
         value: formData.createContract ? formData.value : 0,
         notes: formData.notes,
+        allowConflict,
       }
 
       if (scheduleId) {
@@ -748,15 +759,49 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
     },
   })
 
-  const completeMutation = useMutation({
-    mutationFn: async ({ schedule, startDate, startTime, endDate, endTime, files }: { schedule: ScheduleRecord; startDate: string; startTime: string; endDate: string; endTime: string; files: File[] }) => {
-      const hasExistingNa = Boolean(schedule.naAttachments?.length || schedule.naDocumentUrl)
-      if (files.length === 0 && !hasExistingNa) {
-        throw new Error("Anexe a NA da visita antes de concluir o atendimento.")
-      }
-
+  const uploadNaMutation = useMutation({
+    mutationFn: async ({ schedule, files }: { schedule: ScheduleRecord; files: File[] }) => {
+      let updatedSchedule = schedule
       for (const file of files) {
-        await uploadScheduleNa(schedule.id, file)
+        const response = await uploadScheduleNa(schedule.id, file)
+        updatedSchedule = response.data
+      }
+      return updatedSchedule
+    },
+    onMutate: ({ files }) => {
+      const toastId = toast.loading(files.length === 1 ? "Salvando NA..." : `Salvando ${files.length} NAs...`)
+      return { toastId }
+    },
+    onSuccess: async (updatedSchedule, _variables, context) => {
+      setCompletionTarget((current) => current?.id === updatedSchedule.id ? updatedSchedule : current)
+      setSelectedSchedule((current) => current?.id === updatedSchedule.id ? updatedSchedule : current)
+      setCompletionFiles([])
+      await invalidateSchedules()
+      toast.success("NA salva no agendamento.", {
+        id: context?.toastId,
+        description: "O arquivo já está seguro e continuará disponível mesmo sem concluir o atendimento.",
+      })
+    },
+    onError: async (error, variables, context) => {
+      setCompletionFiles([])
+      const refreshed = await getScheduleById(variables.schedule.id).catch(() => null)
+      if (refreshed?.data) {
+        setCompletionTarget((current) => current?.id === refreshed.data.id ? refreshed.data : current)
+        setSelectedSchedule((current) => current?.id === refreshed.data.id ? refreshed.data : current)
+      }
+      await invalidateSchedules()
+      toast.error(getApiErrorMessage(error, "Não foi possível salvar a NA."), {
+        id: context?.toastId,
+        description: "Os arquivos enviados antes da falha permanecem salvos. Confira a lista antes de tentar novamente.",
+      })
+    },
+  })
+
+  const completeMutation = useMutation({
+    mutationFn: async ({ schedule, startDate, startTime, endDate, endTime }: { schedule: ScheduleRecord; startDate: string; startTime: string; endDate: string; endTime: string }) => {
+      const hasExistingNa = Boolean(schedule.naAttachments?.length || schedule.naDocumentUrl)
+      if (!hasExistingNa) {
+        throw new Error("Anexe a NA da visita antes de concluir o atendimento.")
       }
 
       return completeSchedule(schedule.id, { startDate, startTime, endDate, endTime })
@@ -849,7 +894,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
       ignoreScheduleId: scheduleId,
     })
 
-    if (!availability.available && availability.suggested) {
+    if (!availability.available) {
       setAvailabilitySuggestion({
         formData,
         scheduleId,
@@ -881,7 +926,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
   }
 
   const openCompletionDialog = (schedule: ScheduleRecord) => {
-    if (!canManageAgenda) return
+    if (!(canManageAgenda || canManageScheduleStatus || schedule.canAttachNa)) return
 
     const now = currentCompletionDateTime()
     const defaultDate = schedule.date || now.date
@@ -894,7 +939,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
   }
 
   const openSchedule = (schedule: ScheduleRecord) => {
-    if (canManageAgenda && schedule.status === "in_progress") {
+    if (schedule.status === "in_progress" && (canManageAgenda || canManageScheduleStatus || schedule.canAttachNa)) {
       openCompletionDialog(schedule)
       return
     }
@@ -982,13 +1027,13 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
       >
         <DialogContent className="flex max-h-[calc(100dvh-1rem)] min-w-0 flex-col gap-0 overflow-hidden p-0 max-sm:left-0 max-sm:top-0 max-sm:h-[100dvh] max-sm:max-h-none max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none max-sm:border-0 max-sm:[&_[data-slot=dialog-close]]:right-5 max-sm:[&_[data-slot=dialog-close]]:top-[calc(env(safe-area-inset-top)+1rem)] sm:max-w-lg">
           <DialogHeader className="min-w-0 px-6 pb-4 pt-6 max-sm:px-5 max-sm:pt-[calc(env(safe-area-inset-top)+1.75rem)]">
-            <DialogTitle>Concluir agendamento</DialogTitle>
+            <DialogTitle>{canManageAgenda ? "Atendimento em andamento" : "NAs do atendimento"}</DialogTitle>
             <DialogDescription>
-              Registre o horário executado e anexe a NA da visita para vincular ao cliente.
+              A NA é salva assim que for adicionada. Você pode anexar uma por dia e concluir o atendimento somente no último dia.
             </DialogDescription>
           </DialogHeader>
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 pb-5 max-sm:px-5">
-            <div className="grid min-w-0 gap-4 sm:grid-cols-2">
+            {canManageAgenda ? <div className="grid min-w-0 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="completion-start-date">Data de início *</Label>
                 <Input
@@ -1025,20 +1070,25 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                   onChange={(event) => setCompletionEndTime(event.target.value)}
                 />
               </div>
-            </div>
+            </div> : null}
             <CompletionNaAttachments
               existingAttachments={completionTarget?.naAttachments ?? []}
               files={completionFiles}
-              disabled={completeMutation.isPending}
-              onAddFiles={(files) => setCompletionFiles((current) => [...current, ...files])}
-              onRemoveFile={(index) => setCompletionFiles((current) => current.filter((_, currentIndex) => currentIndex !== index))}
+              disabled={completeMutation.isPending || uploadNaMutation.isPending}
+              uploading={uploadNaMutation.isPending}
+              onAddFiles={(files) => {
+                if (!completionTarget || uploadNaMutation.isPending) return
+                setCompletionFiles(files)
+                uploadNaMutation.mutate({ schedule: completionTarget, files })
+              }}
+              onRemoveFile={() => undefined}
             />
           </div>
           <DialogFooter className="gap-2 px-6 pb-6 pt-3 max-sm:px-5 max-sm:pb-[calc(env(safe-area-inset-bottom)+1.25rem)] sm:gap-2">
             <Button type="button" variant="outline" className="w-full min-w-0 sm:w-auto" onClick={() => setCompletionTarget(null)}>
               Voltar
             </Button>
-            <Button
+            {canManageAgenda ? <Button
               type="button"
               className="w-full min-w-0 sm:w-auto"
               disabled={
@@ -1047,7 +1097,8 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                 !completionStartTime ||
                 !completionEndDate ||
                 !completionEndTime ||
-                (completionFiles.length === 0 && !completionTarget.naAttachments?.length && !completionTarget.naDocumentUrl) ||
+                (!completionTarget.naAttachments?.length && !completionTarget.naDocumentUrl) ||
+                uploadNaMutation.isPending ||
                 completeMutation.isPending
               }
               onClick={() =>
@@ -1058,7 +1109,6 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                   startTime: completionStartTime,
                   endDate: completionEndDate,
                   endTime: completionEndTime,
-                  files: completionFiles,
                 })
               }
             >
@@ -1070,7 +1120,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
               ) : (
                 "Concluir visita"
               )}
-            </Button>
+            </Button> : null}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1212,7 +1262,6 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                       </TableCell>
                       <TableCell>{getStatusBadge(schedule.status)}</TableCell>
                       <TableCell className="text-right">
-                        {canOpenScheduleEditor ? (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="icon" onClick={(event) => event.stopPropagation()}>
@@ -1220,6 +1269,16 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              className="cursor-pointer"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                setSelectedSchedule(schedule)
+                              }}
+                            >
+                              <Eye className="mr-2 h-4 w-4" />
+                              Visualizar
+                            </DropdownMenuItem>
                             {(canManageScheduleStatus || (canManageAgenda && canEditSchedule(schedule, canManageLockedSchedules))) && (
                               <DropdownMenuItem
                                 className="cursor-pointer"
@@ -1232,7 +1291,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                                 Editar
                               </DropdownMenuItem>
                             )}
-                            {canManageAgenda && schedule.status === "in_progress" && (
+                            {schedule.status === "in_progress" && (canManageAgenda || canManageScheduleStatus || schedule.canAttachNa) && (
                               <DropdownMenuItem
                                 className="cursor-pointer"
                                 onClick={(event) => {
@@ -1241,7 +1300,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                                 }}
                               >
                                 <Check className="mr-2 h-4 w-4" />
-                                Concluir
+                                NAs e conclusão
                               </DropdownMenuItem>
                             )}
                             {canManageAgenda && schedule.status === "cancelled" && (
@@ -1275,7 +1334,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                             )}
                             {canDeleteSchedule(schedule) && (
                               <DropdownMenuItem
-                                className="cursor-pointer"
+                                className="cursor-pointer text-destructive focus:text-destructive"
                                 onClick={(event) => {
                                   event.stopPropagation()
                                   setPendingDelete(schedule)
@@ -1287,7 +1346,6 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                             )}
                           </DropdownMenuContent>
                         </DropdownMenu>
-                        ) : null}
                       </TableCell>
                     </TableRow>
                   ))
@@ -1460,7 +1518,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
           <DialogHeader className="min-w-0 pr-6">
             <DialogTitle>Horário indisponível</DialogTitle>
             <DialogDescription>
-              Já existe um agendamento para a equipe ou funcionário nesse intervalo.
+              Já existe um agendamento para a equipe ou funcionário nesse intervalo. Você pode usar a sugestão ou manter o horário solicitado conscientemente.
             </DialogDescription>
           </DialogHeader>
           {availabilitySuggestion ? (
@@ -1471,12 +1529,12 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                   {formatAvailabilitySlot(availabilitySuggestion.requested.date, availabilitySuggestion.requested.time)}
                 </p>
               </div>
-              <div>
+              {availabilitySuggestion.suggested ? <div>
                 <p className="font-medium">Horário mais próximo disponível</p>
                 <p className="text-muted-foreground">
                   {formatAvailabilitySlot(availabilitySuggestion.suggested.date, availabilitySuggestion.suggested.time)}
                 </p>
-              </div>
+              </div> : null}
             </div>
           ) : null}
           <DialogFooter className="gap-2 sm:gap-2">
@@ -1485,13 +1543,29 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
             </Button>
             <Button
               type="button"
+              variant="outline"
+              className="border-amber-300 text-amber-800 hover:bg-amber-50 hover:text-amber-900"
+              onClick={() => {
+                if (!availabilitySuggestion) return
+                saveMutation.mutate({
+                  formData: availabilitySuggestion.formData,
+                  scheduleId: availabilitySuggestion.scheduleId,
+                  allowConflict: true,
+                })
+                setAvailabilitySuggestion(null)
+              }}
+            >
+              Manter horário solicitado
+            </Button>
+            {availabilitySuggestion?.suggested ? <Button
+              type="button"
               onClick={() => {
                 if (!availabilitySuggestion) return
                 saveMutation.mutate({
                   formData: {
                     ...availabilitySuggestion.formData,
-                    date: availabilitySuggestion.suggested.date,
-                    time: availabilitySuggestion.suggested.time,
+                    date: availabilitySuggestion.suggested!.date,
+                    time: availabilitySuggestion.suggested!.time,
                   },
                   scheduleId: availabilitySuggestion.scheduleId,
                 })
@@ -1499,7 +1573,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
               }}
             >
               Usar horário sugerido
-            </Button>
+            </Button> : null}
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -1846,7 +1846,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
         busy={deleteMutation.isPending}
       />
 
-      <div className="flex flex-col gap-4 md:min-h-0 md:flex-1 md:overflow-hidden">
+      <div className="flex flex-col gap-4 md:min-h-0 md:flex-1 md:overflow-hidden [@media(max-height:719px)]:overflow-visible">
         <div className={`${mobileFiltersOpen ? "flex" : "hidden"} -m-1 flex-col gap-3 overflow-visible p-1 sm:flex sm:flex-row sm:items-center`}>
           <FilterSearchInput
             wrapperClassName="w-full sm:max-w-md"
@@ -1859,10 +1859,10 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
           />
         </div>
 
-        {mobileTabs ? <div className="sm:hidden">{mobileTabs}</div> : null}
+        {mobileTabs ? <div className="sm:hidden [@media(max-height:719px)]:block">{mobileTabs}</div> : null}
 
-        <div className="rounded-md md:min-h-0 md:flex-1 md:overflow-hidden">
-          <Table containerClassName="md:h-full" onSortChange={() => setCurrentPage(1)}>
+        <div className="rounded-md md:min-h-0 md:flex-1 md:overflow-hidden [@media(max-height:719px)]:overflow-visible">
+          <Table containerClassName="md:h-full [@media(max-height:719px)]:h-auto" onSortChange={() => setCurrentPage(1)}>
             <TableHeader>
               <TableRow>
                 <TableHead>Template</TableHead>

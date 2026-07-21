@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { ArrowLeft, CalendarDays, Clock3, Loader2, MapPin, OctagonX, Sparkles, Users } from "lucide-react"
+import { AlertTriangle, ArrowLeft, CalendarDays, Clock3, Loader2, MapPin, OctagonX, Sparkles, Users } from "lucide-react"
 import { toast } from "sonner"
 
 import { AttendanceStartSlider } from "@/components/agendamentos/attendance-start-slider"
@@ -10,14 +10,14 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { DatePicker } from "@/components/ui/date-picker"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { getScheduleRescheduleOptions, rescheduleSchedule, type ScheduleRecord } from "@/lib/api/schedules"
 import type { TeamRecord } from "@/lib/api/teams"
 import { formatCivilDate, parseCivilDate, toCivilDateKey } from "@/lib/date-utils"
-import { getAvailableRescheduleTimes, isRescheduleDateAvailable } from "@/lib/schedule-availability"
+import { checkScheduleAvailability, formatAvailabilitySlot, getAvailableRescheduleTimes } from "@/lib/schedule-availability"
 import { formatConfiguredScheduleDuration } from "@/lib/schedule-duration"
 import { cn } from "@/lib/utils"
 
@@ -74,6 +74,10 @@ export function ScheduleDetailsDialog({
   const [mode, setMode] = useState<"details" | "reschedule">("details")
   const [customDate, setCustomDate] = useState("")
   const [customTime, setCustomTime] = useState("")
+  const [rescheduleConflict, setRescheduleConflict] = useState<{
+    requested: { date: string; time: string }
+    suggested?: { date: string; time: string }
+  } | null>(null)
   const canStartAction = canStart ?? (canManage && !schedule?.isClientDelinquent)
   const canRescheduleAction = canReschedule ?? canManage
 
@@ -82,6 +86,7 @@ export function ScheduleDetailsDialog({
     setMode("details")
     setCustomDate(schedule.date)
     setCustomTime(schedule.time || "08:00")
+    setRescheduleConflict(null)
   }, [open, schedule?.id, schedule?.date, schedule?.time])
 
   const optionsQuery = useQuery({
@@ -108,17 +113,13 @@ export function ScheduleDetailsDialog({
 
   useEffect(() => {
     if (!open || mode !== "reschedule" || !schedule || !customDate) return
-    if (availableCustomTimes.length === 0) {
-      setCustomTime("")
-      return
-    }
-    if (!availableCustomTimes.includes(customTime)) {
+    if (!customTime && availableCustomTimes.length > 0) {
       setCustomTime(availableCustomTimes[0] ?? "")
     }
   }, [availableCustomTimes, customDate, customTime, mode, open, schedule])
 
   const rescheduleMutation = useMutation({
-    mutationFn: (payload: { scheduledDate: string; scheduledTime?: string }) =>
+    mutationFn: (payload: { scheduledDate: string; scheduledTime?: string; allowConflict?: boolean }) =>
       rescheduleSchedule(schedule!.id, payload),
     onMutate: () => {
       const toastId = toast.loading("Reagendando atendimento...")
@@ -131,7 +132,9 @@ export function ScheduleDetailsDialog({
       ])
       toast.success("Atendimento reagendado.", {
         id: context?.toastId,
-        description: "A disponibilidade da equipe foi validada antes de salvar.",
+        description: _variables.allowConflict
+          ? "O horário com conflito foi mantido conforme sua confirmação."
+          : "A disponibilidade da equipe foi validada antes de salvar.",
       })
       onOpenChange(false)
     },
@@ -161,19 +164,45 @@ export function ScheduleDetailsDialog({
       : "O atendimento será liberado assim que o contrato estiver assinado."
   const rescheduleOptions = optionsQuery.data?.data ?? []
 
-  const submitReschedule = (date: string, time: string, validateAvailability = false) => {
+  const submitReschedule = (date: string, time: string, validateAvailability = false, allowConflict = false) => {
     if (!date) {
       toast.error("Escolha uma data para reagendar.")
       return
     }
-    if (validateAvailability && !availableCustomTimes.includes(time)) {
-      toast.error("Escolha um horário disponível para esta data.")
-      return
+    const scheduledTime = time || schedule.time || "08:00"
+    if (validateAvailability && !allowConflict) {
+      const durationType = schedule.durationType ?? "hours"
+      const duration = Number(schedule.durationValue) > 0
+        ? Number(schedule.durationValue)
+        : Math.max(1 / 60, Number(schedule.duration || 60) / 60)
+      const availability = checkScheduleAvailability({
+        schedules,
+        teams,
+        ignoreScheduleId: schedule.id,
+        formData: {
+          teamIds: schedule.teams.map((team) => team.id),
+          employeeIds: schedule.additionalEmployees.map((employee) => employee.id),
+          date,
+          time: scheduledTime,
+          durationType,
+          duration,
+          isEmergency: schedule.isEmergency,
+        },
+      })
+      if (!availability.available) {
+        setRescheduleConflict({
+          requested: { date, time: scheduledTime },
+          suggested: availability.suggested,
+        })
+        return
+      }
     }
 
+    setRescheduleConflict(null)
     rescheduleMutation.mutate({
       scheduledDate: date,
-      scheduledTime: time || schedule.time || "08:00",
+      scheduledTime,
+      allowConflict,
     })
   }
 
@@ -272,48 +301,81 @@ export function ScheduleDetailsDialog({
                         value={customDateValue}
                         onChange={(date) => {
                           setCustomDate(date ? toCivilDateKey(date) : "")
-                          setCustomTime("")
+                          setCustomTime(schedule.time || "08:00")
+                          setRescheduleConflict(null)
                         }}
                         placeholder="Escolha uma data"
                         className="rounded-full"
                         disabled={rescheduleMutation.isPending}
-                        disabledDates={(date) =>
-                          !isRescheduleDateAvailable({
-                            schedules,
-                            teams,
-                            schedule,
-                            date: toCivilDateKey(date),
-                          })
-                        }
+                        disabledDates={(date) => toCivilDateKey(date) < toCivilDateKey(new Date())}
                       />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="reschedule-time">Horário</Label>
-                      <Select
+                      <Input
+                        id="reschedule-time"
+                        type="time"
                         value={customTime}
-                        onValueChange={setCustomTime}
-                        disabled={!customDate || availableCustomTimes.length === 0 || rescheduleMutation.isPending}
-                      >
-                        <SelectTrigger id="reschedule-time" className="h-9 w-full rounded-full">
-                          <SelectValue
-                            placeholder={customDate ? "Nenhum horário livre" : "Escolha uma data"}
-                          />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {availableCustomTimes.map((time) => (
-                            <SelectItem key={time} value={time}>
-                              {time}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                        className="h-9 w-full rounded-full"
+                        disabled={!customDate || rescheduleMutation.isPending}
+                        onChange={(event) => {
+                          setCustomTime(event.target.value)
+                          setRescheduleConflict(null)
+                        }}
+                      />
                     </div>
                   </div>
                   <p className="mt-3 text-xs text-muted-foreground">
                     {customDate && availableCustomTimes.length === 0
-                      ? "Nenhum horário disponível para a duração deste atendimento nesta data."
-                      : "Os horários são validados de 30 em 30 minutos conforme a duração do atendimento."}
+                      ? "Não há horário livre nesta data, mas você ainda pode informar um horário e confirmar o conflito."
+                      : `${availableCustomTimes.length} horário(s) livre(s) encontrado(s). A escolha será validada antes de salvar.`}
                   </p>
+                  {rescheduleConflict ? (
+                    <div className="mt-4 space-y-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+                        <div>
+                          <p className="font-semibold">Horário indisponível</p>
+                          <p className="mt-1 text-amber-900/80">
+                            Já existe um atendimento para a equipe ou funcionário em {formatAvailabilitySlot(rescheduleConflict.requested.date, rescheduleConflict.requested.time)}.
+                          </p>
+                        </div>
+                      </div>
+                      {rescheduleConflict.suggested ? (
+                        <p>
+                          Próximo horário livre: <strong>{formatAvailabilitySlot(rescheduleConflict.suggested.date, rescheduleConflict.suggested.time)}</strong>
+                        </p>
+                      ) : null}
+                      <div className="flex flex-col gap-2 sm:flex-row">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="border-amber-300 bg-white text-amber-900 hover:bg-amber-100"
+                          disabled={rescheduleMutation.isPending}
+                          onClick={() => submitReschedule(
+                            rescheduleConflict.requested.date,
+                            rescheduleConflict.requested.time,
+                            false,
+                            true,
+                          )}
+                        >
+                          Continuar mesmo assim
+                        </Button>
+                        {rescheduleConflict.suggested ? (
+                          <Button
+                            type="button"
+                            disabled={rescheduleMutation.isPending}
+                            onClick={() => submitReschedule(
+                              rescheduleConflict.suggested!.date,
+                              rescheduleConflict.suggested!.time,
+                            )}
+                          >
+                            Usar horário sugerido
+                          </Button>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : null}
                   <Button
                     type="button"
                     className="mt-4 w-full sm:w-auto"

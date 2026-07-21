@@ -140,7 +140,7 @@ function TemplatesPageContent() {
       <main
         className={cn(
           "flex-1 px-3 pb-4 md:px-4 lg:ml-60 lg:px-5",
-          !editorOpen && "flex min-h-screen flex-col md:h-screen md:min-h-0 md:overflow-hidden",
+          !editorOpen && "flex min-h-screen flex-col md:h-screen md:min-h-0 md:overflow-hidden [@media(max-height:719px)]:h-auto [@media(max-height:719px)]:min-h-screen [@media(max-height:719px)]:overflow-visible",
         )}
       >
         <Header
@@ -188,7 +188,7 @@ function TemplatesPageContent() {
         >
           {!editorOpen ? (
             <>
-              <div className="hidden gap-4 sm:grid sm:grid-cols-3">
+              <div className="hidden gap-4 sm:grid sm:grid-cols-3 [@media(max-height:719px)]:hidden">
                 {TEMPLATE_TABS.map((tab) => (
                   <Card
                     key={tab.value}

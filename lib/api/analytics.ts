@@ -41,6 +41,46 @@ export type ServicesSummaryPoint = {
   averageDurationMinutes: number
 }
 
+export type ReportScheduleDetail = {
+  id: string
+  scheduledDate: string
+  scheduledTime: string
+  clientId: string
+  clientName: string
+  unitId: string
+  unitName: string
+  contractId: string
+  contractNumber: string
+  serviceIds: string[]
+  serviceNames: string[]
+  teamIds: string[]
+  teamNames: string[]
+  employeeIds: string[]
+  employeeNames: string[]
+  estimatedDuration: number
+  durationValue: number
+  durationType: "hours" | "shift" | "days"
+  status: "scheduled" | "in_progress" | "completed" | "cancelled" | "rescheduled"
+  isEmergency: boolean
+  isManual: boolean
+  billable: boolean
+  value: number
+}
+
+export type ServiceClientSummaryRecord = {
+  serviceId: string
+  serviceName: string
+  clientId: string
+  clientName: string
+  completed: number
+  scheduled: number
+  cancelled: number
+  emergency: number
+  total: number
+  firstServiceDate: string
+  lastServiceDate: string
+}
+
 export type DashboardStatsRecord = {
   activeClients: number
   activeClientsChange: number
@@ -162,6 +202,9 @@ export type ReportsAnalyticsRecord = {
   servicesByTeamData: ServicesByTeamPoint[]
   servicesSummaryData: ServicesSummaryPoint[]
   servicesParticipationData: ServicesSummaryPoint[]
+  financialEntries: FinancialInstallmentRecord[]
+  scheduleDetails: ReportScheduleDetail[]
+  serviceClientSummary: ServiceClientSummaryRecord[]
   clients: Array<{
     id: string
     companyName: string
@@ -201,7 +244,7 @@ export async function getDashboardAnalytics(params?: DashboardAnalyticsParams) {
   return response.data
 }
 
-export async function getReportsAnalytics(params?: { dateFrom?: string; dateTo?: string; teamId?: string; teamIds?: string; employeeId?: string; employeeIds?: string; serviceId?: string; serviceIds?: string }) {
+export async function getReportsAnalytics(params?: { reportType?: "financial" | "services" | "teams" | "employees"; dateFrom?: string; dateTo?: string; teamId?: string; teamIds?: string; employeeId?: string; employeeIds?: string; serviceId?: string; serviceIds?: string }) {
   const response = await api.get<{ success: true; data: ReportsAnalyticsRecord }>("/analytics/reports", { params })
   return response.data
 }

@@ -1086,11 +1086,11 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       {viewMode === "month" ? (
         <div
           className={cn(
-            "grid gap-4 lg:flex lg:flex-1 lg:overflow-hidden lg:transition-[gap] lg:duration-500 lg:ease-[cubic-bezier(.22,1,.36,1)]",
+            "grid gap-4 lg:flex lg:flex-1 lg:overflow-hidden lg:transition-[gap] lg:duration-500 lg:ease-[cubic-bezier(.22,1,.36,1)] [@media(max-height:719px)]:flex-none [@media(max-height:719px)]:overflow-visible",
             dayPanelOpen ? "lg:gap-4" : "lg:gap-0",
           )}
         >
-          <Card className="flex h-full min-h-[420px] min-w-0 flex-col lg:flex-1 lg:overflow-hidden">
+          <Card className="flex h-full min-h-[420px] min-w-0 flex-col lg:flex-1 lg:overflow-hidden [@media(max-height:719px)]:h-auto [@media(max-height:719px)]:overflow-visible">
             <CardHeader className="shrink-0 px-4 py-2">
               <div className="flex items-center justify-between">
                 <Button variant="ghost" size="icon" className="h-10 w-10" onClick={() => navigateMonth(-1)}>
@@ -1158,7 +1158,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
           <Card
             aria-hidden={!dayPanelOpen}
             className={cn(
-              "flex min-w-0 flex-col overflow-hidden lg:shrink-0 lg:transition-[width,opacity,border-color] lg:duration-500 lg:ease-[cubic-bezier(.22,1,.36,1)]",
+              "flex min-w-0 flex-col overflow-hidden lg:shrink-0 lg:transition-[width,opacity,border-color] lg:duration-500 lg:ease-[cubic-bezier(.22,1,.36,1)] [@media(max-height:719px)]:overflow-visible",
               dayPanelOpen
                 ? "lg:w-[380px] lg:opacity-100 xl:w-[420px]"
                 : "lg:pointer-events-none lg:w-0 lg:border-transparent lg:opacity-0",
@@ -1166,7 +1166,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
           >
             <div
               className={cn(
-                "flex h-full min-w-0 flex-col transition-opacity duration-100 ease-out lg:min-w-[380px] xl:min-w-[420px]",
+                "flex h-full min-w-0 flex-col transition-opacity duration-100 ease-out lg:min-w-[380px] xl:min-w-[420px] [@media(max-height:719px)]:h-auto",
                 dayPanelContentVisible ? "opacity-100 delay-75" : "opacity-0",
               )}
             >
@@ -1185,10 +1185,10 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                 </CardTitle>
               </CardHeader>
 
-              <CardContent className="flex-1 px-0 lg:overflow-hidden">
+              <CardContent className="flex-1 px-0 lg:overflow-hidden [@media(max-height:719px)]:overflow-visible">
               {selectedDate ? (
                 selectedDateServices.length > 0 ? (
-                  <ScrollArea className="lg:h-full">
+                  <ScrollArea className="lg:h-full [@media(max-height:719px)]:h-auto">
                     <div className="grid grid-cols-1 gap-3 px-6 py-2 sm:grid-cols-2 lg:grid-cols-1">
                       {selectedDateServices.map((service) => (
                         <Card key={service.id} className="group cursor-pointer border-border/70 transition-colors duration-200 hover:border-primary/30" onClick={() => openSchedule(service)}>
@@ -1322,12 +1322,12 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       ) : (
         <div
           className={cn(
-            "grid gap-4 lg:flex lg:flex-1 lg:overflow-hidden lg:transition-[gap] lg:duration-500 lg:ease-[cubic-bezier(.22,1,.36,1)]",
+            "grid gap-4 lg:flex lg:flex-1 lg:overflow-hidden lg:transition-[gap] lg:duration-500 lg:ease-[cubic-bezier(.22,1,.36,1)] [@media(max-height:719px)]:flex-none [@media(max-height:719px)]:overflow-visible",
             dayPanelOpen ? "lg:gap-4" : "lg:gap-0",
           )}
         >
-          <Card className="flex min-w-0 flex-col lg:flex-1 lg:overflow-hidden">
-            <CardContent className="flex min-h-0 flex-1 flex-col p-0 lg:h-[calc(100vh-280px)]">
+          <Card className="flex min-w-0 flex-col lg:flex-1 lg:overflow-hidden [@media(max-height:719px)]:overflow-visible">
+            <CardContent className="flex min-h-0 flex-1 flex-col p-0 lg:h-[calc(100vh-280px)] [@media(max-height:719px)]:h-auto [@media(max-height:719px)]:min-h-[720px] [@media(max-height:719px)]:flex-none">
               <WeekTimeline
                 events={timelineEvents}
                 currentDate={currentDate}
@@ -1348,7 +1348,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
           <Card
             aria-hidden={!dayPanelOpen}
             className={cn(
-              "flex min-w-0 flex-col overflow-hidden lg:shrink-0 lg:transition-[width,opacity,border-color] lg:duration-500 lg:ease-[cubic-bezier(.22,1,.36,1)]",
+              "flex min-w-0 flex-col overflow-hidden lg:shrink-0 lg:transition-[width,opacity,border-color] lg:duration-500 lg:ease-[cubic-bezier(.22,1,.36,1)] [@media(max-height:719px)]:overflow-visible",
               dayPanelOpen
                 ? "lg:w-[380px] lg:opacity-100 xl:w-[420px]"
                 : "lg:pointer-events-none lg:w-0 lg:border-transparent lg:opacity-0",
@@ -1356,7 +1356,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
           >
             <div
               className={cn(
-                "flex h-full min-w-0 flex-col transition-opacity duration-100 ease-out lg:min-w-[380px] xl:min-w-[420px]",
+                "flex h-full min-w-0 flex-col transition-opacity duration-100 ease-out lg:min-w-[380px] xl:min-w-[420px] [@media(max-height:719px)]:h-auto",
                 dayPanelContentVisible ? "opacity-100 delay-75" : "opacity-0",
               )}
             >
@@ -1375,10 +1375,10 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                 </CardTitle>
               </CardHeader>
 
-              <CardContent className="flex-1 px-0 lg:overflow-hidden">
+              <CardContent className="flex-1 px-0 lg:overflow-hidden [@media(max-height:719px)]:overflow-visible">
               {selectedDate ? (
                 selectedDateServices.length > 0 ? (
-                  <ScrollArea className="lg:h-full">
+                  <ScrollArea className="lg:h-full [@media(max-height:719px)]:h-auto">
                     <div className="grid grid-cols-1 gap-3 px-6 py-2 sm:grid-cols-2 lg:grid-cols-1">
                       {selectedDateServices.map((service) => (
                         <Card key={service.id} className="group cursor-pointer border-border/70 transition-colors duration-200 hover:border-primary/30" onClick={() => openSchedule(service)}>
