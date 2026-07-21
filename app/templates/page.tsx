@@ -1,7 +1,7 @@
 "use client"
 
 import { Suspense, useCallback, useEffect, useRef, useState } from "react"
-import { Award, FileText, Newspaper, Plus, Save } from "lucide-react"
+import { ArrowLeft, Award, FileText, Newspaper, Plus, Save } from "lucide-react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 
 import { Header } from "@/components/dashboard/header"
@@ -155,7 +155,8 @@ function TemplatesPageContent() {
                   className="h-9 w-full text-sm sm:w-auto"
                   onClick={() => editorRef.current?.onCancel()}
                 >
-                  Cancelar
+                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  Voltar
                 </Button>
                 <Button
                   className="h-9 w-full bg-primary text-sm text-primary-foreground hover:bg-primary/90 sm:w-auto"

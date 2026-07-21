@@ -1,6 +1,7 @@
 "use client"
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import type { Worksheet } from "exceljs"
 import { usePathname, useRouter } from "next/navigation"
 import {
   ArrowDown,
@@ -84,6 +85,8 @@ const spreadsheetDecimalFormatter = new Intl.NumberFormat("pt-BR", {
   maximumFractionDigits: 2,
 })
 const excelDecimalNumberFormat = "#,##0.00"
+const depAIExcelHeaderFill = "FFEBF5E5"
+const depAIExcelBorderColor = "FFDDE7D5"
 
 function createConversationId() {
   return `chat-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
@@ -401,6 +404,145 @@ function normalizeSearchText(value: string) {
   return value.toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "")
 }
 
+const spreadsheetHeaderLabels: Record<string, string> = {
+  id: "Código",
+  name: "Nome",
+  servicename: "Serviço",
+  service: "Serviço",
+  servico: "Serviço",
+  services: "Serviços",
+  servicos: "Serviços",
+  description: "Descrição",
+  descricao: "Descrição",
+  basevalue: "Valor base",
+  valorbase: "Valor base",
+  defaultduration: "Duração padrão",
+  duracaopadrao: "Duração padrão",
+  durationvalue: "Duração",
+  duracao: "Duração",
+  durationtype: "Tipo de duração",
+  tipodeduracao: "Tipo de duração",
+  estimatedduration: "Duração estimada",
+  duracaoestimada: "Duração estimada",
+  defaultrecurrence: "Recorrência padrão",
+  recorrenciapadrao: "Recorrência padrão",
+  recurrence: "Recorrência",
+  recorrencia: "Recorrência",
+  status: "Status",
+  contractnumber: "Contrato",
+  contract: "Contrato",
+  contracts: "Contratos",
+  clientname: "Cliente",
+  companyname: "Razão social",
+  client: "Cliente",
+  clients: "Clientes",
+  totalvalue: "Valor total",
+  paidvalue: "Valor pago",
+  receivablevalue: "Valor a receber",
+  pendingvalue: "Valor pendente",
+  latevalue: "Valor em atraso",
+  overduevalue: "Valor vencido",
+  startdate: "Data inicial",
+  enddate: "Data final",
+  createdat: "Data de criação",
+  updatedat: "Última atualização",
+  duedate: "Data de vencimento",
+  paiddate: "Data de pagamento",
+  scheduleddate: "Data do agendamento",
+  scheduledtime: "Horário",
+  paymentmethod: "Forma de pagamento",
+  installment: "Parcela",
+  installments: "Parcelas",
+  paidinstallments: "Parcelas pagas",
+  totalinstallments: "Total de parcelas",
+  isactive: "Status",
+  issystemuser: "Usuário do sistema",
+  isemergency: "Emergência",
+  emergency: "Emergência",
+  employee: "Funcionário",
+  funcionario: "Funcionário",
+  employees: "Funcionários",
+  funcionarios: "Funcionários",
+  team: "Equipe",
+  teams: "Equipes",
+  role: "Função",
+  email: "E-mail",
+  phone: "Telefone",
+  address: "Endereço",
+  endereco: "Endereço",
+  cnpj: "CNPJ",
+  cpf: "CPF",
+  unitcount: "Unidades",
+  units: "Unidades",
+  quantity: "Quantidade",
+  count: "Quantidade",
+}
+
+const spreadsheetValueLabels: Record<string, string> = {
+  active: "Ativo",
+  inactive: "Inativo",
+  enabled: "Ativo",
+  disabled: "Inativo",
+  draft: "Rascunho",
+  running: "Aguardando assinatura",
+  awaiting_signature: "Aguardando assinatura",
+  closed: "Assinado",
+  signed: "Assinado",
+  canceled: "Cancelado",
+  cancelled: "Cancelado",
+  rejected: "Recusado",
+  refused: "Recusado",
+  expired: "Expirado",
+  finalized: "Finalizado",
+  finished: "Finalizado",
+  scheduled: "Agendado",
+  rescheduled: "Reagendado",
+  in_progress: "Em andamento",
+  completed: "Concluído",
+  pending: "Pendente",
+  paid: "Pago",
+  late: "Em atraso",
+  overdue: "Vencido",
+  weekly: "Semanal",
+  biweekly: "Quinzenal",
+  monthly: "Mensal",
+  bimonthly: "Bimestral",
+  quarterly: "Trimestral",
+  semiannual: "Semestral",
+  annual: "Anual",
+  custom: "Personalizada",
+  minutes: "Minutos",
+  minute: "Minuto",
+  hours: "Horas",
+  hour: "Hora",
+  shift: "Turno",
+  days: "Dias",
+  day: "Dia",
+  standard: "Padrão",
+  grouped: "Agrupado",
+  component: "Componente",
+  range: "Faixa",
+  above: "Acima",
+  true: "Sim",
+  false: "Não",
+}
+
+function normalizeSpreadsheetKey(value: string) {
+  return normalizeSearchText(value.replace(/([a-z0-9])([A-Z])/g, "$1 $2"))
+    .replace(/[^a-z0-9]+/g, "")
+}
+
+function localizeSpreadsheetHeader(value: string) {
+  const trimmed = value.trim()
+  return spreadsheetHeaderLabels[normalizeSpreadsheetKey(trimmed)] ?? trimmed
+}
+
+function localizeSpreadsheetValue(value: string) {
+  const trimmed = value.trim()
+  const normalized = normalizeSearchText(trimmed).replace(/[\s-]+/g, "_")
+  return spreadsheetValueLabels[normalized] ?? trimmed
+}
+
 function extractDocumentContent(content: string) {
   const trimmed = content.trim()
   const lines = trimmed.split(/\r?\n/)
@@ -636,72 +778,113 @@ function chartDatasetToRows(chartDataset: ChartDataset) {
   )
 }
 
+function styleDepAIWorksheet(sheet: Worksheet, rows: Array<Array<string | number>>) {
+  const columnCount = Math.max(1, ...rows.map((row) => row.length))
+  sheet.views = [{ state: "frozen", ySplit: 1, showGridLines: false }]
+  sheet.columns = Array.from({ length: columnCount }, (_, columnIndex) => ({
+    width: Math.min(
+      48,
+      Math.max(
+        12,
+        ...rows.map((row) => String(row[columnIndex] ?? "").length + 2),
+      ),
+    ),
+  }))
+
+  if (rows.length > 0) {
+    sheet.autoFilter = {
+      from: { row: 1, column: 1 },
+      to: { row: Math.max(1, rows.length), column: columnCount },
+    }
+  }
+
+  sheet.eachRow((row, rowNumber) => {
+    row.height = rowNumber === 1 ? 24 : 20
+    row.eachCell({ includeEmpty: true }, (cell) => {
+      cell.alignment = { vertical: "middle", wrapText: true }
+      cell.border = { bottom: { style: "thin", color: { argb: depAIExcelBorderColor } } }
+
+      if (rowNumber === 1) {
+        cell.font = { bold: true, color: { argb: "FF111827" } }
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: depAIExcelHeaderFill } }
+      }
+    })
+  })
+}
+
 async function downloadExcelWorkbook(
   table: { headers: string[]; rows: string[][] },
   chartDataset: ChartDataset,
   fileName?: string,
 ) {
-  const XLSX = await import("xlsx")
-  const workbook = XLSX.utils.book_new()
-  const monetaryColumns = getMonetaryColumnIndexes(table.headers)
+  type ExcelJSImportType = typeof import("exceljs")
+  const ExcelJSImport = await import("exceljs")
+  const ExcelJS = ((ExcelJSImport as unknown as { default?: ExcelJSImportType }).default ?? ExcelJSImport) as ExcelJSImportType
+  const workbook = new ExcelJS.Workbook()
+  workbook.creator = "Depclean"
+  workbook.company = "Depclean Soluções Ambientais"
+  workbook.created = new Date()
+  workbook.modified = new Date()
+
+  const localizedHeaders = table.headers.map(localizeSpreadsheetHeader)
+  const monetaryColumns = getMonetaryColumnIndexes(localizedHeaders)
   const normalizedRows = table.rows.map((row) =>
     row.map((cell, columnIndex) => {
-      if (!monetaryColumns.has(columnIndex)) return cell
-      return parseNumericValue(cell) ?? cell
+      const localizedCell = localizeSpreadsheetValue(cell)
+      if (!monetaryColumns.has(columnIndex)) return localizedCell
+      return parseNumericValue(localizedCell) ?? localizedCell
     }),
   )
-  const dataSheet = XLSX.utils.aoa_to_sheet([table.headers, ...normalizedRows])
-
-  dataSheet["!cols"] = table.headers.map((header, columnIndex) => ({
-    wch: Math.min(
-      40,
-      Math.max(
-        12,
-        header.length + 2,
-        ...table.rows.map((row) => {
-          const value = row[columnIndex] ?? ""
-          const displayValue = monetaryColumns.has(columnIndex) ? formatSpreadsheetNumber(value) : value
-          return displayValue.length + 2
-        }),
-      ),
-    ),
-  }))
+  const dataRows = [localizedHeaders, ...normalizedRows]
+  const dataSheet = workbook.addWorksheet("Dados")
+  dataSheet.addRows(dataRows)
+  styleDepAIWorksheet(dataSheet, dataRows)
 
   monetaryColumns.forEach((columnIndex) => {
     normalizedRows.forEach((_row, rowIndex) => {
-      const cell = dataSheet[XLSX.utils.encode_cell({ r: rowIndex + 1, c: columnIndex })]
-      if (cell?.t === "n") cell.z = excelDecimalNumberFormat
+      const cell = dataSheet.getCell(rowIndex + 2, columnIndex + 1)
+      if (typeof cell.value === "number") cell.numFmt = excelDecimalNumberFormat
     })
   })
 
-  XLSX.utils.book_append_sheet(workbook, dataSheet, "Dados")
-
   const chartRows = chartDatasetToRows(chartDataset)
   if (chartRows.length > 0) {
-    const chartSheet = XLSX.utils.aoa_to_sheet([["Série", "Item", "Valor", "Barra visual"], ...chartRows])
-    const monetarySeriesIndexes = getMonetaryColumnIndexes(chartDataset.series)
+    const localizedSeries = chartDataset.series.map(localizeSpreadsheetHeader)
+    const localizedChartRows = chartRows.map((row) => [
+      localizeSpreadsheetHeader(String(row[0] ?? "")),
+      localizeSpreadsheetValue(String(row[1] ?? "")),
+      row[2],
+      row[3],
+    ])
+    const chartSheetRows = [["Série", "Item", "Valor", "Barra visual"], ...localizedChartRows]
+    const chartSheet = workbook.addWorksheet("Gráficos")
+    chartSheet.addRows(chartSheetRows)
+    styleDepAIWorksheet(chartSheet, chartSheetRows)
+    const monetarySeriesIndexes = getMonetaryColumnIndexes(localizedSeries)
     const monetarySeries = new Set(
-      chartDataset.series.filter((_series, index) => monetarySeriesIndexes.has(index)),
+      localizedSeries.filter((_series, index) => monetarySeriesIndexes.has(index)),
     )
 
-    chartRows.forEach((row, rowIndex) => {
+    localizedChartRows.forEach((row, rowIndex) => {
       if (!monetarySeries.has(String(row[0] ?? ""))) return
-      const valueCell = chartSheet[XLSX.utils.encode_cell({ r: rowIndex + 1, c: 2 })]
-      if (valueCell?.t === "n") valueCell.z = excelDecimalNumberFormat
+      const valueCell = chartSheet.getCell(rowIndex + 2, 3)
+      if (typeof valueCell.value === "number") valueCell.numFmt = excelDecimalNumberFormat
     })
-    XLSX.utils.book_append_sheet(workbook, chartSheet, "Gráficos")
   }
 
-  const summarySheet = XLSX.utils.aoa_to_sheet([
+  const summaryRows = [
+    ["Informação", "Detalhe"],
     ["Arquivo", normalizeExcelFileName(fileName)],
     ["Gerado em", new Date().toLocaleString("pt-BR")],
     ["Origem", "DepAI"],
     ["Observação", "A aba Dados contém a tabela principal. A aba Gráficos contém os dados prontos para visualização e conferência."],
-  ])
-  XLSX.utils.book_append_sheet(workbook, summarySheet, "Resumo")
+  ]
+  const summarySheet = workbook.addWorksheet("Resumo")
+  summarySheet.addRows(summaryRows)
+  styleDepAIWorksheet(summarySheet, summaryRows)
 
-  const output = XLSX.write(workbook, { bookType: "xlsx", type: "array" })
-  downloadBlob(output, normalizeExcelFileName(fileName), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+  const output = await workbook.xlsx.writeBuffer()
+  downloadBlob(output as BlobPart, normalizeExcelFileName(fileName), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 }
 
 async function downloadMarkdownPdf(content: string, fileName: string) {
