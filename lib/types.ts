@@ -102,6 +102,7 @@ export interface ServiceType {
   clauses: string[] // Cláusulas do contrato
   defaultInformativeTemplateId?: string
   defaultRecurrence: RecurrenceType
+  dailyScheduleLimit?: number | null
   recurrenceRules: RecurrenceRule[] // Regras de recorrência por nº de unidades (ordenadas por maxUnits)
   defaultTeamIds: string[] // Equipes responsáveis
   description?: string

@@ -111,6 +111,37 @@ export async function fetchTemplateBaseBinary(id: string) {
   return response.data
 }
 
+export async function generateScheduleTemplatePreviewPdf(input: {
+  scheduleId: string
+  kind: "informative" | "certificate"
+  templateId?: string
+  certificateValidityMonths?: number
+  file: File
+  watermarkFile?: File | null
+}) {
+  const formData = new FormData()
+  formData.append("file", input.file)
+  if (input.watermarkFile) {
+    formData.append("watermark", input.watermarkFile)
+  }
+
+  const response = await api.post<Blob>(`/schedules/${input.scheduleId}/template-preview`, formData, {
+    params: {
+      kind: input.kind,
+      templateId: input.templateId || undefined,
+      certificateValidityMonths: input.certificateValidityMonths,
+    },
+    headers: {
+      "Content-Type": "multipart/form-data",
+    },
+    responseType: "blob",
+  })
+
+  const disposition = String(response.headers["content-disposition"] ?? "")
+  const fileName = disposition.match(/filename="?([^";]+)"?/i)?.[1] || `teste-${input.kind}.pdf`
+  return new File([response.data], fileName, { type: "application/pdf" })
+}
+
 export async function downloadTemplateBaseFile(id: string, fileName?: string) {
   const response = await api.get<BlobPart>(`/templates/${id}/base-file`, {
     responseType: "blob",

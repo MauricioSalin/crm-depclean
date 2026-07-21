@@ -71,6 +71,8 @@ import {
   X,
   ArrowLeft,
   CheckCircle2,
+  AlertCircle,
+  RefreshCw,
   Upload,
   Download,
   Mail,
@@ -114,6 +116,12 @@ const formatCurrency = (value: number) =>
 
 const formatDate = (value: Date | string) =>
   formatCivilDate(value)
+
+const createDefaultContractRecurrenceRules = (): RecurrenceRule[] => [
+  { type: "range", minUnits: 1, maxUnits: 200, recurrence: "semiannual" },
+  { type: "range", minUnits: 200, maxUnits: 300, recurrence: "quarterly" },
+  { type: "above", minUnits: 300, maxUnits: Infinity, recurrence: "monthly" },
+]
 
 const formatMaybeDate = (value?: Date | string) => {
   if (!value) return ""
@@ -365,14 +373,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
 
   // Contract-level recurrence rules
   const [contractRecurrenceRules, setContractRecurrenceRules] = useState<RecurrenceRule[]>(
-    (contract as any)?.recurrenceRules ?? [
-      { type: "range", minUnits: 1, maxUnits: 100, recurrence: "semiannual" as RecurrenceType },
-      { type: "range", minUnits: 101, maxUnits: 200, recurrence: "quarterly" as RecurrenceType },
-      { type: "above", minUnits: 200, maxUnits: Infinity, recurrence: "monthly" as RecurrenceType },
-    ]
-  )
-  const [contractRecurrence, setContractRecurrence] = useState<string>(
-    (contract as any)?.recurrence || "semiannual"
+    (contract as any)?.recurrenceRules ?? createDefaultContractRecurrenceRules()
   )
   const [addRulePopoverOpen, setAddRulePopoverOpen] = useState(false)
 
@@ -481,13 +482,8 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
             maxUnits: rule.maxUnits,
             recurrence: rule.recurrence as RecurrenceType,
           }))
-        : [
-            { type: "range", minUnits: 1, maxUnits: 100, recurrence: "semiannual" },
-            { type: "range", minUnits: 101, maxUnits: 200, recurrence: "quarterly" },
-            { type: "above", minUnits: 200, maxUnits: Infinity, recurrence: "monthly" },
-          ],
+        : createDefaultContractRecurrenceRules(),
     )
-    setContractRecurrence(contract.recurrence || "semiannual")
   }, [contract])
 
   useEffect(() => {
@@ -539,14 +535,6 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
     }
   }, [createAutomatedSchedules, firstVisitDate, startDate])
 
-  // Total de unidades das filiais selecionadas (para regras de recorrência)
-  const selectedTotalUnitCount = useMemo(() => {
-    if (!selectedClient?.units?.length || selectedUnitIds.length === 0) return 0
-    return selectedClient.units
-      .filter(u => selectedUnitIds.includes(u.id))
-      .reduce((sum, u) => sum + (u.unitCount ?? 0), 0)
-  }, [selectedClient?.units, selectedUnitIds])
-
   const selectedUnitsForDraft = useMemo(() => {
     const units = selectedClient?.units ?? []
     if (units.length === 0) return []
@@ -566,22 +554,6 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
       setSelectedUnitIds(selectedClient.units.map(u => u.id))
     }
   }, [selectedClientId])
-
-  // Re-apply contract recurrence when selected unit count or rules change
-  useEffect(() => {
-    if (selectedTotalUnitCount === 0 || contractRecurrenceRules.length === 0) return
-    for (const rule of contractRecurrenceRules) {
-      if (rule.type === "range" && selectedTotalUnitCount >= rule.minUnits && selectedTotalUnitCount <= rule.maxUnits) {
-        setContractRecurrence(rule.recurrence)
-        return
-      }
-      if (rule.type === "above" && selectedTotalUnitCount > rule.minUnits) {
-        setContractRecurrence(rule.recurrence)
-        return
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTotalUnitCount, contractRecurrenceRules])
 
   const getRecurrenceLabel = (recurrence: string) => {
     const labels: Record<string, string> = {
@@ -682,7 +654,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
     startDate,
     paymentDay: dueDay,
     installmentsCount,
-    recurrence: services.find((service) => service.serviceTypeId)?.recurrence ?? contractRecurrence,
+    recurrence: services.find((service) => service.serviceTypeId)?.recurrence ?? "monthly",
     recurrenceRules: contractRecurrenceRules.map((rule) => ({
       type: rule.type,
       minUnits: Number(rule.minUnits),
@@ -741,11 +713,24 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
     return {
       client: {
         address: formatAddress(selectedUnit?.address),
+        assessor: {
+          cpf: formatCPF(selectedClient.assessor?.cpf ?? ""),
+          email: selectedClient.assessor?.email ?? "",
+          name: selectedClient.assessor?.name ?? "",
+          phone: selectedClient.assessor?.phone ?? "",
+        },
         cnpj: formatCNPJ(selectedClient.cnpj),
         companyName: selectedClient.companyName,
         email: selectedClient.email,
         phone: selectedClient.phone,
+        responsibleCpf: formatCPF(selectedClient.responsibleCpf ?? ""),
         responsibleName: selectedClient.responsibleName,
+        syndic: {
+          cpf: formatCPF(selectedClient.syndic?.cpf ?? ""),
+          email: selectedClient.syndic?.email ?? "",
+          name: selectedClient.syndic?.name ?? "",
+          phone: selectedClient.syndic?.phone ?? "",
+        },
       },
       contractor: {
         address: formatAddress(organizationSettings?.address),
@@ -779,7 +764,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
         remainingInstallmentsCount: String(hasDownPayment ? remainingInstallmentsCount : 0),
         number: formatContractNumber(draftPreview.contractNumber),
         paymentDay: String(dueDay).padStart(2, "0"),
-        recurrence: getRecurrenceLabel(contractRecurrence),
+        recurrence: getRecurrenceLabel(services.find((service) => service.serviceTypeId)?.recurrence ?? "monthly"),
         recurrenceTable: buildRecurrenceTableHtml(),
         startDate: formatMaybeDate(startDate),
         startDateLong: formatLongDate(startDate),
@@ -814,7 +799,6 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
       },
     }
   }, [
-    contractRecurrence,
     contractRecurrenceRules,
     draftMeta,
     draftPreview,
@@ -1151,6 +1135,17 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
       return
     }
 
+    const invalidRecurrenceRuleIndex = contractRecurrenceRules.findIndex((rule) => {
+      const hasValidMinimum = Number.isInteger(rule.minUnits) && rule.minUnits >= 1
+      const hasValidMaximum = rule.type === "above"
+        || (Number.isInteger(rule.maxUnits) && rule.maxUnits >= rule.minUnits)
+      return !hasValidMinimum || !hasValidMaximum || !rule.recurrence
+    })
+    if (invalidRecurrenceRuleIndex >= 0) {
+      toast.error(`Revise os limites da regra de recorrência ${invalidRecurrenceRuleIndex + 1}.`)
+      return
+    }
+
     const payload = buildContractPayload()
 
     if (isEditing) {
@@ -1402,10 +1397,19 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
     return (
       <Card className="p-4 sm:p-8">
         <div className="flex flex-col items-center text-center max-w-lg mx-auto">
-          <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center">
-            <CheckCircle2 className="w-6 h-6 text-green-600" />
+          <div className={cn(
+            "flex h-12 w-12 items-center justify-center rounded-full",
+            createdContractSendError ? "bg-destructive/10" : "bg-green-500/10",
+          )}>
+            {createdContractSendError ? (
+              <AlertCircle className="h-6 w-6 text-destructive" />
+            ) : (
+              <CheckCircle2 className="h-6 w-6 text-green-600" />
+            )}
           </div>
-          <h3 className="text-lg font-semibold mt-4">Contrato criado</h3>
+          <h3 className="mt-4 text-lg font-semibold">
+            {createdContractSendError ? "Contrato salvo, envio pendente" : "Contrato criado"}
+          </h3>
           <p className="text-sm text-muted-foreground mt-1">
             {createdContractSendError ? (
               <>
@@ -1789,6 +1793,139 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
             <span>1ª parcela: <strong className="text-foreground">{formatCivilDate(firstInstallmentDueDate)}</strong></span>
           </div>
         )}
+      </Card>
+
+      {/* Contract-level recurrence */}
+      <Card className="p-4 sm:p-6">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <h3 className="flex items-center gap-2 font-semibold">
+              <RefreshCw className="h-5 w-5 text-primary" />
+              Recorrência das visitas
+            </h3>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Defina a frequência conforme o número de unidades vinculadas ao contrato.
+            </p>
+          </div>
+
+          <Popover open={addRulePopoverOpen} onOpenChange={setAddRulePopoverOpen}>
+            <PopoverTrigger asChild>
+              <Button type="button" variant="outline" size="sm" className="shrink-0">
+                <Plus className="mr-2 h-4 w-4" />
+                Adicionar regra
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-52 p-1" align="end">
+              <button
+                type="button"
+                className="w-full rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-muted"
+                onClick={() => addContractRule("range")}
+              >
+                <span className="block font-medium">Intervalo</span>
+                <span className="block text-xs text-muted-foreground">De um limite até outro</span>
+              </button>
+              <button
+                type="button"
+                className="w-full rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-muted"
+                onClick={() => addContractRule("above")}
+              >
+                <span className="block font-medium">Acima de</span>
+                <span className="block text-xs text-muted-foreground">Acima de um limite</span>
+              </button>
+            </PopoverContent>
+          </Popover>
+        </div>
+
+        <div className="overflow-x-auto rounded-md border">
+          <Table className="min-w-[680px]">
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="w-[130px]">Tipo</TableHead>
+                <TableHead>Condição</TableHead>
+                <TableHead className="w-[190px]">Recorrência</TableHead>
+                <TableHead className="w-[72px] text-center">Ações</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {contractRecurrenceRules.map((rule, ruleIndex) => (
+                  <TableRow key={`${rule.type}-${ruleIndex}`}>
+                    <TableCell>
+                      <Badge variant="outline" className="whitespace-nowrap">
+                        {rule.type === "range" ? "Intervalo" : "Acima de"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        {rule.type === "range" ? (
+                          <>
+                            <Input
+                              type="number"
+                              aria-label="Quantidade inicial de unidades"
+                              className="h-9 w-24"
+                              min={1}
+                              value={rule.minUnits}
+                              onChange={(event) => updateContractRule(ruleIndex, "minUnits", Math.max(1, Number(event.target.value) || 1))}
+                            />
+                            <span className="text-sm text-muted-foreground">a</span>
+                            <Input
+                              type="number"
+                              aria-label="Quantidade final de unidades"
+                              className="h-9 w-24"
+                              min={1}
+                              value={rule.maxUnits}
+                              onChange={(event) => updateContractRule(ruleIndex, "maxUnits", Math.max(1, Number(event.target.value) || 1))}
+                            />
+                          </>
+                        ) : (
+                          <Input
+                            type="number"
+                            aria-label="Quantidade mínima de unidades"
+                            className="h-9 w-24"
+                            min={1}
+                            value={rule.minUnits}
+                            onChange={(event) => updateContractRule(ruleIndex, "minUnits", Math.max(1, Number(event.target.value) || 1))}
+                          />
+                        )}
+                        <span className="whitespace-nowrap text-sm text-muted-foreground">unidades</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Select
+                        value={rule.recurrence}
+                        onValueChange={(value) => updateContractRule(ruleIndex, "recurrence", value)}
+                      >
+                        <SelectTrigger className="h-9 w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="weekly">Semanal</SelectItem>
+                          <SelectItem value="biweekly">Quinzenal</SelectItem>
+                          <SelectItem value="monthly">Mensal</SelectItem>
+                          <SelectItem value="bimonthly">Bimestral</SelectItem>
+                          <SelectItem value="quarterly">Trimestral</SelectItem>
+                          <SelectItem value="semiannual">Semestral</SelectItem>
+                          <SelectItem value="annual">Anual</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        title="Remover regra"
+                        aria-label="Remover regra"
+                        onClick={() => removeContractRule(ruleIndex)}
+                        disabled={contractRecurrenceRules.length === 1}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       </Card>
 
       {/* Services */}

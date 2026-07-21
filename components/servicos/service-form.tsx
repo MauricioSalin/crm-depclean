@@ -47,6 +47,7 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
     defaultDuration: 1,
     durationType: "hours" as "hours" | "shift" | "days",
     defaultRecurrence: "monthly",
+    dailyScheduleLimit: "unlimited",
     defaultInformativeTemplateId: "",
     defaultCertificateTemplateId: "",
     autoSendInformative: false,
@@ -105,6 +106,7 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
       defaultDuration: service.defaultDuration,
       durationType: service.durationType,
       defaultRecurrence: service.defaultRecurrence,
+      dailyScheduleLimit: service.dailyScheduleLimit ? String(service.dailyScheduleLimit) : "unlimited",
       defaultInformativeTemplateId,
       defaultCertificateTemplateId,
       autoSendInformative: Boolean(defaultInformativeTemplateId) || service.autoSendInformative === true,
@@ -146,6 +148,7 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
         defaultDuration: Number(formData.defaultDuration),
         durationType: formData.durationType,
         defaultRecurrence: formData.defaultRecurrence,
+        dailyScheduleLimit: formData.dailyScheduleLimit === "unlimited" ? null : Number(formData.dailyScheduleLimit),
         defaultInformativeTemplateId: formData.autoSendInformative ? formData.defaultInformativeTemplateId : "",
         defaultCertificateTemplateId: formData.generateCertificateRequest ? formData.defaultCertificateTemplateId : "",
         autoSendInformative: formData.autoSendInformative,
@@ -256,7 +259,7 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
           <h3 className="text-lg font-semibold">Duração</h3>
         </div>
 
-        <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-[minmax(0,180px)_minmax(0,120px)] lg:grid-cols-[180px_120px_180px]">
+        <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-[180px_120px_180px_180px]">
           <div className="space-y-2">
             <Label htmlFor="durationType">Tipo de Duração</Label>
             <Select
@@ -290,7 +293,7 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
             />
           </div>
 
-          <div className="space-y-2 sm:col-span-2 lg:col-span-1">
+          <div className="space-y-2">
             <Label htmlFor="recurrence">Recorrência Padrão</Label>
             <Select
               value={formData.defaultRecurrence}
@@ -308,6 +311,24 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
                 <SelectItem value="semiannual">Semestral</SelectItem>
                 <SelectItem value="annual">Anual</SelectItem>
                 <SelectItem value="custom">Personalizada</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="dailyScheduleLimit">Limite de serviços no dia</Label>
+            <Select
+              value={formData.dailyScheduleLimit}
+              onValueChange={(value) => setFormData((current) => ({ ...current, dailyScheduleLimit: value }))}
+            >
+              <SelectTrigger id="dailyScheduleLimit" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="unlimited">Ilimitado</SelectItem>
+                {[1, 2, 3, 4, 5].map((limit) => (
+                  <SelectItem key={limit} value={String(limit)}>{limit} por dia</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>

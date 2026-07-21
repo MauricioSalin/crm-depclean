@@ -41,6 +41,7 @@ import {
   createTemplate,
   deleteTemplate,
   duplicateTemplate,
+  generateScheduleTemplatePreviewPdf,
   getTemplateById,
   listTemplates,
   type TemplateFormat,
@@ -375,9 +376,9 @@ function buildRecurrenceTableHtml(clientTypeName: string, rules: ContractRecord[
   const rows = sortedRules.length
     ? sortedRules
     : [
-        { type: "range" as const, minUnits: 1, maxUnits: 100, recurrence: "semiannual" },
-        { type: "range" as const, minUnits: 101, maxUnits: 200, recurrence: "quarterly" },
-        { type: "above" as const, minUnits: 200, maxUnits: 999999, recurrence: "monthly" },
+        { type: "range" as const, minUnits: 1, maxUnits: 200, recurrence: "semiannual" },
+        { type: "range" as const, minUnits: 200, maxUnits: 300, recurrence: "quarterly" },
+        { type: "above" as const, minUnits: 300, maxUnits: 999999, recurrence: "monthly" },
       ]
 
   let previousRangeMax = 0
@@ -1210,11 +1211,46 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
   async function handleGeneratePreviewPdf() {
     try {
       setIsGeneratingPdf(true)
-      const file = await docxEditorRef.current?.generatePreviewPdf({ previewWatermark: true })
+      let file: File | undefined
+
+      if (kind === "contract") {
+        file = await docxEditorRef.current?.generatePreviewPdf({ previewWatermark: true })
+      } else {
+        if (!previewDocumentId) {
+          throw new Error("Selecione um cliente e um agendamento para gerar o PDF exatamente como ele será enviado.")
+        }
+
+        const docxFile = await docxEditorRef.current?.saveToFile()
+        if (!docxFile) {
+          throw new Error("O documento ainda não está pronto para gerar a prévia.")
+        }
+
+        file = await generateScheduleTemplatePreviewPdf({
+          scheduleId: previewDocumentId,
+          kind,
+          templateId: editingTemplate?.id,
+          certificateValidityMonths: formData.certificateValidityMonths,
+          file: docxFile,
+          watermarkFile: selectedWatermarkFile,
+        })
+
+        const objectUrl = window.URL.createObjectURL(file)
+        const anchor = document.createElement("a")
+        anchor.href = objectUrl
+        anchor.download = file.name
+        document.body.appendChild(anchor)
+        anchor.click()
+        anchor.remove()
+        window.URL.revokeObjectURL(objectUrl)
+      }
 
       notify({
         title: "PDF gerado para teste",
-        description: file ? `Arquivo ${file.name} baixado com a prévia atual.` : "A prévia ainda não carregou.",
+        description: file
+          ? kind === "contract"
+            ? `Arquivo ${file.name} baixado com a prévia atual.`
+            : `Arquivo ${file.name} baixado com o mesmo motor usado no envio.`
+          : "A prévia ainda não carregou.",
       })
     } catch (error) {
       notify({
