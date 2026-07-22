@@ -1196,10 +1196,10 @@ export function ConfiguracoesContent() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 [@media(max-height:719px)]:space-y-4">
       {renderActiveSectionFilters(`${mobileFiltersOpen ? "flex" : "hidden"} flex-col gap-3 overflow-visible p-1 sm:hidden`)}
 
-      <div className="flex gap-2 overflow-x-auto pb-2 sm:hidden">
+      <div className="flex gap-2 overflow-x-auto pb-2 sm:hidden [@media(max-height:719px)]:flex [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {settingsCards.map((card) => (
           <button
             key={card.id}
@@ -1215,7 +1215,7 @@ export function ConfiguracoesContent() {
         ))}
       </div>
 
-      <div className="hidden gap-4 sm:mb-6 sm:grid sm:grid-cols-2 lg:grid-cols-5">
+      <div className="hidden gap-4 sm:mb-6 sm:grid sm:grid-cols-2 lg:grid-cols-5 [@media(max-height:719px)]:hidden">
         {settingsCards.map((card) => (
           <Card
             key={card.id}
@@ -2007,7 +2007,8 @@ export function ConfiguracoesContent() {
                       <div className="space-y-2">
                         <Label>Primeiro Alerta (dias antes)</Label>
                         <Input
-                          type="number"
+                          type="tel"
+                          inputMode="numeric"
                           min={0}
                           value={ruleForm.contractExpirationAlertDays[0] ?? 0}
                           onChange={(event) => {
@@ -2021,7 +2022,8 @@ export function ConfiguracoesContent() {
                       <div className="space-y-2">
                         <Label>Segundo Alerta (dias antes)</Label>
                         <Input
-                          type="number"
+                          type="tel"
+                          inputMode="numeric"
                           min={0}
                           value={ruleForm.contractExpirationAlertDays[1] ?? 0}
                           onChange={(event) => {
@@ -2040,7 +2042,7 @@ export function ConfiguracoesContent() {
                     <Label htmlFor="rule-days">
                       {ruleForm.type === "payment_overdue" ? "Intervalo de cobrança (dias)" : "Dias de antecedência"}
                     </Label>
-                    <Input id="rule-days" type="number" min={ruleForm.type === "payment_overdue" ? 1 : 0} value={ruleForm.daysBefore} onChange={(event) => setRuleForm({ ...ruleForm, daysBefore: Number(event.target.value) })} />
+                    <Input id="rule-days" type="tel" inputMode="numeric" min={ruleForm.type === "payment_overdue" ? 1 : 0} value={ruleForm.daysBefore} onChange={(event) => setRuleForm({ ...ruleForm, daysBefore: Number(event.target.value) })} />
                     {ruleForm.type === "payment_overdue" ? (
                       <p className="text-xs text-muted-foreground">A cobrança só é enviada quando a parcela for marcada manualmente como vencida.</p>
                     ) : null}

@@ -680,7 +680,8 @@ export function SchedulingFormDialog({
             <div className="space-y-2">
               <Label>Duração</Label>
               <Input
-                type="number"
+                type="tel"
+                inputMode="decimal"
                 value={formData.duration}
                 onChange={(e) => setFormData({ ...formData, duration: Number(e.target.value) })}
                 min={1}

@@ -72,6 +72,7 @@ import { listTeams } from "@/lib/api/teams"
 import { listTemplates, type TemplateRecord } from "@/lib/api/templates"
 import {
   getClicksignContractStatusLabel,
+  isClosedClicksignContractStatus,
   isOperationallyActiveContract,
   normalizeClicksignContractStatus,
 } from "@/lib/contract-status"
@@ -584,7 +585,9 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
       const operationalDifference = Number(isOperationallyActiveContract(right)) - Number(isOperationallyActiveContract(left))
       if (operationalDifference !== 0) return operationalDifference
 
-      return new Date(right.startDate).getTime() - new Date(left.startDate).getTime()
+      const rightReferenceDate = right.startDate ?? right.creationDate ?? right.createdAt
+      const leftReferenceDate = left.startDate ?? left.creationDate ?? left.createdAt
+      return new Date(rightReferenceDate).getTime() - new Date(leftReferenceDate).getTime()
     })[0]
   }, [clientContracts])
   const clientServices = useMemo(
@@ -1299,16 +1302,18 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                         </div>
                       </TableCell>
                       <TableCell className="hidden text-sm lg:table-cell">
-                        <div className="space-y-0.5">
-                          <div className="flex items-center gap-1 text-muted-foreground">
-                            <Calendar className="h-3 w-3" />
-                            <span>{formatDate(contract.startDate)}</span>
+                        {isClosedClicksignContractStatus(contract.status) && contract.startDate && contract.endDate ? (
+                          <div className="space-y-0.5">
+                            <div className="flex items-center gap-1 text-muted-foreground">
+                              <Calendar className="h-3 w-3" />
+                              <span>{formatDate(contract.startDate)}</span>
+                            </div>
+                            <div className="flex items-center gap-1 text-muted-foreground">
+                              <CalendarCheck className="h-3 w-3" />
+                              <span>{formatDate(contract.endDate)}</span>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-1 text-muted-foreground">
-                            <CalendarCheck className="h-3 w-3" />
-                            <span>{formatDate(contract.endDate)}</span>
-                          </div>
-                        </div>
+                        ) : null}
                       </TableCell>
                       <TableCell>{getClientContractStatusBadge(contract.status)}</TableCell>
                       <TableCell className="text-right">

@@ -1336,7 +1336,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
         <Tabs
           value={editorTab}
           onValueChange={(value) => handleEditorTabChange(value as TemplateEditorTab)}
-          className="flex h-[calc(100dvh-140px)] min-h-[820px] min-w-0 flex-col"
+          className="flex h-[calc(100dvh-140px)] min-h-[860px] min-w-0 flex-col"
         >
           <TabsList className="mb-3 shrink-0">
             <TabsTrigger value="editor" className="gap-1.5">
@@ -1373,7 +1373,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
 
         </Tabs>
 
-        <Card className="h-[calc(100dvh-140px)] min-h-[820px] min-w-0 overflow-hidden xl:sticky xl:top-4 xl:mt-[55px]">
+        <Card className="h-[calc(100dvh-140px)] min-h-[860px] min-w-0 overflow-hidden xl:sticky xl:top-4 xl:mt-[55px]">
           <CardContent className="flex h-full min-h-0 min-w-0 flex-col gap-4 overflow-hidden px-0 pt-4">
             {editorTab === "preview" ? (
               <>
@@ -1542,7 +1542,8 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
                   <Label htmlFor="tpl-informative-days">Enviar informativo quantos dias antes?</Label>
                   <Input
                     id="tpl-informative-days"
-                    type="number"
+                    type="tel"
+                    inputMode="numeric"
                     min={0}
                     value={formData.informativeSendDaysBefore}
                     onChange={(event) =>
@@ -1560,7 +1561,8 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
                   <Label htmlFor="tpl-certificate-validity">Validade do certificado (meses)</Label>
                   <Input
                     id="tpl-certificate-validity"
-                    type="number"
+                    type="tel"
+                    inputMode="numeric"
                     min={1}
                     value={formData.certificateValidityMonths}
                     onChange={(event) =>
@@ -1761,7 +1763,8 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
                 <Label htmlFor="import-informative-days">Enviar informativo quantos dias antes?</Label>
                 <Input
                   id="import-informative-days"
-                  type="number"
+                  type="tel"
+                  inputMode="numeric"
                   min={0}
                   value={formData.informativeSendDaysBefore}
                   onChange={(event) =>
@@ -1779,7 +1782,8 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
                 <Label htmlFor="import-certificate-validity">Validade do certificado (meses)</Label>
                 <Input
                   id="import-certificate-validity"
-                  type="number"
+                  type="tel"
+                  inputMode="numeric"
                   min={1}
                   value={formData.certificateValidityMonths}
                   onChange={(event) =>

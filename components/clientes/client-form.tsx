@@ -811,7 +811,8 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
               <Label htmlFor="primaryUnitCount">Unidades *</Label>
               <Input
                 id="primaryUnitCount"
-                type="number"
+                type="tel"
+                inputMode="numeric"
                 value={units[0]?.unitCount || ""}
                 onChange={(e) => handleUnitChange(0, "unitCount", e.target.value)}
                 placeholder="Número de unidades"
@@ -1188,7 +1189,8 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
                     <div className="space-y-2">
                       <Label>Unidades *</Label>
                       <Input
-                        type="number"
+                        type="tel"
+                        inputMode="numeric"
                         value={unit.unitCount || ""}
                         onChange={(e) => handleUnitChange(index, "unitCount", e.target.value)}
                         placeholder="Número de unidades"

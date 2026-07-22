@@ -36,9 +36,9 @@ export function isClosedClicksignContractStatus(value: unknown) {
 export function getClicksignContractStatusLabel(value: unknown) {
   switch (normalizeClicksignContractStatus(value)) {
     case "running":
-      return "Em processo"
+      return "Aguardando assinatura"
     case "closed":
-      return "Finalizado"
+      return "Assinado"
     case "canceled":
       return "Cancelado"
     default:

@@ -72,8 +72,6 @@ import {
   ChevronsUpDown,
   X,
   ArrowLeft,
-  CheckCircle2,
-  AlertCircle,
   RefreshCw,
   Upload,
   Download,
@@ -94,7 +92,6 @@ import {
   deleteContract,
   getContractById,
   previewContract,
-  sendContractToClicksign,
   updateContract,
   uploadContractDocument,
   type ContractPayload,
@@ -115,6 +112,13 @@ import {
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value)
+
+const normalizeClientSearch = (value: string) =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim()
 
 const formatDate = (value: Date | string) =>
   formatCivilDate(value)
@@ -297,7 +301,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
   const contract = contractQuery.data?.data
   const client = contract ? clients.find((c) => c.id === contract.clientId) : undefined
 
-  type CreateStep = "form" | "editor" | "done"
+  type CreateStep = "form" | "editor"
 
   const [step, setStep] = useState<CreateStep>("form")
   const [confirmCreateOpen, setConfirmCreateOpen] = useState(false)
@@ -312,8 +316,6 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
     totalValue: number
     recurrence: string
   } | null>(null)
-  const [createdContractId, setCreatedContractId] = useState<string | null>(null)
-  const [createdContractSendError, setCreatedContractSendError] = useState("")
   const docxEditorRef = useRef<DocxTemplateEditorRef | null>(null)
   const importInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -333,11 +335,18 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
   const [selectedClientId, setSelectedClientId] = useState(contract?.clientId || "")
   const [selectedTemplateId, setSelectedTemplateId] = useState("")
   const [clientPopoverOpen, setClientPopoverOpen] = useState(false)
+  const [clientSearchInput, setClientSearchInput] = useState("")
+  const [clientSearchTerm, setClientSearchTerm] = useState("")
+  const clientListRef = useRef<HTMLDivElement | null>(null)
   const [templatePopoverOpen, setTemplatePopoverOpen] = useState(false)
   const [createAutomatedSchedules, setCreateAutomatedSchedules] = useState(false)
   const [createAutomatedInformatives, setCreateAutomatedInformatives] = useState(false)
   const [startDate, setStartDate] = useState(
-    contract?.startDate ? String(contract.startDate).split("T")[0] : ""
+    contract?.creationDate
+      ? String(contract.creationDate).split("T")[0]
+      : contract?.startDate
+        ? String(contract.startDate).split("T")[0]
+        : ""
   )
   const [firstDueDate, setFirstDueDate] = useState(
     getFirstInstallmentDueDate(contract?.installments)
@@ -430,6 +439,12 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
   const clausesEditingServiceType = clausesEditingService
     ? serviceTypeById.get(clausesEditingService.serviceTypeId) ?? null
     : null
+  const filteredClients = useMemo(() => {
+    const search = normalizeClientSearch(clientSearchTerm)
+    if (!search) return clients
+
+    return clients.filter((item) => normalizeClientSearch(`${item.companyName} ${item.cnpj ?? ""}`).includes(search))
+  }, [clientSearchTerm, clients])
 
   const clearClausesDialogCloseTimeout = () => {
     if (clausesDialogCloseTimeoutRef.current) {
@@ -446,6 +461,15 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
       clausesDialogCloseTimeoutRef.current = null
     }, 220)
   }
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setClientSearchTerm(clientSearchInput), 250)
+    return () => window.clearTimeout(timeout)
+  }, [clientSearchInput])
+
+  useEffect(() => {
+    clientListRef.current?.scrollTo({ top: 0 })
+  }, [clientSearchTerm])
 
   useEffect(() => {
     if (!contract) return
@@ -471,7 +495,13 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
     setSelectedTemplateId(contract.templateId ?? "")
     setCreateAutomatedSchedules(contract.automationCreateSchedules ?? true)
     setCreateAutomatedInformatives(contract.automationCreateInformatives ?? true)
-    setStartDate(contract.startDate ? String(contract.startDate).split("T")[0] : "")
+    setStartDate(
+      contract.creationDate
+        ? String(contract.creationDate).split("T")[0]
+        : contract.startDate
+          ? String(contract.startDate).split("T")[0]
+          : "",
+    )
     setFirstDueDate(getFirstInstallmentDueDate(contract.installments))
     setFirstVisitDate(contract.firstVisitDate ? String(contract.firstVisitDate).split("T")[0] : "")
     setFirstVisitTime(contract.firstVisitTime || "08:00")
@@ -1218,7 +1248,6 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
       const createdAt = new Date()
       setDraftMeta({ contractNumber: preview.data.contractNumber, createdAt })
       setDraftPreview(preview.data)
-      setCreatedContractSendError("")
       setImportedDocxFile(null)
       setEditorView("editor")
       setStep("editor")
@@ -1233,7 +1262,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
 
     finalizeCreateInFlightRef.current = true
     setIsFinalizingCreate(true)
-    const loadingToast = toast.loading("Criando contrato e enviando para assinatura...")
+    const loadingToast = toast.loading("Salvando contrato como rascunho...")
 
     try {
       const editedDocxFile = await docxEditorRef.current?.saveToFile()
@@ -1248,34 +1277,17 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
         },
       )
       await uploadContractDocument(response.data.id, editedDocxFile)
-      setCreatedContractId(response.data.id)
       setDraftMeta((current) =>
         current ?? { contractNumber: response.data.contractNumber, createdAt: new Date(response.data.createdAt) }
       )
-
-      try {
-        await sendContractToClicksign(response.data.id)
-        setCreatedContractSendError("")
-      } catch (sendError) {
-        const message = getApiErrorMessage(sendError, "Não foi possível enviar para assinatura.")
-        setCreatedContractSendError(message)
-        toast.dismiss(loadingToast)
-        toast.error(`Contrato criado, mas o envio ao ClickSign falhou: ${message}`)
-        await queryClient.invalidateQueries({ queryKey: ["contract", response.data.id] })
-        await queryClient.invalidateQueries({ queryKey: ["contracts"] })
-        await queryClient.invalidateQueries({ queryKey: ["contracts", "list"] })
-        setConfirmCreateOpen(false)
-        setStep("done")
-        return
-      }
 
       await queryClient.invalidateQueries({ queryKey: ["contract", response.data.id] })
       await queryClient.invalidateQueries({ queryKey: ["contracts"] })
       await queryClient.invalidateQueries({ queryKey: ["contracts", "list"] })
       setConfirmCreateOpen(false)
-      setStep("done")
       toast.dismiss(loadingToast)
-      toast.success("Contrato criado com sucesso.")
+      toast.success("Contrato salvo como rascunho. Revise os agendamentos antes de enviar ao ClickSign.")
+      router.replace(withReturnTo(`/contratos/${response.data.id}`, formBackHref))
     } catch (error) {
       toast.dismiss(loadingToast)
       toast.error(getApiErrorMessage(error, "Não foi possível criar o contrato."))
@@ -1320,12 +1332,12 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
                 disabled={isFinalizingCreate || createMutation.isPending}
               >
                 <Save className="w-4 h-4 mr-2" />
-                {isFinalizingCreate || createMutation.isPending ? "Criando contrato..." : "Concluir e criar contrato"}
+                {isFinalizingCreate || createMutation.isPending ? "Salvando rascunho..." : "Concluir e salvar rascunho"}
               </Button>
             </div>
           </div>
 
-          <div className="mt-4 h-[calc(100dvh-235px)] min-h-[680px]">
+          <div className="mt-4 h-[calc(100dvh-235px)] min-h-[720px]">
             <DocxTemplateEditor
               ref={docxEditorRef}
               activeTab={editorView}
@@ -1374,10 +1386,10 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
         >
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Tem certeza que deseja criar este contrato?</AlertDialogTitle>
+              <AlertDialogTitle>Salvar este contrato como rascunho?</AlertDialogTitle>
               <AlertDialogDescription>
-                Após assinado no ClickSign, <span className="font-medium text-foreground">não será possível alterá-lo</span>.
-                Revise as cláusulas e os dados antes de continuar.
+                O contrato ainda não será enviado ao ClickSign. No perfil do contrato, você poderá revisar e salvar
+                os agendamentos previstos antes do envio para assinatura.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -1390,7 +1402,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
                 }}
                 className="bg-primary hover:bg-primary/90"
               >
-                {isFinalizingCreate || createMutation.isPending ? "Criando..." : "Criar e enviar para assinatura"}
+                {isFinalizingCreate || createMutation.isPending ? "Salvando..." : "Salvar rascunho"}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -1443,51 +1455,6 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
     )
   }
 
-  if (!isEditing && step === "done") {
-    const contractNumber = draftMeta?.contractNumber ?? createDraftContractNumber()
-    return (
-      <Card className="p-4 sm:p-8">
-        <div className="flex flex-col items-center text-center max-w-lg mx-auto">
-          <div className={cn(
-            "flex h-12 w-12 items-center justify-center rounded-full",
-            createdContractSendError ? "bg-destructive/10" : "bg-green-500/10",
-          )}>
-            {createdContractSendError ? (
-              <AlertCircle className="h-6 w-6 text-destructive" />
-            ) : (
-              <CheckCircle2 className="h-6 w-6 text-green-600" />
-            )}
-          </div>
-          <h3 className="mt-4 text-lg font-semibold">
-            {createdContractSendError ? "Contrato salvo, envio pendente" : "Contrato criado"}
-          </h3>
-          <p className="text-sm text-muted-foreground mt-1">
-            {createdContractSendError ? (
-              <>
-                O contrato <span className="font-medium text-foreground">{formatContractNumber(contractNumber)}</span> foi gerado, mas o envio ao ClickSign falhou: {createdContractSendError}
-              </>
-            ) : (
-              <>
-                O contrato <span className="font-medium text-foreground">{formatContractNumber(contractNumber)}</span> foi gerado e seguirá para assinatura no ClickSign.
-              </>
-            )}
-          </p>
-          <div className="flex flex-col sm:flex-row gap-2 mt-6 w-full justify-center">
-            <Button variant="outline" onClick={() => router.push(formBackHref)} className="w-full sm:w-auto">
-              Voltar para contratos
-            </Button>
-            <Button
-              onClick={() => router.push(createdContractId ? withReturnTo(`/contratos/${createdContractId}`, formBackHref) : formBackHref)}
-              className="w-full sm:w-auto bg-primary hover:bg-primary/90"
-            >
-              Ver contrato
-            </Button>
-          </div>
-        </div>
-      </Card>
-    )
-  }
-
   return (
     <form noValidate onSubmit={handleSubmit} className="space-y-6">
       {/* Client Selection */}
@@ -1499,7 +1466,16 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <div className="space-y-2 md:w-[380px] lg:col-span-2">
             <Label>Selecionar Cliente *</Label>
-            <Popover open={clientPopoverOpen} onOpenChange={setClientPopoverOpen}>
+            <Popover
+              open={clientPopoverOpen}
+              onOpenChange={(nextOpen) => {
+                setClientPopoverOpen(nextOpen)
+                if (!nextOpen) {
+                  setClientSearchInput("")
+                  setClientSearchTerm("")
+                }
+              }}
+            >
               <PopoverTrigger asChild>
                 <Button
                   variant="outline"
@@ -1514,12 +1490,16 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-[min(calc(100vw-2.5rem),440px)] p-0" align="start">
-                <Command>
-                  <CommandInput placeholder="Buscar cliente..." />
-                  <CommandList>
+                <Command shouldFilter={false}>
+                  <CommandInput
+                    placeholder="Buscar cliente..."
+                    value={clientSearchInput}
+                    onValueChange={setClientSearchInput}
+                  />
+                  <CommandList ref={clientListRef}>
                     <CommandEmpty>Nenhum cliente encontrado.</CommandEmpty>
                     <CommandGroup>
-                      {clients.map((c) => {
+                      {filteredClients.map((c) => {
                         const totalUnits = c.units?.reduce((sum, u) => sum + (u.unitCount ?? 0), 0) ?? 0
                         return (
                           <CommandItem
@@ -1825,7 +1805,8 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
           <div className="space-y-2">
             <Label>Nº de parcelas *</Label>
             <Input
-              type="number"
+              type="tel"
+              inputMode="numeric"
               value={installmentsCount}
               onChange={(e) => setInstallmentsCount(Math.max(1, parseInt(e.target.value) || 1))}
               min={1}
@@ -1835,7 +1816,8 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
           <div className="space-y-2">
             <Label>Dia de vencimento *</Label>
             <Input
-              type="number"
+              type="tel"
+              inputMode="numeric"
               value={dueDay}
               onChange={(e) => setDueDay(Math.min(28, Math.max(1, parseInt(e.target.value) || 1)))}
               min={1}
@@ -1919,7 +1901,8 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
                         {rule.type === "range" ? (
                           <>
                             <Input
-                              type="number"
+                              type="tel"
+                              inputMode="numeric"
                               aria-label="Quantidade inicial de unidades"
                               className="h-9 w-24"
                               min={1}
@@ -1928,7 +1911,8 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
                             />
                             <span className="text-sm text-muted-foreground">a</span>
                             <Input
-                              type="number"
+                              type="tel"
+                              inputMode="numeric"
                               aria-label="Quantidade final de unidades"
                               className="h-9 w-24"
                               min={1}
@@ -1938,7 +1922,8 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
                           </>
                         ) : (
                           <Input
-                            type="number"
+                            type="tel"
+                            inputMode="numeric"
                             aria-label="Quantidade mínima de unidades"
                             className="h-9 w-24"
                             min={1}
@@ -2094,7 +2079,8 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
                             </SelectContent>
                           </Select>
                           <Input
-                            type="number"
+                            type="tel"
+                            inputMode="decimal"
                             min={1}
                             className="w-[72px]"
                             value={service.duration}
@@ -2138,32 +2124,19 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
                             </Badge>
                           ))}
                           {serviceTeams.length === 0 && serviceEmployees.length === 0 && (
-                            <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8"
-                                onClick={() => openEditServiceDialog(service.id)}
-                                aria-label="Adicionar equipes e funcionários"
-                                title="Adicionar equipes e funcionários"
-                              >
-                                <Users className="h-4 w-4" />
-                              </Button>
-                              <span>Nenhum</span>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7"
-                                onClick={() => openEditServiceDialog(service.id)}
-                                aria-label="Adicionar equipes e funcionários"
-                                title="Adicionar equipes e funcionários"
-                              >
-                                <Plus className="h-4 w-4" />
-                              </Button>
-                            </div>
+                            <span className="text-sm text-muted-foreground">Nenhum</span>
                           )}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 shrink-0"
+                            onClick={() => openEditServiceDialog(service.id)}
+                            aria-label="Adicionar equipes e funcionários"
+                            title="Adicionar equipes e funcionários"
+                          >
+                            <Plus className="h-4 w-4" />
+                          </Button>
                         </div>
                       </TableCell>
                       <TableCell className="py-3 text-center align-top">
@@ -2180,15 +2153,6 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
                       </TableCell>
                       <TableCell className="py-3 align-top">
                         <div className="flex justify-end gap-1">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => openEditServiceDialog(service.id)}
-                            title="Editar equipes e funcionários"
-                          >
-                            <Users className="w-4 h-4" />
-                          </Button>
                           <Button
                             type="button"
                             variant="ghost"

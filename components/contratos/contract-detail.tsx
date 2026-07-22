@@ -11,6 +11,7 @@ import {
   Building2,
   Calendar,
   CalendarCheck,
+  CalendarClock,
   CheckCircle,
   Clock,
   Download,
@@ -21,6 +22,7 @@ import {
   MapPin,
   MoreHorizontal,
   RefreshCw,
+  Send,
   Wrench,
 } from "lucide-react"
 
@@ -28,6 +30,7 @@ import { AssignmentBadges } from "@/components/ui/assignment-badges"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
 import { DataPagination } from "@/components/ui/data-pagination"
 import {
   DropdownMenu,
@@ -42,9 +45,10 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "@/components/ui/use-toast"
 import { ServiceClausesDialog } from "@/components/servicos/service-clauses-dialog"
+import { ContractSchedulePlanDialog } from "@/components/contratos/contract-schedule-plan-dialog"
 import { buildApiFileUrl } from "@/lib/api/client"
 import { getClientAttachments, getClientById, type ClientAttachmentRecord } from "@/lib/api/clients"
-import { getContractById, remindContractSigner, sendContractToClicksign, syncContractClicksign, updateInstallment, type ContractRecord } from "@/lib/api/contracts"
+import { getContractById, publishContractSchedulePlan, remindContractSigner, sendContractToClicksign, syncContractClicksign, updateInstallment, type ContractRecord } from "@/lib/api/contracts"
 import { listEmployees } from "@/lib/api/employees"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { listSchedules } from "@/lib/api/schedules"
@@ -226,7 +230,14 @@ const normalizeClicksignRole = (role?: string) => String(role ?? "").toLowerCase
 
 const isClicksignClientRole = (role?: string) => {
   const normalizedRole = normalizeClicksignRole(role)
-  return normalizedRole.includes("cliente") || normalizedRole.includes("assessor") || normalizedRole.includes("contractor")
+  return (
+    normalizedRole.includes("cliente") ||
+    normalizedRole.includes("propriet") ||
+    normalizedRole.includes("assessor") ||
+    normalizedRole.includes("síndico") ||
+    normalizedRole.includes("sindico") ||
+    normalizedRole.includes("contractor")
+  )
 }
 
 const isClicksignWitnessRole = (role?: string) => {
@@ -384,6 +395,8 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
   const canManageContractInstallments = useHasAnyPermission(["contracts_edit", "financial_manage"])
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null)
   const [serviceClausesOpen, setServiceClausesOpen] = useState(false)
+  const [schedulePlanOpen, setSchedulePlanOpen] = useState(false)
+  const [schedulePublishConfirmOpen, setSchedulePublishConfirmOpen] = useState(false)
   const serviceClausesCloseTimeoutRef = useRef<number | null>(null)
   const autoSyncedClicksignReferenceRef = useRef<string | null>(null)
   const [schedulePage, setSchedulePage] = useState(1)
@@ -479,9 +492,10 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
   const serviceTypes = servicesQuery.data?.data ?? []
   const teams = teamsQuery.data?.data ?? []
   const employees = employeesQuery.data?.data ?? []
+  const allSchedules = schedulesQuery.data?.data ?? []
   const contractSchedules = useMemo(
-    () => (schedulesQuery.data?.data ?? []).filter((schedule) => schedule.contractId === resolvedContractId),
-    [schedulesQuery.data?.data, resolvedContractId],
+    () => allSchedules.filter((schedule) => schedule.contractId === resolvedContractId),
+    [allSchedules, resolvedContractId],
   )
   const scheduleTotalPages = Math.max(1, Math.ceil(contractSchedules.length / schedulePageSize))
   useEffect(() => {
@@ -670,6 +684,39 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
     onError: clicksignErrorToast,
   })
 
+  const publishSchedulePlanMutation = useMutation({
+    mutationFn: () => {
+      if (!canEditContracts) {
+        throw new Error("Sem permissão para enviar agendamentos.")
+      }
+      return publishContractSchedulePlan(resolvedContractId)
+    },
+    onSuccess: async (result) => {
+      const publication = result.data
+      setSchedulePublishConfirmOpen(false)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["contract", contractId] }),
+        queryClient.invalidateQueries({ queryKey: ["contract", resolvedContractId] }),
+        queryClient.invalidateQueries({ queryKey: ["contracts"] }),
+        queryClient.invalidateQueries({ queryKey: ["contract-schedule-plan", resolvedContractId] }),
+        queryClient.invalidateQueries({ queryKey: ["schedules"] }),
+      ])
+      toast({
+        title: publication.alreadyPublished ? "Agendamentos já enviados" : "Agendamentos enviados",
+        description: publication.alreadyPublished
+          ? "Este plano já estava publicado na agenda. Nenhuma mensagem foi duplicada."
+          : `${publication.count} agendamento(s) foram publicados e os alertas foram disparados.`,
+      })
+    },
+    onError: (error) => {
+      toast({
+        title: "Não foi possível enviar os agendamentos",
+        description: getApiErrorMessage(error, "Revise o plano salvo e tente novamente."),
+        variant: "destructive",
+      })
+    },
+  })
+
   useEffect(() => {
     if (!clicksignReference || !canSyncClicksign) return
     if (autoSyncedClicksignReferenceRef.current === clicksignReference) return
@@ -809,21 +856,62 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                 <Building2 className="h-4 w-4" />
                 <span>{contract.clientCompanyName ?? client?.companyName ?? "Cliente"}</span>
               </Link>
-              <div className="mt-2 space-y-1 text-sm text-muted-foreground">
-                <div className="flex items-center gap-2">
-                  <Calendar className="h-4 w-4" />
-                  <span>{formatDate(contract.startDate)}</span>
+              {isClosedClicksignContractStatus(contract.status) && contract.startDate && contract.endDate ? (
+                <div className="mt-2 space-y-1 text-sm text-muted-foreground">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="h-4 w-4" />
+                    <span>{formatDate(contract.startDate)}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <CalendarCheck className="h-4 w-4" />
+                    <span>{formatDate(contract.endDate)}</span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <CalendarCheck className="h-4 w-4" />
-                  <span>{formatDate(contract.endDate)}</span>
-                </div>
-              </div>
+              ) : null}
             </div>
           </div>
 
-          <div className="flex w-full flex-col gap-3 lg:ml-auto lg:w-[300px] lg:min-w-[300px] lg:self-stretch">
+          <div className="flex w-full flex-col gap-3 lg:ml-auto lg:w-[430px] lg:min-w-[430px] lg:self-stretch">
             <div className="flex w-full gap-2 sm:flex-wrap sm:justify-end">
+              {contract.automationCreateSchedules && !contract.automationSchedulePlanPublishedAt && canEditContracts ? (
+                <>
+                  <Button
+                    variant={contract.automationSchedulePlanSavedAt ? "outline" : "default"}
+                    size="sm"
+                    className="flex-1 sm:flex-none"
+                    title={!isClosedClicksignContractStatus(contract.status) || !contract.signedAt
+                      ? "Disponível após a assinatura do contrato"
+                      : undefined}
+                    onClick={() => setSchedulePlanOpen(true)}
+                    disabled={!isClosedClicksignContractStatus(contract.status) || !contract.signedAt}
+                  >
+                    <CalendarClock className="mr-2 h-4 w-4" />
+                    Agendamentos
+                  </Button>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    className="flex-1 sm:flex-none"
+                    title={!contract.automationSchedulePlanSavedAt
+                      ? "Revise e salve os agendamentos antes de enviar"
+                      : undefined}
+                    onClick={() => setSchedulePublishConfirmOpen(true)}
+                    disabled={
+                      !isClosedClicksignContractStatus(contract.status) ||
+                      !contract.signedAt ||
+                      !contract.automationSchedulePlanSavedAt ||
+                      publishSchedulePlanMutation.isPending
+                    }
+                  >
+                    {publishSchedulePlanMutation.isPending ? (
+                      <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Send className="mr-2 h-4 w-4" />
+                    )}
+                    Enviar agendamentos
+                  </Button>
+                </>
+              ) : null}
               {clicksignUrl ? (
                 <Button variant="outline" size="sm" className="flex-1 sm:flex-none" asChild>
                   <a href={clicksignUrl} target="_blank" rel="noreferrer">
@@ -851,7 +939,8 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                     Baixar
                   </Button>
                 )
-              ) : contract.clicksign?.envelopeId || !canEditContracts ? null : (
+              ) : null}
+              {!isClosedClicksignContractStatus(contract.status) && !contract.clicksign?.envelopeId && canEditContracts ? (
                 <Button
                   variant="outline"
                   size="sm"
@@ -862,7 +951,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                   <ExternalLink className="mr-2 h-4 w-4" />
                   {sendClicksignMutation.isPending ? "Enviando..." : "Enviar ClickSign"}
                 </Button>
-              )}
+              ) : null}
             </div>
 
             <div className="mt-auto">
@@ -950,7 +1039,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
             {getClicksignContractStatusLabel(contract.clicksign?.status)}
           </Badge>
         </div>
-        <div className="grid gap-3 text-sm md:grid-cols-5">
+        <div className="grid gap-3 text-sm md:grid-cols-4">
           <div>
             <p className="text-muted-foreground">Envelope</p>
             <p className="font-mono text-xs">
@@ -960,10 +1049,6 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
           <div>
             <p className="text-muted-foreground">Documento</p>
             <p className="font-mono text-xs">{contract.clicksign?.documentId || contract.clicksign?.documentKey || "-"}</p>
-          </div>
-          <div>
-            <p className="text-muted-foreground">Pasta</p>
-            <p className="font-mono text-xs">{contract.clicksign?.folderId || "-"}</p>
           </div>
           <div>
             <p className="text-muted-foreground">Signatários</p>
@@ -1400,6 +1485,28 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
         }
         clausePrefix={selectedService ? String(contract.services.findIndex((service) => service.id === selectedService.id) + 1) : undefined}
         onOpenChange={handleServiceClausesOpenChange}
+      />
+
+      {contract.automationCreateSchedules && isClosedClicksignContractStatus(contract.status) && contract.signedAt ? (
+        <ContractSchedulePlanDialog
+          open={schedulePlanOpen}
+          onOpenChange={setSchedulePlanOpen}
+          contract={contract}
+          schedules={allSchedules}
+          serviceTypes={serviceTypes}
+          teams={teams}
+        />
+      ) : null}
+
+      <ConfirmActionDialog
+        open={schedulePublishConfirmOpen}
+        onOpenChange={setSchedulePublishConfirmOpen}
+        title="Enviar agendamentos?"
+        description="Os agendamentos do plano salvo serão criados na agenda e os alertas serão enviados aos responsáveis e ao cliente. Esta ação não poderá ser repetida."
+        confirmLabel="Enviar agendamentos"
+        confirmVariant="default"
+        busy={publishSchedulePlanMutation.isPending}
+        onConfirm={() => publishSchedulePlanMutation.mutate()}
       />
 
     </div>

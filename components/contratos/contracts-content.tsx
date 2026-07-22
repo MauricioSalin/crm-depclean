@@ -114,7 +114,7 @@ function formatCurrency(value: number) {
   }).format(value)
 }
 
-function formatDate(value: string) {
+function formatDate(value?: string) {
   return formatCivilDate(value)
 }
 
@@ -263,8 +263,8 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
           }}
           options={[
             { value: "draft", label: "Rascunho" },
-            { value: "running", label: "Em processo" },
-            { value: "closed", label: "Finalizado" },
+            { value: "running", label: "Aguardando assinatura" },
+            { value: "closed", label: "Assinado" },
             { value: "canceled", label: "Cancelado" },
           ]}
           placeholder="Status"
@@ -308,6 +308,9 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
                 filteredContracts.map((contract) => {
                   const paidInstallments = contract.installments.filter((item) => item.status === "paid").length
                   const clicksignUrl = getContractClicksignUrl(contract)
+                  const hasEffectiveValidity = isClosedClicksignContractStatus(contract.status)
+                    && Boolean(contract.startDate)
+                    && Boolean(contract.endDate)
                   return (
                     <TableRow
                       key={contract.id}
@@ -348,16 +351,18 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
                         </div>
                       </TableCell>
                       <TableCell className="hidden text-sm lg:table-cell">
-                        <div className="space-y-0.5">
-                          <div className="flex items-center gap-1 text-muted-foreground">
-                            <Calendar className="h-3 w-3" />
-                            <span>{formatDate(contract.startDate)}</span>
+                        {hasEffectiveValidity ? (
+                          <div className="space-y-0.5">
+                            <div className="flex items-center gap-1 text-muted-foreground">
+                              <Calendar className="h-3 w-3" />
+                              <span>{formatDate(contract.startDate)}</span>
+                            </div>
+                            <div className="flex items-center gap-1 text-muted-foreground">
+                              <CalendarCheck className="h-3 w-3" />
+                              <span>{formatDate(contract.endDate)}</span>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-1 text-muted-foreground">
-                            <CalendarCheck className="h-3 w-3" />
-                            <span>{formatDate(contract.endDate)}</span>
-                          </div>
-                        </div>
+                        ) : null}
                       </TableCell>
                       <TableCell>{getStatusBadge(contract.status)}</TableCell>
                       <TableCell
@@ -414,6 +419,9 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
             ) : paginatedContracts.map((contract) => {
               const paidInstallments = contract.installments.filter((item) => item.status === "paid").length
               const progress = contract.installmentsCount > 0 ? (paidInstallments / contract.installmentsCount) * 100 : 0
+              const hasEffectiveValidity = isClosedClicksignContractStatus(contract.status)
+                && Boolean(contract.startDate)
+                && Boolean(contract.endDate)
 
               return (
                 <Card
@@ -449,12 +457,14 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
                         <div>
                           <p className="font-medium text-foreground">{formatCurrency(contract.totalValue)}</p>
                         </div>
-                        <div className="flex items-center gap-1 text-muted-foreground">
-                          <Calendar className="h-3 w-3" />
-                          <span>
-                            {formatDate(contract.startDate)} - {formatDate(contract.endDate)}
-                          </span>
-                        </div>
+                        {hasEffectiveValidity ? (
+                          <div className="flex items-center gap-1 text-muted-foreground">
+                            <Calendar className="h-3 w-3" />
+                            <span>
+                              {formatDate(contract.startDate)} - {formatDate(contract.endDate)}
+                            </span>
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                     <div className="mt-auto space-y-3 pt-3">

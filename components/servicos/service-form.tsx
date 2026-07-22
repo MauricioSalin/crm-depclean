@@ -331,7 +331,8 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
             <Label htmlFor="duration">Duração Padrão</Label>
             <Input
               id="duration"
-              type="number"
+              type="tel"
+              inputMode="decimal"
               min={1}
               value={formData.defaultDuration}
               onChange={(event) =>

@@ -49,7 +49,7 @@ export function AgendamentosPageClient({ initialScheduleId }: AgendamentosPageCl
         <Sidebar />
       </div>
 
-      <main className="flex min-h-screen flex-1 flex-col px-3 pb-4 md:h-screen md:min-h-0 md:overflow-hidden md:px-4 lg:ml-60 lg:px-5">
+      <main className="flex min-h-screen flex-1 flex-col px-3 pb-4 md:h-screen md:min-h-0 md:overflow-hidden md:px-4 md:[@media(max-height:799px)]:h-[calc(100dvh+100px)] md:[@media(max-height:799px)]:min-h-[calc(100dvh+100px)] lg:ml-60 lg:px-5">
         <Header
           title="Agendamentos"
           description="Gerencie todos os agendamentos de serviços."

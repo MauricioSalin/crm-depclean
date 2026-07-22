@@ -1,4 +1,5 @@
 import { api } from "@/lib/api/client"
+import type { ScheduleRecord } from "@/lib/api/schedules"
 import type { ServiceRecurrenceRuleRecord } from "@/lib/api/services"
 
 export type ContractServicePayload = {
@@ -75,12 +76,16 @@ export type ContractRecord = {
   automationInformativeTemplateId?: string
   automationCreateCertificates?: boolean
   automationCertificateTemplateId?: string
+  automationSchedulePlanCount?: number
+  automationSchedulePlanSavedAt?: string
+  automationSchedulePlanPublishedAt?: string
   unitIds: string[]
   totalValue: number
   downPaymentValue: number
   duration: number
-  startDate: string
-  endDate: string
+  creationDate: string
+  startDate?: string
+  endDate?: string
   firstVisitDate: string
   firstVisitTime: string
   paymentDay: number
@@ -146,6 +151,33 @@ export type ContractPreviewRecord = {
   recurrence: string
   endDate: string
   firstDueDate: string
+}
+
+export type ContractSchedulePlanRecord = {
+  items: ScheduleRecord[]
+  generatedItems: ScheduleRecord[]
+  anchorDate: string
+  endDate: string
+  isSaved: boolean
+  savedAt?: string
+  isPublished: boolean
+  publishedAt?: string
+}
+
+export type PublishedContractSchedulePlanRecord = {
+  count: number
+  publishedAt: string
+  alreadyPublished: boolean
+}
+
+export type ContractSchedulePlanPayload = {
+  items: Array<{
+    id: string
+    date: string
+    time: string
+    durationValue: number
+    durationType: "hours" | "shift" | "days"
+  }>
 }
 
 export type ContractImportRow = {
@@ -235,6 +267,37 @@ export async function uploadContractDocument(id: string, file: File) {
     `/contracts/${resolveContractId(id)}/document`,
     formData,
     { headers: { "Content-Type": "multipart/form-data" } },
+  )
+  return response.data
+}
+
+export async function getContractSchedulePlan(id: string) {
+  const response = await api.get<{ success: true; data: ContractSchedulePlanRecord }>(
+    `/contracts/${resolveContractId(id)}/schedule-plan`,
+  )
+  return response.data
+}
+
+export async function saveContractSchedulePlan(id: string, payload: ContractSchedulePlanPayload) {
+  const response = await api.patch<{ success: true; data: ContractSchedulePlanRecord }>(
+    `/contracts/${resolveContractId(id)}/schedule-plan`,
+    payload,
+  )
+  return response.data
+}
+
+export async function exportContractSchedulePlan(id: string, payload: ContractSchedulePlanPayload) {
+  const response = await api.post<Blob>(
+    `/contracts/${resolveContractId(id)}/schedule-plan/export`,
+    payload,
+    { responseType: "blob" },
+  )
+  return response.data
+}
+
+export async function publishContractSchedulePlan(id: string) {
+  const response = await api.post<{ success: true; data: PublishedContractSchedulePlanRecord }>(
+    `/contracts/${resolveContractId(id)}/schedule-plan/publish`,
   )
   return response.data
 }
