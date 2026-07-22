@@ -1809,7 +1809,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
           <FileText className="w-5 h-5 text-primary" />
           Dados do Contrato
         </h3>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-[240px_240px_160px_180px]">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-[176px_176px_160px_180px]">
           <div className="min-w-0 space-y-2">
             <Label>Data de criação *</Label>
             <DatePicker
