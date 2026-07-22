@@ -55,6 +55,10 @@ export function SearchableSelect({
     () => allOptions.find(o => o.value === value),
     [allOptions, value],
   )
+  const selectOption = (nextValue: string) => {
+    onValueChange(nextValue)
+    setOpen(false)
+  }
 
   return (
     <Popover open={disabled ? false : open} onOpenChange={disabled ? undefined : setOpen}>
@@ -89,10 +93,12 @@ export function SearchableSelect({
                 <CommandItem
                   key={option.value}
                   value={`${option.label} ${option.value}`}
-                  onSelect={() => {
-                    onValueChange(option.value)
-                    setOpen(false)
+                  className="cursor-pointer"
+                  onMouseDown={(event) => {
+                    event.preventDefault()
+                    selectOption(option.value)
                   }}
+                  onSelect={() => selectOption(option.value)}
                 >
                   {option.icon}
                   {option.label}

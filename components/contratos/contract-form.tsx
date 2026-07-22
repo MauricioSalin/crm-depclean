@@ -363,8 +363,8 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
         serviceTypeId: s.serviceTypeId,
         informativeTemplateId,
         certificateTemplateId,
-        autoSendInformative: Boolean(informativeTemplateId) || (s as any).autoSendInformative === true,
-        generateCertificateRequest: Boolean(certificateTemplateId) || (s as any).generateCertificateRequest === true,
+        autoSendInformative: Boolean(informativeTemplateId),
+        generateCertificateRequest: Boolean(certificateTemplateId),
         teamIds: (s as any).teamIds ?? (legacyTeamId ? [legacyTeamId] : []),
         employeeIds: (s as any).additionalEmployeeIds ?? (s as any).employeeIds ?? [],
         recurrence: (s as any).recurrence ?? "monthly",
@@ -457,8 +457,8 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
       serviceTypeId: service.serviceTypeId,
       informativeTemplateId: service.informativeTemplateId ?? contract.automationInformativeTemplateId ?? "",
       certificateTemplateId: service.certificateTemplateId ?? contract.automationCertificateTemplateId ?? "",
-      autoSendInformative: service.autoSendInformative ?? false,
-      generateCertificateRequest: service.generateCertificateRequest ?? false,
+      autoSendInformative: Boolean(service.informativeTemplateId ?? contract.automationInformativeTemplateId),
+      generateCertificateRequest: Boolean(service.certificateTemplateId ?? contract.automationCertificateTemplateId),
       teamIds: service.teamIds ?? [],
       employeeIds: service.additionalEmployeeIds ?? [],
       recurrence: service.recurrence ?? "monthly",
@@ -527,10 +527,10 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
           teamIds: defaultSelection.teamIds,
           employeeIds: defaultSelection.employeeIds,
           clauses: service.clauses.length > 0 ? service.clauses : [...(serviceType.clauses ?? [])],
-          informativeTemplateId: service.autoSendInformative ? service.informativeTemplateId : "",
-          certificateTemplateId: service.generateCertificateRequest ? service.certificateTemplateId : "",
-          autoSendInformative: service.autoSendInformative,
-          generateCertificateRequest: service.generateCertificateRequest,
+          informativeTemplateId: service.informativeTemplateId,
+          certificateTemplateId: service.certificateTemplateId,
+          autoSendInformative: Boolean(service.informativeTemplateId),
+          generateCertificateRequest: Boolean(service.certificateTemplateId),
         }
       }),
     )
@@ -681,10 +681,10 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
           additionalEmployeeIds: service.employeeIds,
           unitIds: selectedUnitIds,
           clauses: service.clauses?.length ? service.clauses : serviceType?.clauses ?? [],
-          informativeTemplateId: service.autoSendInformative ? service.informativeTemplateId : "",
-          certificateTemplateId: service.generateCertificateRequest ? service.certificateTemplateId : "",
-          autoSendInformative: service.autoSendInformative,
-          generateCertificateRequest: service.generateCertificateRequest,
+          informativeTemplateId: service.informativeTemplateId,
+          certificateTemplateId: service.certificateTemplateId,
+          autoSendInformative: Boolean(service.informativeTemplateId),
+          generateCertificateRequest: Boolean(service.certificateTemplateId),
           recurrence: service.recurrence || serviceType?.defaultRecurrence || "monthly",
           duration: Math.max(1, Number(service.duration || serviceType?.defaultDuration || 1)),
           durationType: service.durationType || serviceType?.durationType || "hours",
@@ -921,10 +921,10 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
   }
 
   const addService = () => {
-    setServices([
-      ...services,
+    setServices((current) => [
+      ...current,
       {
-        id: `temp-${Date.now()}`,
+        id: `temp-${crypto.randomUUID()}`,
         serviceTypeId: "",
         informativeTemplateId: "",
         certificateTemplateId: "",
@@ -941,16 +941,16 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
   }
 
   const removeService = (id: string) => {
-    setServices(services.filter(s => s.id !== id))
+    setServices((current) => current.filter((service) => service.id !== id))
   }
 
   const updateService = (id: string, field: keyof ContractService, value: string | number | string[] | boolean) => {
-    setServices(services.map(s => {
+    setServices((current) => current.map(s => {
       if (s.id !== id) return s
       if (field === "serviceTypeId") {
         const serviceType = serviceTypes.find(st => st.id === value)
-        const autoSendInformative = serviceType?.autoSendInformative === true
-        const generateCertificateRequest = serviceType?.generateCertificateRequest === true
+        const informativeTemplateId = serviceType?.defaultInformativeTemplateId || ""
+        const certificateTemplateId = serviceType?.defaultCertificateTemplateId || ""
         const defaultSelection = normalizeTeamEmployeeSelection({
           teamIds: [...(serviceType?.teamIds ?? [])],
           employeeIds: [...(serviceType?.employeeIds ?? [])],
@@ -959,10 +959,10 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
         return {
           ...s,
           [field]: value as string,
-          informativeTemplateId: autoSendInformative ? serviceType?.defaultInformativeTemplateId || "" : "",
-          certificateTemplateId: generateCertificateRequest ? serviceType?.defaultCertificateTemplateId || "" : "",
-          autoSendInformative,
-          generateCertificateRequest,
+          informativeTemplateId,
+          certificateTemplateId,
+          autoSendInformative: Boolean(informativeTemplateId),
+          generateCertificateRequest: Boolean(certificateTemplateId),
           teamIds: defaultSelection.teamIds,
           employeeIds: defaultSelection.employeeIds,
           recurrence: serviceType?.defaultRecurrence || "monthly",
@@ -1172,9 +1172,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
     const invalidService = selectedServices.find((service) => {
       const serviceTypeExists = serviceTypeById.has(service.serviceTypeId)
       const durationIsValid = Number.isFinite(service.duration) && service.duration > 0
-      const informativeIsValid = !service.autoSendInformative || Boolean(service.informativeTemplateId)
-      const certificateIsValid = !service.generateCertificateRequest || Boolean(service.certificateTemplateId)
-      return !serviceTypeExists || !durationIsValid || !service.recurrence || !informativeIsValid || !certificateIsValid
+      return !serviceTypeExists || !durationIsValid || !service.recurrence
     })
     if (invalidService) {
       const serviceName = serviceTypeById.get(invalidService.serviceTypeId)?.name ?? "serviço selecionado"
@@ -1182,10 +1180,6 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
         toast.error(`Informe uma duração maior que zero para ${serviceName}.`)
       } else if (!invalidService.recurrence) {
         toast.error(`Selecione a recorrência de ${serviceName}.`)
-      } else if (invalidService.autoSendInformative && !invalidService.informativeTemplateId) {
-        toast.error(`Selecione o informativo de ${serviceName} ou desative o envio automático.`)
-      } else if (invalidService.generateCertificateRequest && !invalidService.certificateTemplateId) {
-        toast.error(`Selecione o certificado de ${serviceName} ou desative a geração.`)
       } else {
         toast.error("Um dos serviços selecionados não existe mais. Remova-o e selecione novamente.")
       }
@@ -2041,72 +2035,48 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
                         />
                       </TableCell>
                       <TableCell className="w-[260px] py-3 align-top">
-                        <div className="space-y-2">
-                          <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                            <Checkbox
-                              checked={service.autoSendInformative}
-                              onCheckedChange={(checked) => updateService(service.id, "autoSendInformative", checked === true)}
-                              disabled={!service.serviceTypeId}
-                            />
-                            Enviar automaticamente
-                          </label>
-                          {service.autoSendInformative ? (
-                            <SearchableSelect
-                              value={service.informativeTemplateId || NO_INFORMATIVE_TEMPLATE_VALUE}
-                              onValueChange={(value) =>
-                                updateService(
-                                  service.id,
-                                  "informativeTemplateId",
-                                  value === NO_INFORMATIVE_TEMPLATE_VALUE ? "" : value,
-                                )
-                              }
-                              options={[
-                                { value: NO_INFORMATIVE_TEMPLATE_VALUE, label: "Sem informativo" },
-                                ...activeInformativeTemplates.map((template) => ({ value: template.id, label: template.name })),
-                              ]}
-                              placeholder={activeInformativeTemplates.length > 0 ? "Selecione" : "Nenhum template"}
-                              searchPlaceholder="Buscar informativo..."
-                              emptyMessage="Nenhum informativo encontrado."
-                              includeAll={false}
-                              disabled={!service.serviceTypeId || activeInformativeTemplates.length === 0}
-                              className="w-full min-w-[230px]"
-                            />
-                          ) : null}
-                        </div>
+                        <SearchableSelect
+                          value={service.informativeTemplateId || NO_INFORMATIVE_TEMPLATE_VALUE}
+                          onValueChange={(value) =>
+                            updateService(
+                              service.id,
+                              "informativeTemplateId",
+                              value === NO_INFORMATIVE_TEMPLATE_VALUE ? "" : value,
+                            )
+                          }
+                          options={[
+                            { value: NO_INFORMATIVE_TEMPLATE_VALUE, label: "Sem informativo" },
+                            ...activeInformativeTemplates.map((template) => ({ value: template.id, label: template.name })),
+                          ]}
+                          placeholder="Sem informativo"
+                          searchPlaceholder="Buscar informativo..."
+                          emptyMessage="Nenhum informativo encontrado."
+                          includeAll={false}
+                          disabled={!service.serviceTypeId}
+                          className="w-full min-w-[230px]"
+                        />
                       </TableCell>
                       <TableCell className="w-[260px] py-3 align-top">
-                        <div className="space-y-2">
-                          <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                            <Checkbox
-                              checked={service.generateCertificateRequest}
-                              onCheckedChange={(checked) => updateService(service.id, "generateCertificateRequest", checked === true)}
-                              disabled={!service.serviceTypeId}
-                            />
-                            Gerar solicitação
-                          </label>
-                          {service.generateCertificateRequest ? (
-                            <SearchableSelect
-                              value={service.certificateTemplateId || NO_CERTIFICATE_TEMPLATE_VALUE}
-                              onValueChange={(value) =>
-                                updateService(
-                                  service.id,
-                                  "certificateTemplateId",
-                                  value === NO_CERTIFICATE_TEMPLATE_VALUE ? "" : value,
-                                )
-                              }
-                              options={[
-                                { value: NO_CERTIFICATE_TEMPLATE_VALUE, label: "Sem certificado" },
-                                ...activeCertificateTemplates.map((template) => ({ value: template.id, label: template.name })),
-                              ]}
-                              placeholder={activeCertificateTemplates.length > 0 ? "Selecione" : "Nenhum template"}
-                              searchPlaceholder="Buscar certificado..."
-                              emptyMessage="Nenhum certificado encontrado."
-                              includeAll={false}
-                              disabled={!service.serviceTypeId || activeCertificateTemplates.length === 0}
-                              className="w-full min-w-[230px]"
-                            />
-                          ) : null}
-                        </div>
+                        <SearchableSelect
+                          value={service.certificateTemplateId || NO_CERTIFICATE_TEMPLATE_VALUE}
+                          onValueChange={(value) =>
+                            updateService(
+                              service.id,
+                              "certificateTemplateId",
+                              value === NO_CERTIFICATE_TEMPLATE_VALUE ? "" : value,
+                            )
+                          }
+                          options={[
+                            { value: NO_CERTIFICATE_TEMPLATE_VALUE, label: "Sem certificado" },
+                            ...activeCertificateTemplates.map((template) => ({ value: template.id, label: template.name })),
+                          ]}
+                          placeholder="Sem certificado"
+                          searchPlaceholder="Buscar certificado..."
+                          emptyMessage="Nenhum certificado encontrado."
+                          includeAll={false}
+                          disabled={!service.serviceTypeId}
+                          className="w-full min-w-[230px]"
+                        />
                       </TableCell>
                       <TableCell className="py-3 align-top">
                         <div className="flex gap-2">
@@ -2168,7 +2138,31 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
                             </Badge>
                           ))}
                           {serviceTeams.length === 0 && serviceEmployees.length === 0 && (
-                            <span className="text-sm text-muted-foreground">Nenhum</span>
+                            <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => openEditServiceDialog(service.id)}
+                                aria-label="Adicionar equipes e funcionários"
+                                title="Adicionar equipes e funcionários"
+                              >
+                                <Users className="h-4 w-4" />
+                              </Button>
+                              <span>Nenhum</span>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                onClick={() => openEditServiceDialog(service.id)}
+                                aria-label="Adicionar equipes e funcionários"
+                                title="Adicionar equipes e funcionários"
+                              >
+                                <Plus className="h-4 w-4" />
+                              </Button>
+                            </div>
                           )}
                         </div>
                       </TableCell>
