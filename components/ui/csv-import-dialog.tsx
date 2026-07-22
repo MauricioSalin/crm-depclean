@@ -13,13 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { SearchableSelect } from "@/components/ui/searchable-select"
 
 export type CsvImportField = {
   key: string
@@ -300,22 +294,19 @@ export function CsvImportDialog({ open, onOpenChange, title, description, fields
                     {field.label}
                     {field.required ? <span className="text-destructive"> *</span> : null}
                   </div>
-                  <Select
+                  <SearchableSelect
                     value={mapping[field.key] || "none"}
                     onValueChange={(value) => setMapping((current) => ({ ...current, [field.key]: value === "none" ? "" : value }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione a coluna" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">Não importar</SelectItem>
-                      {headers.map((header) => (
-                        <SelectItem key={`${field.key}-${header}`} value={header}>
-                          {header}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    options={[
+                      { value: "none", label: "Não importar" },
+                      ...headers.map((header) => ({ value: header, label: header })),
+                    ]}
+                    placeholder="Selecione a coluna"
+                    searchPlaceholder="Buscar coluna..."
+                    emptyMessage="Nenhuma coluna encontrada."
+                    includeAll={false}
+                    className="w-full"
+                  />
                 </div>
               ))}
             </div>

@@ -71,7 +71,10 @@ export default function LoginPage() {
     event.preventDefault()
     const trimmedIdentifier = identifier.trim()
 
-    if (!trimmedIdentifier) return
+    if (!trimmedIdentifier) {
+      toast.error("Informe seu e-mail ou CPF para continuar.")
+      return
+    }
 
     if (loginStep === "identifier") {
       setIdentifySubmitting(true)
@@ -139,6 +142,12 @@ export default function LoginPage() {
 
   const handleConfirmLoginCode = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+
+    if (loginCode.length !== 6) {
+      toast.error("Informe os 6 dígitos do código de acesso.")
+      return
+    }
+
     setLoginCodeSubmitting(true)
     try {
       const response = await confirmLoginCode({
@@ -164,9 +173,16 @@ export default function LoginPage() {
 
   const handleRequestPasswordReset = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    const resetLoginIdentifier = (resetIdentifier || identifier).trim()
+
+    if (!resetLoginIdentifier) {
+      toast.error("Informe seu e-mail ou CPF para recuperar a senha.")
+      return
+    }
+
     setResetSubmitting(true)
     try {
-      await requestPasswordReset({ identifier: resetIdentifier || identifier })
+      await requestPasswordReset({ identifier: resetLoginIdentifier })
       toast.success("Se o e-mail estiver cadastrado, você receberá um link para redefinir a senha.")
       setForgotPasswordOpen(false)
     } catch (error) {
@@ -239,6 +255,7 @@ export default function LoginPage() {
                 </div> */}
                 <form
                   autoComplete="off"
+                  noValidate
                   onSubmit={handleSubmit}
                   className={cn(loginStep === "identifier" ? "space-y-2.5" : "space-y-4 2xl:space-y-5")}
                 >
@@ -368,7 +385,7 @@ export default function LoginPage() {
           <DialogHeader className="space-y-1">
             <DialogTitle>Código de acesso</DialogTitle>
           </DialogHeader>
-          <form autoComplete="off" onSubmit={handleConfirmLoginCode} className="space-y-4">
+          <form autoComplete="off" noValidate onSubmit={handleConfirmLoginCode} className="space-y-4">
             <p className="-mt-2 text-sm text-muted-foreground">
               Informe o código enviado por {loginCodeChannelLabel} para continuar.
             </p>
@@ -395,7 +412,7 @@ export default function LoginPage() {
               <Button type="button" variant="outline" onClick={() => setLoginCodeOpen(false)} disabled={loginCodeSubmitting}>
                 Cancelar
               </Button>
-              <Button type="submit" disabled={loginCodeSubmitting || loginCode.length !== 6}>
+              <Button type="submit" disabled={loginCodeSubmitting}>
                 {loginCodeSubmitting ? "Validando..." : "Validar código"}
               </Button>
             </div>
@@ -408,7 +425,7 @@ export default function LoginPage() {
           <DialogHeader>
             <DialogTitle>Recuperar senha</DialogTitle>
           </DialogHeader>
-          <form autoComplete="off" onSubmit={handleRequestPasswordReset} className="space-y-4">
+          <form autoComplete="off" noValidate onSubmit={handleRequestPasswordReset} className="space-y-4">
             <p className="text-sm text-muted-foreground">
               Informe seu e-mail para receber o link de redefinição.
             </p>

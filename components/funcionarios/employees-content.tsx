@@ -33,7 +33,7 @@ import { resolveAvatarUrl } from "@/lib/avatar"
 import { getStoredUser } from "@/lib/auth/session"
 import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
-import { formatCPF, formatPhone, isValidCPF } from "@/lib/masks"
+import { formatCPF, formatPhone, isValidCPF, isValidEmail, isValidPhone } from "@/lib/masks"
 import { getInitials } from "@/lib/utils"
 import { listPermissionProfiles } from "@/lib/api/settings"
 import {
@@ -352,6 +352,18 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
     event.preventDefault()
     if (saving) return
 
+    if (!formData.name.trim()) {
+      toast.error("Informe o nome completo do funcionário.")
+      return
+    }
+    if (formData.email?.trim() && !isValidEmail(formData.email)) {
+      toast.error("Informe um e-mail válido para o funcionário, como nome@empresa.com.br.")
+      return
+    }
+    if (formData.phone?.trim() && !isValidPhone(formData.phone)) {
+      toast.error("Informe um telefone válido com DDD e 10 ou 11 dígitos.")
+      return
+    }
     if (!isValidCPF(formData.cpf)) {
       toast.error("Informe um CPF válido para o funcionário.")
       return
@@ -372,6 +384,10 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
       }
       if (!systemUserForm.password.trim()) {
         toast.error("Informe uma senha ou gere uma nova senha.")
+        return
+      }
+      if (systemUserForm.password.trim().length < 6) {
+        toast.error("A senha deve ter pelo menos 6 caracteres.")
         return
       }
     }
@@ -497,6 +513,10 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
       toast.error("Informe uma senha ou gere uma nova senha.")
       return
     }
+    if (systemUserForm.password.trim().length < 6) {
+      toast.error("A senha deve ter pelo menos 6 caracteres.")
+      return
+    }
     setSaving(true)
     const toastId = toast.loading("Criando acesso do sistema...")
     try {
@@ -568,20 +588,17 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
       </div>
       <div className="space-y-2">
         <Label>Perfil de permissão</Label>
-        <Select
+        <SearchableSelect
           value={systemUserForm.permissionProfileId}
           onValueChange={(value) => setSystemUserForm({ ...systemUserForm, permissionProfileId: value })}
+          options={permissionProfiles.map((profile) => ({ value: profile.id, label: profile.name }))}
+          placeholder="Selecione um perfil"
+          searchPlaceholder="Buscar perfil..."
+          emptyMessage="Nenhum perfil encontrado."
+          includeAll={false}
           disabled={permissionProfilesQuery.isLoading || permissionProfiles.length === 0}
-        >
-          <SelectTrigger className="w-full">
-            <SelectValue placeholder="Selecione um perfil" />
-          </SelectTrigger>
-          <SelectContent>
-            {permissionProfiles.map((profile) => (
-              <SelectItem key={profile.id} value={profile.id}>{profile.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          className="w-full"
+        />
       </div>
     </>
   )
@@ -602,7 +619,7 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
           showCloseButton={false}
           className="flex max-h-[min(90dvh,720px)] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg"
         >
-          <form autoComplete="off" onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+          <form autoComplete="off" noValidate onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
             <DialogHeader className="shrink-0 px-6 py-4">
               <div className="flex items-center justify-between gap-4">
                 <DialogTitle>{editingEmployee ? "Editar Funcionário" : "Novo Funcionário"}</DialogTitle>
@@ -714,7 +731,7 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
           <DialogHeader>
             <DialogTitle>Transformar em usuário do sistema</DialogTitle>
           </DialogHeader>
-          <form autoComplete="off" onSubmit={submitSystemUser} className="space-y-4">
+          <form autoComplete="off" noValidate onSubmit={submitSystemUser} className="space-y-4">
             <div className="space-y-2">
               <Label>Funcionário</Label>
               <Input value={systemUserEmployee?.name ?? ""} disabled />
@@ -1107,4 +1124,3 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
     </>
   )
 }
-

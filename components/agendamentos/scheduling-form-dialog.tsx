@@ -49,8 +49,22 @@ import type { EmployeeRecord } from "@/lib/api/employees"
 import type { ServiceRecord } from "@/lib/api/services"
 import type { TeamRecord } from "@/lib/api/teams"
 import { listTemplates } from "@/lib/api/templates"
+import { toast } from "sonner"
 
 type ScheduleManualStatus = "draft" | "scheduled" | "in_progress" | "completed" | "cancelled" | "rescheduled"
+
+function isValidDateKey(value: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+  if (!match) return false
+
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const date = new Date(Date.UTC(year, month - 1, day))
+  return date.getUTCFullYear() === year
+    && date.getUTCMonth() === month - 1
+    && date.getUTCDate() === day
+}
 
 export interface SchedulingFormData {
   clientId: string
@@ -310,10 +324,38 @@ export function SchedulingFormDialog({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+
+    if (!formData.clientId || !clientById.has(formData.clientId)) {
+      toast.error("Selecione um cliente válido para o agendamento.")
+      return
+    }
+    if (!formData.serviceTypeId || !serviceTypes.some((service) => service.id === formData.serviceTypeId)) {
+      toast.error("Selecione um serviço válido para o agendamento.")
+      return
+    }
+    if (!isValidDateKey(formData.date)) {
+      toast.error("Informe uma data válida para o agendamento.")
+      return
+    }
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(formData.time)) {
+      toast.error("Informe um horário válido entre 00:00 e 23:59.")
+      return
+    }
+    if (!Number.isFinite(formData.duration) || formData.duration <= 0) {
+      toast.error("Informe uma duração maior que zero para o agendamento.")
+      return
+    }
+    if (formData.createContract && (!Number.isFinite(formData.value) || formData.value <= 0)) {
+      toast.error("Informe um valor maior que zero para gerar a cobrança no financeiro.")
+      return
+    }
+
     onSubmit({
       ...formData,
-      informativeTemplateId: formData.autoSendInformative ? formData.informativeTemplateId : "",
-      certificateTemplateId: formData.generateCertificateRequest ? formData.certificateTemplateId : "",
+      informativeTemplateId: formData.informativeTemplateId,
+      certificateTemplateId: formData.certificateTemplateId,
+      autoSendInformative: Boolean(formData.informativeTemplateId),
+      generateCertificateRequest: Boolean(formData.certificateTemplateId),
     }, !!editingSchedule)
   }
 
@@ -324,7 +366,7 @@ export function SchedulingFormDialog({
         <DialogHeader className="shrink-0 px-6 pb-3 pt-6 pr-12 text-left sm:text-left">
           <DialogTitle>{dialogTitle}</DialogTitle>
         </DialogHeader>
-        <form id="schedule-form" autoComplete="off" onSubmit={handleSubmit} className="min-h-0 flex-1 space-y-6 overflow-y-auto px-6 py-5">
+        <form id="schedule-form" autoComplete="off" noValidate onSubmit={handleSubmit} className="min-h-0 flex-1 space-y-6 overflow-y-auto px-6 py-5">
           <div className="flex flex-col items-center gap-2 text-center">
             <Badge variant={isRecurringSchedule ? "secondary" : "outline"} className="w-fit justify-center">
               {scheduleTypeLabel}
@@ -715,7 +757,7 @@ export function SchedulingFormDialog({
           )}
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <Select
+            <SearchableSelect
               value={formData.informativeTemplateId || NO_INFORMATIVE_TEMPLATE_VALUE}
               onValueChange={(value) => {
                 const informativeTemplateId = value === NO_INFORMATIVE_TEMPLATE_VALUE ? "" : value
@@ -725,22 +767,19 @@ export function SchedulingFormDialog({
                   autoSendInformative: Boolean(informativeTemplateId),
                 })
               }}
+              options={[
+                { value: NO_INFORMATIVE_TEMPLATE_VALUE, label: "Sem informativo" },
+                ...activeInformativeTemplates.map((template) => ({ value: template.id, label: template.name })),
+              ]}
+              placeholder="Sem informativo"
+              searchPlaceholder="Buscar informativo..."
+              emptyMessage="Nenhum informativo encontrado."
+              includeAll={false}
               disabled={activeInformativeTemplates.length === 0}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Sem informativo" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={NO_INFORMATIVE_TEMPLATE_VALUE}>Sem informativo</SelectItem>
-                {activeInformativeTemplates.map((template) => (
-                  <SelectItem key={template.id} value={template.id}>
-                    {template.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              className="w-full"
+            />
 
-            <Select
+            <SearchableSelect
               value={formData.certificateTemplateId || NO_CERTIFICATE_TEMPLATE_VALUE}
               onValueChange={(value) => {
                 const certificateTemplateId = value === NO_CERTIFICATE_TEMPLATE_VALUE ? "" : value
@@ -750,20 +789,17 @@ export function SchedulingFormDialog({
                   generateCertificateRequest: Boolean(certificateTemplateId),
                 })
               }}
+              options={[
+                { value: NO_CERTIFICATE_TEMPLATE_VALUE, label: "Sem certificado" },
+                ...activeCertificateTemplates.map((template) => ({ value: template.id, label: template.name })),
+              ]}
+              placeholder="Sem certificado"
+              searchPlaceholder="Buscar certificado..."
+              emptyMessage="Nenhum certificado encontrado."
+              includeAll={false}
               disabled={activeCertificateTemplates.length === 0}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Sem certificado" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={NO_CERTIFICATE_TEMPLATE_VALUE}>Sem certificado</SelectItem>
-                {activeCertificateTemplates.map((template) => (
-                  <SelectItem key={template.id} value={template.id}>
-                    {template.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              className="w-full"
+            />
           </div>
           </fieldset>
 

@@ -47,6 +47,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { TableEmptyState } from "@/components/ui/empty-state"
 import { TableSkeletonRows } from "@/components/ui/table-skeleton"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Textarea } from "@/components/ui/textarea"
 import { AssignmentBadges } from "@/components/ui/assignment-badges"
 import { ScheduleTypeBadge } from "@/components/ui/schedule-type-badge"
 import { DocxTemplateEditor, type DocxTemplateEditorRef } from "@/components/templates/docx-template-editor"
@@ -140,6 +141,7 @@ const formatDate = (value?: string) =>
 const createDefaultExtraForm = () => {
   const today = toCivilDateKey(new Date())
   return {
+    description: "",
     value: "",
     createdDate: today,
     dueDate: today,
@@ -480,11 +482,17 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
         throw new Error("Informe um valor extra maior que zero.")
       }
 
+      const description = extraForm.description.trim()
+      if (!description) {
+        throw new Error("Informe a descrição do valor extra.")
+      }
+
       if (!extraForm.createdDate || !extraForm.dueDate) {
         throw new Error("Informe as datas de criação e vencimento.")
       }
 
       return createClientExtra(resolvedClientId, {
+        description,
         value,
         createdDate: extraForm.createdDate,
         dueDate: extraForm.dueDate,
@@ -1411,6 +1419,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Data de criação</TableHead>
+                    <TableHead>Descrição</TableHead>
                     <TableHead>Valor</TableHead>
                     <TableHead>Vencimento</TableHead>
                     <TableHead>Status</TableHead>
@@ -1424,6 +1433,9 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                   {clientExtras.map((extra) => (
                     <TableRow key={extra.id}>
                       <TableCell className="text-sm">{formatDate(extra.createdDate)}</TableCell>
+                      <TableCell className="min-w-64 max-w-md whitespace-normal text-sm">
+                        {extra.description || "Sem descrição"}
+                      </TableCell>
                       <TableCell className="font-medium">{formatCurrency(extra.value)}</TableCell>
                       <TableCell className="text-sm">{formatDate(extra.dueDate)}</TableCell>
                       <TableCell>{getClientExtraStatusBadge(extra.status)}</TableCell>
@@ -1466,7 +1478,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
 
                   {!extrasQuery.isLoading && clientExtras.length === 0 ? (
                     <TableEmptyState
-                      colSpan={canManageExtras ? 5 : 4}
+                      colSpan={canManageExtras ? 6 : 5}
                       icon={DollarSign}
                       title="Nenhum valor extra cadastrado para este cliente."
                     />
@@ -1477,6 +1489,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                       rows={3}
                       columns={[
                         { width: "w-28" },
+                        { width: "w-64" },
                         { width: "w-24" },
                         { width: "w-28" },
                         { width: "w-20" },
@@ -1757,6 +1770,19 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
 
           <div className="grid gap-4">
             <div className="grid gap-2">
+              <Label htmlFor="client-extra-description">Descrição</Label>
+              <Textarea
+                id="client-extra-description"
+                value={extraForm.description}
+                onChange={(event) => setExtraForm((current) => ({ ...current, description: event.target.value }))}
+                placeholder="Informe do que se trata este valor extra"
+                maxLength={500}
+                rows={3}
+                autoFocus
+              />
+            </div>
+
+            <div className="grid gap-2">
               <Label htmlFor="client-extra-value">Valor</Label>
               <Input
                 id="client-extra-value"
@@ -1764,7 +1790,6 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                 onChange={(event) => setExtraForm((current) => ({ ...current, value: event.target.value }))}
                 inputMode="decimal"
                 placeholder="R$ 0,00"
-                autoFocus
               />
             </div>
 

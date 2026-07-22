@@ -41,6 +41,11 @@ export function FirstAccessDialog() {
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
 
+    if (!canSkipCurrentPassword && !formData.currentPassword.trim()) {
+      toast.error("Informe a senha temporária recebida no primeiro acesso.")
+      return
+    }
+
     if (formData.newPassword.length < 6) {
       toast.error("A nova senha deve ter pelo menos 6 caracteres.")
       return
@@ -108,7 +113,7 @@ export function FirstAccessDialog() {
             Primeiro acesso
           </DialogTitle>
         </DialogHeader>
-        <form autoComplete="off" onSubmit={handleSubmit} className="space-y-4">
+        <form autoComplete="off" noValidate onSubmit={handleSubmit} className="space-y-4">
           <p className="text-sm text-muted-foreground">
             Você precisa definir uma nova senha antes de continuar.
           </p>

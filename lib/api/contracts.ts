@@ -33,6 +33,7 @@ export type ContractPayload = {
   downPaymentValue?: number
   duration: number
   startDate: string
+  firstDueDate: string
   endDate?: string
   firstVisitDate?: string
   firstVisitTime?: string
@@ -158,7 +159,7 @@ export type ContractImportRow = {
   downPaymentValue?: string
   duration: string
   startDate: string
-  firstDueDate?: string
+  firstDueDate: string
   endDate?: string
   firstVisitDate?: string
   firstVisitTime?: string

@@ -2,7 +2,7 @@
 
 import { useDeferredValue, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { usePathname, useSearchParams } from "next/navigation"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import {
@@ -67,8 +67,8 @@ const CONTRACT_IMPORT_FIELDS: CsvImportField[] = [
   { key: "totalValue", label: "Valor total", required: true },
   { key: "downPaymentValue", label: "Valor de entrada" },
   { key: "duration", label: "Duração em meses", required: true },
-  { key: "startDate", label: "Data inicial", required: true },
-  { key: "firstDueDate", label: "Primeiro vencimento" },
+  { key: "startDate", label: "Data de criação", required: true },
+  { key: "firstDueDate", label: "Data da primeira parcela", required: true },
   { key: "endDate", label: "Data final" },
   { key: "firstVisitDate", label: "Data da primeira visita" },
   { key: "firstVisitTime", label: "Horário da primeira visita" },
@@ -120,6 +120,7 @@ function formatDate(value: string) {
 
 export function ContractsContent({ viewMode, viewToggle, openImport = false, onImportChange }: ContractsContentProps) {
   const queryClient = useQueryClient()
+  const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const mobileFiltersOpen = useMobileFiltersOpen()
@@ -159,7 +160,6 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
   const currentHref = buildPathWithSearchParams(pathname, searchParams)
   const getContractProfileHref = (contractId: string) => withReturnTo(`/contratos/${contractId}`, currentHref)
   const getContractEditHref = (contractId: string) => withReturnTo(`/contratos/${contractId}/editar`, getContractProfileHref(contractId))
-  const getClientProfileHref = (clientId: string) => withReturnTo(`/clientes/${clientId}`, currentHref)
   const filteredContracts = useMemo(() => {
     return contracts.filter((contract) => {
       if (statusFilter === "all") return true
@@ -309,9 +309,21 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
                   const paidInstallments = contract.installments.filter((item) => item.status === "paid").length
                   const clicksignUrl = getContractClicksignUrl(contract)
                   return (
-                    <TableRow key={contract.id}>
+                    <TableRow
+                      key={contract.id}
+                      role="link"
+                      tabIndex={0}
+                      className="cursor-pointer"
+                      aria-label={`Abrir contrato ${formatContractNumber(contract.contractNumber)}`}
+                      onClick={() => router.push(getContractProfileHref(contract.id))}
+                      onKeyDown={(event) => {
+                        if (event.key !== "Enter" && event.key !== " ") return
+                        event.preventDefault()
+                        router.push(getContractProfileHref(contract.id))
+                      }}
+                    >
                       <TableCell className="w-[300px] max-w-[300px]">
-                        <Link href={getContractProfileHref(contract.id)} className="flex items-center gap-3">
+                        <div className="flex items-center gap-3">
                           <div className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 sm:flex">
                             <FileText className="h-5 w-5 text-primary" />
                           </div>
@@ -319,13 +331,13 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
                             <p className="truncate font-medium">{formatContractNumber(contract.contractNumber)}</p>
                             <p className="text-xs text-muted-foreground sm:hidden">{contract.clientCompanyName}</p>
                           </div>
-                        </Link>
+                        </div>
                       </TableCell>
                       <TableCell className="hidden w-[420px] max-w-[420px] sm:table-cell">
-                        <Link href={getClientProfileHref(contract.clientId)} className="group flex items-center gap-2 hover:text-primary">
-                          <Building2 className="h-4 w-4 text-muted-foreground transition-colors group-hover:text-primary" />
+                        <div className="flex items-center gap-2">
+                          <Building2 className="h-4 w-4 text-muted-foreground" />
                           <span className="max-w-[360px] truncate">{contract.clientCompanyName}</span>
-                        </Link>
+                        </div>
                       </TableCell>
                       <TableCell className="hidden md:table-cell">
                         <div>
@@ -348,7 +360,11 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
                         </div>
                       </TableCell>
                       <TableCell>{getStatusBadge(contract.status)}</TableCell>
-                      <TableCell className="text-right">
+                      <TableCell
+                        className="text-right"
+                        onClick={(event) => event.stopPropagation()}
+                        onKeyDown={(event) => event.stopPropagation()}
+                      >
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="icon">
@@ -400,9 +416,21 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
               const progress = contract.installmentsCount > 0 ? (paidInstallments / contract.installmentsCount) * 100 : 0
 
               return (
-                <Card key={contract.id} className="h-full overflow-hidden">
+                <Card
+                  key={contract.id}
+                  role="link"
+                  tabIndex={0}
+                  className="h-full cursor-pointer overflow-hidden"
+                  aria-label={`Abrir contrato ${formatContractNumber(contract.contractNumber)}`}
+                  onClick={() => router.push(getContractProfileHref(contract.id))}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter" && event.key !== " ") return
+                    event.preventDefault()
+                    router.push(getContractProfileHref(contract.id))
+                  }}
+                >
                   <CardContent className="flex h-full flex-col px-6">
-                    <Link href={getContractProfileHref(contract.id)} className="flex-1">
+                    <div className="flex-1">
                       <div className="mb-2 flex items-center gap-3">
                         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
                           <FileText className="h-5 w-5 text-primary" />
@@ -428,9 +456,9 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
                           </span>
                         </div>
                       </div>
-                    </Link>
+                    </div>
                     <div className="mt-auto space-y-3 pt-3">
-                      <Link href={getContractProfileHref(contract.id)} className="block">
+                      <div>
                         <div className="mb-2 flex justify-between text-xs">
                           <span>
                             {paidInstallments}/{contract.installmentsCount} parcelas pagas
@@ -440,8 +468,12 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
                         <div className="h-2 overflow-hidden rounded-full bg-muted">
                           <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${progress}%` }} />
                         </div>
-                      </Link>
-                      <div className="flex gap-2">
+                      </div>
+                      <div
+                        className="flex gap-2"
+                        onClick={(event) => event.stopPropagation()}
+                        onKeyDown={(event) => event.stopPropagation()}
+                      >
                         {canEditContracts && !isContractSigned(contract) ? (
                           <Button variant="outline" size="sm" className="flex-1" asChild>
                             <Link href={getContractEditHref(contract.id)}>

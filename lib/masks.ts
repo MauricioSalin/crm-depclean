@@ -4,6 +4,25 @@ export function onlyDigits(value: string) {
   return value.replace(/\D/g, "")
 }
 
+export function isValidEmail(value: string) {
+  const email = value.trim()
+  if (!email || !/^[\x00-\x7F]+$/.test(email)) return false
+
+  const [localPart, domain, ...extraParts] = email.split("@")
+  if (!localPart || !domain || extraParts.length > 0) return false
+  if (localPart.startsWith(".") || localPart.endsWith(".") || localPart.includes("..")) return false
+  if (!/^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+$/.test(localPart)) return false
+
+  const labels = domain.split(".")
+  if (labels.length < 2 || labels.at(-1)!.length < 2) return false
+  return labels.every((label) => /^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/.test(label))
+}
+
+export function isValidPhone(value: string) {
+  const digits = onlyDigits(value)
+  return digits.length === 10 || digits.length === 11
+}
+
 export function isValidCPF(value: string) {
   const cpf = onlyDigits(value)
   if (cpf.length !== 11 || /^(\d)\1{10}$/.test(cpf)) return false

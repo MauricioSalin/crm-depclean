@@ -50,6 +50,8 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
+import { SearchableSelect } from "@/components/ui/searchable-select"
+import { DatePicker } from "@/components/ui/date-picker"
 import {
   Table,
   TableBody,
@@ -82,7 +84,7 @@ import {
 import { cn, formatContractNumber, getColorFromClass } from "@/lib/utils"
 import { useHasAnyPermission } from "@/hooks/use-permissions"
 import { withReturnTo } from "@/lib/navigation"
-import { addCivilDaysKey, addCivilMonthsKey, formatCivilDate, formatCivilLongDate, toCivilDateKey } from "@/lib/date-utils"
+import { addCivilMonthsKey, formatCivilDate, formatCivilLongDate, parseCivilDate, toCivilDateKey } from "@/lib/date-utils"
 import type { RecurrenceRule, RecurrenceRuleType, RecurrenceType } from "@/lib/types"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
@@ -116,6 +118,11 @@ const formatCurrency = (value: number) =>
 
 const formatDate = (value: Date | string) =>
   formatCivilDate(value)
+
+const getFirstInstallmentDueDate = (installments?: Array<{ number: number; dueDate: string }>) => {
+  const firstInstallment = [...(installments ?? [])].sort((left, right) => left.number - right.number)[0]
+  return firstInstallment?.dueDate ? String(firstInstallment.dueDate).split("T")[0] : ""
+}
 
 const createDefaultContractRecurrenceRules = (): RecurrenceRule[] => [
   { type: "range", minUnits: 1, maxUnits: 200, recurrence: "semiannual" },
@@ -332,6 +339,9 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
   const [startDate, setStartDate] = useState(
     contract?.startDate ? String(contract.startDate).split("T")[0] : ""
   )
+  const [firstDueDate, setFirstDueDate] = useState(
+    getFirstInstallmentDueDate(contract?.installments)
+  )
   const [firstVisitDate, setFirstVisitDate] = useState(
     contract?.firstVisitDate ? String(contract.firstVisitDate).split("T")[0] : ""
   )
@@ -341,10 +351,6 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
     if (!startDate) return ""
     return addCivilMonthsKey(startDate, installmentsCount)
   }, [startDate, installmentsCount])
-  const firstInstallmentDueDate = useMemo(() => {
-    if (!startDate) return ""
-    return addCivilDaysKey(startDate, 7)
-  }, [startDate])
   const [dueDay, setDueDay] = useState(((contract as any)?.dueDay ?? (contract as any)?.paymentDay ?? 10) as number)
   const [selectedUnitIds, setSelectedUnitIds] = useState<string[]>(initialUnitIds)
   const [services, setServices] = useState<ContractService[]>(
@@ -466,6 +472,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
     setCreateAutomatedSchedules(contract.automationCreateSchedules ?? true)
     setCreateAutomatedInformatives(contract.automationCreateInformatives ?? true)
     setStartDate(contract.startDate ? String(contract.startDate).split("T")[0] : "")
+    setFirstDueDate(getFirstInstallmentDueDate(contract.installments))
     setFirstVisitDate(contract.firstVisitDate ? String(contract.firstVisitDate).split("T")[0] : "")
     setFirstVisitTime(contract.firstVisitTime || "08:00")
     setInstallmentsCount(contract.installmentsCount ?? 1)
@@ -652,6 +659,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
     downPaymentValue: downPaymentAmount,
     duration: installmentsCount,
     startDate,
+    firstDueDate,
     paymentDay: dueDay,
     installmentsCount,
     recurrence: services.find((service) => service.serviceTypeId)?.recurrence ?? "monthly",
@@ -1104,19 +1112,44 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
       return
     }
 
-    if (!selectedClientId) {
+    if (!selectedClientId || !selectedClient) {
       toast.error("Selecione um cliente para continuar.")
       return
     }
 
-    if (!selectedTemplateId) {
+    if (!selectedTemplateId || !selectedTemplate?.isActive) {
       toast.error("Selecione um template para continuar.")
       return
     }
 
 
     if (!startDate) {
-      toast.error("Preencha a data de referência financeira do contrato.")
+      toast.error("Preencha a data de criação do contrato.")
+      return
+    }
+
+    if (!firstDueDate) {
+      toast.error("Preencha a data da primeira parcela.")
+      return
+    }
+
+    if (!Number.isInteger(installmentsCount) || installmentsCount < 1) {
+      toast.error("Informe uma quantidade de parcelas inteira e maior que zero.")
+      return
+    }
+
+    if (!Number.isInteger(dueDay) || dueDay < 1 || dueDay > 28) {
+      toast.error("Informe um dia de vencimento entre 1 e 28.")
+      return
+    }
+
+    if (!Number.isFinite(totalValue) || totalValue <= 0) {
+      toast.error("Informe um valor total maior que zero para o contrato.")
+      return
+    }
+
+    if (selectedUnitIds.length === 0) {
+      toast.error("Selecione ao menos uma unidade do cliente para o contrato.")
       return
     }
 
@@ -1130,8 +1163,32 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
       return
     }
 
-    if (services.filter((service) => service.serviceTypeId).length === 0) {
+    const selectedServices = services.filter((service) => service.serviceTypeId)
+    if (selectedServices.length === 0) {
       toast.error("Adicione ao menos um serviço ao contrato.")
+      return
+    }
+
+    const invalidService = selectedServices.find((service) => {
+      const serviceTypeExists = serviceTypeById.has(service.serviceTypeId)
+      const durationIsValid = Number.isFinite(service.duration) && service.duration > 0
+      const informativeIsValid = !service.autoSendInformative || Boolean(service.informativeTemplateId)
+      const certificateIsValid = !service.generateCertificateRequest || Boolean(service.certificateTemplateId)
+      return !serviceTypeExists || !durationIsValid || !service.recurrence || !informativeIsValid || !certificateIsValid
+    })
+    if (invalidService) {
+      const serviceName = serviceTypeById.get(invalidService.serviceTypeId)?.name ?? "serviço selecionado"
+      if (!Number.isFinite(invalidService.duration) || invalidService.duration <= 0) {
+        toast.error(`Informe uma duração maior que zero para ${serviceName}.`)
+      } else if (!invalidService.recurrence) {
+        toast.error(`Selecione a recorrência de ${serviceName}.`)
+      } else if (invalidService.autoSendInformative && !invalidService.informativeTemplateId) {
+        toast.error(`Selecione o informativo de ${serviceName} ou desative o envio automático.`)
+      } else if (invalidService.generateCertificateRequest && !invalidService.certificateTemplateId) {
+        toast.error(`Selecione o certificado de ${serviceName} ou desative a geração.`)
+      } else {
+        toast.error("Um dos serviços selecionados não existe mais. Remova-o e selecione novamente.")
+      }
       return
     }
 
@@ -1438,7 +1495,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form noValidate onSubmit={handleSubmit} className="space-y-6">
       {/* Client Selection */}
       <Card className="p-4 sm:p-6">
         <h3 className="font-semibold mb-4 flex items-center gap-2">
@@ -1752,18 +1809,27 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
           <FileText className="w-5 h-5 text-primary" />
           Dados do Contrato
         </h3>
-        <div className="flex flex-wrap gap-4">
-          <div className="space-y-2">
-            <Label>Data de referência financeira *</Label>
-            <Input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              required
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(180px,1fr)_minmax(180px,1fr)_130px_130px]">
+          <div className="min-w-0 space-y-2">
+            <Label>Data de criação *</Label>
+            <DatePicker
+              value={parseCivilDate(startDate)}
+              onChange={(date) => setStartDate(date ? toCivilDateKey(date) : "")}
+              placeholder="Selecionar data"
+              className="h-10 w-full"
             />
           </div>
-          <div className="space-y-2 w-[130px]">
-            <Label>Nº de Parcelas *</Label>
+          <div className="min-w-0 space-y-2">
+            <Label>Data da primeira parcela *</Label>
+            <DatePicker
+              value={parseCivilDate(firstDueDate)}
+              onChange={(date) => setFirstDueDate(date ? toCivilDateKey(date) : "")}
+              placeholder="Selecionar data"
+              className="h-10 w-full"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Nº de parcelas *</Label>
             <Input
               type="number"
               value={installmentsCount}
@@ -1772,8 +1838,8 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
               required
             />
           </div>
-          <div className="space-y-2 w-[130px]">
-            <Label>Dia Vencimento *</Label>
+          <div className="space-y-2">
+            <Label>Dia de vencimento *</Label>
             <Input
               type="number"
               value={dueDay}
@@ -1785,12 +1851,12 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
           </div>
         </div>
         <p className="mt-3 max-w-xl text-xs text-muted-foreground">
-          A vigência começa quando o contrato é concluído no Clicksign. A primeira parcela vence 7 dias após a data de referência; as demais seguem o dia de vencimento informado.
+          A vigência começa quando o contrato é concluído no Clicksign. A data da primeira parcela é definida acima; as demais seguem o dia de vencimento informado.
         </p>
-        {startDate && installmentsCount > 0 && (
+        {firstDueDate && installmentsCount > 0 && (
           <div className="mt-4 flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted-foreground">
             <span>Prazo contratual: <strong className="text-foreground">{installmentsCount} {installmentsCount === 1 ? "mês" : "meses"}</strong></span>
-            <span>1ª parcela: <strong className="text-foreground">{formatCivilDate(firstInstallmentDueDate)}</strong></span>
+            <span>1ª parcela: <strong className="text-foreground">{formatCivilDate(firstDueDate)}</strong></span>
           </div>
         )}
       </Card>
@@ -1963,19 +2029,16 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
                   return (
                     <TableRow key={service.id} className="hover:bg-muted/20">
                       <TableCell className="w-[300px] py-3 align-top">
-                        <Select
+                        <SearchableSelect
                           value={service.serviceTypeId}
                           onValueChange={(v) => updateService(service.id, "serviceTypeId", v)}
-                        >
-                          <SelectTrigger className="w-full min-w-[260px]">
-                            <SelectValue placeholder="Selecione" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {serviceTypes.map((st) => (
-                              <SelectItem key={st.id} value={st.id}>{st.name}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                          options={serviceTypes.map((serviceType) => ({ value: serviceType.id, label: serviceType.name }))}
+                          placeholder="Selecione o serviço"
+                          searchPlaceholder="Buscar serviço..."
+                          emptyMessage="Nenhum serviço encontrado."
+                          includeAll={false}
+                          className="w-full min-w-[260px]"
+                        />
                       </TableCell>
                       <TableCell className="w-[260px] py-3 align-top">
                         <div className="space-y-2">
@@ -1988,7 +2051,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
                             Enviar automaticamente
                           </label>
                           {service.autoSendInformative ? (
-                            <Select
+                            <SearchableSelect
                               value={service.informativeTemplateId || NO_INFORMATIVE_TEMPLATE_VALUE}
                               onValueChange={(value) =>
                                 updateService(
@@ -1997,20 +2060,17 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
                                   value === NO_INFORMATIVE_TEMPLATE_VALUE ? "" : value,
                                 )
                               }
+                              options={[
+                                { value: NO_INFORMATIVE_TEMPLATE_VALUE, label: "Sem informativo" },
+                                ...activeInformativeTemplates.map((template) => ({ value: template.id, label: template.name })),
+                              ]}
+                              placeholder={activeInformativeTemplates.length > 0 ? "Selecione" : "Nenhum template"}
+                              searchPlaceholder="Buscar informativo..."
+                              emptyMessage="Nenhum informativo encontrado."
+                              includeAll={false}
                               disabled={!service.serviceTypeId || activeInformativeTemplates.length === 0}
-                            >
-                              <SelectTrigger className="w-full min-w-[230px]">
-                                <SelectValue placeholder={activeInformativeTemplates.length > 0 ? "Selecione" : "Nenhum template"} />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value={NO_INFORMATIVE_TEMPLATE_VALUE}>Sem informativo</SelectItem>
-                                {activeInformativeTemplates.map((template) => (
-                                  <SelectItem key={template.id} value={template.id}>
-                                    {template.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                              className="w-full min-w-[230px]"
+                            />
                           ) : null}
                         </div>
                       </TableCell>
@@ -2025,7 +2085,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
                             Gerar solicitação
                           </label>
                           {service.generateCertificateRequest ? (
-                            <Select
+                            <SearchableSelect
                               value={service.certificateTemplateId || NO_CERTIFICATE_TEMPLATE_VALUE}
                               onValueChange={(value) =>
                                 updateService(
@@ -2034,20 +2094,17 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
                                   value === NO_CERTIFICATE_TEMPLATE_VALUE ? "" : value,
                                 )
                               }
+                              options={[
+                                { value: NO_CERTIFICATE_TEMPLATE_VALUE, label: "Sem certificado" },
+                                ...activeCertificateTemplates.map((template) => ({ value: template.id, label: template.name })),
+                              ]}
+                              placeholder={activeCertificateTemplates.length > 0 ? "Selecione" : "Nenhum template"}
+                              searchPlaceholder="Buscar certificado..."
+                              emptyMessage="Nenhum certificado encontrado."
+                              includeAll={false}
                               disabled={!service.serviceTypeId || activeCertificateTemplates.length === 0}
-                            >
-                              <SelectTrigger className="w-full min-w-[230px]">
-                                <SelectValue placeholder={activeCertificateTemplates.length > 0 ? "Selecione" : "Nenhum template"} />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value={NO_CERTIFICATE_TEMPLATE_VALUE}>Sem certificado</SelectItem>
-                                {activeCertificateTemplates.map((template) => (
-                                  <SelectItem key={template.id} value={template.id}>
-                                    {template.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                              className="w-full min-w-[230px]"
+                            />
                           ) : null}
                         </div>
                       </TableCell>

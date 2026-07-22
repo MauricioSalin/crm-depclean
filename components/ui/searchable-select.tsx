@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/popover"
 
 interface SearchableSelectProps {
+  id?: string
   value: string
   onValueChange: (value: string) => void
   options: { value: string; label: string; icon?: React.ReactNode }[]
@@ -32,6 +33,7 @@ interface SearchableSelectProps {
 }
 
 export function SearchableSelect({
+  id,
   value,
   onValueChange,
   options,
@@ -58,6 +60,7 @@ export function SearchableSelect({
     <Popover open={disabled ? false : open} onOpenChange={disabled ? undefined : setOpen}>
       <PopoverTrigger asChild>
         <Button
+          id={id}
           variant="outline"
           role="combobox"
           aria-expanded={!disabled && open}
@@ -69,8 +72,9 @@ export function SearchableSelect({
             className,
           )}
         >
-          <span className="truncate">
-            {selectedOption?.label || placeholder}
+          <span className="flex min-w-0 items-center gap-2">
+            {selectedOption?.icon}
+            <span className="truncate">{selectedOption?.label || placeholder}</span>
           </span>
           <ChevronsUpDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
         </Button>
@@ -84,7 +88,7 @@ export function SearchableSelect({
               {allOptions.map((option) => (
                 <CommandItem
                   key={option.value}
-                  value={option.label}
+                  value={`${option.label} ${option.value}`}
                   onSelect={() => {
                     onValueChange(option.value)
                     setOpen(false)

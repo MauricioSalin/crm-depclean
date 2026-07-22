@@ -228,7 +228,18 @@ export function CertificatesContent({ viewMode, viewToggle, createOpen = false, 
 
   const handleManualCertificateSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (!manualScheduleId) return
+    if (!manualClientId) {
+      toast.error("Selecione o cliente do certificado.")
+      return
+    }
+    if (!manualDate) {
+      toast.error("Selecione a data da visita do certificado.")
+      return
+    }
+    if (!manualScheduleId) {
+      toast.error("Selecione um agendamento concluído para emitir o certificado.")
+      return
+    }
     closeCreateDialog()
     router.push(`/certificados/${manualScheduleId}`)
   }
@@ -270,7 +281,7 @@ export function CertificatesContent({ viewMode, viewToggle, createOpen = false, 
             </DialogDescription>
           </DialogHeader>
 
-          <form autoComplete="off" onSubmit={handleManualCertificateSubmit} className="space-y-4">
+          <form autoComplete="off" noValidate onSubmit={handleManualCertificateSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label>Cliente</Label>
               <SearchableSelect
@@ -324,7 +335,7 @@ export function CertificatesContent({ viewMode, viewToggle, createOpen = false, 
               <Button type="button" variant="outline" onClick={closeCreateDialog}>
                 Cancelar
               </Button>
-              <Button type="submit" disabled={!manualScheduleId}>
+              <Button type="submit" disabled={!canManage}>
                 Emitir certificado
               </Button>
             </DialogFooter>

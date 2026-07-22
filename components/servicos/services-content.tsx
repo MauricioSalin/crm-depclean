@@ -53,6 +53,11 @@ function formatDuration(type: ServiceTypeRow) {
   return `${dur} hora${dur > 1 ? "s" : ""}`
 }
 
+function formatDailyScheduleLimit(limit: number | null | undefined) {
+  if (limit === null || limit === undefined) return "Ilimitado"
+  return `${limit} por dia`
+}
+
 export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) {
   const mobileFiltersOpen = useMobileFiltersOpen()
   const queryClient = useQueryClient()
@@ -186,6 +191,7 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
                 <TableHead className="hidden sm:table-cell">Descrição</TableHead>
                 <TableHead className="hidden md:table-cell">Equipe / Funcionários</TableHead>
                 <TableHead className="min-w-[110px]">Duração</TableHead>
+                <TableHead className="hidden min-w-[180px] lg:table-cell">Limite de serviços no dia</TableHead>
                 {canManageServices ? <TableHead className="text-right">Ações</TableHead> : null}
               </TableRow>
             </TableHeader>
@@ -198,11 +204,12 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
                     { className: "hidden sm:table-cell", width: "w-48" },
                     { className: "hidden md:table-cell", width: "w-32" },
                     { width: "w-20" },
+                    { className: "hidden lg:table-cell", width: "w-32" },
                     ...(canManageServices ? [{ align: "right" as const, width: "w-16" }] : []),
                   ]}
                 />
               ) : filteredTypes.length === 0 ? (
-                <TableEmptyState colSpan={canManageServices ? 5 : 4} icon={ClipboardList} title="Nenhum tipo de serviço encontrado." />
+                <TableEmptyState colSpan={canManageServices ? 6 : 5} icon={ClipboardList} title="Nenhum tipo de serviço encontrado." />
               ) : (
                 filteredTypes.map((type) => (
                   <TableRow
@@ -257,11 +264,14 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
                         })()}
                       </div>
                     </TableCell>
-                    <TableCell className="min-w-[110px]">
+                    <TableCell className="min-w-[110px] align-top">
                       <div className="flex items-center gap-1.5 whitespace-nowrap">
                         <Clock className="h-4 w-4 shrink-0 text-muted-foreground" />
                         <span className="whitespace-nowrap">{formatDuration(type)}</span>
                       </div>
+                    </TableCell>
+                    <TableCell className="hidden min-w-[180px] align-top lg:table-cell">
+                      {formatDailyScheduleLimit(type.dailyScheduleLimit)}
                     </TableCell>
                     {canManageServices ? (
                       <TableCell className="text-right">

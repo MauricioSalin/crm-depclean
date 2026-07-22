@@ -81,7 +81,7 @@ export function ResetPasswordForm() {
 
           <Card className="w-full max-w-[420px] border-0 bg-white py-0 shadow-[0_18px_50px_rgba(0,0,0,0.14)]">
             <CardContent className="p-8 sm:p-10">
-              <form autoComplete="off" onSubmit={handleSubmit} className="space-y-6">
+              <form autoComplete="off" noValidate onSubmit={handleSubmit} className="space-y-6">
                 {!token && (
                   <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
                     Link inválido ou expirado. Solicite uma nova recuperação de senha.

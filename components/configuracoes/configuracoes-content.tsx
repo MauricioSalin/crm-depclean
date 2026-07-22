@@ -20,6 +20,7 @@ import { FilterSearchInput } from "@/components/ui/filter-search-input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
+import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -34,7 +35,7 @@ import { getApiErrorMessage } from "@/lib/api/errors"
 import { cn, getInitials } from "@/lib/utils"
 import { resolveAvatarUrl } from "@/lib/avatar"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
-import { formatCNPJ, formatCPF, formatPhone, isValidCNPJ, isValidCPF } from "@/lib/masks"
+import { formatCNPJ, formatCPF, formatPhone, isValidCNPJ, isValidCPF, isValidEmail, isValidPhone, onlyDigits } from "@/lib/masks"
 import { listEmployees, type EmployeeRecord } from "@/lib/api/employees"
 import {
   createClientType,
@@ -631,6 +632,22 @@ export function ConfiguracoesContent() {
       toast.error("Informe um CNPJ válido para a empresa.")
       return
     }
+    if (organizationForm.email.trim() && !isValidEmail(organizationForm.email)) {
+      toast.error("Informe um e-mail válido para a empresa, como contato@empresa.com.br.")
+      return
+    }
+    if (organizationForm.phone.trim() && !isValidPhone(organizationForm.phone)) {
+      toast.error("Informe um telefone válido com DDD e 10 ou 11 dígitos.")
+      return
+    }
+    if (organizationForm.address.zipCode.trim() && onlyDigits(organizationForm.address.zipCode).length !== 8) {
+      toast.error("Informe um CEP válido com 8 dígitos.")
+      return
+    }
+    if (organizationForm.address.state.trim() && !/^[A-Za-z]{2}$/.test(organizationForm.address.state.trim())) {
+      toast.error("Informe a UF com exatamente 2 letras, por exemplo RS.")
+      return
+    }
     setSaving(true)
     const toastId = toast.loading("Salvando dados da empresa...")
     try {
@@ -655,6 +672,14 @@ export function ConfiguracoesContent() {
     event.preventDefault()
     if (!canManageSettings) return
     if (saving) return
+    if (!typeForm.name.trim()) {
+      toast.error("Informe o nome do tipo de cliente.")
+      return
+    }
+    if (!/^#[0-9a-f]{6}$/i.test(typeForm.color)) {
+      toast.error("Informe uma cor válida no formato #RRGGBB.")
+      return
+    }
     setSaving(true)
     const toastId = toast.loading(editingType ? "Salvando tipo de cliente..." : "Criando tipo de cliente...")
     try {
@@ -679,6 +704,14 @@ export function ConfiguracoesContent() {
     event.preventDefault()
     if (!canManageSettings) return
     if (saving) return
+    if (!profileForm.name.trim()) {
+      toast.error("Informe o nome do perfil de permissão.")
+      return
+    }
+    if (profileForm.permissions.length === 0) {
+      toast.error("Selecione ao menos uma permissão para o perfil.")
+      return
+    }
     setSaving(true)
     const toastId = toast.loading(editingProfile ? "Salvando perfil..." : "Criando perfil...")
     try {
@@ -704,6 +737,22 @@ export function ConfiguracoesContent() {
     event.preventDefault()
     if (!canManageSettings) return
     if (saving) return
+    if (!userForm.name.trim()) {
+      toast.error("Informe o nome completo do usuário.")
+      return
+    }
+    if (userForm.email.trim() && !isValidEmail(userForm.email)) {
+      toast.error("Informe um e-mail válido para o usuário, como nome@empresa.com.br.")
+      return
+    }
+    if (userForm.phone.trim() && !isValidPhone(userForm.phone)) {
+      toast.error("Informe um telefone válido com DDD e 10 ou 11 dígitos.")
+      return
+    }
+    if (!userForm.email.trim() && !userForm.phone.trim()) {
+      toast.error("Informe um e-mail ou telefone/WhatsApp para o acesso do usuário.")
+      return
+    }
     if (!isValidCPF(userForm.cpf)) {
       toast.error("Informe um CPF válido para o usuário.")
       return
@@ -724,6 +773,10 @@ export function ConfiguracoesContent() {
 
     if (!editingUser && !normalizedPassword) {
       toast.error("Informe uma senha ou gere uma nova senha.")
+      return
+    }
+    if (shouldSubmitPassword && normalizedPassword.length < 6) {
+      toast.error("A senha deve ter pelo menos 6 caracteres.")
       return
     }
 
@@ -783,6 +836,23 @@ export function ConfiguracoesContent() {
     if (saving) return
     if (!editingRule) {
       toast.error("Apenas notificações padrão podem ser editadas.")
+      return
+    }
+    if (!ruleForm.name.trim()) {
+      toast.error("Informe o nome da regra de notificação.")
+      return
+    }
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(ruleForm.time)) {
+      toast.error("Informe um horário válido entre 00:00 e 23:59 para a regra.")
+      return
+    }
+    if (ruleForm.channels.length === 0) {
+      toast.error("Selecione ao menos um canal de envio para a regra.")
+      return
+    }
+    const minimumDaysBefore = ruleForm.type === "payment_overdue" ? 1 : 0
+    if (!Number.isInteger(ruleForm.daysBefore) || ruleForm.daysBefore < minimumDaysBefore) {
+      toast.error("Informe uma quantidade válida de dias para o disparo da regra.")
       return
     }
     setSaving(true)
@@ -1168,7 +1238,7 @@ export function ConfiguracoesContent() {
       </div>
 
       {activeSection === "empresa" && isAdmin && canManageSettings && (
-        <form autoComplete="off" onSubmit={handleOrganizationSubmit} className="space-y-4">
+        <form autoComplete="off" noValidate onSubmit={handleOrganizationSubmit} className="space-y-4">
           <Card>
             <CardHeader>
               <div className="flex items-center gap-3">
@@ -1374,7 +1444,7 @@ export function ConfiguracoesContent() {
               <DialogHeader>
                 <DialogTitle>{editingType ? "Editar Tipo de Cliente" : "Novo Tipo de Cliente"}</DialogTitle>
               </DialogHeader>
-              <form autoComplete="off" onSubmit={handleTypeSubmit} className="space-y-4">
+              <form autoComplete="off" noValidate onSubmit={handleTypeSubmit} className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="type-name">Nome</Label>
                   <Input id="type-name" value={typeForm.name} onChange={(event) => setTypeForm({ ...typeForm, name: event.target.value })} required />
@@ -1492,7 +1562,7 @@ export function ConfiguracoesContent() {
               <DialogHeader className="px-6 pb-4 pt-6">
                 <DialogTitle>{editingProfile ? "Editar Permissão" : "Nova Permissão"}</DialogTitle>
               </DialogHeader>
-              <form autoComplete="off" onSubmit={handleProfileSubmit} className="flex min-h-0 flex-1 flex-col">
+              <form autoComplete="off" noValidate onSubmit={handleProfileSubmit} className="flex min-h-0 flex-1 flex-col">
                 <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-4">
                   <div className="space-y-4">
                     <div className="space-y-2">
@@ -1658,7 +1728,7 @@ export function ConfiguracoesContent() {
               <DialogHeader className="px-6 pb-4 pt-6">
                 <DialogTitle>{editingUser ? "Editar Usuário do Sistema" : "Novo Usuário do Sistema"}</DialogTitle>
               </DialogHeader>
-              <form autoComplete="off" onSubmit={handleUserSubmit} className="flex min-h-0 flex-1 flex-col">
+              <form autoComplete="off" noValidate onSubmit={handleUserSubmit} className="flex min-h-0 flex-1 flex-col">
                 <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-4">
                   <div className="space-y-4">
                 <div className="space-y-2">
@@ -1732,16 +1802,16 @@ export function ConfiguracoesContent() {
                 )}
                 <div className="space-y-2">
                   <Label>Perfil de permissão</Label>
-                  <Select value={userForm.permissionProfileId} onValueChange={(value) => setUserForm({ ...userForm, permissionProfileId: value })}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Selecione um perfil" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {permissionProfiles.map((profile) => (
-                        <SelectItem key={profile.id} value={profile.id}>{profile.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <SearchableSelect
+                    value={userForm.permissionProfileId}
+                    onValueChange={(value) => setUserForm({ ...userForm, permissionProfileId: value })}
+                    options={permissionProfiles.map((profile) => ({ value: profile.id, label: profile.name }))}
+                    placeholder="Selecione um perfil"
+                    searchPlaceholder="Buscar perfil..."
+                    emptyMessage="Nenhum perfil encontrado."
+                    includeAll={false}
+                    className="w-full"
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>Status</Label>
@@ -1903,7 +1973,7 @@ export function ConfiguracoesContent() {
               <DialogHeader className="px-6 pb-4 pt-6">
                 <DialogTitle>Editar Notificação Padrão</DialogTitle>
               </DialogHeader>
-              <form autoComplete="off" onSubmit={handleRuleSubmit} className="flex min-h-0 flex-1 flex-col">
+              <form autoComplete="off" noValidate onSubmit={handleRuleSubmit} className="flex min-h-0 flex-1 flex-col">
                 <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-4">
                   <div className="space-y-4">
                 <div className="space-y-2">

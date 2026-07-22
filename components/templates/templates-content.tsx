@@ -28,6 +28,7 @@ import { TableSkeletonRows } from "@/components/ui/table-skeleton"
 import { Input } from "@/components/ui/input"
 import { FilterSearchInput } from "@/components/ui/filter-search-input"
 import { Label } from "@/components/ui/label"
+import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -701,6 +702,9 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
   const previewClient = clients.find((client) => client.id === previewClientId)
   const previewContracts = contracts.filter((contract) => contract.clientId === previewClientId)
   const previewSchedules = schedules.filter((schedule) => schedule.clientId === previewClientId)
+  const activeEmployeeOptions = employees
+    .filter((employee) => employee.status === "active")
+    .map((employee) => ({ value: employee.id, label: employee.name }))
   const selectedPreviewContract = contracts.find((contract) => contract.id === previewDocumentId)
   const selectedPreviewSchedule = schedules.find((schedule) => schedule.id === previewDocumentId)
   const templateSigner = employees.find((employee) => employee.id === formData.signerId)
@@ -1057,8 +1061,52 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
     event.preventDefault()
     if (!canManageTemplates) return
 
+    if (!formData.name.trim()) {
+      notify({
+        title: "Informe o nome do template",
+        description: "O nome é obrigatório para identificar este template no sistema.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (config.requiresSigner && !formData.signerId) {
+      notify({
+        title: `Selecione ${config.signerLabel.toLowerCase()}`,
+        description: "Este template exige um funcionário responsável pela assinatura.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (kind === "informative" && (!Number.isInteger(formData.informativeSendDaysBefore) || formData.informativeSendDaysBefore < 0)) {
+      notify({
+        title: "Prazo de envio inválido",
+        description: "Informe uma quantidade inteira de dias, igual ou maior que zero.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (kind === "certificate" && (!Number.isInteger(formData.certificateValidityMonths) || formData.certificateValidityMonths < 1)) {
+      notify({
+        title: "Validade inválida",
+        description: "Informe uma validade inteira de pelo menos 1 mês.",
+        variant: "destructive",
+      })
+      return
+    }
+
     setIsImportOpen(false)
-    openNewTemplateEditor("editor")
+    closingEditorRef.current = false
+    setEditingTemplate(null)
+    setIsDocumentDirty(false)
+    setDiscardChangesOpen(false)
+    initialFormSnapshotRef.current = serializeTemplateFormState(formData)
+    setEditorTab("editor")
+    setPreviewClientId("")
+    setPreviewDocumentId("")
+    setIsEditorOpen(true)
     replaceRouteParams({
       template: null,
       templateMode: "new",
@@ -1077,12 +1125,18 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
       return
     }
 
-    if (!formData.name.trim() || (config.requiresSigner && !formData.signerId)) {
+    if (!formData.name.trim()) {
       notify({
-        title: "Campos obrigatórios",
-        description: config.requiresSigner
-          ? "Preencha nome e assinante antes de salvar."
-          : "Preencha o nome do template antes de salvar.",
+        title: "Nome obrigatório",
+        description: "Preencha o nome do template antes de salvar.",
+      })
+      return
+    }
+
+    if (config.requiresSigner && !formData.signerId) {
+      notify({
+        title: "Assinante obrigatório",
+        description: "Selecione o assinante do template antes de salvar.",
       })
       return
     }
@@ -1334,24 +1388,20 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
 
                 <div className="min-w-0 space-y-2">
                   <Label htmlFor="preview-client">Cliente</Label>
-                  <Select
+                  <SearchableSelect
+                    id="preview-client"
                     value={previewClientId}
                     onValueChange={(value) => {
                       setPreviewClientId(value)
                       setPreviewDocumentId("")
                     }}
-                  >
-                    <SelectTrigger id="preview-client" className={FORM_SELECT_TRIGGER_CLASS_NAME}>
-                      <SelectValue placeholder="Selecione o cliente" />
-                    </SelectTrigger>
-                    <SelectContent className={FORM_SELECT_CONTENT_CLASS_NAME}>
-                      {clients.map((client) => (
-                        <SelectItem key={client.id} value={client.id} textValue={client.companyName} className="max-w-full">
-                          <span className="block min-w-0 truncate">{client.companyName}</span>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    options={clients.map((client) => ({ value: client.id, label: client.companyName }))}
+                    placeholder="Selecione o cliente"
+                    searchPlaceholder="Buscar cliente..."
+                    emptyMessage="Nenhum cliente encontrado."
+                    includeAll={false}
+                    className={FORM_SELECT_TRIGGER_CLASS_NAME}
+                  />
                 </div>
 
                 {previewClientId ? (
@@ -1359,40 +1409,32 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
                     <Label htmlFor="preview-document">
                       {kind === "contract" ? "Contrato" : config.label}
                     </Label>
-                    <Select
+                    <SearchableSelect
+                      id="preview-document"
                       value={previewDocumentId}
                       onValueChange={setPreviewDocumentId}
+                      options={
+                        kind === "contract"
+                          ? previewContracts.map((contract) => ({
+                              value: contract.id,
+                              label: `${formatContractNumber(contract.contractNumber)} - ${contract.templateName || contract.status}`,
+                            }))
+                          : previewSchedules.map((schedule) => ({
+                              value: schedule.id,
+                              label: `${formatDate(schedule.date)} - ${schedule.serviceTypeName} - ${schedule.unitName}`,
+                            }))
+                      }
+                      placeholder={
+                        kind === "contract"
+                          ? "Selecione o contrato"
+                          : `Selecione o ${config.label.toLowerCase()}`
+                      }
+                      searchPlaceholder={kind === "contract" ? "Buscar contrato..." : "Buscar agendamento..."}
+                      emptyMessage={`Nenhum ${kind === "contract" ? "contrato" : "agendamento"} encontrado.`}
+                      includeAll={false}
                       disabled={kind === "contract" ? previewContracts.length === 0 : previewSchedules.length === 0}
-                    >
-                      <SelectTrigger id="preview-document" className={FORM_SELECT_TRIGGER_CLASS_NAME}>
-                        <SelectValue
-                          placeholder={
-                            kind === "contract"
-                              ? "Selecione o contrato"
-                              : `Selecione o ${config.label.toLowerCase()}`
-                          }
-                        />
-                      </SelectTrigger>
-                      <SelectContent className={FORM_SELECT_CONTENT_CLASS_NAME}>
-                        {kind === "contract"
-                          ? previewContracts.map((contract) => {
-                              const label = `${formatContractNumber(contract.contractNumber)} - ${contract.templateName || contract.status}`
-                              return (
-                                <SelectItem key={contract.id} value={contract.id} textValue={label} className="max-w-full">
-                                  <span className="block min-w-0 truncate">{label}</span>
-                                </SelectItem>
-                              )
-                            })
-                          : previewSchedules.map((schedule) => {
-                              const label = `${formatDate(schedule.date)} - ${schedule.serviceTypeName} - ${schedule.unitName}`
-                              return (
-                                <SelectItem key={schedule.id} value={schedule.id} textValue={label} className="max-w-full">
-                                  <span className="block min-w-0 truncate">{label}</span>
-                                </SelectItem>
-                              )
-                            })}
-                      </SelectContent>
-                    </Select>
+                      className={FORM_SELECT_TRIGGER_CLASS_NAME}
+                    />
                     {(kind === "contract" ? previewContracts.length === 0 : previewSchedules.length === 0) ? (
                       <p className="text-xs text-muted-foreground">
                         Nenhum {kind === "contract" ? "contrato" : "agendamento"} encontrado para este cliente.
@@ -1537,23 +1579,17 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
                     <PenTool className="h-3.5 w-3.5 text-muted-foreground" />
                     {config.signerLabel}
                   </Label>
-                  <Select
+                  <SearchableSelect
+                    id="tpl-signer"
                     value={formData.signerId}
                     onValueChange={(value) => setFormData((current) => ({ ...current, signerId: value }))}
-                  >
-                    <SelectTrigger className={FORM_SELECT_TRIGGER_CLASS_NAME}>
-                      <SelectValue placeholder="Selecione" />
-                    </SelectTrigger>
-                    <SelectContent className={FORM_SELECT_CONTENT_CLASS_NAME}>
-                      {employees
-                        .filter((employee) => employee.status === "active")
-                        .map((employee) => (
-                          <SelectItem key={employee.id} value={employee.id} textValue={employee.name} className="max-w-full">
-                            <span className="block min-w-0 truncate">{employee.name}</span>
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
+                    options={activeEmployeeOptions}
+                    placeholder="Selecione o funcionário"
+                    searchPlaceholder="Buscar funcionário..."
+                    emptyMessage="Nenhum funcionário encontrado."
+                    includeAll={false}
+                    className={FORM_SELECT_TRIGGER_CLASS_NAME}
+                  />
                 </div>
               ) : null}
 
@@ -1563,26 +1599,19 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
                     <PenTool className="h-3.5 w-3.5 text-muted-foreground" />
                     Testemunha
                   </Label>
-                  <Select
+                  <SearchableSelect
+                    id="tpl-witness-signer"
                     value={formData.witnessSignerId || "none"}
                     onValueChange={(value) =>
                       setFormData((current) => ({ ...current, witnessSignerId: value === "none" ? "" : value }))
                     }
-                  >
-                    <SelectTrigger className={FORM_SELECT_TRIGGER_CLASS_NAME}>
-                      <SelectValue placeholder="Opcional" />
-                    </SelectTrigger>
-                    <SelectContent className={FORM_SELECT_CONTENT_CLASS_NAME}>
-                      <SelectItem value="none">Sem testemunha</SelectItem>
-                      {employees
-                        .filter((employee) => employee.status === "active")
-                        .map((employee) => (
-                          <SelectItem key={employee.id} value={employee.id} textValue={employee.name} className="max-w-full">
-                            <span className="block min-w-0 truncate">{employee.name}</span>
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
+                    options={[{ value: "none", label: "Sem testemunha" }, ...activeEmployeeOptions]}
+                    placeholder="Opcional"
+                    searchPlaceholder="Buscar testemunha..."
+                    emptyMessage="Nenhum funcionário encontrado."
+                    includeAll={false}
+                    className={FORM_SELECT_TRIGGER_CLASS_NAME}
+                  />
                 </div>
               ) : null}
 
@@ -1660,7 +1689,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
             </DialogTitle>
           </DialogHeader>
 
-          <form autoComplete="off" onSubmit={handleImportSubmit} className="space-y-5">
+          <form autoComplete="off" noValidate onSubmit={handleImportSubmit} className="space-y-5">
             <div className="space-y-2">
               <Label htmlFor="import-watermark" className="flex items-center gap-1.5">
                 <ImageIcon className="h-3.5 w-3.5 text-muted-foreground" />
@@ -1769,23 +1798,17 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
                   <PenTool className="h-3.5 w-3.5 text-muted-foreground" />
                   {config.signerLabel}
                 </Label>
-                <Select
+                <SearchableSelect
+                  id="import-signer"
                   value={formData.signerId}
                   onValueChange={(value) => setFormData((current) => ({ ...current, signerId: value }))}
-                >
-                  <SelectTrigger className={FORM_SELECT_TRIGGER_CLASS_NAME}>
-                    <SelectValue placeholder="Selecione o funcionário" />
-                  </SelectTrigger>
-                  <SelectContent className={FORM_SELECT_CONTENT_CLASS_NAME}>
-                    {employees
-                      .filter((employee) => employee.status === "active")
-                      .map((employee) => (
-                        <SelectItem key={employee.id} value={employee.id} textValue={employee.name} className="max-w-full">
-                          <span className="block min-w-0 truncate">{employee.name}</span>
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
+                  options={activeEmployeeOptions}
+                  placeholder="Selecione o funcionário"
+                  searchPlaceholder="Buscar funcionário..."
+                  emptyMessage="Nenhum funcionário encontrado."
+                  includeAll={false}
+                  className={FORM_SELECT_TRIGGER_CLASS_NAME}
+                />
               </div>
             ) : null}
 
@@ -1795,26 +1818,19 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
                   <PenTool className="h-3.5 w-3.5 text-muted-foreground" />
                   Testemunha
                 </Label>
-                <Select
+                <SearchableSelect
+                  id="import-witness-signer"
                   value={formData.witnessSignerId || "none"}
                   onValueChange={(value) =>
                     setFormData((current) => ({ ...current, witnessSignerId: value === "none" ? "" : value }))
                   }
-                >
-                  <SelectTrigger className={FORM_SELECT_TRIGGER_CLASS_NAME}>
-                    <SelectValue placeholder="Opcional" />
-                  </SelectTrigger>
-                  <SelectContent className={FORM_SELECT_CONTENT_CLASS_NAME}>
-                    <SelectItem value="none">Sem testemunha</SelectItem>
-                    {employees
-                      .filter((employee) => employee.status === "active")
-                      .map((employee) => (
-                        <SelectItem key={employee.id} value={employee.id} textValue={employee.name} className="max-w-full">
-                          <span className="block min-w-0 truncate">{employee.name}</span>
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
+                  options={[{ value: "none", label: "Sem testemunha" }, ...activeEmployeeOptions]}
+                  placeholder="Opcional"
+                  searchPlaceholder="Buscar testemunha..."
+                  emptyMessage="Nenhum funcionário encontrado."
+                  includeAll={false}
+                  className={FORM_SELECT_TRIGGER_CLASS_NAME}
+                />
               </div>
             ) : null}
 
@@ -1822,7 +1838,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
               <Button type="button" variant="outline" onClick={() => setIsImportOpen(false)}>
                 Cancelar
               </Button>
-              <Button type="submit" disabled={!formData.name || (config.requiresSigner && !formData.signerId)}>
+              <Button type="submit">
                 Criar e Editar
               </Button>
             </div>

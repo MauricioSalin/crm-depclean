@@ -14,6 +14,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/use-toast"
@@ -213,15 +214,62 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
       toast({ title: "Nome obrigatório", description: "Informe o nome do serviço." })
       return
     }
+    if (!Number.isInteger(formData.defaultDuration) || formData.defaultDuration < 1) {
+      toast({
+        title: "Duração inválida",
+        description: "Informe uma duração padrão inteira e maior que zero.",
+        variant: "destructive",
+      })
+      return
+    }
+    if (!formData.defaultRecurrence) {
+      toast({
+        title: "Recorrência obrigatória",
+        description: "Selecione a recorrência padrão do serviço.",
+        variant: "destructive",
+      })
+      return
+    }
+    const dailyScheduleLimit = formData.dailyScheduleLimit === "unlimited"
+      ? null
+      : Number(formData.dailyScheduleLimit)
+    if (dailyScheduleLimit !== null && (!Number.isInteger(dailyScheduleLimit) || dailyScheduleLimit < 1 || dailyScheduleLimit > 5)) {
+      toast({
+        title: "Limite diário inválido",
+        description: "Escolha um limite entre 1 e 5 serviços por dia ou selecione ilimitado.",
+        variant: "destructive",
+      })
+      return
+    }
+    if (formData.autoSendInformative && !formData.defaultInformativeTemplateId) {
+      toast({
+        title: "Informativo não selecionado",
+        description: "Selecione o template padrão ou desative o envio automático de informativo.",
+        variant: "destructive",
+      })
+      return
+    }
+    if (formData.generateCertificateRequest && !formData.defaultCertificateTemplateId) {
+      toast({
+        title: "Certificado não selecionado",
+        description: "Selecione o template padrão ou desative a geração de certificado.",
+        variant: "destructive",
+      })
+      return
+    }
     if (formData.clauses.length === 0) {
-      toast({ title: "Cláusulas obrigatórias", description: "Adicione ao menos uma cláusula para o contrato." })
+      toast({
+        title: "Cláusulas obrigatórias",
+        description: "Adicione ao menos uma cláusula para o contrato.",
+        variant: "destructive",
+      })
       return
     }
     saveMutation.mutate()
   }
 
   return (
-    <form autoComplete="off" onSubmit={handleSubmit} className="space-y-6">
+    <form autoComplete="off" noValidate onSubmit={handleSubmit} className="space-y-6">
       <Card className="p-6">
         <div className="mb-6 flex items-center gap-2">
           <ClipboardList className="h-5 w-5 text-primary" />
@@ -363,7 +411,8 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
             {formData.autoSendInformative ? (
               <div className="space-y-2">
                 <Label htmlFor="defaultInformativeTemplateId">Template do informativo</Label>
-                <Select
+                <SearchableSelect
+                  id="defaultInformativeTemplateId"
                   value={formData.defaultInformativeTemplateId || NO_INFORMATIVE_TEMPLATE_VALUE}
                   onValueChange={(value) => {
                     const defaultInformativeTemplateId = value === NO_INFORMATIVE_TEMPLATE_VALUE ? "" : value
@@ -373,20 +422,17 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
                       autoSendInformative: Boolean(defaultInformativeTemplateId),
                     }))
                   }}
+                  options={[
+                    { value: NO_INFORMATIVE_TEMPLATE_VALUE, label: "Sem informativo padrão" },
+                    ...activeInformativeTemplates.map((template) => ({ value: template.id, label: template.name })),
+                  ]}
+                  placeholder={activeInformativeTemplates.length > 0 ? "Selecione um template" : "Nenhum template ativo"}
+                  searchPlaceholder="Buscar template..."
+                  emptyMessage="Nenhum template encontrado."
+                  includeAll={false}
                   disabled={activeInformativeTemplates.length === 0}
-                >
-                  <SelectTrigger id="defaultInformativeTemplateId" className="w-full">
-                    <SelectValue placeholder={activeInformativeTemplates.length > 0 ? "Selecione um template" : "Nenhum template ativo"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NO_INFORMATIVE_TEMPLATE_VALUE}>Sem informativo padrão</SelectItem>
-                    {activeInformativeTemplates.map((template) => (
-                      <SelectItem key={template.id} value={template.id}>
-                        {template.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  className="w-full"
+                />
               </div>
             ) : null}
           </div>
@@ -412,7 +458,8 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
             {formData.generateCertificateRequest ? (
               <div className="space-y-2">
                 <Label htmlFor="defaultCertificateTemplateId">Template do certificado</Label>
-                <Select
+                <SearchableSelect
+                  id="defaultCertificateTemplateId"
                   value={formData.defaultCertificateTemplateId || NO_CERTIFICATE_TEMPLATE_VALUE}
                   onValueChange={(value) => {
                     const defaultCertificateTemplateId = value === NO_CERTIFICATE_TEMPLATE_VALUE ? "" : value
@@ -422,20 +469,17 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
                       generateCertificateRequest: Boolean(defaultCertificateTemplateId),
                     }))
                   }}
+                  options={[
+                    { value: NO_CERTIFICATE_TEMPLATE_VALUE, label: "Sem certificado padrão" },
+                    ...activeCertificateTemplates.map((template) => ({ value: template.id, label: template.name })),
+                  ]}
+                  placeholder={activeCertificateTemplates.length > 0 ? "Selecione um template" : "Nenhum template ativo"}
+                  searchPlaceholder="Buscar template..."
+                  emptyMessage="Nenhum template encontrado."
+                  includeAll={false}
                   disabled={activeCertificateTemplates.length === 0}
-                >
-                  <SelectTrigger id="defaultCertificateTemplateId" className="w-full">
-                    <SelectValue placeholder={activeCertificateTemplates.length > 0 ? "Selecione um template" : "Nenhum template ativo"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NO_CERTIFICATE_TEMPLATE_VALUE}>Sem certificado padrão</SelectItem>
-                    {activeCertificateTemplates.map((template) => (
-                      <SelectItem key={template.id} value={template.id}>
-                        {template.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  className="w-full"
+                />
               </div>
             ) : null}
           </div>

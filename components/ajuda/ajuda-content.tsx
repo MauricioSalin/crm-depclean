@@ -18,6 +18,7 @@ import {
 import { Bot, HelpCircle, Loader2, MessageCircle, Mail, Paperclip, Send, WandSparkles, X } from "lucide-react"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { getSupportContact, sendSupportMessage } from "@/lib/api/support"
+import { isValidEmail } from "@/lib/masks"
 
 const MAX_ATTACHMENTS = 5
 const MAX_ATTACHMENTS_TOTAL_SIZE = 35 * 1024 * 1024
@@ -123,13 +124,32 @@ export function AjudaContent() {
     event.preventDefault()
 
     const question = depAIQuestion.trim()
-    if (!question) return
+    if (!question) {
+      toast.error("Digite uma pergunta antes de enviar para a DepAI.")
+      return
+    }
 
     router.push(`/depai?ask=${encodeURIComponent(question)}`)
   }
 
   const handleContactSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (!contactForm.name.trim()) {
+      toast.error("Informe seu nome para enviar a mensagem.")
+      return
+    }
+    if (!isValidEmail(contactForm.email)) {
+      toast.error("Informe um e-mail válido para receber o retorno do suporte.")
+      return
+    }
+    if (!contactForm.subject.trim()) {
+      toast.error("Informe o assunto da mensagem.")
+      return
+    }
+    if (!contactForm.message.trim()) {
+      toast.error("Descreva o erro, dúvida ou sugestão antes de enviar.")
+      return
+    }
     sendMessageMutation.mutate({
       ...contactForm,
       attachments,
@@ -165,6 +185,7 @@ export function AjudaContent() {
     <div className="space-y-6">
       <form
         autoComplete="off"
+        noValidate
         onSubmit={handleDepAIQuestionSubmit}
         className="grid w-full gap-2 sm:flex sm:max-w-2xl sm:items-center"
       >
@@ -241,7 +262,7 @@ export function AjudaContent() {
               <CardDescription>Envie erros encontrados, sugestões de melhoria e prints para análise.</CardDescription>
             </CardHeader>
             <CardContent>
-              <form autoComplete="off" onSubmit={handleContactSubmit} className="space-y-6">
+              <form autoComplete="off" noValidate onSubmit={handleContactSubmit} className="space-y-6">
                 <div className="space-y-2">
                   <Label htmlFor="support-name">Nome</Label>
                   <Input

@@ -212,6 +212,15 @@ export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle 
       return
     }
 
+    if (!/^#[0-9a-f]{6}$/i.test(payload.color)) {
+      toast({
+        title: "Cor inválida",
+        description: "Informe uma cor hexadecimal válida no formato #RRGGBB.",
+        variant: "destructive",
+      })
+      return
+    }
+
     if (editingTeam) {
       updateMutation.mutate({ id: editingTeam.id, payload })
       return
@@ -254,7 +263,7 @@ export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle 
             <DialogTitle>{editingTeam ? "Editar Equipe" : "Nova Equipe"}</DialogTitle>
           </DialogHeader>
 
-          <form autoComplete="off" onSubmit={handleSubmit} className="space-y-6">
+          <form autoComplete="off" noValidate onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
               <Label htmlFor="team-name">Nome da Equipe</Label>
               <Input

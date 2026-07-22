@@ -88,6 +88,7 @@ export type ClientExtraStatus = "pending" | "paid" | "late" | "overdue" | "cance
 export type ClientExtraRecord = {
   id: string
   clientId: string
+  description: string
   value: number
   createdDate: string
   dueDate: string
@@ -99,6 +100,7 @@ export type ClientExtraRecord = {
 }
 
 export type CreateClientExtraPayload = {
+  description: string
   value: number
   createdDate: string
   dueDate: string

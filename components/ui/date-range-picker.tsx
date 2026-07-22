@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { format, isBefore, isSameDay, isValid, parse } from "date-fns"
+import { format, isBefore, isValid, parse } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { CalendarIcon, X } from "lucide-react"
 import type { DateRange } from "react-day-picker"
@@ -45,6 +45,26 @@ function parseDateInput(value: string) {
   return formatDateInput(parsed) === value ? parsed : undefined
 }
 
+function setRangeField(
+  range: DateRange | undefined,
+  field: ActiveField,
+  date: Date | undefined,
+): DateRange | undefined {
+  const from = field === "from" ? date : range?.from
+  const to = field === "to" ? date : range?.to
+
+  return from || to ? { from, to } : undefined
+}
+
+function getCalendarRange(range: DateRange | undefined): DateRange | undefined {
+  const from = range?.from
+  const to = range?.to
+
+  if (!from && to) return { from: to, to }
+  if (from && to && isBefore(to, from)) return { from: to, to: from }
+  return range
+}
+
 export function DateRangePicker({
   value,
   onChange,
@@ -59,12 +79,12 @@ export function DateRangePicker({
   const [draftRange, setDraftRange] = React.useState<DateRange | undefined>(value)
   const [fromText, setFromText] = React.useState(() => formatDateInput(value?.from))
   const [toText, setToText] = React.useState(() => formatDateInput(value?.to))
-  const [activeField, setActiveField] = React.useState<ActiveField>("from")
   const activeFieldRef = React.useRef<ActiveField>("from")
   const fromInputRef = React.useRef<HTMLInputElement>(null)
   const toInputRef = React.useRef<HTMLInputElement>(null)
   const isOpen = open ?? internalOpen
   const visibleRange = isOpen ? draftRange : value
+  const calendarRange = getCalendarRange(visibleRange)
 
   React.useEffect(() => {
     setDraftRange(value)
@@ -79,7 +99,6 @@ export function DateRangePicker({
 
   const setActiveDateField = (field: ActiveField) => {
     activeFieldRef.current = field
-    setActiveField(field)
   }
 
   const focusDateInput = (field = activeFieldRef.current) => {
@@ -90,8 +109,10 @@ export function DateRangePicker({
   }
 
   const setPopoverOpen = (nextOpen: boolean) => {
-    setDraftRange(value)
-    syncInputText(value)
+    if (nextOpen && !isOpen) {
+      setDraftRange(value)
+      syncInputText(value)
+    }
     setInternalOpen(nextOpen)
     onOpenChange?.(nextOpen)
     if (nextOpen) focusDateInput()
@@ -102,7 +123,7 @@ export function DateRangePicker({
     onOpenChange?.(false)
   }
 
-  const commitRange = (range: DateRange) => {
+  const commitRange = (range: DateRange | undefined) => {
     setDraftRange(range)
     syncInputText(range)
     onChange?.(range)
@@ -135,13 +156,7 @@ export function DateRangePicker({
     else setToText(nextText)
 
     if (nextText.length === 0) {
-      if (field === "from") {
-        updateDraftRange(undefined)
-        onChange?.(undefined)
-        return
-      }
-
-      const nextRange = currentRange?.from ? { from: currentRange.from, to: undefined } : undefined
+      const nextRange = setRangeField(currentRange, field, undefined)
       updateDraftRange(nextRange)
       onChange?.(nextRange)
       return
@@ -150,74 +165,42 @@ export function DateRangePicker({
     const parsedDate = parseDateInput(nextText)
     if (!parsedDate) return
 
-    if (field === "from") {
-      const existingTo = currentRange?.to
-      const nextRange = existingTo && !isBefore(existingTo, parsedDate)
-        ? { from: parsedDate, to: existingTo }
-        : { from: parsedDate, to: undefined }
-
-      setActiveDateField("to")
-      updateDraftRange(nextRange)
-      onChange?.(nextRange)
-      return
-    }
-
-    const existingFrom = currentRange?.from
-    const nextRange = existingFrom
-      ? isBefore(parsedDate, existingFrom)
-        ? { from: parsedDate, to: existingFrom }
-        : { from: existingFrom, to: parsedDate }
-      : { from: parsedDate, to: undefined }
+    const nextRange = setRangeField(currentRange, field, parsedDate)
 
     updateDraftRange(nextRange)
     onChange?.(nextRange)
+
+    if (field === "from") setActiveDateField("to")
   }
 
   const clearDateField = (field: ActiveField) => {
     const currentRange = isOpen ? draftRange : value
     setActiveDateField(field)
 
-    if (field === "from") {
-      updateDraftRange(undefined)
-      onChange?.(undefined)
-      return
-    }
-
-    const nextRange = currentRange?.from ? { from: currentRange.from, to: undefined } : undefined
+    const nextRange = setRangeField(currentRange, field, undefined)
     updateDraftRange(nextRange)
     onChange?.(nextRange)
   }
 
   const handleSelectDay = (_range: DateRange | undefined, selectedDay: Date) => {
-    if (activeField === "from") {
-      const existingTo = draftRange?.to
-      const nextRange = existingTo && !isBefore(existingTo, selectedDay)
-        ? { from: selectedDay, to: existingTo }
-        : { from: selectedDay, to: undefined }
+    const field = activeFieldRef.current
+    const nextRange = setRangeField(draftRange, field, selectedDay)
 
-      if (nextRange.to) {
-        commitRange(nextRange)
-        return
-      }
-
+    if (field === "from" && !nextRange?.to) {
       setActiveDateField("to")
       updateDraftRange(nextRange)
+      onChange?.(nextRange)
       return
     }
 
-    if (!draftRange?.from) {
-      setActiveDateField("to")
-      updateDraftRange({ from: selectedDay, to: undefined })
+    if (field === "to" && !nextRange?.from) {
+      setActiveDateField("from")
+      updateDraftRange(nextRange)
+      onChange?.(nextRange)
       return
     }
 
-    const from = draftRange.from
-    if (isSameDay(selectedDay, from)) {
-      commitRange({ from, to: from })
-      return
-    }
-
-    commitRange(isBefore(selectedDay, from) ? { from: selectedDay, to: from } : { from, to: selectedDay })
+    commitRange(nextRange)
   }
 
   return (
@@ -228,18 +211,18 @@ export function DateRangePicker({
             <div className="relative focus-within:z-[70]">
               <CalendarIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-              ref={fromInputRef}
-              value={fromText}
-              onChange={(event) => handleInputChange("from", event.target.value)}
-              onFocus={() => handleInputFocus("from")}
-              onClick={() => handleInputClick("from")}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") closePopover()
-              }}
-              placeholder={fromPlaceholder}
-              inputMode="numeric"
-              className="pl-9 pr-9 text-sm"
-              aria-label={fromPlaceholder}
+                ref={fromInputRef}
+                value={fromText}
+                onChange={(event) => handleInputChange("from", event.target.value)}
+                onFocus={() => handleInputFocus("from")}
+                onClick={() => handleInputClick("from")}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") closePopover()
+                }}
+                placeholder={fromPlaceholder}
+                inputMode="numeric"
+                className="pl-9 pr-9 text-sm"
+                aria-label={fromPlaceholder}
               />
               {fromText ? (
                 <button
@@ -260,18 +243,18 @@ export function DateRangePicker({
             <div className="relative focus-within:z-[70]">
               <CalendarIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-              ref={toInputRef}
-              value={toText}
-              onChange={(event) => handleInputChange("to", event.target.value)}
-              onFocus={() => handleInputFocus("to")}
-              onClick={() => handleInputClick("to")}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") closePopover()
-              }}
-              placeholder={toPlaceholder}
-              inputMode="numeric"
-              className="pl-9 pr-9 text-sm"
-              aria-label={toPlaceholder}
+                ref={toInputRef}
+                value={toText}
+                onChange={(event) => handleInputChange("to", event.target.value)}
+                onFocus={() => handleInputFocus("to")}
+                onClick={() => handleInputClick("to")}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") closePopover()
+                }}
+                placeholder={toPlaceholder}
+                inputMode="numeric"
+                className="pl-9 pr-9 text-sm"
+                aria-label={toPlaceholder}
               />
               {toText ? (
                 <button
@@ -300,8 +283,8 @@ export function DateRangePicker({
         >
           <Calendar
             mode="range"
-            defaultMonth={visibleRange?.from ?? visibleRange?.to}
-            selected={visibleRange}
+            defaultMonth={calendarRange?.from ?? calendarRange?.to}
+            selected={calendarRange}
             onSelect={handleSelectDay}
             numberOfMonths={isMobile ? 1 : 2}
             showOutsideDays={false}

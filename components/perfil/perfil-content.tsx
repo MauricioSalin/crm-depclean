@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
@@ -21,7 +22,7 @@ import { getApiErrorMessage } from "@/lib/api/errors"
 import { getSettings, type PermissionProfileRecord } from "@/lib/api/settings"
 import { getStoredAccessToken, getStoredRefreshToken, getStoredUser, isPersistentSession, persistSession } from "@/lib/auth/session"
 import { resolveAvatarUrl } from "@/lib/avatar"
-import { formatCPF, formatPhone, isValidCPF } from "@/lib/masks"
+import { formatCPF, formatPhone, isValidCPF, isValidEmail, isValidPhone } from "@/lib/masks"
 import type { AuthenticatedUser } from "@/lib/auth/types"
 
 type ProfileResponse = AuthenticatedUser & { profileDescription: string }
@@ -140,6 +141,22 @@ export function PerfilContent() {
     event.preventDefault()
     if (!profile) return
     if (saving) return
+    if (!profile.name.trim()) {
+      toast.error("Informe seu nome completo.")
+      return
+    }
+    if (profile.email?.trim() && !isValidEmail(profile.email)) {
+      toast.error("Informe um e-mail válido, como nome@empresa.com.br.")
+      return
+    }
+    if (profile.phone?.trim() && !isValidPhone(profile.phone)) {
+      toast.error("Informe um telefone válido com DDD e 10 ou 11 dígitos.")
+      return
+    }
+    if (!profile.email?.trim() && !profile.phone?.trim()) {
+      toast.error("Mantenha ao menos um e-mail ou telefone/WhatsApp para acessar o sistema.")
+      return
+    }
     if (!isValidCPF(profile.cpf)) {
       toast.error("Informe um CPF válido.")
       return
@@ -193,13 +210,24 @@ export function PerfilContent() {
     if (saving) return
     setPasswordError("")
 
+    if (!passwordData.currentPassword.trim()) {
+      const message = "Informe sua senha atual."
+      setPasswordError(message)
+      toast.error(message)
+      return
+    }
+
     if (passwordData.newPassword.length < 6) {
-      setPasswordError("A nova senha deve ter pelo menos 6 caracteres.")
+      const message = "A nova senha deve ter pelo menos 6 caracteres."
+      setPasswordError(message)
+      toast.error(message)
       return
     }
 
     if (passwordData.newPassword !== passwordData.confirmPassword) {
-      setPasswordError("As senhas não coincidem.")
+      const message = "A confirmação não corresponde à nova senha."
+      setPasswordError(message)
+      toast.error(message)
       return
     }
 
@@ -437,7 +465,7 @@ export function PerfilContent() {
           <CardTitle>Informações Pessoais</CardTitle>
         </CardHeader>
         <CardContent>
-          <form autoComplete="off" onSubmit={handleSave} className="space-y-6">
+          <form autoComplete="off" noValidate onSubmit={handleSave} className="space-y-6">
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
               <div className="space-y-2 sm:col-span-2">
                 <Label htmlFor="name" className="flex items-center gap-1.5">
@@ -493,21 +521,16 @@ export function PerfilContent() {
                     <Shield className="h-3.5 w-3.5 text-muted-foreground" />
                     Perfil de Permissão
                   </Label>
-                  <Select
+                  <SearchableSelect
                     value={formData.permissionProfileId}
                     onValueChange={(value) => setProfile({ ...formData, permissionProfileId: value })}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Selecione" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {permissionProfiles.map((item) => (
-                        <SelectItem key={item.id} value={item.id}>
-                          {item.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    options={permissionProfiles.map((item) => ({ value: item.id, label: item.name }))}
+                    placeholder="Selecione um perfil"
+                    searchPlaceholder="Buscar perfil..."
+                    emptyMessage="Nenhum perfil encontrado."
+                    includeAll={false}
+                    className="w-full"
+                  />
                 </div>
               )}
 
@@ -552,7 +575,7 @@ export function PerfilContent() {
               Alterar Senha
             </DialogTitle>
           </DialogHeader>
-          <form autoComplete="off" onSubmit={handlePasswordChange} className="space-y-4">
+          <form autoComplete="off" noValidate onSubmit={handlePasswordChange} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="currentPassword">Senha Atual</Label>
               <div className="relative">

@@ -9,6 +9,7 @@ import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
+import { SearchableSelect } from "@/components/ui/searchable-select"
 import {
   Select,
   SelectContent,
@@ -746,37 +747,26 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
           <div className="flex flex-col md:flex-row gap-3">
             <div className="space-y-2 md:w-[220px] shrink-0">
               <Label htmlFor="clientType">Tipo de Cliente *</Label>
-              <Select
+              <SearchableSelect
+                id="clientType"
                 value={formData.clientTypeId}
                 onValueChange={(value) => handleInputChange("clientTypeId", value)}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Selecione o tipo">
-                    {selectedClientType ? (
-                      <span className="flex min-w-0 items-center gap-2">
-                        <span
-                          className="h-2.5 w-2.5 shrink-0 rounded-full"
-                          style={{ backgroundColor: getColorFromClass(selectedClientType.color) }}
-                        />
-                        <span className="truncate">{selectedClientType.name}</span>
-                      </span>
-                    ) : null}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {clientTypes.map((type) => (
-                    <SelectItem key={type.id} value={type.id} textValue={type.name} className="cursor-pointer">
-                      <span className="flex min-w-0 items-center gap-2">
-                        <span
-                          className="h-2.5 w-2.5 shrink-0 rounded-full"
-                          style={{ backgroundColor: getColorFromClass(type.color) }}
-                        />
-                        <span className="truncate">{type.name}</span>
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                options={clientTypes.map((type) => ({
+                  value: type.id,
+                  label: type.name,
+                  icon: (
+                    <span
+                      className="h-2.5 w-2.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: getColorFromClass(type.color) }}
+                    />
+                  ),
+                }))}
+                placeholder="Selecione o tipo"
+                searchPlaceholder="Buscar tipo de cliente..."
+                emptyMessage="Nenhum tipo de cliente encontrado."
+                includeAll={false}
+                className="w-full"
+              />
             </div>
             <div className="space-y-2 md:w-[320px]">
               <Label htmlFor="responsibleName">Nome do Responsável *</Label>
@@ -1131,20 +1121,17 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
 
           <div className="space-y-2">
             <Label>Estado *</Label>
-            <Select
+            <SearchableSelect
               value={units[0]?.address?.state || ""}
               onValueChange={(value) => handleUnitChange(0, "address.state", value)}
+              options={BRAZILIAN_STATES.map((state) => ({ value: state, label: state }))}
+              placeholder="UF"
+              searchPlaceholder="Buscar UF..."
+              emptyMessage="Nenhuma UF encontrada."
+              includeAll={false}
               disabled={cepLoading === 0}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="UF" />
-              </SelectTrigger>
-              <SelectContent>
-                {BRAZILIAN_STATES.map((uf) => (
-                  <SelectItem key={uf} value={uf}>{uf}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              className="w-full"
+            />
           </div>
         </div>
       </Card>
@@ -1282,20 +1269,17 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
 
                     <div className="space-y-2">
                       <Label>Estado *</Label>
-                      <Select
+                      <SearchableSelect
                         value={unit.address?.state || ""}
                         onValueChange={(value) => handleUnitChange(index, "address.state", value)}
+                        options={BRAZILIAN_STATES.map((state) => ({ value: state, label: state }))}
+                        placeholder="UF"
+                        searchPlaceholder="Buscar UF..."
+                        emptyMessage="Nenhuma UF encontrada."
+                        includeAll={false}
                         disabled={cepLoading === index}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="UF" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {BRAZILIAN_STATES.map((uf) => (
-                            <SelectItem key={uf} value={uf}>{uf}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                        className="w-full"
+                      />
                     </div>
                   </div>
                 </div>

@@ -57,7 +57,6 @@ function TemplatesPageContent() {
   const [editorOpen, setEditorOpen] = useState(false)
   const [editorEditing, setEditorEditing] = useState(false)
   const [editorName, setEditorName] = useState("")
-  const [editorCanSave, setEditorCanSave] = useState(false)
   const [editorSaving, setEditorSaving] = useState(false)
   const canManageTemplates = useHasAnyPermission(["templates_manage"])
 
@@ -66,7 +65,6 @@ function TemplatesPageContent() {
     setEditorOpen(state.isOpen)
     setEditorEditing(state.isEditing)
     setEditorName(state.name)
-    setEditorCanSave(state.canSave)
     setEditorSaving(state.isSaving)
   }, [])
 
@@ -161,7 +159,7 @@ function TemplatesPageContent() {
                 <Button
                   className="h-9 w-full bg-primary text-sm text-primary-foreground hover:bg-primary/90 sm:w-auto"
                   onClick={() => editorRef.current?.onSave()}
-                  disabled={!editorCanSave || editorSaving}
+                  disabled={editorSaving}
                 >
                   <Save className="mr-2 h-4 w-4" />
                   {editorSaving ? "Salvando..." : "Salvar Template"}
