@@ -208,7 +208,11 @@ export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle 
     }
 
     if (!payload.name) {
-      toast({ title: "Nome obrigatório", description: "Informe o nome da equipe." })
+      toast({
+        title: "Nome obrigatório",
+        description: "Informe o nome da equipe.",
+        variant: "destructive",
+      })
       return
     }
 

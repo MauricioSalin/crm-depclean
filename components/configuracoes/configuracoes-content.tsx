@@ -18,6 +18,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { FilterSearchInput } from "@/components/ui/filter-search-input"
 import { Label } from "@/components/ui/label"
+import { NumericInput } from "@/components/ui/numeric-input"
 import { Badge } from "@/components/ui/badge"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { SearchableSelect } from "@/components/ui/searchable-select"
@@ -2006,29 +2007,31 @@ export function ConfiguracoesContent() {
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div className="space-y-2">
                         <Label>Primeiro Alerta (dias antes)</Label>
-                        <Input
-                          type="tel"
-                          inputMode="numeric"
+                        <NumericInput
                           min={0}
                           value={ruleForm.contractExpirationAlertDays[0] ?? 0}
-                          onChange={(event) => {
+                          onValueChange={(value) => {
                             const next = [...ruleForm.contractExpirationAlertDays]
-                            next[0] = event.target.value === "" ? "" : Number(event.target.value)
-                            setRuleForm({ ...ruleForm, contractExpirationAlertDays: next, daysBefore: event.target.value === "" ? 0 : Number(event.target.value) })
+                            next[0] = value
+                            setRuleForm({ ...ruleForm, contractExpirationAlertDays: next, daysBefore: value })
                           }}
                           aria-label="Alerta 1 em dias"
                         />
                       </div>
                       <div className="space-y-2">
                         <Label>Segundo Alerta (dias antes)</Label>
-                        <Input
-                          type="tel"
-                          inputMode="numeric"
+                        <NumericInput
+                          allowEmpty
                           min={0}
-                          value={ruleForm.contractExpirationAlertDays[1] ?? 0}
-                          onChange={(event) => {
+                          value={ruleForm.contractExpirationAlertDays[1] ?? ""}
+                          onEmpty={() => {
                             const next = [...ruleForm.contractExpirationAlertDays]
-                            next[1] = event.target.value === "" ? "" : Number(event.target.value)
+                            next[1] = ""
+                            setRuleForm({ ...ruleForm, contractExpirationAlertDays: next })
+                          }}
+                          onValueChange={(value) => {
+                            const next = [...ruleForm.contractExpirationAlertDays]
+                            next[1] = value
                             setRuleForm({ ...ruleForm, contractExpirationAlertDays: next })
                           }}
                           aria-label="Alerta 2 em dias"
@@ -2042,7 +2045,12 @@ export function ConfiguracoesContent() {
                     <Label htmlFor="rule-days">
                       {ruleForm.type === "payment_overdue" ? "Intervalo de cobrança (dias)" : "Dias de antecedência"}
                     </Label>
-                    <Input id="rule-days" type="tel" inputMode="numeric" min={ruleForm.type === "payment_overdue" ? 1 : 0} value={ruleForm.daysBefore} onChange={(event) => setRuleForm({ ...ruleForm, daysBefore: Number(event.target.value) })} />
+                    <NumericInput
+                      id="rule-days"
+                      min={ruleForm.type === "payment_overdue" ? 1 : 0}
+                      value={ruleForm.daysBefore}
+                      onValueChange={(daysBefore) => setRuleForm({ ...ruleForm, daysBefore })}
+                    />
                     {ruleForm.type === "payment_overdue" ? (
                       <p className="text-xs text-muted-foreground">A cobrança só é enviada quando a parcela for marcada manualmente como vencida.</p>
                     ) : null}

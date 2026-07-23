@@ -45,7 +45,9 @@ export function ServiceClausesDialog({
                 </div>
               ))
             ) : (
-              <p className="text-sm text-muted-foreground">Nenhuma cláusula informada para este serviço.</p>
+              <p className="text-sm text-muted-foreground">
+                Nenhuma cláusula informada. Sem cláusulas, este serviço não será adicionado ao documento do contrato.
+              </p>
             )}
           </div>
         </div>

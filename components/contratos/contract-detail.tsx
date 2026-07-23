@@ -125,7 +125,12 @@ const formatDateTime = (value?: string | Date) => {
   }).format(date)
 }
 
-const formatDuration = (duration: number, durationType: "hours" | "shift" | "days") => {
+const formatDuration = (duration: number, durationType: "minutes" | "hours" | "shift" | "days") => {
+  if (durationType === "minutes") return `${duration} minuto${duration === 1 ? "" : "s"}`
+  if (durationType === "hours" && duration > 0 && duration < 1) {
+    const minutes = Math.round(duration * 60)
+    return `${minutes} minuto${minutes === 1 ? "" : "s"}`
+  }
   if (durationType === "hours") return `${duration} hora${duration === 1 ? "" : "s"}`
   if (durationType === "days") return `${duration} dia${duration === 1 ? "" : "s"}`
   return `${duration} turno${duration === 1 ? "" : "s"}`

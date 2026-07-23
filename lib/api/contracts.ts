@@ -16,8 +16,9 @@ export type ContractServicePayload = {
   generateCertificateRequest?: boolean
   recurrence?: string
   duration?: number
-  durationType?: "hours" | "shift" | "days"
+  durationType?: "minutes" | "hours" | "shift" | "days"
   isActive?: boolean
+  isRecurrenceService?: boolean
 }
 
 export type ContractPayload = {
@@ -42,6 +43,7 @@ export type ContractPayload = {
   installmentsCount: number
   recurrence?: string
   recurrenceRules?: ServiceRecurrenceRuleRecord[]
+  recurrenceServiceTypeId?: string
   services: ContractServicePayload[]
   status?: string
   renderedHtml?: string
@@ -92,6 +94,7 @@ export type ContractRecord = {
   installmentsCount: number
   recurrence: string
   recurrenceRules: ServiceRecurrenceRuleRecord[]
+  recurrenceServiceTypeId: string
   services: Array<{
     id: string
     serviceTypeId: string
@@ -106,8 +109,9 @@ export type ContractRecord = {
     generateCertificateRequest: boolean
     recurrence: string
     duration: number
-    durationType: "hours" | "shift" | "days"
+    durationType: "minutes" | "hours" | "shift" | "days"
     isActive: boolean
+    isRecurrenceService: boolean
   }>
   installments: ContractInstallmentRecord[]
   status: string
@@ -176,7 +180,7 @@ export type ContractSchedulePlanPayload = {
     date: string
     time: string
     durationValue: number
-    durationType: "hours" | "shift" | "days"
+    durationType: "minutes" | "hours" | "shift" | "days"
   }>
 }
 

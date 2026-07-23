@@ -7,7 +7,7 @@ import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { DatePicker } from "@/components/ui/date-picker"
-import { Input } from "@/components/ui/input"
+import { NumericInput } from "@/components/ui/numeric-input"
 import {
   Dialog,
   DialogContent,
@@ -44,7 +44,8 @@ type ContractSchedulePlanDialogProps = {
 const WORKDAY_DURATION_MINUTES = 9 * 60
 const SHIFT_DURATION_MINUTES = 4 * 60
 
-const durationToMinutes = (value: number, type: "hours" | "shift" | "days") => {
+const durationToMinutes = (value: number, type: "minutes" | "hours" | "shift" | "days") => {
+  if (type === "minutes") return value
   if (type === "days") return value * WORKDAY_DURATION_MINUTES
   if (type === "shift") return value * SHIFT_DURATION_MINUTES
   return value * 60
@@ -310,18 +311,15 @@ export function ContractSchedulePlanDialog({
                         </TableCell>
                         <TableCell className="align-top">
                           <div className="flex min-w-[230px] gap-2">
-                            <Input
-                              type="tel"
-                              inputMode="decimal"
+                            <NumericInput
+                              allowDecimal
                               min="0.5"
                               step="0.5"
                               value={item.durationValue ?? 1}
                               disabled={editingDisabled}
                               className="h-9 w-24 rounded-full"
                               aria-label={`Duração de ${item.serviceTypeName}`}
-                              onChange={(event) => {
-                                const durationValue = Number(event.target.value)
-                                if (!Number.isFinite(durationValue) || durationValue <= 0) return
+                              onValueChange={(durationValue) => {
                                 const durationType = item.durationType ?? "hours"
                                 updateItem(item.id, {
                                   durationValue,
@@ -333,7 +331,7 @@ export function ContractSchedulePlanDialog({
                             <Select
                               value={item.durationType ?? "hours"}
                               disabled={editingDisabled}
-                              onValueChange={(value: "hours" | "shift" | "days") => {
+                              onValueChange={(value: "minutes" | "hours" | "shift" | "days") => {
                                 const durationValue = Number(item.durationValue ?? 1)
                                 updateItem(item.id, {
                                   durationType: value,
@@ -347,6 +345,7 @@ export function ContractSchedulePlanDialog({
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
+                                <SelectItem value="minutes">Minutos</SelectItem>
                                 <SelectItem value="hours">Horas</SelectItem>
                                 <SelectItem value="shift">Turnos</SelectItem>
                                 <SelectItem value="days">Dias</SelectItem>

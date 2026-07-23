@@ -59,7 +59,7 @@ export type ReportScheduleDetail = {
   employeeNames: string[]
   estimatedDuration: number
   durationValue: number
-  durationType: "hours" | "shift" | "days"
+  durationType: "minutes" | "hours" | "shift" | "days"
   status: "scheduled" | "in_progress" | "completed" | "cancelled" | "rescheduled"
   isEmergency: boolean
   isManual: boolean

@@ -766,6 +766,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       date: string
       time: string
       duration: number
+      totalDays?: number
       teamColor: string | null
       status: string
     }> = []
@@ -779,6 +780,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
         date: currentDate,
         time: AGENDA_WORKDAY_START_TIME,
         duration: AGENDA_DAY_DURATION_MINUTES,
+        totalDays: days,
       })
       currentDate = nextBusinessDateKey(currentDate)
     }
@@ -1326,7 +1328,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
             dayPanelOpen ? "lg:gap-4" : "lg:gap-0",
           )}
         >
-          <Card className="flex min-w-0 flex-col lg:flex-1 lg:overflow-hidden">
+          <Card className="flex min-w-0 flex-col py-0 lg:flex-1 lg:overflow-hidden">
             <CardContent className="flex min-h-0 flex-1 flex-col p-0 lg:h-[calc(100vh-280px)] lg:[@media(max-height:1199px)]:h-[calc(100dvh-180px)]">
               <WeekTimeline
                 events={timelineEvents}

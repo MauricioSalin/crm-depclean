@@ -156,6 +156,7 @@ export interface ContractService {
   clauses: string[] // Cláusulas específicas
   informativeTemplateId?: string
   isActive: boolean
+  isRecurrenceService?: boolean
 }
 
 // Installment (Parcela)
@@ -191,6 +192,7 @@ export interface Contract {
   installmentsCount: number
   recurrence: RecurrenceType // Recorrência das visitas (calculada pelas regras)
   recurrenceRules: RecurrenceRule[] // Regras de recorrência por nº de unidades (1 por contrato)
+  recurrenceServiceTypeId?: string
   services: ContractService[]
   installments: Installment[]
   status: ContractStatus

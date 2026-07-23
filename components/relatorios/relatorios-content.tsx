@@ -182,6 +182,11 @@ function formatReportDate(value: string) {
 }
 
 function formatReportDuration(detail: ReportsAnalyticsRecord["scheduleDetails"][number]) {
+  if (detail.durationType === "minutes") {
+    const minutes = detail.durationValue > 0 ? detail.durationValue : detail.estimatedDuration
+    return `${minutes.toLocaleString("pt-BR")} ${minutes === 1 ? "minuto" : "minutos"}`
+  }
+
   if (detail.durationType === "days") {
     const days = detail.durationValue > 0 ? detail.durationValue : Math.max(1, Math.ceil(detail.estimatedDuration / 540))
     return `${days.toLocaleString("pt-BR")} ${days === 1 ? "dia" : "dias"}`
@@ -189,6 +194,10 @@ function formatReportDuration(detail: ReportsAnalyticsRecord["scheduleDetails"][
 
   if (detail.durationType === "shift") return "Meio período"
   const hours = detail.durationValue > 0 ? detail.durationValue : detail.estimatedDuration / 60
+  if (hours > 0 && hours < 1) {
+    const minutes = Math.round(hours * 60)
+    return `${minutes.toLocaleString("pt-BR")} ${minutes === 1 ? "minuto" : "minutos"}`
+  }
   return `${hours.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} ${hours === 1 ? "hora" : "horas"}`
 }
 

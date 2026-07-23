@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Input } from "@/components/ui/input"
+import { NumericInput } from "@/components/ui/numeric-input"
 import { Textarea } from "@/components/ui/textarea"
 import { CurrencyInput } from "@/components/ui/currency-input"
 import { Label } from "@/components/ui/label"
@@ -99,7 +100,7 @@ import {
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { isClosedClicksignContractStatus } from "@/lib/contract-status"
 import { formatCNPJ, formatCPF, formatPhone } from "@/lib/masks"
-import { listServices } from "@/lib/api/services"
+import { listServices, type ServiceDurationType } from "@/lib/api/services"
 import { listTemplates } from "@/lib/api/templates"
 import { listTeams } from "@/lib/api/teams"
 import { listEmployees } from "@/lib/api/employees"
@@ -176,15 +177,17 @@ function buildServiceSectionsHtml(
 ) {
   return contractServices
     .filter((service) => service.serviceTypeId)
-    .map((service, serviceIndex) => {
+    .map((service) => {
       const serviceType = serviceTypes.find((item) => item.id === service.serviceTypeId)
       const sourceClauses = service.clauses?.length ? service.clauses : (serviceType?.clauses ?? [])
-      const clauses = sourceClauses.length
-        ? sourceClauses.map((clause, clauseIndex) => `<p><strong>${serviceIndex + 1}.${clauseIndex + 1}.</strong> ${escapeHtml(clause)}</p>`).join("")
-        : `<p><strong>${serviceIndex + 1}.1.</strong> Cláusulas específicas não informadas para este serviço.</p>`
-
-      return `<p><strong>${serviceIndex + 1}. ${escapeHtml(serviceType?.name ?? "Serviço")}</strong></p>${clauses}`
+      return { serviceType, sourceClauses }
     })
+    .filter(({ sourceClauses }) => sourceClauses.length > 0)
+    .map(({ serviceType, sourceClauses }, serviceIndex) =>
+      `<p><strong>${serviceIndex + 1}. ${escapeHtml(serviceType?.name ?? "Serviço")}</strong></p>${sourceClauses
+        .map((clause, clauseIndex) => `<p><strong>${serviceIndex + 1}.${clauseIndex + 1}.</strong> ${escapeHtml(clause)}</p>`)
+        .join("")}`,
+    )
     .join("")
 }
 
@@ -205,14 +208,20 @@ interface ContractService {
   employeeIds: string[]
   recurrence: string
   duration: number
-  durationType: "hours" | "shift" | "days"
+  durationType: ServiceDurationType
   clauses: string[]
+  isRecurrenceService: boolean
 }
 
-const formatServiceDuration = (service?: { defaultDuration?: number; durationType?: "hours" | "shift" | "days" }) => {
+const formatServiceDuration = (service?: { defaultDuration?: number; durationType?: ServiceDurationType }) => {
   if (!service) return "-"
   const duration = Number(service.defaultDuration ?? 0)
   if (!duration) return "-"
+  if (service.durationType === "minutes") return `${duration} minuto${duration === 1 ? "" : "s"}`
+  if (service.durationType === "hours" && duration < 1) {
+    const minutes = Math.round(duration * 60)
+    return `${minutes} minuto${minutes === 1 ? "" : "s"}`
+  }
   if (service.durationType === "shift") return `${duration} turno${duration === 1 ? "" : "s"}`
   if (service.durationType === "days") return `${duration} dia${duration === 1 ? "" : "s"}`
   return `${duration} hora${duration === 1 ? "" : "s"}`
@@ -230,6 +239,31 @@ const recurrenceOptions = [
 
 const NO_INFORMATIVE_TEMPLATE_VALUE = "__none__"
 const NO_CERTIFICATE_TEMPLATE_VALUE = "__none__"
+const DEFAULT_RECURRENCE_SERVICE_TYPE_ID = "srv-visita-de-rotina"
+
+function findRecurrenceRuleForUnitCount(rules: RecurrenceRule[], unitCount: number) {
+  if (unitCount <= 0) return undefined
+
+  const sortedRules = [...rules].sort((current, next) => {
+    if (current.minUnits !== next.minUnits) return current.minUnits - next.minUnits
+    return current.maxUnits - next.maxUnits
+  })
+  return sortedRules.find((rule) => rule.type === "range"
+    ? unitCount >= rule.minUnits && unitCount <= rule.maxUnits
+    : unitCount > rule.minUnits)
+}
+
+function resolveRecurrenceForUnitCount(rules: RecurrenceRule[], unitCount: number) {
+  return findRecurrenceRuleForUnitCount(rules, unitCount)?.recurrence
+    ?? [...rules].sort((current, next) => current.minUnits - next.minUnits)[0]?.recurrence
+    ?? "monthly"
+}
+
+function formatRecurrenceRuleCondition(rule: RecurrenceRule) {
+  return rule.type === "range"
+    ? `${rule.minUnits} a ${rule.maxUnits} unidades`
+    : `Acima de ${rule.minUnits} unidades`
+}
 
 function isPresent<T>(value: T | null | undefined): value is T {
   return value != null
@@ -355,13 +389,22 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
     contract?.firstVisitDate ? String(contract.firstVisitDate).split("T")[0] : ""
   )
   const [firstVisitTime, setFirstVisitTime] = useState(contract?.firstVisitTime || "08:00")
-  const [installmentsCount, setInstallmentsCount] = useState(contract?.installmentsCount || 1)
+  const [installmentsCountInput, setInstallmentsCountInput] = useState(
+    String(contract?.installmentsCount ?? 1),
+  )
+  const installmentsCount = Number(installmentsCountInput)
   const endDate = useMemo(() => {
     if (!startDate) return ""
     return addCivilMonthsKey(startDate, installmentsCount)
   }, [startDate, installmentsCount])
-  const [dueDay, setDueDay] = useState(((contract as any)?.dueDay ?? (contract as any)?.paymentDay ?? 10) as number)
+  const [dueDayInput, setDueDayInput] = useState(
+    String((contract as any)?.dueDay ?? (contract as any)?.paymentDay ?? 10),
+  )
+  const dueDay = Number(dueDayInput)
   const [selectedUnitIds, setSelectedUnitIds] = useState<string[]>(initialUnitIds)
+  const [recurrenceServiceTypeId, setRecurrenceServiceTypeId] = useState(
+    contract?.recurrenceServiceTypeId || DEFAULT_RECURRENCE_SERVICE_TYPE_ID,
+  )
   const [services, setServices] = useState<ContractService[]>(
     contract?.services.map((s) => {
       const legacyTeamId = (s as any).teamId
@@ -378,8 +421,9 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
         employeeIds: (s as any).additionalEmployeeIds ?? (s as any).employeeIds ?? [],
         recurrence: (s as any).recurrence ?? "monthly",
         duration: Number((s as any).duration ?? 1),
-        durationType: ((s as any).durationType ?? "hours") as "hours" | "shift" | "days",
+        durationType: ((s as any).durationType ?? "hours") as ServiceDurationType,
         clauses: [...((s as any).clauses ?? [])],
+        isRecurrenceService: Boolean((s as any).isRecurrenceService),
       }
     }) || []
   )
@@ -489,6 +533,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
       duration: Number(service.duration ?? 1),
       durationType: service.durationType ?? "hours",
       clauses: [...(service.clauses ?? [])],
+      isRecurrenceService: Boolean(service.isRecurrenceService),
     }))
 
     setSelectedClientId(contract.clientId ?? "")
@@ -505,9 +550,10 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
     setFirstDueDate(getFirstInstallmentDueDate(contract.installments))
     setFirstVisitDate(contract.firstVisitDate ? String(contract.firstVisitDate).split("T")[0] : "")
     setFirstVisitTime(contract.firstVisitTime || "08:00")
-    setInstallmentsCount(contract.installmentsCount ?? 1)
-    setDueDay(contract.paymentDay ?? 10)
+    setInstallmentsCountInput(String(contract.installmentsCount ?? 1))
+    setDueDayInput(String(contract.paymentDay ?? 10))
     setSelectedUnitIds(Array.from(new Set([...directUnitIds, ...serviceUnitIds])))
+    setRecurrenceServiceTypeId(contract.recurrenceServiceTypeId || DEFAULT_RECURRENCE_SERVICE_TYPE_ID)
     setServices(initialServiceList)
     setContractValue(Math.round((contract.totalValue ?? 0) * 100))
     setDownPaymentValue(Math.round((contract.downPaymentValue ?? 0) * 100))
@@ -581,6 +627,21 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
     return primary ? [primary] : []
   }, [selectedClient?.units, selectedUnitIds])
 
+  const selectedUnitCount = useMemo(
+    () => (selectedClient?.units ?? [])
+      .filter((unit) => selectedUnitIds.includes(unit.id))
+      .reduce((sum, unit) => sum + Math.max(0, Number(unit.unitCount ?? 0)), 0),
+    [selectedClient?.units, selectedUnitIds],
+  )
+  const recurrenceForSelectedUnits = useMemo(
+    () => resolveRecurrenceForUnitCount(contractRecurrenceRules, selectedUnitCount),
+    [contractRecurrenceRules, selectedUnitCount],
+  )
+  const recurrenceRuleForSelectedUnits = useMemo(
+    () => findRecurrenceRuleForUnitCount(contractRecurrenceRules, selectedUnitCount),
+    [contractRecurrenceRules, selectedUnitCount],
+  )
+
   // Auto-select all filiais when client changes
   useEffect(() => {
     if (!selectedClient?.units?.length) {
@@ -591,6 +652,78 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
       setSelectedUnitIds(selectedClient.units.map(u => u.id))
     }
   }, [selectedClientId])
+
+  useEffect(() => {
+    if (!recurrenceServiceTypeId || serviceTypes.length === 0) return
+    const serviceType = serviceTypes.find((item) => item.id === recurrenceServiceTypeId)
+    if (!serviceType) return
+
+    setServices((current) => {
+      const recurrenceServiceIndex = current.findIndex((service) =>
+        service.isRecurrenceService || service.serviceTypeId === recurrenceServiceTypeId,
+      )
+
+      if (recurrenceServiceIndex < 0) {
+        const defaultSelection = normalizeTeamEmployeeSelection({
+          teamIds: [...(serviceType.teamIds ?? [])],
+          employeeIds: [...(serviceType.employeeIds ?? [])],
+          teams,
+        })
+        return [
+          ...current,
+          {
+            id: `temp-${crypto.randomUUID()}`,
+            serviceTypeId: recurrenceServiceTypeId,
+            informativeTemplateId: serviceType.defaultInformativeTemplateId || "",
+            certificateTemplateId: serviceType.defaultCertificateTemplateId || "",
+            autoSendInformative: Boolean(serviceType.defaultInformativeTemplateId),
+            generateCertificateRequest: Boolean(serviceType.defaultCertificateTemplateId),
+            teamIds: defaultSelection.teamIds,
+            employeeIds: defaultSelection.employeeIds,
+            recurrence: recurrenceForSelectedUnits,
+            duration: Number(serviceType.defaultDuration ?? 1),
+            durationType: serviceType.durationType || "hours",
+            clauses: [...(serviceType.clauses ?? [])],
+            isRecurrenceService: true,
+          },
+        ]
+      }
+
+      return current.map((service, index) => {
+        if (index !== recurrenceServiceIndex) {
+          return service.isRecurrenceService ? { ...service, isRecurrenceService: false } : service
+        }
+        if (service.serviceTypeId === recurrenceServiceTypeId) {
+          return {
+            ...service,
+            recurrence: recurrenceForSelectedUnits,
+            isRecurrenceService: true,
+          }
+        }
+
+        const defaultSelection = normalizeTeamEmployeeSelection({
+          teamIds: [...(serviceType.teamIds ?? [])],
+          employeeIds: [...(serviceType.employeeIds ?? [])],
+          teams,
+        })
+        return {
+          ...service,
+          serviceTypeId: recurrenceServiceTypeId,
+          informativeTemplateId: serviceType.defaultInformativeTemplateId || "",
+          certificateTemplateId: serviceType.defaultCertificateTemplateId || "",
+          autoSendInformative: Boolean(serviceType.defaultInformativeTemplateId),
+          generateCertificateRequest: Boolean(serviceType.defaultCertificateTemplateId),
+          teamIds: defaultSelection.teamIds,
+          employeeIds: defaultSelection.employeeIds,
+          recurrence: recurrenceForSelectedUnits,
+          duration: Number(serviceType.defaultDuration ?? 1),
+          durationType: serviceType.durationType || "hours",
+          clauses: [...(serviceType.clauses ?? [])],
+          isRecurrenceService: true,
+        }
+      })
+    })
+  }, [recurrenceForSelectedUnits, recurrenceServiceTypeId, serviceTypes, teams])
 
   const getRecurrenceLabel = (recurrence: string) => {
     const labels: Record<string, string> = {
@@ -692,13 +825,16 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
     firstDueDate,
     paymentDay: dueDay,
     installmentsCount,
-    recurrence: services.find((service) => service.serviceTypeId)?.recurrence ?? "monthly",
+    recurrence: services.find((service) => service.isRecurrenceService)?.recurrence
+      ?? services.find((service) => service.serviceTypeId)?.recurrence
+      ?? "monthly",
     recurrenceRules: contractRecurrenceRules.map((rule) => ({
       type: rule.type,
       minUnits: Number(rule.minUnits),
       maxUnits: Number.isFinite(rule.maxUnits) ? Number(rule.maxUnits) : Number.MAX_SAFE_INTEGER,
       recurrence: rule.recurrence,
     })),
+    recurrenceServiceTypeId,
     services: services
       .filter((service) => service.serviceTypeId)
       .map((service) => {
@@ -719,6 +855,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
           duration: Math.max(1, Number(service.duration || serviceType?.defaultDuration || 1)),
           durationType: service.durationType || serviceType?.durationType || "hours",
           isActive: true,
+          isRecurrenceService: service.isRecurrenceService,
         }
       }),
     renderedHtml,
@@ -730,24 +867,27 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
     const selectedUnit = selectedClient.units.find((unit) => selectedUnitIds.includes(unit.id)) ??
       selectedClient.units.find((unit) => unit.isPrimary) ??
       selectedClient.units[0]
-    const selectedServiceTypes = services
+    const documentServices = services
       .filter((service) => service.serviceTypeId)
-      .map((service) => serviceTypes.find((item) => item.id === service.serviceTypeId))
-      .filter(Boolean)
-    const serviceNames = selectedServiceTypes.map((service) => service?.name).filter(Boolean).join(", ")
-    const serviceSectionsText = services
-      .filter((service) => service.serviceTypeId)
-      .map((service, serviceIndex) => {
+      .map((service) => {
         const serviceType = serviceTypes.find((item) => item.id === service.serviceTypeId)
         const sourceClauses = service.clauses?.length ? service.clauses : serviceType?.clauses ?? []
-        const clauses = sourceClauses.length
-          ? sourceClauses.map((clause, clauseIndex) => `${serviceIndex + 1}.${clauseIndex + 1}. ${clause}`).join("\n")
-          : `${serviceIndex + 1}.1. Cláusulas específicas não informadas para este serviço.`
-
-        return `${serviceIndex + 1}. ${serviceType?.name ?? "Serviço"}\n${clauses}`
+        return { service, serviceType, sourceClauses }
       })
+      .filter(({ sourceClauses }) => sourceClauses.length > 0)
+    const selectedServiceTypes = documentServices.map(({ serviceType }) => serviceType).filter(Boolean)
+    const serviceNames = selectedServiceTypes.map((service) => service?.name).filter(Boolean).join(", ")
+    const serviceSectionsText = documentServices
+      .map(({ serviceType, sourceClauses }, serviceIndex) =>
+        `${serviceIndex + 1}. ${serviceType?.name ?? "Serviço"}\n${sourceClauses
+          .map((clause, clauseIndex) => `${serviceIndex + 1}.${clauseIndex + 1}. ${clause}`)
+          .join("\n")}`,
+      )
       .join("\n\n")
-    const serviceSectionsHtml = buildServiceSectionsHtml(services, serviceTypes)
+    const serviceSectionsHtml = buildServiceSectionsHtml(
+      documentServices.map(({ service, sourceClauses }) => ({ ...service, clauses: sourceClauses })),
+      serviceTypes,
+    )
     return {
       client: {
         address: formatAddress(selectedUnit?.address),
@@ -802,7 +942,11 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
         remainingInstallmentsCount: String(hasDownPayment ? remainingInstallmentsCount : 0),
         number: formatContractNumber(draftPreview.contractNumber),
         paymentDay: String(dueDay).padStart(2, "0"),
-        recurrence: getRecurrenceLabel(services.find((service) => service.serviceTypeId)?.recurrence ?? "monthly"),
+        recurrence: getRecurrenceLabel(
+          services.find((service) => service.isRecurrenceService)?.recurrence
+            ?? services.find((service) => service.serviceTypeId)?.recurrence
+            ?? "monthly",
+        ),
         recurrenceTable: buildRecurrenceTableHtml(),
         startDate: formatMaybeDate(startDate),
         startDateLong: formatLongDate(startDate),
@@ -966,6 +1110,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
         duration: 1,
         durationType: "hours",
         clauses: [],
+        isRecurrenceService: false,
       }
     ])
   }
@@ -1534,7 +1679,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
 
             return (
               <>
-              <div className="w-fit max-w-full rounded-lg bg-muted/50 p-4 lg:col-span-2">
+              <div className="rounded-lg bg-muted/50 p-4">
                 <div className="flex items-start gap-3">
                   <div
                     className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
@@ -1807,9 +1952,9 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
             <Input
               type="tel"
               inputMode="numeric"
-              value={installmentsCount}
-              onChange={(e) => setInstallmentsCount(Math.max(1, parseInt(e.target.value) || 1))}
-              min={1}
+              maxLength={2}
+              value={installmentsCountInput}
+              onChange={(event) => setInstallmentsCountInput(event.target.value.replace(/\D/g, "").slice(0, 2))}
               required
             />
           </div>
@@ -1818,10 +1963,9 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
             <Input
               type="tel"
               inputMode="numeric"
-              value={dueDay}
-              onChange={(e) => setDueDay(Math.min(28, Math.max(1, parseInt(e.target.value) || 1)))}
-              min={1}
-              max={28}
+              maxLength={2}
+              value={dueDayInput}
+              onChange={(event) => setDueDayInput(event.target.value.replace(/\D/g, "").slice(0, 2))}
               required
             />
           </div>
@@ -1878,57 +2022,88 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
           </Popover>
         </div>
 
+        {selectedClient && (
+          <div className="mb-4 flex flex-wrap items-center gap-2 border-y border-border/60 py-3 text-sm">
+            <Badge variant="secondary" className="tabular-nums">
+              {selectedUnitCount} unidades selecionadas
+            </Badge>
+            {recurrenceRuleForSelectedUnits ? (
+              <span className="text-muted-foreground">
+                Faixa aplicada:{" "}
+                <strong className="font-medium text-foreground">
+                  {formatRecurrenceRuleCondition(recurrenceRuleForSelectedUnits)}
+                </strong>
+                {" · "}
+                <strong className="font-medium text-primary">
+                  {getRecurrenceLabel(recurrenceRuleForSelectedUnits.recurrence)}
+                </strong>
+              </span>
+            ) : (
+              <span className="text-muted-foreground">
+                Informe unidades nas filiais para identificar a faixa aplicada.
+              </span>
+            )}
+          </div>
+        )}
+
         <div className="overflow-x-auto rounded-md border">
-          <Table className="min-w-[680px]">
+          <Table className="min-w-[760px]">
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                <TableHead className="w-[130px]">Tipo</TableHead>
+                <TableHead className="w-[210px]">Tipo</TableHead>
                 <TableHead>Condição</TableHead>
                 <TableHead className="w-[190px]">Recorrência</TableHead>
                 <TableHead className="w-[72px] text-center">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {contractRecurrenceRules.map((rule, ruleIndex) => (
-                  <TableRow key={`${rule.type}-${ruleIndex}`}>
+              {contractRecurrenceRules.map((rule, ruleIndex) => {
+                const isAppliedRule = recurrenceRuleForSelectedUnits === rule
+                return (
+                  <TableRow
+                    key={`${rule.type}-${ruleIndex}`}
+                    className={cn(isAppliedRule && "bg-primary/5 hover:bg-primary/10")}
+                  >
                     <TableCell>
-                      <Badge variant="outline" className="whitespace-nowrap">
-                        {rule.type === "range" ? "Intervalo" : "Acima de"}
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="whitespace-nowrap">
+                          {rule.type === "range" ? "Intervalo" : "Acima de"}
+                        </Badge>
+                        {isAppliedRule && (
+                          <Badge className="gap-1 border border-primary/20 bg-primary/10 text-primary hover:bg-primary/10">
+                            <Check className="h-3 w-3" />
+                            Aplicada
+                          </Badge>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
                         {rule.type === "range" ? (
                           <>
-                            <Input
-                              type="tel"
-                              inputMode="numeric"
+                            <NumericInput
                               aria-label="Quantidade inicial de unidades"
                               className="h-9 w-24"
                               min={1}
                               value={rule.minUnits}
-                              onChange={(event) => updateContractRule(ruleIndex, "minUnits", Math.max(1, Number(event.target.value) || 1))}
+                              onValueChange={(value) => updateContractRule(ruleIndex, "minUnits", value)}
                             />
                             <span className="text-sm text-muted-foreground">a</span>
-                            <Input
-                              type="tel"
-                              inputMode="numeric"
+                            <NumericInput
                               aria-label="Quantidade final de unidades"
                               className="h-9 w-24"
                               min={1}
                               value={rule.maxUnits}
-                              onChange={(event) => updateContractRule(ruleIndex, "maxUnits", Math.max(1, Number(event.target.value) || 1))}
+                              onValueChange={(value) => updateContractRule(ruleIndex, "maxUnits", value)}
                             />
                           </>
                         ) : (
-                          <Input
-                            type="tel"
-                            inputMode="numeric"
+                          <NumericInput
                             aria-label="Quantidade mínima de unidades"
                             className="h-9 w-24"
                             min={1}
                             value={rule.minUnits}
-                            onChange={(event) => updateContractRule(ruleIndex, "minUnits", Math.max(1, Number(event.target.value) || 1))}
+                            onValueChange={(value) => updateContractRule(ruleIndex, "minUnits", value)}
                           />
                         )}
                         <span className="whitespace-nowrap text-sm text-muted-foreground">unidades</span>
@@ -1967,9 +2142,27 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
                       </Button>
                     </TableCell>
                   </TableRow>
-              ))}
+                )
+              })}
             </TableBody>
           </Table>
+        </div>
+        <div className="mt-4 max-w-md space-y-2">
+          <Label>Serviço automático da recorrência</Label>
+          <SearchableSelect
+            value={recurrenceServiceTypeId}
+            onValueChange={setRecurrenceServiceTypeId}
+            options={serviceTypes
+              .filter((serviceType) => serviceType.isActive)
+              .map((serviceType) => ({ value: serviceType.id, label: serviceType.name }))}
+            placeholder="Selecione o serviço"
+            searchPlaceholder="Buscar serviço..."
+            emptyMessage="Nenhum serviço encontrado."
+            includeAll={false}
+          />
+          <p className="text-xs text-muted-foreground">
+            O serviço selecionado entra automaticamente na lista abaixo com a recorrência correspondente às unidades do cliente.
+          </p>
         </div>
       </Card>
 
@@ -2010,7 +2203,13 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
                       <TableCell className="w-[300px] py-3 align-top">
                         <SearchableSelect
                           value={service.serviceTypeId}
-                          onValueChange={(v) => updateService(service.id, "serviceTypeId", v)}
+                          onValueChange={(v) => {
+                            if (service.isRecurrenceService) {
+                              setRecurrenceServiceTypeId(v)
+                              return
+                            }
+                            updateService(service.id, "serviceTypeId", v)
+                          }}
                           options={serviceTypes.map((serviceType) => ({ value: serviceType.id, label: serviceType.name }))}
                           placeholder="Selecione o serviço"
                           searchPlaceholder="Buscar serviço..."
@@ -2067,24 +2266,24 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
                         <div className="flex gap-2">
                           <Select
                             value={service.durationType}
-                            onValueChange={(v) => updateService(service.id, "durationType", v as "hours" | "shift" | "days")}
+                            onValueChange={(v) => updateService(service.id, "durationType", v as ServiceDurationType)}
                           >
                             <SelectTrigger className="w-[115px]">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
+                              <SelectItem value="minutes">Minutos</SelectItem>
                               <SelectItem value="hours">Horas</SelectItem>
                               <SelectItem value="shift">Turnos</SelectItem>
                               <SelectItem value="days">Dias</SelectItem>
                             </SelectContent>
                           </Select>
-                          <Input
-                            type="tel"
-                            inputMode="decimal"
+                          <NumericInput
+                            allowDecimal
                             min={1}
                             className="w-[72px]"
                             value={service.duration}
-                            onChange={(event) => updateService(service.id, "duration", Math.max(1, Number(event.target.value) || 1))}
+                            onValueChange={(value) => updateService(service.id, "duration", value)}
                           />
                         </div>
                       </TableCell>
@@ -2158,6 +2357,10 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
                             variant="ghost"
                             size="icon"
                             onClick={() => removeService(service.id)}
+                            disabled={service.isRecurrenceService}
+                            title={service.isRecurrenceService
+                              ? "Altere o serviço automático na seção de recorrência"
+                              : "Remover serviço"}
                           >
                             <Trash2 className="w-4 h-4 text-destructive" />
                           </Button>
@@ -2175,6 +2378,10 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
             <p className="text-sm">Clique em "Adicionar Serviço" para começar</p>
           </div>
         )}
+
+        <p className="mt-3 text-xs text-muted-foreground">
+          Serviços sem cláusulas permanecem vinculados ao contrato e à automação, mas não são inseridos no documento gerado.
+        </p>
 
       </Card>
 

@@ -15,6 +15,7 @@ interface TimelineEvent {
   date: string
   time: string
   duration: number
+  totalDays?: number
   teamColor: string | null
   teamNames?: string[]
   status: string
@@ -284,17 +285,19 @@ export function WeekTimeline({
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Week navigation */}
-      <div className="flex items-center justify-between px-2 py-2 border-b shrink-0">
-        <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => navigateWeek(-1)}>
-            <ChevronLeft className="h-4 w-4" />
+      <div className="flex h-14 shrink-0 items-center justify-between border-b px-3">
+        <div className="flex h-full items-center gap-1">
+          <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => navigateWeek(-1)}>
+            <span className="sr-only">Semana anterior</span>
+            <ChevronLeft className="h-5 w-5" />
           </Button>
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => navigateWeek(1)}>
-            <ChevronRight className="h-4 w-4" />
+          <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => navigateWeek(1)}>
+            <span className="sr-only">Próxima semana</span>
+            <ChevronRight className="h-5 w-5" />
           </Button>
-          <span className="text-sm font-medium capitalize ml-2">{headerLabel}</span>
+          <span className="ml-2 text-base font-semibold capitalize leading-none">{headerLabel}</span>
         </div>
-        <Button variant="outline" size="sm" className="h-7 text-xs" onClick={goToToday}>
+        <Button variant="outline" size="sm" className="h-9 rounded-full px-4 text-sm" onClick={goToToday}>
           Hoje
         </Button>
       </div>
@@ -525,6 +528,9 @@ export function WeekTimeline({
                   {formatTimelineDate(pointerTooltipEvent.date)} · {pointerTooltipEvent.time} -{" "}
                   {formatEndTime(pointerTooltipEvent.time, pointerTooltipEvent.duration)}
                 </p>
+                {pointerTooltipEvent.totalDays && pointerTooltipEvent.totalDays > 1 ? (
+                  <p>Duração: {pointerTooltipEvent.totalDays} dias</p>
+                ) : null}
                 <p>Status: {formatTimelineStatus(pointerTooltipEvent.status)}</p>
                 {pointerTooltipEvent.teamNames?.length ? (
                   <p>Equipe: {pointerTooltipEvent.teamNames.join(", ")}</p>

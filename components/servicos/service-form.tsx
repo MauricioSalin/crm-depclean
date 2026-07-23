@@ -13,6 +13,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { NumericInput } from "@/components/ui/numeric-input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -20,7 +21,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/use-toast"
 import { listEmployees } from "@/lib/api/employees"
 import { getApiErrorMessage } from "@/lib/api/errors"
-import { createService, getServiceById, updateService } from "@/lib/api/services"
+import { createService, getServiceById, updateService, type ServiceDurationType } from "@/lib/api/services"
 import { listTeams } from "@/lib/api/teams"
 import { listTemplates } from "@/lib/api/templates"
 import {
@@ -46,7 +47,7 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
     name: "",
     description: "",
     defaultDuration: 1,
-    durationType: "hours" as "hours" | "shift" | "days",
+    durationType: "hours" as ServiceDurationType,
     defaultRecurrence: "monthly",
     dailyScheduleLimit: "unlimited",
     defaultInformativeTemplateId: "",
@@ -89,6 +90,16 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
   const employees = employeesQuery.data?.data ?? []
   const informativeTemplates = informativeTemplatesQuery.data?.data ?? []
   const certificateTemplates = certificateTemplatesQuery.data?.data ?? []
+
+  useEffect(() => {
+    if (!serviceQuery.error) return
+
+    toast({
+      title: "Não foi possível carregar o serviço",
+      description: getApiErrorMessage(serviceQuery.error, "Recarregue a página e tente novamente."),
+      variant: "destructive",
+    })
+  }, [serviceQuery.error])
 
   useEffect(() => {
     const service = serviceQuery.data?.data
@@ -210,8 +221,20 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
     if (saveMutation.isPending) return
+    if (serviceId && serviceQuery.isError) {
+      toast({
+        title: "Serviço não carregado",
+        description: "Recarregue a página antes de salvar alterações.",
+        variant: "destructive",
+      })
+      return
+    }
     if (!formData.name.trim()) {
-      toast({ title: "Nome obrigatório", description: "Informe o nome do serviço." })
+      toast({
+        title: "Nome obrigatório",
+        description: "Informe o nome do serviço.",
+        variant: "destructive",
+      })
       return
     }
     if (!Number.isInteger(formData.defaultDuration) || formData.defaultDuration < 1) {
@@ -253,14 +276,6 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
       toast({
         title: "Certificado não selecionado",
         description: "Selecione o template padrão ou desative a geração de certificado.",
-        variant: "destructive",
-      })
-      return
-    }
-    if (formData.clauses.length === 0) {
-      toast({
-        title: "Cláusulas obrigatórias",
-        description: "Adicione ao menos uma cláusula para o contrato.",
         variant: "destructive",
       })
       return
@@ -313,13 +328,14 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
             <Select
               value={formData.durationType}
               onValueChange={(value) =>
-                setFormData((current) => ({ ...current, durationType: value as "hours" | "shift" | "days" }))
+                setFormData((current) => ({ ...current, durationType: value as ServiceDurationType }))
               }
             >
               <SelectTrigger id="durationType" className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="minutes">Minutos</SelectItem>
                 <SelectItem value="hours">Horas</SelectItem>
                 <SelectItem value="shift">Turno</SelectItem>
                 <SelectItem value="days">Dias</SelectItem>
@@ -329,14 +345,12 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
 
           <div className="space-y-2">
             <Label htmlFor="duration">Duração Padrão</Label>
-            <Input
+            <NumericInput
               id="duration"
-              type="tel"
-              inputMode="decimal"
               min={1}
               value={formData.defaultDuration}
-              onChange={(event) =>
-                setFormData((current) => ({ ...current, defaultDuration: Number(event.target.value) || 1 }))
+              onValueChange={(value) =>
+                setFormData((current) => ({ ...current, defaultDuration: value }))
               }
               className="w-full"
             />
@@ -675,7 +689,7 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
             Voltar
           </Button>
         </Link>
-        <Button type="submit" disabled={saveMutation.isPending || serviceQuery.isLoading}>
+        <Button type="submit" disabled={saveMutation.isPending || serviceQuery.isLoading || serviceQuery.isError}>
           <Save className="mr-2 h-4 w-4" />
           {saveMutation.isPending ? "Salvando..." : isEditing ? "Salvar Alterações" : "Cadastrar Serviço"}
         </Button>

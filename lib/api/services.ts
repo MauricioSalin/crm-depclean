@@ -7,6 +7,8 @@ export type ServiceRecurrenceRuleRecord = {
   recurrence: string
 }
 
+export type ServiceDurationType = "minutes" | "hours" | "shift" | "days"
+
 export type ServiceRecord = {
   id: string
   name: string
@@ -15,7 +17,7 @@ export type ServiceRecord = {
   componentServiceIds: string[]
   baseValue: number
   defaultDuration: number
-  durationType: "hours" | "shift" | "days"
+  durationType: ServiceDurationType
   defaultRecurrence: string
   dailyScheduleLimit: number | null
   defaultInformativeTemplateId: string
@@ -38,7 +40,7 @@ export type ServicePayload = {
   componentServiceIds?: string[]
   baseValue?: number
   defaultDuration: number
-  durationType: "hours" | "shift" | "days"
+  durationType: ServiceDurationType
   defaultRecurrence: string
   dailyScheduleLimit?: number | null
   defaultInformativeTemplateId?: string

@@ -42,7 +42,7 @@ import { listServices, type ServiceRecord } from "@/lib/api/services"
 import { listTeams, type TeamRecord } from "@/lib/api/teams"
 import { hasAnyPermission } from "@/lib/auth/permissions"
 import { getStoredUser } from "@/lib/auth/session"
-import { formatCivilDate, toBrasiliaTimeKey, toCivilDateKey } from "@/lib/date-utils"
+import { addCivilDaysKey, formatCivilDate, parseCivilDate, toBrasiliaTimeKey, toCivilDateKey } from "@/lib/date-utils"
 import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 import { formatConfiguredScheduleDuration, minutesToScheduleDuration, scheduleDurationToMinutes } from "@/lib/schedule-duration"
@@ -421,6 +421,19 @@ const SCHEDULE_IMPORT_FIELDS: CsvImportField[] = [
   { key: "notes", label: "Observações" },
 ]
 
+function getCurrentWeekRange(): DateRange {
+  const todayKey = toCivilDateKey(new Date())
+  const [year, month, day] = todayKey.split("-").map(Number)
+  const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay()
+  const fromKey = addCivilDaysKey(todayKey, -weekday)
+  const toKey = addCivilDaysKey(fromKey, 6)
+
+  return {
+    from: parseCivilDate(fromKey) ?? undefined,
+    to: parseCivilDate(toKey) ?? undefined,
+  }
+}
+
 export function AgendamentosContent({ viewMode, openDialog, onDialogChange, viewToggle, openImport = false, onImportChange, initialScheduleId }: AgendamentosContentProps) {
   const router = useRouter()
   const queryClient = useQueryClient()
@@ -428,7 +441,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
   const [searchTerm, setSearchTerm] = useUrlQueryState("q")
   const deferredSearchTerm = useDeferredValue(searchTerm)
   const [statusFilter, setStatusFilter] = useState<string>("all")
-  const [dateRange, setDateRange] = useState<DateRange | undefined>()
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(getCurrentWeekRange)
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(10)
   const [isDialogOpen, setIsDialogOpen] = useState(false)

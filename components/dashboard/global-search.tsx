@@ -33,6 +33,7 @@ const MIN_QUERY_LENGTH = 1
 const MAX_SECTION_RESULTS = 5
 
 const durationTypeLabels: Record<ServiceRecord["durationType"], string> = {
+  minutes: "minuto",
   hours: "hora",
   shift: "turno",
   days: "dia",
@@ -65,8 +66,12 @@ function getContractDescription(contract: ContractRecord) {
 }
 
 function getServiceDescription(service: ServiceRecord) {
-  const durationType = durationTypeLabels[service.durationType] ?? service.durationType
-  const duration = `${service.defaultDuration} ${pluralize(service.defaultDuration, durationType)}`
+  const isLegacyFractionalHour = service.durationType === "hours" && service.defaultDuration > 0 && service.defaultDuration < 1
+  const durationValue = isLegacyFractionalHour ? Math.round(service.defaultDuration * 60) : service.defaultDuration
+  const durationType = isLegacyFractionalHour
+    ? durationTypeLabels.minutes
+    : durationTypeLabels[service.durationType] ?? service.durationType
+  const duration = `${durationValue} ${pluralize(durationValue, durationType)}`
   return [service.description || "Serviço cadastrado", duration].join(" • ")
 }
 

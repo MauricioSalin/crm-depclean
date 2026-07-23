@@ -28,6 +28,7 @@ import { TableSkeletonRows } from "@/components/ui/table-skeleton"
 import { Input } from "@/components/ui/input"
 import { FilterSearchInput } from "@/components/ui/filter-search-input"
 import { Label } from "@/components/ui/label"
+import { NumericInput } from "@/components/ui/numeric-input"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -1121,6 +1122,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
       notify({
         title: "Sem permissao",
         description: "Seu perfil nao permite gerenciar templates.",
+        variant: "destructive",
       })
       return
     }
@@ -1129,6 +1131,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
       notify({
         title: "Nome obrigatório",
         description: "Preencha o nome do template antes de salvar.",
+        variant: "destructive",
       })
       return
     }
@@ -1137,6 +1140,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
       notify({
         title: "Assinante obrigatório",
         description: "Selecione o assinante do template antes de salvar.",
+        variant: "destructive",
       })
       return
     }
@@ -1540,16 +1544,14 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
               {kind === "informative" ? (
                 <div className="space-y-2">
                   <Label htmlFor="tpl-informative-days">Enviar informativo quantos dias antes?</Label>
-                  <Input
+                  <NumericInput
                     id="tpl-informative-days"
-                    type="tel"
-                    inputMode="numeric"
                     min={0}
                     value={formData.informativeSendDaysBefore}
-                    onChange={(event) =>
+                    onValueChange={(value) =>
                       setFormData((current) => ({
                         ...current,
-                        informativeSendDaysBefore: Math.max(0, Number.parseInt(event.target.value, 10) || 0),
+                        informativeSendDaysBefore: value,
                       }))
                     }
                   />
@@ -1559,16 +1561,14 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
               {kind === "certificate" ? (
                 <div className="space-y-2">
                   <Label htmlFor="tpl-certificate-validity">Validade do certificado (meses)</Label>
-                  <Input
+                  <NumericInput
                     id="tpl-certificate-validity"
-                    type="tel"
-                    inputMode="numeric"
                     min={1}
                     value={formData.certificateValidityMonths}
-                    onChange={(event) =>
+                    onValueChange={(value) =>
                       setFormData((current) => ({
                         ...current,
-                        certificateValidityMonths: Math.max(1, Number.parseInt(event.target.value, 10) || 1),
+                        certificateValidityMonths: value,
                       }))
                     }
                   />
@@ -1761,16 +1761,14 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
             {kind === "informative" ? (
               <div className="space-y-2">
                 <Label htmlFor="import-informative-days">Enviar informativo quantos dias antes?</Label>
-                <Input
+                <NumericInput
                   id="import-informative-days"
-                  type="tel"
-                  inputMode="numeric"
                   min={0}
                   value={formData.informativeSendDaysBefore}
-                  onChange={(event) =>
+                  onValueChange={(value) =>
                     setFormData((current) => ({
                       ...current,
-                      informativeSendDaysBefore: Math.max(0, Number.parseInt(event.target.value, 10) || 0),
+                      informativeSendDaysBefore: value,
                     }))
                   }
                 />
@@ -1780,16 +1778,14 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
             {kind === "certificate" ? (
               <div className="space-y-2">
                 <Label htmlFor="import-certificate-validity">Validade do certificado (meses)</Label>
-                <Input
+                <NumericInput
                   id="import-certificate-validity"
-                  type="tel"
-                  inputMode="numeric"
                   min={1}
                   value={formData.certificateValidityMonths}
-                  onChange={(event) =>
+                  onValueChange={(value) =>
                     setFormData((current) => ({
                       ...current,
-                      certificateValidityMonths: Math.max(1, Number.parseInt(event.target.value, 10) || 1),
+                      certificateValidityMonths: value,
                     }))
                   }
                 />

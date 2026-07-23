@@ -4,6 +4,7 @@ import { useDeferredValue, useEffect, useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { NumericInput } from "@/components/ui/numeric-input"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -679,11 +680,10 @@ export function SchedulingFormDialog({
             </div>
             <div className="space-y-2">
               <Label>Duração</Label>
-              <Input
-                type="tel"
-                inputMode="decimal"
+              <NumericInput
+                allowDecimal
                 value={formData.duration}
-                onChange={(e) => setFormData({ ...formData, duration: Number(e.target.value) })}
+                onValueChange={(duration) => setFormData({ ...formData, duration })}
                 min={1}
                 className="w-full"
               />

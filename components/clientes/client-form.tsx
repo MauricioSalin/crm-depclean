@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { NumericInput } from "@/components/ui/numeric-input"
 import { Checkbox } from "@/components/ui/checkbox"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import {
@@ -809,12 +810,10 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
           <div className="flex flex-col md:flex-row gap-3">
             <div className="space-y-2 md:w-[220px] shrink-0">
               <Label htmlFor="primaryUnitCount">Unidades *</Label>
-              <Input
+              <NumericInput
                 id="primaryUnitCount"
-                type="tel"
-                inputMode="numeric"
-                value={units[0]?.unitCount || ""}
-                onChange={(e) => handleUnitChange(0, "unitCount", e.target.value)}
+                value={units[0]?.unitCount ?? ""}
+                onValueChange={(value) => handleUnitChange(0, "unitCount", value)}
                 placeholder="Número de unidades"
                 min={1}
                 required
@@ -1188,11 +1187,9 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
 
                     <div className="space-y-2">
                       <Label>Unidades *</Label>
-                      <Input
-                        type="tel"
-                        inputMode="numeric"
-                        value={unit.unitCount || ""}
-                        onChange={(e) => handleUnitChange(index, "unitCount", e.target.value)}
+                      <NumericInput
+                        value={unit.unitCount ?? ""}
+                        onValueChange={(value) => handleUnitChange(index, "unitCount", value)}
                         placeholder="Número de unidades"
                         min={1}
                         required

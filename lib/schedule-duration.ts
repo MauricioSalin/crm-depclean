@@ -3,12 +3,14 @@ import type { ServiceRecord } from "@/lib/api/services"
 export type ScheduleDurationType = ServiceRecord["durationType"]
 
 export const SCHEDULE_DURATION_TYPE_OPTIONS: Array<{ value: ScheduleDurationType; label: string }> = [
+  { value: "minutes", label: "Minutos" },
   { value: "hours", label: "Horas" },
   { value: "shift", label: "Turno" },
   { value: "days", label: "Dias" },
 ]
 
 const DURATION_TYPE_MINUTES: Record<ScheduleDurationType, number> = {
+  minutes: 1,
   hours: 60,
   shift: 4 * 60,
   days: 9 * 60,
@@ -46,6 +48,7 @@ function formatDurationAmount(value: number) {
 
 function formatDurationByType(value: number, type: ScheduleDurationType) {
   const amount = formatDurationAmount(value)
+  if (type === "minutes") return `${amount} ${value === 1 ? "minuto" : "minutos"}`
   if (type === "days") return `${amount} ${value === 1 ? "dia" : "dias"}`
   if (type === "shift") return `${amount} ${value === 1 ? "turno" : "turnos"}`
   return `${amount} ${value === 1 ? "hora" : "horas"}`
@@ -55,7 +58,8 @@ function inferDurationTypeFromMinutes(minutes: number): ScheduleDurationType {
   if (!Number.isFinite(minutes) || minutes <= 0) return "hours"
   if (minutes % DURATION_TYPE_MINUTES.days === 0) return "days"
   if (minutes % DURATION_TYPE_MINUTES.shift === 0) return "shift"
-  return "hours"
+  if (minutes % DURATION_TYPE_MINUTES.hours === 0) return "hours"
+  return "minutes"
 }
 
 export function formatConfiguredScheduleDuration(schedule: {
