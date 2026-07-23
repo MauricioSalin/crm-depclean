@@ -1036,94 +1036,92 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
         </Card>
       </div>
 
-      <Card className="p-6">
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          <ExternalLink className="h-5 w-5 text-primary" />
-          <h3 className="font-semibold">ClickSign</h3>
-          <Badge variant="secondary">
-            {getClicksignContractStatusLabel(contract.clicksign?.status)}
-          </Badge>
-        </div>
-        <div className="grid gap-3 text-sm md:grid-cols-4">
-          <div>
-            <p className="text-muted-foreground">Envelope</p>
-            <p className="font-mono text-xs">
-              {contract.clicksign?.envelopeId || (contract.clicksign?.documentKey ? "Não se aplica (API v1)" : "-")}
-            </p>
+      {clicksignReference ? (
+        <Card className="p-6">
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <ExternalLink className="h-5 w-5 text-primary" />
+            <h3 className="font-semibold">ClickSign</h3>
+            <Badge variant="secondary">
+              {getClicksignContractStatusLabel(contract.clicksign?.status)}
+            </Badge>
           </div>
-          <div>
-            <p className="text-muted-foreground">Documento</p>
-            <p className="font-mono text-xs">{contract.clicksign?.documentId || contract.clicksign?.documentKey || "-"}</p>
+          <div className="grid gap-3 text-sm md:grid-cols-4">
+            <div>
+              <p className="text-muted-foreground">Envelope</p>
+              <p className="font-mono text-xs">
+                {contract.clicksign?.envelopeId || (contract.clicksign?.documentKey ? "Não se aplica (API v1)" : "-")}
+              </p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">Documento</p>
+              <p className="font-mono text-xs">{contract.clicksign?.documentId || contract.clicksign?.documentKey || "-"}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">Signatários</p>
+              <p>{contract.clicksign?.signers?.length ?? 0}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">Última sincronização</p>
+              <p>{formatDate(contract.clicksign?.lastSyncedAt)}</p>
+            </div>
           </div>
-          <div>
-            <p className="text-muted-foreground">Signatários</p>
-            <p>{contract.clicksign?.signers?.length ?? 0}</p>
-          </div>
-          <div>
-            <p className="text-muted-foreground">Última sincronização</p>
-            <p>{formatDate(contract.clicksign?.lastSyncedAt)}</p>
-          </div>
-        </div>
-        {!clicksignReference ? (
-          <p className="mt-4 text-sm text-muted-foreground">
-            Este contrato legado não possui uma referência ClickSign para consultar os signatários.
-          </p>
-        ) : contract.clicksign?.signers?.length ? (
-          <div className="mt-4 overflow-hidden rounded-xl">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead sortable={false}>Signatário</TableHead>
-                  <TableHead sortable={false}>Papel</TableHead>
-                  <TableHead sortable={false}>E-mail</TableHead>
-                  <TableHead sortable={false}>Status</TableHead>
-                  <TableHead sortable={false}>Assinado em</TableHead>
-                  {canEditContracts ? <TableHead className="text-right">Ações</TableHead> : null}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {contract.clicksign.signers.map((signer) => {
-                  const displayStatus = getClicksignSignerDisplayStatus(signer, contract.clicksign?.signers ?? [])
-                  const isSendingReminder = remindingSignerIds.includes(signer.signerId)
+          {contract.clicksign?.signers?.length ? (
+            <div className="mt-4 overflow-hidden rounded-xl">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead sortable={false}>Signatário</TableHead>
+                    <TableHead sortable={false}>Papel</TableHead>
+                    <TableHead sortable={false}>E-mail</TableHead>
+                    <TableHead sortable={false}>Status</TableHead>
+                    <TableHead sortable={false}>Assinado em</TableHead>
+                    {canEditContracts ? <TableHead className="text-right">Ações</TableHead> : null}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {contract.clicksign.signers.map((signer) => {
+                    const displayStatus = getClicksignSignerDisplayStatus(signer, contract.clicksign?.signers ?? [])
+                    const isSendingReminder = remindingSignerIds.includes(signer.signerId)
 
-                  return (
-                    <TableRow key={`${signer.signerId}-${signer.email}`}>
-                      <TableCell className="font-medium">{signer.name}</TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">{getClicksignSignerRoleLabel(signer.role)}</Badge>
-                      </TableCell>
-                      <TableCell>{signer.email}</TableCell>
-                      <TableCell>{getClicksignSignerStatusBadge(displayStatus)}</TableCell>
-                      <TableCell>{formatDateTime(signer.signedAt)}</TableCell>
-                      {canEditContracts ? (
-                        <TableCell className="text-right">
-                          {isSignerReminderAvailable(displayStatus) ? (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className="gap-2"
-                              onClick={() => remindSignerMutation.mutate(signer.signerId)}
-                              disabled={isSendingReminder}
-                            >
-                              <BellRing className="h-4 w-4" />
-                              {isSendingReminder ? "Enviando..." : "Lembrete"}
-                            </Button>
-                          ) : null}
+                    return (
+                      <TableRow key={`${signer.signerId}-${signer.email}`}>
+                        <TableCell className="font-medium">{signer.name}</TableCell>
+                        <TableCell>
+                          <Badge variant="secondary">{getClicksignSignerRoleLabel(signer.role)}</Badge>
                         </TableCell>
-                      ) : null}
-                    </TableRow>
-                  )
-                })}
-              </TableBody>
-            </Table>
-          </div>
-        ) : (
-          <p className="mt-4 text-sm text-muted-foreground">
-            Os dados de assinatura ainda não foram sincronizados com a ClickSign.
-          </p>
-        )}
-      </Card>
+                        <TableCell>{signer.email}</TableCell>
+                        <TableCell>{getClicksignSignerStatusBadge(displayStatus)}</TableCell>
+                        <TableCell>{formatDateTime(signer.signedAt)}</TableCell>
+                        {canEditContracts ? (
+                          <TableCell className="text-right">
+                            {isSignerReminderAvailable(displayStatus) ? (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="gap-2"
+                                onClick={() => remindSignerMutation.mutate(signer.signerId)}
+                                disabled={isSendingReminder}
+                              >
+                                <BellRing className="h-4 w-4" />
+                                {isSendingReminder ? "Enviando..." : "Lembrete"}
+                              </Button>
+                            ) : null}
+                          </TableCell>
+                        ) : null}
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          ) : (
+            <p className="mt-4 text-sm text-muted-foreground">
+              Os dados de assinatura ainda não foram sincronizados com a ClickSign.
+            </p>
+          )}
+        </Card>
+      ) : null}
 
       {recurrenceRules.length > 0 ? (
         <Card className="p-6">

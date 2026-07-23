@@ -93,9 +93,11 @@ import {
   deleteContract,
   getContractById,
   previewContract,
+  replaceContractInClicksign,
   updateContract,
   uploadContractDocument,
   type ContractPayload,
+  type ContractUpdatePayload,
 } from "@/lib/api/contracts"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { isClosedClicksignContractStatus } from "@/lib/contract-status"
@@ -271,7 +273,10 @@ function isPresent<T>(value: T | null | undefined): value is T {
 
 const isContractSigned = (contract?: { status?: string; clicksign?: { status?: string } } | null) => {
   if (!contract) return false
-  return isClosedClicksignContractStatus(contract.status)
+  return (
+    isClosedClicksignContractStatus(contract.status) ||
+    isClosedClicksignContractStatus(contract.clicksign?.status)
+  )
 }
 
 export function ContractForm({ contractId, isEditing = false, returnTo }: ContractFormProps) {
@@ -334,6 +339,11 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
   const getClientTypeById = (id: string) => clientTypes.find((type) => type.id === id)
   const contract = contractQuery.data?.data
   const client = contract ? clients.find((c) => c.id === contract.clientId) : undefined
+  const isReplacingClicksignDocument = Boolean(
+    isEditing &&
+    contract?.clicksign?.envelopeId &&
+    !isContractSigned(contract),
+  )
 
   type CreateStep = "form" | "editor"
 
@@ -477,6 +487,30 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
   const activeCertificateTemplates = useMemo(
     () => certificateTemplates.filter((template) => template.isActive && template.format === "docx"),
     [certificateTemplates],
+  )
+  const activeServiceTypeOptions = useMemo(
+    () => serviceTypes
+      .filter((serviceType) => serviceType.isActive)
+      .map((serviceType) => ({ value: serviceType.id, label: serviceType.name })),
+    [serviceTypes],
+  )
+  const serviceTypeOptions = useMemo(
+    () => serviceTypes.map((serviceType) => ({ value: serviceType.id, label: serviceType.name })),
+    [serviceTypes],
+  )
+  const informativeTemplateOptions = useMemo(
+    () => [
+      { value: NO_INFORMATIVE_TEMPLATE_VALUE, label: "Sem informativo" },
+      ...activeInformativeTemplates.map((template) => ({ value: template.id, label: template.name })),
+    ],
+    [activeInformativeTemplates],
+  )
+  const certificateTemplateOptions = useMemo(
+    () => [
+      { value: NO_CERTIFICATE_TEMPLATE_VALUE, label: "Sem certificado" },
+      ...activeCertificateTemplates.map((template) => ({ value: template.id, label: template.name })),
+    ],
+    [activeCertificateTemplates],
   )
   const editingService = services.find(s => s.id === editingServiceId)
   const clausesEditingService = services.find((service) => service.id === clausesServiceId) ?? null
@@ -1017,7 +1051,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
   })
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, payload }: { id: string; payload: Partial<ContractPayload> }) => updateContract(id, payload),
+    mutationFn: ({ id, payload }: { id: string; payload: ContractUpdatePayload }) => updateContract(id, payload),
     onSuccess: async (response) => {
       await queryClient.invalidateQueries({ queryKey: ["contract", response.data.id] })
       await queryClient.invalidateQueries({ queryKey: ["contracts"] })
@@ -1122,6 +1156,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
   const updateService = (id: string, field: keyof ContractService, value: string | number | string[] | boolean) => {
     setServices((current) => current.map(s => {
       if (s.id !== id) return s
+      if (s[field] === value) return s
       if (field === "serviceTypeId") {
         const serviceType = serviceTypes.find(st => st.id === value)
         const informativeTemplateId = serviceType?.defaultInformativeTemplateId || ""
@@ -1372,17 +1407,30 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
       return
     }
 
-    const payload = buildContractPayload()
+    const payload = buildContractPayload(
+      undefined,
+      isEditing && contract?.contractNumber
+        ? { contractNumber: contract.contractNumber }
+        : undefined,
+    )
 
     if (isEditing) {
       if (!contractId) return
-      const toastId = toast.loading("Salvando contrato...")
+      const toastId = toast.loading("Gerando prévia do contrato...")
       try {
-        await updateMutation.mutateAsync({ id: contractId, payload })
-        toast.success("Contrato atualizado com sucesso.", { id: toastId })
-        router.push(formBackHref)
+        const preview = await previewMutation.mutateAsync(payload)
+        const contractNumber = contract?.contractNumber || preview.data.contractNumber
+        setDraftMeta({
+          contractNumber,
+          createdAt: contract?.createdAt ? new Date(contract.createdAt) : new Date(),
+        })
+        setDraftPreview({ ...preview.data, contractNumber })
+        setImportedDocxFile(null)
+        setEditorView("editor")
+        setStep("editor")
+        toast.success("Prévia do contrato pronta para edição.", { id: toastId })
       } catch (error) {
-        toast.error(getApiErrorMessage(error, "Não foi possível atualizar o contrato."), { id: toastId })
+        toast.error(getApiErrorMessage(error, "Não foi possível gerar a prévia do contrato."), { id: toastId })
       }
       return
     }
@@ -1403,11 +1451,20 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
   }
 
   const finalizeCreate = async () => {
-    if (finalizeCreateInFlightRef.current || createMutation.isPending || isFinalizingCreate) return
+    if (
+      finalizeCreateInFlightRef.current ||
+      createMutation.isPending ||
+      updateMutation.isPending ||
+      isFinalizingCreate
+    ) return
 
     finalizeCreateInFlightRef.current = true
     setIsFinalizingCreate(true)
-    const loadingToast = toast.loading("Salvando contrato como rascunho...")
+    const loadingToast = toast.loading(
+      isReplacingClicksignDocument
+        ? "Salvando e reenviando contrato..."
+        : "Salvando contrato como rascunho...",
+    )
 
     try {
       const editedDocxFile = await docxEditorRef.current?.saveToFile()
@@ -1415,13 +1472,26 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
         throw new Error("O editor DOCX ainda não carregou o documento para salvar.")
       }
 
-      const response = await createMutation.mutateAsync(
-        {
-          ...buildContractPayload(draftPreview?.renderedHtml || "", { contractNumber: draftMeta?.contractNumber }),
-          status: "draft",
-        },
+      const basePayload = buildContractPayload(
+        draftPreview?.renderedHtml || "",
+        { contractNumber: draftMeta?.contractNumber },
       )
+      const response = isEditing && contractId
+        ? await updateMutation.mutateAsync({
+            id: contractId,
+            payload: {
+              ...basePayload,
+              deferClicksignReplacement: isReplacingClicksignDocument,
+            },
+          })
+        : await createMutation.mutateAsync({
+            ...basePayload,
+            status: "draft",
+          })
       await uploadContractDocument(response.data.id, editedDocxFile)
+      if (isReplacingClicksignDocument) {
+        await replaceContractInClicksign(response.data.id)
+      }
       setDraftMeta((current) =>
         current ?? { contractNumber: response.data.contractNumber, createdAt: new Date(response.data.createdAt) }
       )
@@ -1431,18 +1501,35 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
       await queryClient.invalidateQueries({ queryKey: ["contracts", "list"] })
       setConfirmCreateOpen(false)
       toast.dismiss(loadingToast)
-      toast.success("Contrato salvo como rascunho. Revise os agendamentos antes de enviar ao ClickSign.")
-      router.replace(withReturnTo(`/contratos/${response.data.id}`, formBackHref))
+      toast.success(
+        isReplacingClicksignDocument
+          ? "Contrato atualizado. O envio anterior foi cancelado e todas as assinaturas foram solicitadas novamente."
+          : isEditing
+            ? "Contrato atualizado e salvo como rascunho."
+          : "Contrato salvo como rascunho. Revise os agendamentos antes de enviar ao ClickSign.",
+      )
+      router.replace(
+        isEditing
+          ? formBackHref
+          : withReturnTo(`/contratos/${response.data.id}`, formBackHref),
+      )
     } catch (error) {
       toast.dismiss(loadingToast)
-      toast.error(getApiErrorMessage(error, "Não foi possível criar o contrato."))
+      toast.error(getApiErrorMessage(
+        error,
+        isReplacingClicksignDocument
+          ? "Não foi possível substituir o documento no ClickSign. O envio anterior foi preservado."
+          : isEditing
+            ? "Não foi possível atualizar o contrato."
+            : "Não foi possível criar o contrato.",
+      ))
     } finally {
       finalizeCreateInFlightRef.current = false
       setIsFinalizingCreate(false)
     }
   }
 
-  if (!isEditing && step === "editor") {
+  if (step === "editor") {
     const contractNumber = draftMeta?.contractNumber ?? createDraftContractNumber()
     return (
       <div className="space-y-3">
@@ -1477,7 +1564,11 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
                 disabled={isFinalizingCreate || createMutation.isPending}
               >
                 <Save className="w-4 h-4 mr-2" />
-                {isFinalizingCreate || createMutation.isPending ? "Salvando rascunho..." : "Concluir e salvar rascunho"}
+                {isFinalizingCreate || createMutation.isPending || updateMutation.isPending
+                  ? "Salvando..."
+                  : isReplacingClicksignDocument
+                    ? "Concluir e reenviar"
+                    : "Concluir e salvar rascunho"}
               </Button>
             </div>
           </div>
@@ -1525,29 +1616,40 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
         <AlertDialog
           open={confirmCreateOpen}
           onOpenChange={(open) => {
-            if (isFinalizingCreate || createMutation.isPending) return
+            if (isFinalizingCreate || createMutation.isPending || updateMutation.isPending) return
             setConfirmCreateOpen(open)
           }}
         >
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Salvar este contrato como rascunho?</AlertDialogTitle>
+              <AlertDialogTitle>
+                {isReplacingClicksignDocument
+                  ? "Substituir o documento enviado para assinatura?"
+                  : "Salvar este contrato como rascunho?"}
+              </AlertDialogTitle>
               <AlertDialogDescription>
-                O contrato ainda não será enviado ao ClickSign. No perfil do contrato, você poderá revisar e salvar
-                os agendamentos previstos antes do envio para assinatura.
+                {isReplacingClicksignDocument
+                  ? "O documento anterior será cancelado no ClickSign. Um novo documento será enviado e todas as pessoas deverão assinar novamente, mesmo quem já assinou a versão anterior."
+                  : "O contrato ainda não será enviado ao ClickSign. No perfil do contrato, você poderá revisar e salvar os agendamentos previstos antes do envio para assinatura."}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel disabled={isFinalizingCreate || createMutation.isPending}>Voltar e revisar</AlertDialogCancel>
+              <AlertDialogCancel disabled={isFinalizingCreate || createMutation.isPending || updateMutation.isPending}>
+                Voltar e revisar
+              </AlertDialogCancel>
               <AlertDialogAction
-                disabled={isFinalizingCreate || createMutation.isPending}
+                disabled={isFinalizingCreate || createMutation.isPending || updateMutation.isPending}
                 onClick={(event) => {
                   event.preventDefault()
                   finalizeCreate()
                 }}
                 className="bg-primary hover:bg-primary/90"
               >
-                {isFinalizingCreate || createMutation.isPending ? "Salvando..." : "Salvar rascunho"}
+                {isFinalizingCreate || createMutation.isPending || updateMutation.isPending
+                  ? "Salvando..."
+                  : isReplacingClicksignDocument
+                    ? "Salvar e reenviar"
+                    : "Salvar rascunho"}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -1608,8 +1710,8 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
           <Building2 className="w-5 h-5 text-primary" />
           Cliente
         </h3>
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <div className="space-y-2 md:w-[380px] lg:col-span-2">
+        <div className="flex flex-col items-start gap-4">
+          <div className="w-full space-y-2 md:w-[380px]">
             <Label>Selecionar Cliente *</Label>
             <Popover
               open={clientPopoverOpen}
@@ -1679,7 +1781,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
 
             return (
               <>
-              <div className="rounded-lg bg-muted/50 p-4">
+              <div className="w-full rounded-lg bg-muted/50 p-4 md:w-[380px]">
                 <div className="flex items-start gap-3">
                   <div
                     className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
@@ -1687,24 +1789,35 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
                   >
                     <Building2 className="w-5 h-5" style={{ color: getColorFromClass(clientType?.color || '') }} />
                   </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="font-medium">{selectedClient.companyName}</p>
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <p className="min-w-0 truncate font-medium">{selectedClient.companyName}</p>
                       <Badge
                         style={{ backgroundColor: getColorFromClass(clientType?.color || '') }}
-                        className="text-white border-0 hover:opacity-90"
+                        className="shrink-0 border-0 text-white hover:opacity-90"
                       >
                         {clientType?.name}
                       </Badge>
                     </div>
                     <p className="text-sm text-muted-foreground">{formatCNPJ(selectedClient.cnpj)}</p>
-                    <p className="text-sm text-muted-foreground">{selectedClient.email}</p>
+                    {selectedClient.phone && (
+                      <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                        <Phone className="h-3.5 w-3.5" />
+                        {formatPhone(selectedClient.phone)}
+                      </p>
+                    )}
+                    {selectedClient.email && (
+                      <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                        <Mail className="h-3.5 w-3.5" />
+                        {selectedClient.email}
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
 
               {hasAssessor && (
-                <div className="rounded-lg bg-muted/50 p-4">
+                <div className="w-full rounded-lg bg-muted/50 p-4 md:w-[380px]">
                   <div className="flex items-start gap-3">
                     <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
                       <Users className="w-5 h-5 text-primary" />
@@ -1736,7 +1849,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
               )}
 
               {hasSyndic && (
-                <div className="rounded-lg bg-muted/50 p-4">
+                <div className="w-full rounded-lg bg-muted/50 p-4 md:w-[380px]">
                   <div className="flex items-start gap-3">
                     <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
                       <Users className="w-5 h-5 text-primary" />
@@ -2152,9 +2265,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
           <SearchableSelect
             value={recurrenceServiceTypeId}
             onValueChange={setRecurrenceServiceTypeId}
-            options={serviceTypes
-              .filter((serviceType) => serviceType.isActive)
-              .map((serviceType) => ({ value: serviceType.id, label: serviceType.name }))}
+            options={activeServiceTypeOptions}
             placeholder="Selecione o serviço"
             searchPlaceholder="Buscar serviço..."
             emptyMessage="Nenhum serviço encontrado."
@@ -2210,7 +2321,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
                             }
                             updateService(service.id, "serviceTypeId", v)
                           }}
-                          options={serviceTypes.map((serviceType) => ({ value: serviceType.id, label: serviceType.name }))}
+                          options={serviceTypeOptions}
                           placeholder="Selecione o serviço"
                           searchPlaceholder="Buscar serviço..."
                           emptyMessage="Nenhum serviço encontrado."
@@ -2228,10 +2339,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
                               value === NO_INFORMATIVE_TEMPLATE_VALUE ? "" : value,
                             )
                           }
-                          options={[
-                            { value: NO_INFORMATIVE_TEMPLATE_VALUE, label: "Sem informativo" },
-                            ...activeInformativeTemplates.map((template) => ({ value: template.id, label: template.name })),
-                          ]}
+                          options={informativeTemplateOptions}
                           placeholder="Sem informativo"
                           searchPlaceholder="Buscar informativo..."
                           emptyMessage="Nenhum informativo encontrado."
@@ -2250,10 +2358,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
                               value === NO_CERTIFICATE_TEMPLATE_VALUE ? "" : value,
                             )
                           }
-                          options={[
-                            { value: NO_CERTIFICATE_TEMPLATE_VALUE, label: "Sem certificado" },
-                            ...activeCertificateTemplates.map((template) => ({ value: template.id, label: template.name })),
-                          ]}
+                          options={certificateTemplateOptions}
                           placeholder="Sem certificado"
                           searchPlaceholder="Buscar certificado..."
                           emptyMessage="Nenhum certificado encontrado."

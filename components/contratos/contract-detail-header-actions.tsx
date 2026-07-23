@@ -18,7 +18,10 @@ interface ContractDetailHeaderActionsProps {
 
 const isContractSigned = (contract?: Pick<ContractRecord, "status" | "clicksign"> | null) => {
   if (!contract) return false
-  return isClosedClicksignContractStatus(contract.status)
+  return (
+    isClosedClicksignContractStatus(contract.status) ||
+    isClosedClicksignContractStatus(contract.clicksign?.status)
+  )
 }
 
 export function ContractDetailHeaderActions({ contractId }: ContractDetailHeaderActionsProps) {

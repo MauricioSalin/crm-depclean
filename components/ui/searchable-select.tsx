@@ -46,6 +46,7 @@ export function SearchableSelect({
   disabled = false,
 }: SearchableSelectProps) {
   const [open, setOpen] = React.useState(false)
+  const selectionInProgressRef = React.useRef<string | null>(null)
 
   const allOptions = React.useMemo(
     () => includeAll ? [{ value: "all", label: allLabel }, ...options] : options,
@@ -55,10 +56,18 @@ export function SearchableSelect({
     () => allOptions.find(o => o.value === value),
     [allOptions, value],
   )
-  const selectOption = (nextValue: string) => {
+  const selectOption = React.useCallback((nextValue: string) => {
+    if (selectionInProgressRef.current === nextValue) return
+
+    selectionInProgressRef.current = nextValue
     onValueChange(nextValue)
     setOpen(false)
-  }
+    queueMicrotask(() => {
+      if (selectionInProgressRef.current === nextValue) {
+        selectionInProgressRef.current = null
+      }
+    })
+  }, [onValueChange])
 
   return (
     <Popover open={disabled ? false : open} onOpenChange={disabled ? undefined : setOpen}>

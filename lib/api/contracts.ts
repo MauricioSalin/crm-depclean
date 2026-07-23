@@ -218,6 +218,10 @@ export type ContractImportRow = {
   notes?: string
 }
 
+export type ContractUpdatePayload = Partial<ContractPayload> & {
+  deferClicksignReplacement?: boolean
+}
+
 export type ContractImportResult = {
   importedCount: number
   contracts: ContractRecord[]
@@ -258,7 +262,7 @@ export async function importSignedContracts(contracts: ContractImportRow[]) {
   return response.data
 }
 
-export async function updateContract(id: string, payload: Partial<ContractPayload>) {
+export async function updateContract(id: string, payload: ContractUpdatePayload) {
   const response = await api.patch<{ success: true; data: ContractRecord }>(`/contracts/${resolveContractId(id)}`, payload)
   return response.data
 }
@@ -308,6 +312,13 @@ export async function publishContractSchedulePlan(id: string) {
 
 export async function sendContractToClicksign(id: string) {
   const response = await api.post<{ success: true; data: unknown }>(`/clicksign/contracts/${resolveContractId(id)}/send`)
+  return response.data
+}
+
+export async function replaceContractInClicksign(id: string) {
+  const response = await api.post<{ success: true; data: unknown }>(
+    `/clicksign/contracts/${resolveContractId(id)}/replace`,
+  )
   return response.data
 }
 

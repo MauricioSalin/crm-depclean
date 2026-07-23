@@ -76,7 +76,9 @@ const NumericInput = React.forwardRef<HTMLInputElement, NumericInputProps>(
       setDraft(nextDraft)
 
       if (!nextDraft) {
-        if (allowEmpty) onEmpty?.()
+        if (allowEmpty) {
+          React.startTransition(() => onEmpty?.())
+        }
         return
       }
 
@@ -84,7 +86,7 @@ const NumericInput = React.forwardRef<HTMLInputElement, NumericInputProps>(
       if (parsed === null) return
       if (minimum !== undefined && parsed < minimum) return
       if (maximum !== undefined && parsed > maximum) return
-      onValueChange(parsed)
+      React.startTransition(() => onValueChange(parsed))
     }
 
     const handleBlur = (event: React.FocusEvent<HTMLInputElement>) => {
