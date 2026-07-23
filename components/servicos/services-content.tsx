@@ -269,13 +269,13 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
                         })()}
                       </div>
                     </TableCell>
-                    <TableCell className="min-w-[110px] align-top">
+                    <TableCell className="min-w-[110px]">
                       <div className="flex items-center gap-1.5 whitespace-nowrap">
                         <Clock className="h-4 w-4 shrink-0 text-muted-foreground" />
                         <span className="whitespace-nowrap">{formatDuration(type)}</span>
                       </div>
                     </TableCell>
-                    <TableCell className="hidden min-w-[180px] align-top lg:table-cell">
+                    <TableCell className="hidden min-w-[180px] lg:table-cell">
                       {formatDailyScheduleLimit(type.dailyScheduleLimit)}
                     </TableCell>
                     {canManageServices ? (
