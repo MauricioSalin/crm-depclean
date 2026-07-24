@@ -55,6 +55,7 @@ import { canStartSchedule } from "@/lib/schedule-permissions"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
+import { AttendanceStartSlider } from "@/components/agendamentos/attendance-start-slider"
 import { CompletionNaAttachments } from "@/components/agendamentos/completion-na-attachments"
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
 import { DatePicker } from "@/components/ui/date-picker"
@@ -1136,9 +1137,21 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
             >
               Voltar
             </Button>
+            {completionStep === "attachments" ? (
+              <AttendanceStartSlider
+                action="finish"
+                className="sm:hidden"
+                disabled={completeMutation.isPending || uploadNaMutation.isPending}
+                onComplete={() => setCompletionStep("checkout")}
+              />
+            ) : null}
             <Button
               type="button"
-              className="w-full min-w-0 sm:w-auto"
+              className={
+                completionStep === "attachments"
+                  ? "hidden w-full min-w-0 sm:inline-flex sm:w-auto"
+                  : "w-full min-w-0 sm:w-auto"
+              }
               disabled={
                 !completionTarget ||
                 (!completionTarget.naAttachments?.length && !completionTarget.naDocumentUrl) ||
@@ -1174,15 +1187,9 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
               }}
             >
               {completeMutation.isPending ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 shrink-0 animate-spin" />
-                  <span className="truncate">Encerrando...</span>
-                </>
+                "Encerrando..."
               ) : completionStep === "checkout" ? (
-                <>
-                  <Check className="mr-2 h-4 w-4 shrink-0" />
-                  Confirmar encerramento
-                </>
+                "Confirmar encerramento"
               ) : (
                 <>
                   <Check className="mr-2 h-4 w-4 shrink-0" />
@@ -1480,18 +1487,12 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                         ))}
                       </div>
                     ) : null}
-                    {canOpenScheduleEditor || (schedule.status === "in_progress" && schedule.canAttachNa) ? (
+                    {canOpenScheduleEditor ? (
                     <div className="mt-auto grid grid-cols-2 gap-2 pt-3 [&>*:only-child]:col-span-2" onClick={(event) => event.stopPropagation()}>
                       {(canManageScheduleStatus || (canManageAgenda && canEditSchedule(schedule, canManageLockedSchedules))) && (
                         <Button type="button" variant="outline" size="sm" className="h-8 rounded-full" onClick={() => openEditSchedule(schedule)}>
                           <Edit className="mr-2 h-4 w-4" />
                           Editar
-                        </Button>
-                      )}
-                      {(canManageAgenda || canManageScheduleStatus || schedule.canAttachNa) && schedule.status === "in_progress" && (
-                        <Button type="button" variant="outline" size="sm" className="h-8 rounded-full" onClick={() => openCompletionDialog(schedule)}>
-                          <Check className="mr-2 h-4 w-4" />
-                          NAs e conclusão
                         </Button>
                       )}
                       {canManageAgenda && schedule.status === "cancelled" && (

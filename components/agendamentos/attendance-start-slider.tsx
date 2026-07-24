@@ -2,11 +2,12 @@
 
 import { useEffect, useRef, useState } from "react"
 import { animate, motion, useMotionValue, useTransform } from "framer-motion"
-import { Loader2, Play } from "lucide-react"
+import { Loader2, Play, Square } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
 interface AttendanceStartSliderProps {
+  action?: "start" | "finish"
   disabled?: boolean
   isSubmitting?: boolean
   onComplete: () => Promise<void> | void
@@ -18,6 +19,7 @@ const SLIDER_HORIZONTAL_PADDING = 16
 const DEFAULT_COMPLETE_OFFSET = 320 - HANDLE_WIDTH - 12
 
 export function AttendanceStartSlider({
+  action = "start",
   disabled = false,
   isSubmitting: externalSubmitting = false,
   onComplete,
@@ -28,6 +30,8 @@ export function AttendanceStartSlider({
   const [completeOffset, setCompleteOffset] = useState(DEFAULT_COMPLETE_OFFSET)
   const containerRef = useRef<HTMLDivElement>(null)
   const submitting = externalSubmitting || isSubmitting
+  const idleLabel = action === "finish" ? "Encerrar atendimento" : "Iniciar atendimento"
+  const submittingLabel = action === "finish" ? "Encerrando atendimento..." : "Iniciando atendimento..."
   const x = useMotionValue(0)
   const fillWidth = useTransform(x, (value) => `${Math.max(HANDLE_WIDTH + 16 + value, HANDLE_WIDTH + 16)}px`)
 
@@ -69,7 +73,7 @@ export function AttendanceStartSlider({
 
       <div className="pointer-events-none absolute inset-y-0 left-0 right-0 z-10 flex items-center justify-center px-20 text-center text-sm font-medium text-foreground/85">
         <span className="leading-5">
-          {submitting ? "Iniciando atendimento..." : "Iniciar atendimento"}
+          {submitting ? submittingLabel : idleLabel}
         </span>
       </div>
 
@@ -117,7 +121,13 @@ export function AttendanceStartSlider({
           disabled ? "bg-muted-foreground/40" : "bg-primary shadow-md shadow-primary/25",
         )}
       >
-        {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+        {submitting ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : action === "finish" ? (
+          <Square className="h-4 w-4 fill-current" />
+        ) : (
+          <Play className="h-4 w-4" />
+        )}
       </motion.button>
     </div>
   )

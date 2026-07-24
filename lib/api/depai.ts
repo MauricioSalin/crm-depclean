@@ -28,6 +28,14 @@ export type DepAIArtifact = {
     series: string[]
     data: Array<Record<string, string | number>>
   }
+  spreadsheetPreview?: {
+    sheets: Array<{
+      name: string
+      columns: string[]
+      rows: Array<Array<string | number | boolean | null>>
+      totalRows: number
+    }>
+  }
   status: "ready" | "processing" | "expired"
 }
 

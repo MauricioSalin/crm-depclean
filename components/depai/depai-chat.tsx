@@ -1481,6 +1481,98 @@ function isDepAIArtifactExpired(artifact: DepAIArtifact) {
   return !Number.isNaN(expiresAt.getTime()) && expiresAt.getTime() <= Date.now()
 }
 
+function formatSpreadsheetPreviewCell(
+  headers: string[],
+  columnIndex: number,
+  value: string | number | boolean | null,
+) {
+  if (value === null || value === "") return "-"
+  if (typeof value === "boolean") return value ? "Sim" : "Não"
+  return formatSpreadsheetDisplayCell(headers, columnIndex, String(value))
+}
+
+function SpreadsheetArtifactPreview({
+  preview,
+}: {
+  preview: NonNullable<DepAIArtifact["spreadsheetPreview"]>
+}) {
+  const [activeSheetIndex, setActiveSheetIndex] = useState(0)
+  const sheet = preview.sheets[activeSheetIndex] ?? preview.sheets[0]
+
+  if (!sheet) return null
+
+  return (
+    <div className="mt-3 min-w-0">
+      {preview.sheets.length > 1 && (
+        <div className="mb-2 flex max-w-full gap-1 overflow-x-auto pb-1">
+          {preview.sheets.map((item, index) => (
+            <button
+              key={`${item.name}-${index}`}
+              type="button"
+              onClick={() => setActiveSheetIndex(index)}
+              className={`shrink-0 rounded-full px-3 py-1.5 text-xs transition-colors ${
+                index === activeSheetIndex
+                  ? "bg-primary/10 font-medium text-primary"
+                  : "bg-muted text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {item.name}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="max-h-80 w-full overflow-auto rounded-xl border border-border bg-background">
+        <table className="min-w-max border-collapse text-left text-xs">
+          <thead className="sticky top-0 z-10">
+            <tr>
+              {sheet.columns.map((column, index) => (
+                <th
+                  key={`${column}-${index}`}
+                  className="whitespace-nowrap bg-primary/10 px-3 py-2 font-semibold text-foreground"
+                >
+                  {column}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {sheet.rows.length > 0 ? sheet.rows.map((row, rowIndex) => (
+              <tr key={`${sheet.name}-${rowIndex}`} className="border-t border-border/70">
+                {sheet.columns.map((_, columnIndex) => (
+                  <td
+                    key={`${rowIndex}-${columnIndex}`}
+                    className="max-w-[280px] whitespace-nowrap px-3 py-2 text-foreground"
+                  >
+                    {formatSpreadsheetPreviewCell(
+                      sheet.columns,
+                      columnIndex,
+                      row[columnIndex] ?? null,
+                    )}
+                  </td>
+                ))}
+              </tr>
+            )) : (
+              <tr>
+                <td
+                  colSpan={Math.max(1, sheet.columns.length)}
+                  className="px-3 py-6 text-center text-muted-foreground"
+                >
+                  Nenhum registro encontrado.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <p className="mt-2 text-[11px] text-muted-foreground">
+        Prévia de {sheet.rows.length} de {sheet.totalRows} registro(s). Baixe o arquivo para consultar todos os dados.
+      </p>
+    </div>
+  )
+}
+
 function ArtifactPreview({ artifact, sourceContent, chartRef }: { artifact: DepAIArtifact; sourceContent: string; chartRef: RefObject<HTMLDivElement | null> }) {
   const tables = useMemo(() => parseMarkdownTables(sourceContent), [sourceContent])
   const documentContent = useMemo(() => extractDocumentContent(sourceContent), [sourceContent])
@@ -1499,6 +1591,10 @@ function ArtifactPreview({ artifact, sourceContent, chartRef }: { artifact: DepA
   }
 
   if (artifact.kind === "xlsx") {
+    if (artifact.spreadsheetPreview?.sheets?.length) {
+      return <SpreadsheetArtifactPreview preview={artifact.spreadsheetPreview} />
+    }
+
     if (artifact.downloadUrl) {
       return (
         <p className="mt-3 rounded-2xl bg-muted/50 p-3 text-xs leading-relaxed text-muted-foreground">
@@ -1601,7 +1697,7 @@ function ArtifactCard({ artifact, sourceContent }: { artifact: DepAIArtifact; so
   }
 
   return (
-    <div className="mt-3 rounded-2xl border border-border bg-card p-3">
+    <div className="mt-3 w-full min-w-0 rounded-2xl border border-border bg-card p-3">
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 gap-3">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
@@ -1693,7 +1789,7 @@ function SvgDiagram({ source }: { source: string }) {
   }
 
   return (
-    <div className="my-4 rounded-2xl border border-border bg-card p-3 shadow-sm">
+    <div className="my-4 -ml-12 w-[calc(100%+3rem)] min-w-0 rounded-2xl border border-border bg-card p-3 shadow-sm sm:ml-0 sm:w-full">
       <div className="mb-3 flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
@@ -1800,7 +1896,7 @@ function MermaidDiagram({ chart }: { chart: string }) {
   }
 
   return (
-    <div className="my-4 rounded-2xl border border-border bg-card p-3 shadow-sm">
+    <div className="my-4 -ml-12 w-[calc(100%+3rem)] min-w-0 rounded-2xl border border-border bg-card p-3 shadow-sm sm:ml-0 sm:w-full">
       <div className="mb-3 flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
@@ -1997,7 +2093,7 @@ function MessageRow({ message }: { message: DepAIMessage }) {
           </div>
         )}
         {artifacts.length > 0 && (
-          <div className="mt-4 space-y-2">
+          <div className="mt-4 -ml-12 w-[calc(100%+3rem)] min-w-0 space-y-2 sm:ml-0 sm:w-full">
             {artifacts.map((artifact) => (
               <ArtifactCard key={artifact.id} artifact={artifact} sourceContent={message.content} />
             ))}
