@@ -231,7 +231,7 @@ export function ScheduleDetailsDialog({
         className={cn(
           "gap-0 p-0",
           isMobile
-            ? "left-0 top-3 h-[calc(100dvh-1.5rem)] max-w-none translate-x-0 translate-y-0 rounded-none border-0"
+            ? "left-0 top-0 h-[100dvh] max-h-none w-screen max-w-none translate-x-0 translate-y-0 rounded-none border-0"
             : "sm:max-w-xl lg:max-w-2xl",
         )}
       >

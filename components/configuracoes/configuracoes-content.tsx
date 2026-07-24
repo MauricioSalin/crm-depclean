@@ -176,6 +176,9 @@ const PERMISSION_MODULES: PermissionModule[] = [
   { key: "logs", title: "Logs", description: "Acesso ao histórico de ações" },
 ]
 
+const AGENDA_RESTRICTED_VIEW_PERMISSION = "agenda_own_view"
+const AGENDA_FULL_VIEW_PERMISSION = "agenda_view"
+
 function getPermissionModuleLabel(moduleKey: string) {
   return PERMISSION_MODULES.find((module) => module.key === moduleKey)?.title ?? moduleKey
 }
@@ -971,12 +974,29 @@ export function ConfiguracoesContent() {
   }
 
   const togglePermission = (key: string) => {
-    setProfileForm((current) => ({
-      ...current,
-      permissions: current.permissions.includes(key)
-        ? current.permissions.filter((permission) => permission !== key)
-        : [...current.permissions, key],
-    }))
+    setProfileForm((current) => {
+      if (current.permissions.includes(key)) {
+        return {
+          ...current,
+          permissions: current.permissions.filter((permission) => permission !== key),
+        }
+      }
+
+      const mutuallyExclusivePermission =
+        key === AGENDA_RESTRICTED_VIEW_PERMISSION
+          ? AGENDA_FULL_VIEW_PERMISSION
+          : key === AGENDA_FULL_VIEW_PERMISSION
+            ? AGENDA_RESTRICTED_VIEW_PERMISSION
+            : null
+      const permissions = mutuallyExclusivePermission
+        ? current.permissions.filter((permission) => permission !== mutuallyExclusivePermission)
+        : current.permissions
+
+      return {
+        ...current,
+        permissions: [...permissions, key],
+      }
+    })
   }
 
   const toggleChannel = (key: string) => {
@@ -1103,21 +1123,47 @@ export function ConfiguracoesContent() {
   const getModuleSelectionState = (moduleKey: string) => {
     const module = PERMISSION_MODULES.find((item) => item.key === moduleKey)
     const modulePermissions = module ? getModulePermissions(module) : []
-    const selectedCount = modulePermissions.filter((permission) => profileForm.permissions.includes(permission.key)).length
-    const allSelected = modulePermissions.length > 0 && selectedCount === modulePermissions.length
+    const moduleKeys = modulePermissions.map((permission) => permission.key)
+    const isAgendaModule = moduleKey === "agenda"
+    const actionKeys = isAgendaModule
+      ? moduleKeys.filter((key) => key !== AGENDA_RESTRICTED_VIEW_PERMISSION && key !== AGENDA_FULL_VIEW_PERMISSION)
+      : moduleKeys
+    const hasAgendaView = isAgendaModule && (
+      profileForm.permissions.includes(AGENDA_RESTRICTED_VIEW_PERMISSION) ||
+      profileForm.permissions.includes(AGENDA_FULL_VIEW_PERMISSION)
+    )
+    const selectedCount = isAgendaModule
+      ? Number(hasAgendaView) + actionKeys.filter((key) => profileForm.permissions.includes(key)).length
+      : moduleKeys.filter((key) => profileForm.permissions.includes(key)).length
+    const totalCount = isAgendaModule ? actionKeys.length + 1 : moduleKeys.length
+    const allSelected = totalCount > 0 && selectedCount === totalCount
     const partialSelected = selectedCount > 0 && !allSelected
-    return { allSelected, partialSelected, modulePermissions }
+    return { allSelected, partialSelected, modulePermissions, selectedCount, totalCount }
   }
 
   const toggleModulePermissions = (moduleKey: string) => {
     const { allSelected, modulePermissions } = getModuleSelectionState(moduleKey)
     const moduleKeys = modulePermissions.map((permission) => permission.key)
-    setProfileForm((current) => ({
-      ...current,
-      permissions: allSelected
-        ? current.permissions.filter((permission) => !moduleKeys.includes(permission))
-        : Array.from(new Set([...current.permissions, ...moduleKeys])),
-    }))
+    setProfileForm((current) => {
+      if (allSelected) {
+        return {
+          ...current,
+          permissions: current.permissions.filter((permission) => !moduleKeys.includes(permission)),
+        }
+      }
+
+      const selectedModuleKeys = moduleKey === "agenda"
+        ? moduleKeys.filter((permission) => permission !== AGENDA_RESTRICTED_VIEW_PERMISSION)
+        : moduleKeys
+      const permissions = moduleKey === "agenda"
+        ? current.permissions.filter((permission) => permission !== AGENDA_RESTRICTED_VIEW_PERMISSION)
+        : current.permissions
+
+      return {
+        ...current,
+        permissions: Array.from(new Set([...permissions, ...selectedModuleKeys])),
+      }
+    })
   }
 
   const confirmPendingDelete = async () => {
@@ -1599,7 +1645,7 @@ export function ConfiguracoesContent() {
                                     <div className="truncate text-xs text-muted-foreground">{module.description}</div>
                                   </div>
                                   <Badge variant="secondary" className="w-10 justify-center justify-self-center self-center px-0">
-                                    {moduleState.modulePermissions.filter((permission) => profileForm.permissions.includes(permission.key)).length}/{moduleState.modulePermissions.length}
+                                    {moduleState.selectedCount}/{moduleState.totalCount}
                                   </Badge>
                                 </AccordionTrigger>
                               </div>

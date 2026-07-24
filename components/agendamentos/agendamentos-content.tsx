@@ -42,7 +42,7 @@ import { listServices, type ServiceRecord } from "@/lib/api/services"
 import { listTeams, type TeamRecord } from "@/lib/api/teams"
 import { hasAnyPermission } from "@/lib/auth/permissions"
 import { getStoredUser } from "@/lib/auth/session"
-import { addCivilDaysKey, formatCivilDate, parseCivilDate, toBrasiliaTimeKey, toCivilDateKey } from "@/lib/date-utils"
+import { formatCivilDate, parseCivilDate, toBrasiliaTimeKey, toCivilDateKey } from "@/lib/date-utils"
 import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 import { formatConfiguredScheduleDuration, minutesToScheduleDuration, scheduleDurationToMinutes } from "@/lib/schedule-duration"
@@ -57,6 +57,7 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { CompletionNaAttachments } from "@/components/agendamentos/completion-na-attachments"
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
+import { DatePicker } from "@/components/ui/date-picker"
 import { DateRangePicker } from "@/components/ui/date-range-picker"
 import {
   Dialog,
@@ -425,19 +426,6 @@ const SCHEDULE_IMPORT_FIELDS: CsvImportField[] = [
   { key: "notes", label: "Observações" },
 ]
 
-function getCurrentWeekRange(): DateRange {
-  const todayKey = toCivilDateKey(new Date())
-  const [year, month, day] = todayKey.split("-").map(Number)
-  const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay()
-  const fromKey = addCivilDaysKey(todayKey, -weekday)
-  const toKey = addCivilDaysKey(fromKey, 6)
-
-  return {
-    from: parseCivilDate(fromKey) ?? undefined,
-    to: parseCivilDate(toKey) ?? undefined,
-  }
-}
-
 export function AgendamentosContent({ viewMode, openDialog, onDialogChange, viewToggle, openImport = false, onImportChange, initialScheduleId }: AgendamentosContentProps) {
   const router = useRouter()
   const queryClient = useQueryClient()
@@ -445,7 +433,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
   const [searchTerm, setSearchTerm] = useUrlQueryState("q")
   const deferredSearchTerm = useDeferredValue(searchTerm)
   const [statusFilter, setStatusFilter] = useState<string>("all")
-  const [dateRange, setDateRange] = useState<DateRange | undefined>(getCurrentWeekRange)
+  const [dateRange, setDateRange] = useState<DateRange | undefined>()
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(10)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -453,6 +441,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
   const [selectedSchedule, setSelectedSchedule] = useState<ScheduleRecord | null>(null)
   const [cancelTarget, setCancelTarget] = useState<ScheduleRecord | null>(null)
   const [completionTarget, setCompletionTarget] = useState<ScheduleRecord | null>(null)
+  const [completionStep, setCompletionStep] = useState<"attachments" | "checkout">("attachments")
   const [completionStartDate, setCompletionStartDate] = useState("")
   const [completionStartTime, setCompletionStartTime] = useState("")
   const [completionEndDate, setCompletionEndDate] = useState("")
@@ -846,11 +835,12 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
       return completeSchedule(schedule.id, { startDate, startTime, endDate, endTime })
     },
     onMutate: () => {
-      setCompletionTarget(null)
       const toastId = toast.loading("Concluindo atendimento...")
       return { toastId }
     },
     onSuccess: (_response, _variables, context) => {
+      setCompletionTarget(null)
+      setCompletionStep("attachments")
       setCompletionStartDate("")
       setCompletionStartTime("")
       setCompletionEndDate("")
@@ -973,6 +963,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
     const now = currentCompletionDateTime()
     const defaultDate = schedule.date || now.date
     setCompletionTarget(schedule)
+    setCompletionStep("attachments")
     setCompletionStartDate(schedule.completionStartDate || defaultDate)
     setCompletionStartTime(schedule.completionStartTime || schedule.time || "")
     setCompletionEndDate(schedule.completionEndDate || now.date || schedule.completionStartDate || defaultDate)
@@ -991,8 +982,6 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
 
   const canDeleteSchedule = (schedule: ScheduleRecord) => {
     return canManageAgenda &&
-      canManageLockedSchedules &&
-      ["cancelled", "completed"].includes(schedule.status) &&
       !isRecurringSchedule(schedule)
   }
 
@@ -1059,6 +1048,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
         onOpenChange={(open) => {
           if (!open) {
             setCompletionTarget(null)
+            setCompletionStep("attachments")
             setCompletionStartDate("")
             setCompletionStartTime("")
             setCompletionEndDate("")
@@ -1067,84 +1057,113 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
           }
         }}
       >
-        <DialogContent className="flex max-h-[calc(100dvh-1rem)] min-w-0 flex-col gap-0 overflow-hidden p-0 max-sm:left-0 max-sm:top-0 max-sm:h-[100dvh] max-sm:max-h-none max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none max-sm:border-0 max-sm:[&_[data-slot=dialog-close]]:right-5 max-sm:[&_[data-slot=dialog-close]]:top-[calc(env(safe-area-inset-top)+1rem)] sm:max-w-lg">
+        <DialogContent className="flex max-h-[calc(100dvh-1rem)] min-w-0 flex-col gap-0 overflow-hidden p-0 max-sm:left-0 max-sm:top-0 max-sm:h-[100dvh] max-sm:max-h-none max-sm:w-screen max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none max-sm:border-0 max-sm:[&_[data-slot=dialog-close]]:right-5 max-sm:[&_[data-slot=dialog-close]]:top-[calc(env(safe-area-inset-top)+1rem)] sm:max-w-lg">
           <DialogHeader className="min-w-0 px-6 pb-4 pt-6 max-sm:px-5 max-sm:pt-[calc(env(safe-area-inset-top)+1.75rem)]">
-            <DialogTitle>{canManageAgenda ? "Atendimento em andamento" : "NAs do atendimento"}</DialogTitle>
+            <DialogTitle>
+              {completionStep === "checkout" ? "Encerrar atendimento" : "NAs do atendimento"}
+            </DialogTitle>
             <DialogDescription>
-              A NA é salva assim que for adicionada. Você pode anexar uma por dia e concluir o atendimento somente no último dia.
+              {completionStep === "checkout"
+                ? "Informe a data e o horário executados para confirmar o encerramento."
+                : "A NA é salva assim que for adicionada. Você pode anexar uma por dia e concluir o atendimento somente no último dia."}
             </DialogDescription>
           </DialogHeader>
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 pb-5 max-sm:px-5">
-            {canManageAgenda ? <div className="grid min-w-0 gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="completion-start-date">Data de início *</Label>
-                <Input
-                  id="completion-start-date"
-                  type="date"
-                  value={completionStartDate}
-                  onChange={(event) => setCompletionStartDate(event.target.value)}
-                />
+            {completionStep === "checkout" ? (
+              <div className="grid min-w-0 gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Data de início *</Label>
+                  <DatePicker
+                    value={parseCivilDate(completionStartDate)}
+                    onChange={(date) => setCompletionStartDate(date ? toCivilDateKey(date) : "")}
+                    placeholder="Selecionar data"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="completion-start">Horário de início *</Label>
+                  <Input
+                    id="completion-start"
+                    type="time"
+                    value={completionStartTime}
+                    onChange={(event) => setCompletionStartTime(event.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Data de fim *</Label>
+                  <DatePicker
+                    value={parseCivilDate(completionEndDate)}
+                    onChange={(date) => setCompletionEndDate(date ? toCivilDateKey(date) : "")}
+                    placeholder="Selecionar data"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="completion-end">Horário de fim *</Label>
+                  <Input
+                    id="completion-end"
+                    type="time"
+                    value={completionEndTime}
+                    onChange={(event) => setCompletionEndTime(event.target.value)}
+                  />
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="completion-start">Horário de início *</Label>
-                <Input
-                  id="completion-start"
-                  type="time"
-                  value={completionStartTime}
-                  onChange={(event) => setCompletionStartTime(event.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="completion-end-date">Data de fim *</Label>
-                <Input
-                  id="completion-end-date"
-                  type="date"
-                  value={completionEndDate}
-                  onChange={(event) => setCompletionEndDate(event.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="completion-end">Horário de fim *</Label>
-                <Input
-                  id="completion-end"
-                  type="time"
-                  value={completionEndTime}
-                  onChange={(event) => setCompletionEndTime(event.target.value)}
-                />
-              </div>
-            </div> : null}
-            <CompletionNaAttachments
-              existingAttachments={completionTarget?.naAttachments ?? []}
-              files={completionFiles}
-              disabled={completeMutation.isPending || uploadNaMutation.isPending}
-              uploading={uploadNaMutation.isPending}
-              onAddFiles={(files) => {
-                if (!completionTarget || uploadNaMutation.isPending) return
-                setCompletionFiles(files)
-                uploadNaMutation.mutate({ schedule: completionTarget, files })
-              }}
-              onRemoveFile={() => undefined}
-            />
+            ) : (
+              <CompletionNaAttachments
+                existingAttachments={completionTarget?.naAttachments ?? []}
+                files={completionFiles}
+                disabled={completeMutation.isPending || uploadNaMutation.isPending}
+                uploading={uploadNaMutation.isPending}
+                onAddFiles={(files) => {
+                  if (!completionTarget || uploadNaMutation.isPending) return
+                  setCompletionFiles(files)
+                  uploadNaMutation.mutate({ schedule: completionTarget, files })
+                }}
+                onRemoveFile={() => undefined}
+              />
+            )}
           </div>
-          <DialogFooter className="gap-2 px-6 pb-6 pt-3 max-sm:px-5 max-sm:pb-[calc(env(safe-area-inset-bottom)+1.25rem)] sm:gap-2">
-            <Button type="button" variant="outline" className="w-full min-w-0 sm:w-auto" onClick={() => setCompletionTarget(null)}>
+          <div className="flex shrink-0 flex-col gap-2 bg-background px-6 pb-6 pt-3 max-sm:px-5 max-sm:pb-[calc(env(safe-area-inset-bottom)+1.25rem)] sm:flex-row sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full min-w-0 sm:w-auto"
+              onClick={() => {
+                if (completionStep === "checkout") {
+                  setCompletionStep("attachments")
+                  return
+                }
+                setCompletionTarget(null)
+              }}
+            >
               Voltar
             </Button>
-            {canManageAgenda ? <Button
+            <Button
               type="button"
               className="w-full min-w-0 sm:w-auto"
               disabled={
                 !completionTarget ||
-                !completionStartDate ||
-                !completionStartTime ||
-                !completionEndDate ||
-                !completionEndTime ||
                 (!completionTarget.naAttachments?.length && !completionTarget.naDocumentUrl) ||
                 uploadNaMutation.isPending ||
-                completeMutation.isPending
+                completeMutation.isPending ||
+                (completionStep === "checkout" &&
+                  (!completionStartDate ||
+                    !completionStartTime ||
+                    !completionEndDate ||
+                    !completionEndTime))
               }
-              onClick={() =>
-                completionTarget &&
+              onClick={() => {
+                if (!completionTarget) return
+                if (completionStep === "attachments") {
+                  setCompletionStep("checkout")
+                  return
+                }
+
+                const startedAt = new Date(`${completionStartDate}T${completionStartTime}:00`)
+                const completedAt = new Date(`${completionEndDate}T${completionEndTime}:00`)
+                if (completedAt.getTime() <= startedAt.getTime()) {
+                  toast.error("A data e o horário final devem ser maiores que o início.")
+                  return
+                }
+
                 completeMutation.mutate({
                   schedule: completionTarget,
                   startDate: completionStartDate,
@@ -1152,23 +1171,31 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                   endDate: completionEndDate,
                   endTime: completionEndTime,
                 })
-              }
+              }}
             >
               {completeMutation.isPending ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 shrink-0 animate-spin" />
-                  <span className="truncate">Concluindo...</span>
+                  <span className="truncate">Encerrando...</span>
+                </>
+              ) : completionStep === "checkout" ? (
+                <>
+                  <Check className="mr-2 h-4 w-4 shrink-0" />
+                  Confirmar encerramento
                 </>
               ) : (
-                "Concluir visita"
+                <>
+                  <Check className="mr-2 h-4 w-4 shrink-0" />
+                  Encerrar atendimento
+                </>
               )}
-            </Button> : null}
-          </DialogFooter>
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 
       <div className="flex min-h-0 flex-1 flex-col gap-4">
-        <div className={`${mobileFiltersOpen ? "grid" : "hidden"} -m-1 shrink-0 grid-cols-2 gap-2 overflow-visible p-1 sm:flex sm:items-center`}>
+        <div className={`${mobileFiltersOpen ? "grid" : "hidden"} -m-1 w-full min-w-0 shrink-0 grid-cols-2 gap-2 overflow-visible p-1 sm:flex sm:items-center`}>
           <FilterSearchInput
             wrapperClassName="col-span-2 sm:w-80"
             placeholder="Buscar cliente, serviço, equipe..."
@@ -1195,7 +1222,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
             placeholder="Status"
             searchPlaceholder="Buscar status..."
             allLabel="Todos os status"
-            className="sm:w-[160px]"
+            className="col-span-2 w-full sm:w-[160px]"
           />
           <DateRangePicker
             value={dateRange}
@@ -1204,7 +1231,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
               setCurrentPage(1)
             }}
             placeholder="Filtrar data"
-            className="sm:w-[360px]"
+            className="col-span-2 w-full min-w-0 sm:w-[360px]"
           />
           {viewToggle ? <div className="hidden shrink-0 sm:block">{viewToggle}</div> : null}
         </div>
@@ -1453,7 +1480,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                         ))}
                       </div>
                     ) : null}
-                    {canOpenScheduleEditor ? (
+                    {canOpenScheduleEditor || (schedule.status === "in_progress" && schedule.canAttachNa) ? (
                     <div className="mt-auto grid grid-cols-2 gap-2 pt-3 [&>*:only-child]:col-span-2" onClick={(event) => event.stopPropagation()}>
                       {(canManageScheduleStatus || (canManageAgenda && canEditSchedule(schedule, canManageLockedSchedules))) && (
                         <Button type="button" variant="outline" size="sm" className="h-8 rounded-full" onClick={() => openEditSchedule(schedule)}>
@@ -1461,10 +1488,10 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                           Editar
                         </Button>
                       )}
-                      {canManageAgenda && schedule.status === "in_progress" && (
+                      {(canManageAgenda || canManageScheduleStatus || schedule.canAttachNa) && schedule.status === "in_progress" && (
                         <Button type="button" variant="outline" size="sm" className="h-8 rounded-full" onClick={() => openCompletionDialog(schedule)}>
                           <Check className="mr-2 h-4 w-4" />
-                          Concluir
+                          NAs e conclusão
                         </Button>
                       )}
                       {canManageAgenda && schedule.status === "cancelled" && (

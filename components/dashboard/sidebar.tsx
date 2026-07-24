@@ -37,8 +37,8 @@ const menuItems = [
   { icon: Wrench, label: "Serviços", href: "/servicos", permissions: ["services_view", "services_manage"] },
   { icon: UsersRound, label: "Equipes", href: "/equipes", permissions: ["teams_view", "teams_manage"] },
   { icon: Users, label: "Funcionários", href: "/funcionarios", permissions: ["employees_view", "employees_create", "employees_edit", "employees_delete"] },
-  { icon: Calendar, label: "Agenda", href: "/agenda", permissions: ["agenda_own_view", "agenda_view", "agenda_manage", "agenda_manage_status"] },
-  { icon: CalendarClock, label: "Agendamentos", href: "/agendamentos", permissions: ["agenda_own_view", "agenda_view", "agenda_manage", "agenda_manage_status"] },
+  { icon: Calendar, label: "Agenda", href: "/agenda", permissions: ["agenda_own_view", "agenda_view"] },
+  { icon: CalendarClock, label: "Agendamentos", href: "/agendamentos", permissions: ["agenda_own_view", "agenda_view"] },
   { icon: Award, label: "Certificados", href: "/certificados", permissions: ["certificates_view", "certificates_manage"] },
   { icon: BarChart3, label: "Relatórios", href: "/relatorios", permissions: ["reports_view", "reports_export", "financial_view", "financial_manage"] },
 ]
@@ -104,7 +104,7 @@ export function Sidebar({ onNavigate, forceExpanded = false }: SidebarProps) {
   const schedulesQuery = useQuery({
     queryKey: ["schedules", "sidebar-agenda-count", todayDateKey],
     queryFn: () => listSchedules({ dateFrom: todayDateKey, dateTo: todayDateKey }),
-    enabled: Boolean(counterQueriesEnabled && currentUser?.employeeId && hasAnyPermission(currentUser, ["agenda_own_view", "agenda_view", "agenda_manage"])),
+    enabled: Boolean(counterQueriesEnabled && currentUser?.employeeId && hasAnyPermission(currentUser, ["agenda_own_view", "agenda_view"])),
     staleTime: 30_000,
   })
 
@@ -141,8 +141,6 @@ export function Sidebar({ onNavigate, forceExpanded = false }: SidebarProps) {
     const permissions = currentUser?.permissions ?? []
     const isScopedAgendaOnly =
       permissions.includes("agenda_own_view") &&
-      !permissions.includes("agenda_view") &&
-      !permissions.includes("agenda_manage") &&
       !permissions.includes("settings_manage")
 
     if (isScopedAgendaOnly) {

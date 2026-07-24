@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { createPortal } from "react-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Bell, User, FileText, History, LogOut, ChevronDown, PanelLeftClose, PanelLeftOpen, Settings } from "lucide-react"
 import { toast } from "sonner"
@@ -74,6 +75,7 @@ export function Header({ title, description, titleAddon, headerActions, actions,
   const [currentUser, setCurrentUser] = useState<ReturnType<typeof getStoredUser>>(null)
   const [hasSession, setHasSession] = useState(false)
   const [mounted, setMounted] = useState(false)
+  const [notificationsMenuOpen, setNotificationsMenuOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [isLoggingOut, setIsLoggingOut] = useState(false)
   const notificationsQuery = useQuery({
@@ -114,6 +116,19 @@ export function Header({ title, description, titleAddon, headerActions, actions,
       window.removeEventListener("depclean:session", sync)
     }
   }, [])
+
+  useEffect(() => {
+    if (!notificationsMenuOpen || !window.matchMedia("(max-width: 639px)").matches) {
+      return
+    }
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [notificationsMenuOpen])
 
   const markAsRead = (id: string) => {
     markAsReadMutation.mutate(id)
@@ -164,9 +179,31 @@ export function Header({ title, description, titleAddon, headerActions, actions,
           <div className="flex items-center gap-1.5 md:gap-2">
             {mounted && hasSession && !isLoggingOut ? (
               <>
-                <DropdownMenu onOpenChange={(open) => {
-                  if (open) void notificationsQuery.refetch()
-                }}>
+                {notificationsMenuOpen
+                  ? createPortal(
+                      <div
+                        className="fixed inset-0 z-[210] bg-black/40 sm:hidden"
+                        aria-hidden="true"
+                        onPointerDown={(event) => {
+                          event.preventDefault()
+                          event.stopPropagation()
+                        }}
+                        onClick={(event) => {
+                          event.preventDefault()
+                          event.stopPropagation()
+                          setNotificationsMenuOpen(false)
+                        }}
+                      />,
+                      document.body,
+                    )
+                  : null}
+                <DropdownMenu
+                  open={notificationsMenuOpen}
+                  onOpenChange={(open) => {
+                    setNotificationsMenuOpen(open)
+                    if (open) void notificationsQuery.refetch()
+                  }}
+                >
                   <DropdownMenuTrigger asChild>
                     <Button
                       variant="ghost"
@@ -184,21 +221,27 @@ export function Header({ title, description, titleAddon, headerActions, actions,
                   <DropdownMenuContent
                     align="end"
                     collisionPadding={12}
-                    className="w-[calc(100vw-1.5rem)] max-w-[calc(100vw-1.5rem)] overflow-hidden sm:w-80 sm:max-w-[calc(100vw-2rem)]"
+                    className="flex max-h-[min(75dvh,36rem)] w-[calc(100vw-1.5rem)] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden p-0 sm:w-80 sm:max-w-[calc(100vw-2rem)]"
+                    onPointerDownOutside={(event) => {
+                      if (window.matchMedia("(max-width: 639px)").matches) {
+                        event.preventDefault()
+                      }
+                    }}
                   >
-                    <DropdownMenuLabel className="flex items-center justify-between px-4">
+                    <DropdownMenuLabel className="flex shrink-0 items-center justify-between px-4 py-2">
                       <span>Notificações</span>
                       <Badge variant="secondary" className="text-xs">
                         {unreadNotifications.length} novas
                       </Badge>
                     </DropdownMenuLabel>
-                    <DropdownMenuSeparator />
+                    <DropdownMenuSeparator className="my-0" />
+                    <div className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain py-1">
                     {unreadNotifications.length === 0 && (
                       <div className="py-6 text-center text-sm text-muted-foreground">
                         Nenhuma notificação pendente
                       </div>
                     )}
-                    {unreadNotifications.slice(0, 5).map((notification) => (
+                    {unreadNotifications.map((notification) => (
                       <SwipeableNotification
                         key={notification.id}
                         isRead={notification.isRead}
@@ -223,12 +266,15 @@ export function Header({ title, description, titleAddon, headerActions, actions,
                         </DropdownMenuItem>
                       </SwipeableNotification>
                     ))}
-                    <DropdownMenuSeparator />
+                    </div>
+                    <DropdownMenuSeparator className="my-0" />
+                    <div className="shrink-0 p-1">
                     <Link href="/notificacoes">
                       <DropdownMenuItem className="text-center justify-center text-foreground font-medium cursor-pointer">
                         Ver todas
                       </DropdownMenuItem>
                     </Link>
+                    </div>
                   </DropdownMenuContent>
                 </DropdownMenu>
 

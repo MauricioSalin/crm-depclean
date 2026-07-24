@@ -207,8 +207,8 @@ export function DateRangePicker({
     <div className={cn("-m-1 overflow-visible p-1", className)}>
       <Popover open={isOpen} onOpenChange={setPopoverOpen}>
         <PopoverAnchor asChild>
-          <div className="grid w-full min-w-[320px] grid-cols-1 gap-2 sm:grid-cols-2">
-            <div className="relative focus-within:z-[70]">
+          <div className="grid w-full min-w-0 grid-cols-2 gap-2">
+            <div className="relative min-w-0 focus-within:z-[70]">
               <CalendarIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 ref={fromInputRef}
@@ -240,7 +240,7 @@ export function DateRangePicker({
               ) : null}
             </div>
 
-            <div className="relative focus-within:z-[70]">
+            <div className="relative min-w-0 focus-within:z-[70]">
               <CalendarIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 ref={toInputRef}
