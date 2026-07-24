@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import Link from "next/link"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
@@ -28,6 +29,10 @@ import {
 
 import { AssignmentBadges } from "@/components/ui/assignment-badges"
 import { Badge } from "@/components/ui/badge"
+import {
+  BusinessStatusBadge,
+  isContractAwaitingSchedules,
+} from "@/components/ui/business-status-badges"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
@@ -61,6 +66,7 @@ import {
   normalizeClicksignContractStatus,
 } from "@/lib/contract-status"
 import { BRASILIA_TIME_ZONE, formatCivilDate } from "@/lib/date-utils"
+import { formatScheduleDurationValue } from "@/lib/schedule-duration"
 import { useHasAnyPermission } from "@/hooks/use-permissions"
 import { buildPathWithSearchParams, getSafeReturnTo, withReturnTo } from "@/lib/navigation"
 import { cn, formatContractNumber } from "@/lib/utils"
@@ -126,14 +132,7 @@ const formatDateTime = (value?: string | Date) => {
 }
 
 const formatDuration = (duration: number, durationType: "minutes" | "hours" | "shift" | "days") => {
-  if (durationType === "minutes") return `${duration} minuto${duration === 1 ? "" : "s"}`
-  if (durationType === "hours" && duration > 0 && duration < 1) {
-    const minutes = Math.round(duration * 60)
-    return `${minutes} minuto${minutes === 1 ? "" : "s"}`
-  }
-  if (durationType === "hours") return `${duration} hora${duration === 1 ? "" : "s"}`
-  if (durationType === "days") return `${duration} dia${duration === 1 ? "" : "s"}`
-  return `${duration} turno${duration === 1 ? "" : "s"}`
+  return formatScheduleDurationValue(duration, durationType)
 }
 
 const getRecurrenceLabel = (value: string) =>
@@ -402,6 +401,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
   const [serviceClausesOpen, setServiceClausesOpen] = useState(false)
   const [schedulePlanOpen, setSchedulePlanOpen] = useState(false)
   const [schedulePublishConfirmOpen, setSchedulePublishConfirmOpen] = useState(false)
+  const [headerScheduleActionsTarget, setHeaderScheduleActionsTarget] = useState<HTMLElement | null>(null)
   const serviceClausesCloseTimeoutRef = useRef<number | null>(null)
   const autoSyncedClicksignReferenceRef = useRef<string | null>(null)
   const [schedulePage, setSchedulePage] = useState(1)
@@ -436,6 +436,10 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
     return () => clearServiceClausesCloseTimeout()
   }, [clearServiceClausesCloseTimeout])
 
+  useEffect(() => {
+    setHeaderScheduleActionsTarget(document.getElementById("contract-detail-schedule-actions"))
+  }, [])
+
   const handleServiceClausesOpenChange = (open: boolean) => {
     if (open) {
       setServiceClausesOpen(true)
@@ -459,6 +463,11 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
 
   const contract = contractQuery.data?.data
   const resolvedContractId = contract?.id ?? contractId
+
+  useEffect(() => {
+    if (contract?.internalStatus !== "filling") return
+    router.replace(withReturnTo(`/contratos/${resolvedContractId}/editar`, backHref))
+  }, [backHref, contract?.internalStatus, resolvedContractId, router])
 
   const clientQuery = useQuery({
     queryKey: ["client", contract?.clientId],
@@ -696,28 +705,31 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
       }
       return publishContractSchedulePlan(resolvedContractId)
     },
-    onSuccess: async (result) => {
-      const publication = result.data
+    onMutate: () => {
       setSchedulePublishConfirmOpen(false)
-      await Promise.all([
+      const toastId = sonnerToast.loading("Publicando agendamentos e preparando os alertas...")
+      return { toastId }
+    },
+    onSuccess: (result, _variables, context) => {
+      const publication = result.data
+      sonnerToast.success(publication.alreadyPublished ? "Agendamentos já enviados." : "Agendamentos enviados.", {
+        id: context?.toastId,
+        description: publication.alreadyPublished
+          ? "Este plano já estava publicado na agenda. Nenhuma mensagem foi duplicada."
+          : `${publication.count} agendamento(s) foram publicados e os alertas foram enfileirados.`,
+      })
+      void Promise.all([
         queryClient.invalidateQueries({ queryKey: ["contract", contractId] }),
         queryClient.invalidateQueries({ queryKey: ["contract", resolvedContractId] }),
         queryClient.invalidateQueries({ queryKey: ["contracts"] }),
         queryClient.invalidateQueries({ queryKey: ["contract-schedule-plan", resolvedContractId] }),
         queryClient.invalidateQueries({ queryKey: ["schedules"] }),
-      ])
-      toast({
-        title: publication.alreadyPublished ? "Agendamentos já enviados" : "Agendamentos enviados",
-        description: publication.alreadyPublished
-          ? "Este plano já estava publicado na agenda. Nenhuma mensagem foi duplicada."
-          : `${publication.count} agendamento(s) foram publicados e os alertas foram disparados.`,
-      })
+      ]).catch(() => undefined)
     },
-    onError: (error) => {
-      toast({
-        title: "Não foi possível enviar os agendamentos",
+    onError: (error, _variables, context) => {
+      sonnerToast.error("Não foi possível enviar os agendamentos.", {
+        id: context?.toastId,
         description: getApiErrorMessage(error, "Revise o plano salvo e tente novamente."),
-        variant: "destructive",
       })
     },
   })
@@ -841,6 +853,10 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
     )
   }
 
+  if (contract.internalStatus === "filling") {
+    return <ContractDetailLoading />
+  }
+
   return (
     <div className="space-y-6">
       <Card className="p-6">
@@ -853,6 +869,10 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
               <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-1">
                 <h2 className="min-w-0 break-words text-xl font-bold">{formatContractNumber(contract.contractNumber)}</h2>
                 <span className="inline-flex shrink-0">{getStatusBadge(contract.status)}</span>
+                {isContractAwaitingSchedules(contract) ? (
+                  <BusinessStatusBadge status="awaiting-schedules" />
+                ) : null}
+                {contract.isClientDelinquent ? <BusinessStatusBadge status="delinquent" /> : null}
               </div>
               <Link
                 href={withReturnTo(`/clientes/${contract.clientId}`, currentHref)}
@@ -861,62 +881,29 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                 <Building2 className="h-4 w-4" />
                 <span>{contract.clientCompanyName ?? client?.companyName ?? "Cliente"}</span>
               </Link>
-              {isClosedClicksignContractStatus(contract.status) && contract.startDate && contract.endDate ? (
-                <div className="mt-2 space-y-1 text-sm text-muted-foreground">
-                  <div className="flex items-center gap-2">
-                    <Calendar className="h-4 w-4" />
-                    <span>{formatDate(contract.startDate)}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <CalendarCheck className="h-4 w-4" />
-                    <span>{formatDate(contract.endDate)}</span>
-                  </div>
+              <div className="mt-2 space-y-1 text-sm text-muted-foreground">
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-4 w-4" />
+                  <span>
+                    {isClosedClicksignContractStatus(contract.status) && contract.startDate
+                      ? formatDate(contract.startDate)
+                      : "-"}
+                  </span>
                 </div>
-              ) : null}
+                <div className="flex items-center gap-2">
+                  <CalendarCheck className="h-4 w-4" />
+                  <span>
+                    {isClosedClicksignContractStatus(contract.status) && contract.endDate
+                      ? formatDate(contract.endDate)
+                      : "-"}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
 
           <div className="flex w-full flex-col gap-3 lg:ml-auto lg:w-[430px] lg:min-w-[430px] lg:self-stretch">
             <div className="flex w-full gap-2 sm:flex-wrap sm:justify-end">
-              {contract.automationCreateSchedules && !contract.automationSchedulePlanPublishedAt && canEditContracts ? (
-                <>
-                  <Button
-                    variant={contract.automationSchedulePlanSavedAt ? "outline" : "default"}
-                    size="sm"
-                    className="flex-1 sm:flex-none"
-                    title={!isClosedClicksignContractStatus(contract.status) || !contract.signedAt
-                      ? "Disponível após a assinatura do contrato"
-                      : undefined}
-                    onClick={() => setSchedulePlanOpen(true)}
-                    disabled={!isClosedClicksignContractStatus(contract.status) || !contract.signedAt}
-                  >
-                    <CalendarClock className="mr-2 h-4 w-4" />
-                    Agendamentos
-                  </Button>
-                  <Button
-                    variant="default"
-                    size="sm"
-                    className="flex-1 sm:flex-none"
-                    title={!contract.automationSchedulePlanSavedAt
-                      ? "Revise e salve os agendamentos antes de enviar"
-                      : undefined}
-                    onClick={() => setSchedulePublishConfirmOpen(true)}
-                    disabled={
-                      !isClosedClicksignContractStatus(contract.status) ||
-                      !contract.signedAt ||
-                      !contract.automationSchedulePlanSavedAt ||
-                      publishSchedulePlanMutation.isPending
-                    }
-                  >
-                    {publishSchedulePlanMutation.isPending ? (
-                      <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <Send className="mr-2 h-4 w-4" />
-                    )}
-                    Enviar agendamentos
-                  </Button>
-                </>
-              ) : null}
               {clicksignUrl ? (
                 <Button variant="outline" size="sm" className="flex-1 sm:flex-none" asChild>
                   <a href={clicksignUrl} target="_blank" rel="noreferrer">
@@ -1224,15 +1211,15 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
 
         <TabsContent value="services" className="mt-4">
           <div className="overflow-x-auto">
-            <Table>
+            <Table className="min-w-[980px] table-fixed">
               <TableHeader>
                 <TableRow>
-                  <TableHead>Serviço</TableHead>
-                  <TableHead>Descrição</TableHead>
-                  <TableHead>Recorrência</TableHead>
-                  <TableHead>Equipe / Funcionários</TableHead>
-                  <TableHead>Duração</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
+                  <TableHead className="w-[15%]">Serviço</TableHead>
+                  <TableHead className="w-[28%]">Descrição</TableHead>
+                  <TableHead className="w-[14%]">Recorrência</TableHead>
+                  <TableHead className="w-[23%]">Equipe / Funcionários</TableHead>
+                  <TableHead className="w-[12%]">Duração</TableHead>
+                  <TableHead className="w-[8%] text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1254,8 +1241,10 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                           <p className="font-medium">{serviceType?.name ?? service.serviceTypeId}</p>
                         </div>
                       </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {serviceType?.description || "Sem descrição cadastrada."}
+                      <TableCell className="max-w-0 text-muted-foreground">
+                        <span className="block truncate">
+                          {serviceType?.description || "Sem descrição cadastrada."}
+                        </span>
                       </TableCell>
                       <TableCell>
                         <Badge variant="secondary">
@@ -1508,9 +1497,45 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
         description="Os agendamentos do plano salvo serão criados na agenda e os alertas serão enviados aos responsáveis e ao cliente. Esta ação não poderá ser repetida."
         confirmLabel="Enviar agendamentos"
         confirmVariant="default"
-        busy={publishSchedulePlanMutation.isPending}
         onConfirm={() => publishSchedulePlanMutation.mutate()}
       />
+
+      {headerScheduleActionsTarget &&
+      clicksignReference &&
+      isClosedClicksignContractStatus(contract.status) &&
+      contract.signedAt &&
+      contract.automationCreateSchedules &&
+      !contract.automationSchedulePlanPublishedAt &&
+      canEditContracts
+        ? createPortal(
+            <>
+              <Button
+                variant={contract.automationSchedulePlanSavedAt ? "outline" : "default"}
+                size="sm"
+                className="h-9 flex-1 text-sm sm:flex-none"
+                onClick={() => setSchedulePlanOpen(true)}
+              >
+                <CalendarClock className="mr-2 h-4 w-4" />
+                Agendamentos
+              </Button>
+              <Button
+                variant="default"
+                size="sm"
+                className="h-9 flex-1 text-sm sm:flex-none"
+                onClick={() => setSchedulePublishConfirmOpen(true)}
+                disabled={publishSchedulePlanMutation.isPending}
+              >
+                {publishSchedulePlanMutation.isPending ? (
+                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="mr-2 h-4 w-4" />
+                )}
+                Enviar agendamentos
+              </Button>
+            </>,
+            headerScheduleActionsTarget,
+          )
+        : null}
 
     </div>
   )

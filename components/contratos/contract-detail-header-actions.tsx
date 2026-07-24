@@ -44,6 +44,7 @@ export function ContractDetailHeaderActions({ contractId }: ContractDetailHeader
           Voltar
         </Button>
       </Link>
+      <span id="contract-detail-schedule-actions" className="contents" />
       {contractQuery.isLoading ? (
         <Skeleton className="h-9 flex-1 rounded-full sm:w-[150px] sm:flex-initial" />
       ) : null}

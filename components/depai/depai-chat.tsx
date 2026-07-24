@@ -1279,7 +1279,10 @@ function DepAIChartPreview({
   sourceContent: string
   chartRef: RefObject<HTMLDivElement | null>
 }) {
-  const chartDataset = useMemo(() => parseChartDataset(sourceContent), [sourceContent])
+  const chartDataset = useMemo(
+    () => artifact.chartData ?? parseChartDataset(sourceContent),
+    [artifact.chartData, sourceContent],
+  )
   const chartType = artifact.chartType ?? inferLegacyChartType(sourceContent)
   const primarySeries = chartDataset.series[0] ?? "Valor"
   const chartHasValues = chartDataset.data.some((item) =>

@@ -4,11 +4,8 @@ import { use } from "react"
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { Header } from "@/components/dashboard/header"
 import { ContractForm } from "@/components/contratos/contract-form"
-import { Button } from "@/components/ui/button"
 import { getSafeReturnTo } from "@/lib/navigation"
-import Link from "next/link"
 import { useSearchParams } from "next/navigation"
-import { ArrowLeft } from "lucide-react"
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -28,14 +25,6 @@ export default function EditContractPage({ params }: PageProps) {
         <Header
           title="Editar Contrato"
           description="Atualize as informações do contrato"
-          actions={
-            <Link href={backHref}>
-              <Button variant="outline" className="w-full sm:w-auto h-9 text-sm bg-transparent">
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Voltar
-              </Button>
-            </Link>
-          }
         />
         <div className="mt-4 md:mt-5">
           <ContractForm contractId={id} isEditing returnTo={backHref} />

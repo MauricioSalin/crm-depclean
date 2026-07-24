@@ -57,7 +57,13 @@ function formatFileSize(size?: number) {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`
 }
 
-export function CertificateEditorContent({ scheduleId }: { scheduleId: string }) {
+export function CertificateEditorContent({
+  scheduleId,
+  serviceTypeId,
+}: {
+  scheduleId: string
+  serviceTypeId: string
+}) {
   const router = useRouter()
   const queryClient = useQueryClient()
   const editorRef = useRef<DocxTemplateEditorRef | null>(null)
@@ -94,8 +100,8 @@ export function CertificateEditorContent({ scheduleId }: { scheduleId: string })
   })
 
   const contextQuery = useQuery({
-    queryKey: ["certificates", scheduleId, "context"],
-    queryFn: () => getCertificateContext(scheduleId),
+    queryKey: ["certificates", scheduleId, serviceTypeId, "context"],
+    queryFn: () => getCertificateContext(scheduleId, serviceTypeId),
     enabled: mounted && canView && Boolean(scheduleId),
   })
 
@@ -136,7 +142,7 @@ export function CertificateEditorContent({ scheduleId }: { scheduleId: string })
         throw new Error("O documento ainda não está pronto para envio.")
       }
 
-      return sendCertificate(scheduleId, file, selectedTemplate.id)
+      return sendCertificate(scheduleId, file, selectedTemplate.id, serviceTypeId)
     },
     onMutate: () => {
       const toastId = toast.loading("Emitindo certificado...")

@@ -14,6 +14,7 @@ import { hasAnyPermission } from "@/lib/auth/permissions"
 import { getStoredUser } from "@/lib/auth/session"
 import { getClicksignContractStatusLabel } from "@/lib/contract-status"
 import { buildPathWithSearchParams, withReturnTo } from "@/lib/navigation"
+import { formatScheduleDurationValue } from "@/lib/schedule-duration"
 import { cn, formatContractNumber } from "@/lib/utils"
 
 type SearchItemKind = "client" | "contract" | "service" | "view-all" | "depai"
@@ -31,17 +32,6 @@ type SearchItem = {
 
 const MIN_QUERY_LENGTH = 1
 const MAX_SECTION_RESULTS = 5
-
-const durationTypeLabels: Record<ServiceRecord["durationType"], string> = {
-  minutes: "minuto",
-  hours: "hora",
-  shift: "turno",
-  days: "dia",
-}
-
-function pluralize(value: number, singular: string) {
-  return value === 1 ? singular : `${singular}s`
-}
 
 function formatCurrency(value?: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value ?? 0)
@@ -66,12 +56,7 @@ function getContractDescription(contract: ContractRecord) {
 }
 
 function getServiceDescription(service: ServiceRecord) {
-  const isLegacyFractionalHour = service.durationType === "hours" && service.defaultDuration > 0 && service.defaultDuration < 1
-  const durationValue = isLegacyFractionalHour ? Math.round(service.defaultDuration * 60) : service.defaultDuration
-  const durationType = isLegacyFractionalHour
-    ? durationTypeLabels.minutes
-    : durationTypeLabels[service.durationType] ?? service.durationType
-  const duration = `${durationValue} ${pluralize(durationValue, durationType)}`
+  const duration = formatScheduleDurationValue(service.defaultDuration, service.durationType)
   return [service.description || "Serviço cadastrado", duration].join(" • ")
 }
 

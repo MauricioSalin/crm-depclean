@@ -35,6 +35,7 @@ import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 import { listEmployees } from "@/lib/api/employees"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { deleteService, listServices, type ServiceRecord } from "@/lib/api/services"
+import { formatScheduleDurationValue } from "@/lib/schedule-duration"
 import { listTeams } from "@/lib/api/teams"
 import { useHasAnyPermission } from "@/hooks/use-permissions"
 
@@ -47,15 +48,7 @@ interface ServicesContentProps {
 
 function formatDuration(type: ServiceTypeRow) {
   const dur = type.defaultDuration
-  const durType = (type as any).durationType || "hours"
-  if (durType === "minutes") return `${dur} minuto${dur === 1 ? "" : "s"}`
-  if (durType === "hours" && dur > 0 && dur < 1) {
-    const minutes = Math.round(dur * 60)
-    return `${minutes} minuto${minutes === 1 ? "" : "s"}`
-  }
-  if (durType === "days") return `${dur} dia${dur > 1 ? "s" : ""}`
-  if (durType === "shift") return `${dur} turno${dur > 1 ? "s" : ""}`
-  return `${dur} hora${dur > 1 ? "s" : ""}`
+  return formatScheduleDurationValue(dur, type.durationType || "hours")
 }
 
 function formatDailyScheduleLimit(limit: number | null | undefined) {

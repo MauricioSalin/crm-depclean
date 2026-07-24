@@ -231,26 +231,23 @@ export function PwaProvider() {
             if (!open && !isEnabling) dismissPrompt()
           }}
         >
-          <DialogContent className="w-[calc(100vw-2rem)] max-w-md gap-5 overflow-x-hidden p-0" showCloseButton={!isEnabling}>
-            <div className="flex min-w-0 items-start gap-4 px-6 pt-6">
-              <div className="shrink-0 rounded-full bg-primary/10 p-3 text-primary">
-                <Bell className="size-5" aria-hidden="true" />
-              </div>
-              <DialogHeader className="min-w-0 gap-2 pr-6 text-left">
-                <DialogTitle className="text-base">Ativar notificações no celular</DialogTitle>
-                <DialogDescription className="leading-5">
-                  Receba os avisos do sininho mesmo quando o app estiver fechado.
-                </DialogDescription>
-              </DialogHeader>
-            </div>
+          <DialogContent className="min-w-0 sm:max-w-md" showCloseButton={!isEnabling}>
+            <DialogHeader className="min-w-0 text-left">
+              <DialogTitle className="max-w-full whitespace-normal break-words leading-6 [overflow-wrap:anywhere]">
+                Ativar notificações no celular
+              </DialogTitle>
+              <DialogDescription className="max-w-full whitespace-normal break-words leading-5 [overflow-wrap:anywhere]">
+                Receba os avisos do sininho mesmo quando o app estiver fechado.
+              </DialogDescription>
+            </DialogHeader>
 
-            <DialogFooter className="flex-row flex-wrap items-center justify-start px-6 pb-6">
-              <Button onClick={enableNotifications} disabled={isEnabling}>
+            <DialogFooter className="gap-2 sm:gap-2">
+              <Button type="button" variant="outline" onClick={dismissPrompt} disabled={isEnabling}>
+                Agora não
+              </Button>
+              <Button type="button" onClick={enableNotifications} disabled={isEnabling}>
                 <Bell className="size-4" aria-hidden="true" />
                 {isEnabling ? "Ativando..." : "Ativar"}
-              </Button>
-              <Button variant="ghost" onClick={dismissPrompt} disabled={isEnabling}>
-                Agora não
               </Button>
             </DialogFooter>
           </DialogContent>

@@ -10,6 +10,12 @@ export type ScheduleNaAttachmentRecord = {
   uploadedAt?: string
 }
 
+export type ScheduleDocumentSetting = {
+  serviceTypeId: string
+  informativeTemplateId: string
+  certificateTemplateId: string
+}
+
 export type ScheduleRecord = {
   id: string
   contractId: string | null
@@ -25,6 +31,7 @@ export type ScheduleRecord = {
   serviceTypeId: string
   serviceTypeIds: string[]
   serviceTypeName: string
+  serviceDocumentSettings: ScheduleDocumentSetting[]
   informativeTemplateId: string
   certificateTemplateId: string
   autoSendInformative: boolean
@@ -72,6 +79,7 @@ export type SchedulePayload = {
   contractServiceIds?: string[]
   serviceTypeId: string
   serviceTypeIds?: string[]
+  serviceDocumentSettings?: ScheduleDocumentSetting[]
   informativeTemplateId?: string
   certificateTemplateId?: string
   autoSendInformative?: boolean

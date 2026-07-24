@@ -13,7 +13,7 @@ const DURATION_TYPE_MINUTES: Record<ScheduleDurationType, number> = {
   minutes: 1,
   hours: 60,
   shift: 4 * 60,
-  days: 9 * 60,
+  days: 8 * 60,
 }
 
 export function scheduleDurationToMinutes(duration: number, durationType: ScheduleDurationType) {
@@ -46,12 +46,26 @@ function formatDurationAmount(value: number) {
   return String(Number(value.toFixed(2))).replace(".", ",")
 }
 
-function formatDurationByType(value: number, type: ScheduleDurationType) {
+function formatHoursAndMinutes(value: number) {
+  const totalMinutes = Math.max(0, Math.round(value * DURATION_TYPE_MINUTES.hours))
+  const hours = Math.floor(totalMinutes / DURATION_TYPE_MINUTES.hours)
+  const minutes = totalMinutes % DURATION_TYPE_MINUTES.hours
+  const parts: string[] = []
+
+  if (hours > 0) parts.push(`${hours} ${hours === 1 ? "hora" : "horas"}`)
+  if (minutes > 0) parts.push(`${minutes} ${minutes === 1 ? "minuto" : "minutos"}`)
+
+  return parts.join(" e ") || "0 minutos"
+}
+
+export function formatScheduleDurationValue(value: number, type: ScheduleDurationType) {
+  if (type === "hours") return formatHoursAndMinutes(value)
+
   const amount = formatDurationAmount(value)
   if (type === "minutes") return `${amount} ${value === 1 ? "minuto" : "minutos"}`
   if (type === "days") return `${amount} ${value === 1 ? "dia" : "dias"}`
   if (type === "shift") return `${amount} ${value === 1 ? "turno" : "turnos"}`
-  return `${amount} ${value === 1 ? "hora" : "horas"}`
+  return `${amount} horas`
 }
 
 function inferDurationTypeFromMinutes(minutes: number): ScheduleDurationType {
@@ -71,13 +85,13 @@ export function formatConfiguredScheduleDuration(schedule: {
   const type = schedule.durationType
 
   if (Number.isFinite(value) && value >= 1 && type) {
-    return formatDurationByType(value, type)
+    return formatScheduleDurationValue(value, type)
   }
 
   const minutes = Number(schedule.duration ?? 0)
   if (Number.isFinite(minutes) && minutes > 0) {
     const fallbackType = inferDurationTypeFromMinutes(minutes)
-    return formatDurationByType(minutes / DURATION_TYPE_MINUTES[fallbackType], fallbackType)
+    return formatScheduleDurationValue(minutes / DURATION_TYPE_MINUTES[fallbackType], fallbackType)
   }
 
   return "0 min"

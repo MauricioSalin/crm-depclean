@@ -17,7 +17,12 @@ import { getApiErrorMessage } from "@/lib/api/errors"
 import { getScheduleRescheduleOptions, rescheduleSchedule, type ScheduleRecord } from "@/lib/api/schedules"
 import type { TeamRecord } from "@/lib/api/teams"
 import { formatCivilDate, parseCivilDate, toCivilDateKey } from "@/lib/date-utils"
-import { checkScheduleAvailability, formatAvailabilitySlot, getAvailableRescheduleTimes } from "@/lib/schedule-availability"
+import {
+  checkScheduleAvailability,
+  formatAvailabilitySlot,
+  getAvailableRescheduleTimes,
+  isScheduleConflictErrorMessage,
+} from "@/lib/schedule-availability"
 import { formatConfiguredScheduleDuration } from "@/lib/schedule-duration"
 import { cn } from "@/lib/utils"
 
@@ -107,6 +112,7 @@ export function ScheduleDetailsDialog({
         teams,
         schedule,
         date: customDate,
+        mode: "manual",
       }),
     [customDate, schedule, schedules, teams],
   )
@@ -138,8 +144,20 @@ export function ScheduleDetailsDialog({
       })
       onOpenChange(false)
     },
-    onError: (error, _variables, context) => {
-      toast.error(getApiErrorMessage(error, "Não foi possível reagendar o atendimento."), {
+    onError: (error, variables, context) => {
+      const message = getApiErrorMessage(error, "Não foi possível reagendar o atendimento.")
+      if (!variables.allowConflict && isScheduleConflictErrorMessage(message)) {
+        toast.dismiss(context?.toastId)
+        setRescheduleConflict({
+          requested: {
+            date: variables.scheduledDate,
+            time: variables.scheduledTime || schedule?.time || "08:00",
+          },
+        })
+        return
+      }
+
+      toast.error(message, {
         id: context?.toastId,
       })
     },
@@ -179,6 +197,7 @@ export function ScheduleDetailsDialog({
         schedules,
         teams,
         ignoreScheduleId: schedule.id,
+        mode: "manual",
         formData: {
           teamIds: schedule.teams.map((team) => team.id),
           employeeIds: schedule.additionalEmployees.map((employee) => employee.id),

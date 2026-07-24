@@ -301,21 +301,26 @@ function normalizeDocxXmlFontNames(xml: string) {
   })
 }
 
-type DocxLineSpacing = {
-  line: string
-  lineRule: string
+type DocxParagraphSpacing = {
+  after?: string
+  afterAutospacing?: boolean
+  before?: string
+  beforeAutospacing?: boolean
+  line?: string
+  lineRule?: string
 }
 
 const DEFAULT_DOCX_PARAGRAPH_AFTER_TWIPS = "160"
 const TABLE_DOCX_PARAGRAPH_AFTER_TWIPS = "0"
 
-function getDocxLineSpacing(spacingXml: string): DocxLineSpacing | null {
-  const line = spacingXml.match(/\sw:line="([^"]*)"/)?.[1]
-  if (!line) return null
-
+function getDocxParagraphSpacing(spacingXml: string): DocxParagraphSpacing {
   return {
-    line,
-    lineRule: spacingXml.match(/\sw:lineRule="([^"]*)"/)?.[1] ?? "auto",
+    before: spacingXml.match(/\sw:before="([^"]*)"/)?.[1],
+    after: spacingXml.match(/\sw:after="([^"]*)"/)?.[1],
+    line: spacingXml.match(/\sw:line="([^"]*)"/)?.[1],
+    lineRule: spacingXml.match(/\sw:lineRule="([^"]*)"/)?.[1],
+    beforeAutospacing: /\sw:beforeAutospacing="(?:1|true)"/.test(spacingXml),
+    afterAutospacing: /\sw:afterAutospacing="(?:1|true)"/.test(spacingXml),
   }
 }
 
@@ -329,16 +334,24 @@ function getDocxParagraphAfterSpacing(xml: string, offset: number) {
   return isDocxPositionInsideTable(xml, offset) ? TABLE_DOCX_PARAGRAPH_AFTER_TWIPS : DEFAULT_DOCX_PARAGRAPH_AFTER_TWIPS
 }
 
-function buildDocxParagraphSpacingXml(lineSpacing?: DocxLineSpacing | null, afterTwips = DEFAULT_DOCX_PARAGRAPH_AFTER_TWIPS) {
-  const lineAttributes = lineSpacing ? ` w:line="${lineSpacing.line}" w:lineRule="${lineSpacing.lineRule}"` : ""
+function buildDocxParagraphSpacingXml(
+  spacing?: DocxParagraphSpacing | null,
+  fallbackAfterTwips = DEFAULT_DOCX_PARAGRAPH_AFTER_TWIPS,
+) {
+  const attributes = [
+    `w:before="${spacing?.before ?? "0"}"`,
+    `w:after="${spacing?.after ?? fallbackAfterTwips}"`,
+    spacing?.line ? `w:line="${spacing.line}"` : "",
+    spacing?.line ? `w:lineRule="${spacing.lineRule ?? "auto"}"` : "",
+    spacing?.beforeAutospacing ? 'w:beforeAutospacing="1"' : "",
+    spacing?.afterAutospacing ? 'w:afterAutospacing="1"' : "",
+  ].filter(Boolean)
 
-  return `<w:spacing w:before="0" w:after="${afterTwips}"${lineAttributes}/>`
+  return `<w:spacing ${attributes.join(" ")}/>`
 }
 
 function normalizeDocxSpacingElement(spacingXml: string, afterTwips = DEFAULT_DOCX_PARAGRAPH_AFTER_TWIPS) {
-  const lineSpacing = getDocxLineSpacing(spacingXml)
-
-  return buildDocxParagraphSpacingXml(lineSpacing, afterTwips)
+  return buildDocxParagraphSpacingXml(getDocxParagraphSpacing(spacingXml), afterTwips)
 }
 
 function normalizeDocxParagraphSpacing(xml: string) {
@@ -364,25 +377,48 @@ function normalizeDocxLayoutXml(xml: string) {
   return normalizeDocxParagraphSpacing(normalizeDocxXmlFontNames(xml))
 }
 
-function getLiveEditorParagraphLineSpacing(view: ProseMirrorViewLike | null | undefined) {
-  const patches: Array<DocxLineSpacing | null> = []
+function getDocxSpacingNumber(value: unknown, options: { allowZero?: boolean } = {}) {
+  if (value === null || value === undefined || value === "") return undefined
+
+  const number = typeof value === "number" ? value : Number(value)
+  const isValid = Number.isFinite(number) && (options.allowZero ? number >= 0 : number > 0)
+
+  return isValid ? String(Math.round(number)) : undefined
+}
+
+function getLiveEditorParagraphSpacing(view: ProseMirrorViewLike | null | undefined) {
+  const patches: Array<DocxParagraphSpacing | null> = []
   const doc = view?.state?.doc
   if (!doc?.descendants) return patches
 
   doc.descendants((node) => {
     if (node.type?.name !== "paragraph") return
 
-    const rawLineSpacing = node.attrs?.lineSpacing
-    const lineSpacing = typeof rawLineSpacing === "number" ? rawLineSpacing : Number(rawLineSpacing)
-    if (!Number.isFinite(lineSpacing) || lineSpacing <= 0) {
+    const before = getDocxSpacingNumber(node.attrs?.spaceBefore, { allowZero: true })
+    const after = getDocxSpacingNumber(node.attrs?.spaceAfter, { allowZero: true })
+    const line = getDocxSpacingNumber(node.attrs?.lineSpacing)
+    const rawLineRule = node.attrs?.lineSpacingRule
+    const beforeAutospacing = node.attrs?.beforeAutospacing === true
+    const afterAutospacing = node.attrs?.afterAutospacing === true
+
+    if (
+      before === undefined &&
+      after === undefined &&
+      line === undefined &&
+      !beforeAutospacing &&
+      !afterAutospacing
+    ) {
       patches.push(null)
       return
     }
 
-    const rawLineRule = node.attrs?.lineSpacingRule
     patches.push({
-      line: String(Math.round(lineSpacing)),
-      lineRule: typeof rawLineRule === "string" && rawLineRule ? rawLineRule : "auto",
+      before,
+      after,
+      line,
+      lineRule: line && typeof rawLineRule === "string" && rawLineRule ? rawLineRule : line ? "auto" : undefined,
+      beforeAutospacing,
+      afterAutospacing,
     })
   })
 
@@ -773,8 +809,8 @@ function normalizeDocxTableColumnWidthsBeforeResize(
   }
 }
 
-function applyDocxParagraphLineSpacing(paragraphXml: string, lineSpacing: DocxLineSpacing) {
-  const spacingXml = buildDocxParagraphSpacingXml(lineSpacing)
+function applyDocxParagraphSpacing(paragraphXml: string, paragraphSpacing: DocxParagraphSpacing) {
+  const spacingXml = buildDocxParagraphSpacingXml(paragraphSpacing)
 
   if (/<w:pPr\b/.test(paragraphXml)) {
     return paragraphXml.replace(/(<w:pPr\b[^>]*>)([\s\S]*?)(<\/w:pPr>)/, (_match, openTag, content, closeTag) => {
@@ -1461,11 +1497,11 @@ async function processDocxPreviewBuffer(buffer: ArrayBuffer, variables: Record<s
   return replaceDocxTemplateVariables(buffer, flattenPreviewVariables(variables))
 }
 
-async function applyLiveParagraphLineSpacingToDocxBuffer(
+async function applyLiveParagraphSpacingToDocxBuffer(
   buffer: ArrayBuffer,
-  paragraphLineSpacing: Array<DocxLineSpacing | null>,
+  paragraphSpacing: Array<DocxParagraphSpacing | null>,
 ) {
-  if (!paragraphLineSpacing.some(Boolean)) return buffer
+  if (!paragraphSpacing.some(Boolean)) return buffer
 
   const JSZip = (await import("jszip")).default
   const zip = await JSZip.loadAsync(buffer)
@@ -1476,10 +1512,10 @@ async function applyLiveParagraphLineSpacingToDocxBuffer(
   let index = 0
   let changed = false
   const nextXml = xml.replace(/<w:p\b[\s\S]*?<\/w:p>/g, (paragraphXml) => {
-    const lineSpacing = paragraphLineSpacing[index++]
-    if (!lineSpacing) return paragraphXml
+    const spacing = paragraphSpacing[index++]
+    if (!spacing) return paragraphXml
 
-    const nextParagraphXml = applyDocxParagraphLineSpacing(paragraphXml, lineSpacing)
+    const nextParagraphXml = applyDocxParagraphSpacing(paragraphXml, spacing)
     if (nextParagraphXml !== paragraphXml) changed = true
     return nextParagraphXml
   })
@@ -2479,7 +2515,7 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
         setPreviewBuffer(cloneBuffer(buffer))
       }
 
-      const paragraphLineSpacing = getLiveEditorParagraphLineSpacing(editorViewRef.current)
+      const paragraphSpacing = getLiveEditorParagraphSpacing(editorViewRef.current)
       let savedBuffer: ArrayBuffer | null = null
 
       try {
@@ -2499,7 +2535,7 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
       }
 
       if (savedBuffer) {
-        const patchedBuffer = await applyLiveParagraphLineSpacingToDocxBuffer(savedBuffer, paragraphLineSpacing)
+        const patchedBuffer = await applyLiveParagraphSpacingToDocxBuffer(savedBuffer, paragraphSpacing)
         const nextBuffer = await normalizeDocxTemplateBuffer(patchedBuffer)
         commitSavedBuffer(nextBuffer)
         return cloneBuffer(nextBuffer)
@@ -2515,7 +2551,7 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
       }
 
       if (modelBuffer) {
-        const patchedBuffer = await applyLiveParagraphLineSpacingToDocxBuffer(modelBuffer, paragraphLineSpacing)
+        const patchedBuffer = await applyLiveParagraphSpacingToDocxBuffer(modelBuffer, paragraphSpacing)
         const nextBuffer = await normalizeDocxTemplateBuffer(patchedBuffer)
         commitSavedBuffer(nextBuffer)
         return cloneBuffer(nextBuffer)

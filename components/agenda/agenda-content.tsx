@@ -33,7 +33,11 @@ import { addCivilDaysKey, addCivilMonthsKey, parseCivilDate, toBrasiliaTimeKey, 
 import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 import { cn } from "@/lib/utils"
-import { checkScheduleAvailability, formatAvailabilitySlot } from "@/lib/schedule-availability"
+import {
+  checkScheduleAvailability,
+  formatAvailabilitySlot,
+  isScheduleConflictErrorMessage,
+} from "@/lib/schedule-availability"
 import { canStartSchedule } from "@/lib/schedule-permissions"
 import type { RecurrenceType } from "@/lib/types"
 import { Badge } from "@/components/ui/badge"
@@ -77,7 +81,7 @@ type AgendaScheduledServiceRow = ScheduleRecord & {
 }
 
 const AGENDA_WORKDAY_START_TIME = "08:00"
-const AGENDA_DAY_DURATION_MINUTES = 9 * 60
+const AGENDA_DAY_DURATION_MINUTES = 8 * 60
 const DAY_PANEL_CONTENT_HIDE_MS = 80
 const DAY_PANEL_DRAWER_MS = 500
 
@@ -150,11 +154,14 @@ function scheduleDaySpan(schedule: Pick<AgendaScheduledServiceRow, "duration" | 
 function scheduleOccupiesDate(schedule: AgendaScheduledServiceRow, dateKey: string) {
   if (!isFullDaySchedule(schedule)) return schedule.date === dateKey
 
-  let currentDate = toBusinessDateKey(schedule.date)
+  const allowWeekends = isWeekendCivilDateKey(schedule.date)
+  let currentDate = allowWeekends ? schedule.date : toBusinessDateKey(schedule.date)
   const days = scheduleDaySpan(schedule)
   for (let index = 0; index < days; index += 1) {
     if (currentDate === dateKey) return true
-    currentDate = nextBusinessDateKey(currentDate)
+    currentDate = allowWeekends
+      ? addCivilDaysKey(currentDate, 1)
+      : nextBusinessDateKey(currentDate)
   }
 
   return false
@@ -214,7 +221,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
     formData: SchedulingFormData
     scheduleId?: string
     requested: { date: string; time: string }
-    suggested: { date: string; time: string }
+    suggested?: { date: string; time: string }
   } | null>(null)
   const [selectedSchedule, setSelectedSchedule] = useState<AgendaScheduledServiceRow | null>(null)
   const [cancelTarget, setCancelTarget] = useState<AgendaScheduledServiceRow | null>(null)
@@ -371,7 +378,15 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   }
 
   const saveMutation = useMutation({
-    mutationFn: async ({ formData, scheduleId }: { formData: SchedulingFormData; scheduleId?: string }) => {
+    mutationFn: async ({
+      formData,
+      scheduleId,
+      allowConflict = false,
+    }: {
+      formData: SchedulingFormData
+      scheduleId?: string
+      allowConflict?: boolean
+    }) => {
       const client = clients.find((item) => item.id === formData.clientId)
       const primaryUnit =
         client?.units.find((unit) => unit.isPrimary) ??
@@ -388,6 +403,9 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
 
       if (scheduleId && isRecurringScheduleUpdate) {
         const response = await updateSchedule(scheduleId, {
+          serviceTypeId: formData.serviceTypeIds[0],
+          serviceTypeIds: formData.serviceTypeIds,
+          serviceDocumentSettings: formData.serviceDocumentSettings,
           teamIds: formData.teamIds,
           additionalEmployeeIds: formData.employeeIds,
           scheduledDate: formData.date,
@@ -400,6 +418,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
           autoSendInformative: formData.autoSendInformative,
           generateCertificateRequest: formData.generateCertificateRequest,
           notes: formData.notes,
+          allowConflict,
         })
 
         if (canManageScheduleStatus && editingService?.status !== formData.status) {
@@ -412,7 +431,9 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       const payload = {
         clientId: formData.clientId,
         unitId: scheduleId ? editingService?.unitId ?? primaryUnit.id : primaryUnit.id,
-        serviceTypeId: formData.serviceTypeId,
+        serviceTypeId: formData.serviceTypeIds[0],
+        serviceTypeIds: formData.serviceTypeIds,
+        serviceDocumentSettings: formData.serviceDocumentSettings,
         teamIds: formData.teamIds,
         additionalEmployeeIds: formData.employeeIds,
         scheduledDate: formData.date,
@@ -428,6 +449,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
         billable: formData.createContract,
         value: formData.createContract ? formData.value : 0,
         notes: formData.notes,
+        allowConflict,
       }
 
       if (scheduleId) {
@@ -442,19 +464,36 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       return createSchedule(payload)
     },
     onMutate: (variables) => {
-      const toastId = toast.loading(variables.scheduleId ? "Salvando agendamento..." : "Criando atendimento...")
+      const toastId = toast.loading(
+        variables.scheduleId
+          ? "Salvando agendamento e preparando os alertas..."
+          : "Criando atendimento e preparando os alertas...",
+      )
       return { toastId }
     },
-    onSuccess: async (response, variables, context) => {
-      await invalidateSchedules()
-      closeScheduleDialog()
+    onSuccess: (response, variables, context) => {
       toast.success(variables.scheduleId ? "Agendamento atualizado." : "Agendamento criado.", {
         id: context?.toastId,
         description: `${response.data.clientName} • ${response.data.serviceTypeName}`,
       })
+      void invalidateSchedules().catch(() => undefined)
     },
-    onError: (error: any, _variables, context) => {
-      toast.error(getApiErrorMessage(error, "Não foi possível salvar o agendamento."), {
+    onError: (error: any, variables, context) => {
+      const message = getApiErrorMessage(error, "Não foi possível salvar o agendamento.")
+      if (!variables.allowConflict && isScheduleConflictErrorMessage(message)) {
+        toast.dismiss(context?.toastId)
+        setAvailabilitySuggestion({
+          formData: variables.formData,
+          scheduleId: variables.scheduleId,
+          requested: {
+            date: variables.formData.date,
+            time: variables.formData.time,
+          },
+        })
+        return
+      }
+
+      toast.error(message, {
         id: context?.toastId,
       })
     },
@@ -485,16 +524,16 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
     mutationFn: ({ id, reason }: { id: string; reason: string }) =>
       cancelSchedule(id, { cancellationReason: reason }),
     onMutate: () => {
+      setCancelTarget(null)
       const toastId = toast.loading("Cancelando agendamento...")
       return { toastId }
     },
-    onSuccess: async (_data, _variables, context) => {
-      await invalidateSchedules()
-      setCancelTarget(null)
+    onSuccess: (_data, _variables, context) => {
       toast.success("Agendamento cancelado.", {
         id: context?.toastId,
         description: "O motivo foi salvo no histórico.",
       })
+      void invalidateSchedules().catch(() => undefined)
     },
     onError: (error: any, _variables, context) => {
       toast.error(getApiErrorMessage(error, "Não foi possível cancelar o agendamento."), {
@@ -551,12 +590,11 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       return completeSchedule(schedule.id, { startDate, startTime, endDate, endTime })
     },
     onMutate: () => {
+      setCompletionTarget(null)
       const toastId = toast.loading("Concluindo atendimento...")
       return { toastId }
     },
-    onSuccess: async (_response, _variables, context) => {
-      await invalidateSchedules()
-      setCompletionTarget(null)
+    onSuccess: (_response, _variables, context) => {
       setCompletionStartDate("")
       setCompletionStartTime("")
       setCompletionEndDate("")
@@ -566,6 +604,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
         id: context?.toastId,
         description: "A agenda foi atualizada com o horário executado.",
       })
+      void invalidateSchedules().catch(() => undefined)
     },
     onError: (error: any, _variables, context) => {
       toast.error(getApiErrorMessage(error, "Não foi possível concluir o atendimento."), {
@@ -630,6 +669,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
     const statusOnlyChange = Boolean(isEditing && scheduleId && canManageScheduleStatus && editingService?.status !== formData.status)
     if (!canManageAgenda && !statusOnlyChange) return
     if (!canManageAgenda && statusOnlyChange) {
+      closeScheduleDialog()
       saveMutation.mutate({ formData, scheduleId })
       return
     }
@@ -639,9 +679,10 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       teams,
       formData,
       ignoreScheduleId: scheduleId,
+      mode: "manual",
     })
 
-    if (!availability.available && availability.suggested) {
+    if (!availability.available) {
       setAvailabilitySuggestion({
         formData,
         scheduleId,
@@ -654,6 +695,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       return
     }
 
+    closeScheduleDialog()
     saveMutation.mutate({ formData, scheduleId })
   }
 
@@ -770,7 +812,8 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       teamColor: string | null
       status: string
     }> = []
-    let currentDate = toBusinessDateKey(service.date)
+    const allowWeekends = isWeekendCivilDateKey(service.date)
+    let currentDate = allowWeekends ? service.date : toBusinessDateKey(service.date)
 
     for (let index = 0; index < days; index += 1) {
       events.push({
@@ -782,7 +825,9 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
         duration: AGENDA_DAY_DURATION_MINUTES,
         totalDays: days,
       })
-      currentDate = nextBusinessDateKey(currentDate)
+      currentDate = allowWeekends
+        ? addCivilDaysKey(currentDate, 1)
+        : nextBusinessDateKey(currentDate)
     }
 
     return events
@@ -979,7 +1024,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
           <DialogHeader className="min-w-0 pr-6">
             <DialogTitle>Horário indisponível</DialogTitle>
             <DialogDescription>
-              Já existe um agendamento para a equipe ou funcionário nesse intervalo.
+              Já existe um agendamento para a equipe ou funcionário nesse intervalo. Você pode usar a sugestão ou continuar mesmo assim.
             </DialogDescription>
           </DialogHeader>
           {availabilitySuggestion ? (
@@ -990,12 +1035,12 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                   {formatAvailabilitySlot(availabilitySuggestion.requested.date, availabilitySuggestion.requested.time)}
                 </p>
               </div>
-              <div>
+              {availabilitySuggestion.suggested ? <div>
                 <p className="font-medium">Horário mais próximo disponível</p>
                 <p className="text-muted-foreground">
                   {formatAvailabilitySlot(availabilitySuggestion.suggested.date, availabilitySuggestion.suggested.time)}
                 </p>
-              </div>
+              </div> : null}
             </div>
           ) : null}
           <DialogFooter className="gap-2 sm:gap-2">
@@ -1004,8 +1049,26 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
             </Button>
             <Button
               type="button"
+              variant="outline"
+              className="border-amber-300 text-amber-800 hover:bg-amber-50 hover:text-amber-900"
               onClick={() => {
                 if (!availabilitySuggestion) return
+                closeScheduleDialog()
+                saveMutation.mutate({
+                  formData: availabilitySuggestion.formData,
+                  scheduleId: availabilitySuggestion.scheduleId,
+                  allowConflict: true,
+                })
+                setAvailabilitySuggestion(null)
+              }}
+            >
+              Continuar mesmo assim
+            </Button>
+            {availabilitySuggestion?.suggested ? <Button
+              type="button"
+              onClick={() => {
+                if (!availabilitySuggestion?.suggested) return
+                closeScheduleDialog()
                 saveMutation.mutate({
                   formData: {
                     ...availabilitySuggestion.formData,
@@ -1018,7 +1081,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
               }}
             >
               Usar horário sugerido
-            </Button>
+            </Button> : null}
           </DialogFooter>
         </DialogContent>
       </Dialog>

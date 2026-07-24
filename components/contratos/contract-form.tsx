@@ -76,6 +76,8 @@ import {
   RefreshCw,
   Upload,
   Download,
+  ArrowRight,
+  FilePenLine,
   Mail,
   Phone,
   DollarSign,
@@ -90,19 +92,24 @@ import { toast } from "sonner"
 import { listClients } from "@/lib/api/clients"
 import {
   createContract,
+  createContractFillingDraft,
   deleteContract,
   getContractById,
   previewContract,
+  previewContractUpdate,
   replaceContractInClicksign,
   updateContract,
+  updateContractFillingDraft,
   uploadContractDocument,
   type ContractPayload,
+  type ContractRecord,
   type ContractUpdatePayload,
 } from "@/lib/api/contracts"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { isClosedClicksignContractStatus } from "@/lib/contract-status"
 import { formatCNPJ, formatCPF, formatPhone } from "@/lib/masks"
 import { listServices, type ServiceDurationType } from "@/lib/api/services"
+import { formatScheduleDurationValue } from "@/lib/schedule-duration"
 import { listTemplates } from "@/lib/api/templates"
 import { listTeams } from "@/lib/api/teams"
 import { listEmployees } from "@/lib/api/employees"
@@ -215,18 +222,45 @@ interface ContractService {
   isRecurrenceService: boolean
 }
 
+type ContractServiceSource = Partial<ContractService> & {
+  id?: string
+  teamId?: string
+  additionalEmployeeIds?: string[]
+  informativeTemplateId?: string
+  certificateTemplateId?: string
+}
+
+const normalizeContractServiceForForm = (
+  service: ContractServiceSource,
+  contract?: Pick<ContractRecord, "automationInformativeTemplateId" | "automationCertificateTemplateId">,
+): ContractService => {
+  const informativeTemplateId =
+    service.informativeTemplateId ?? contract?.automationInformativeTemplateId ?? ""
+  const certificateTemplateId =
+    service.certificateTemplateId ?? contract?.automationCertificateTemplateId ?? ""
+
+  return {
+    id: service.id ?? "",
+    serviceTypeId: service.serviceTypeId ?? "",
+    informativeTemplateId,
+    certificateTemplateId,
+    autoSendInformative: Boolean(informativeTemplateId),
+    generateCertificateRequest: Boolean(certificateTemplateId),
+    teamIds: service.teamIds ?? (service.teamId ? [service.teamId] : []),
+    employeeIds: service.additionalEmployeeIds ?? service.employeeIds ?? [],
+    recurrence: service.recurrence ?? "monthly",
+    duration: Number(service.duration ?? 1),
+    durationType: service.durationType ?? "hours",
+    clauses: [...(service.clauses ?? [])],
+    isRecurrenceService: Boolean(service.isRecurrenceService),
+  }
+}
+
 const formatServiceDuration = (service?: { defaultDuration?: number; durationType?: ServiceDurationType }) => {
   if (!service) return "-"
   const duration = Number(service.defaultDuration ?? 0)
   if (!duration) return "-"
-  if (service.durationType === "minutes") return `${duration} minuto${duration === 1 ? "" : "s"}`
-  if (service.durationType === "hours" && duration < 1) {
-    const minutes = Math.round(duration * 60)
-    return `${minutes} minuto${minutes === 1 ? "" : "s"}`
-  }
-  if (service.durationType === "shift") return `${duration} turno${duration === 1 ? "" : "s"}`
-  if (service.durationType === "days") return `${duration} dia${duration === 1 ? "" : "s"}`
-  return `${duration} hora${duration === 1 ? "" : "s"}`
+  return formatScheduleDurationValue(duration, service.durationType ?? "hours")
 }
 
 const recurrenceOptions = [
@@ -368,6 +402,14 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
   const [importNoticeOpen, setImportNoticeOpen] = useState(false)
   const [importNoticeText, setImportNoticeText] = useState<string>("")
   const [removeDialogOpen, setRemoveDialogOpen] = useState(false)
+  const [editorDirty, setEditorDirty] = useState(false)
+  const [leaveDialogOpen, setLeaveDialogOpen] = useState(false)
+  const [pendingNavigation, setPendingNavigation] = useState<{ href?: string; back?: boolean } | null>(null)
+  const [draftBaseline, setDraftBaseline] = useState("")
+  const allowNavigationRef = useRef(false)
+  const restoringHistoryRef = useRef(false)
+  const draftSnapshotRef = useRef("")
+  const recurrenceAutomationTouchedRef = useRef(!isEditing)
 
   const initialUnitIds = useMemo(() => {
     const direct = (contract as unknown as { unitIds?: string[] })?.unitIds ?? []
@@ -416,26 +458,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
     contract?.recurrenceServiceTypeId || DEFAULT_RECURRENCE_SERVICE_TYPE_ID,
   )
   const [services, setServices] = useState<ContractService[]>(
-    contract?.services.map((s) => {
-      const legacyTeamId = (s as any).teamId
-      const informativeTemplateId = (s as any).informativeTemplateId ?? (contract as any)?.automationInformativeTemplateId ?? ""
-      const certificateTemplateId = (s as any).certificateTemplateId ?? (contract as any)?.automationCertificateTemplateId ?? ""
-      return {
-        id: s.id,
-        serviceTypeId: s.serviceTypeId,
-        informativeTemplateId,
-        certificateTemplateId,
-        autoSendInformative: Boolean(informativeTemplateId),
-        generateCertificateRequest: Boolean(certificateTemplateId),
-        teamIds: (s as any).teamIds ?? (legacyTeamId ? [legacyTeamId] : []),
-        employeeIds: (s as any).additionalEmployeeIds ?? (s as any).employeeIds ?? [],
-        recurrence: (s as any).recurrence ?? "monthly",
-        duration: Number((s as any).duration ?? 1),
-        durationType: ((s as any).durationType ?? "hours") as ServiceDurationType,
-        clauses: [...((s as any).clauses ?? [])],
-        isRecurrenceService: Boolean((s as any).isRecurrenceService),
-      }
-    }) || []
+    contract?.services.map((service) => normalizeContractServiceForForm(service, contract)) ?? [],
   )
   const [contractValue, setContractValue] = useState(contract?.totalValue ? Math.round(contract.totalValue * 100) : 0)
   const [downPaymentValue, setDownPaymentValue] = useState(contract?.downPaymentValue ? Math.round(contract.downPaymentValue * 100) : 0)
@@ -512,6 +535,48 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
     ],
     [activeCertificateTemplates],
   )
+  const fillingDraftFormData = useMemo(() => ({
+    selectedTemplateId,
+    createAutomatedSchedules,
+    createAutomatedInformatives,
+    startDate,
+    firstDueDate,
+    firstVisitDate,
+    firstVisitTime,
+    installmentsCountInput,
+    dueDayInput,
+    selectedUnitIds,
+    recurrenceServiceTypeId,
+    services,
+    contractValue,
+    downPaymentValue,
+    contractRecurrenceRules: contractRecurrenceRules.map((rule) => ({
+      ...rule,
+      maxUnits: Number.isFinite(rule.maxUnits) ? rule.maxUnits : Number.MAX_SAFE_INTEGER,
+    })),
+  }), [
+    contractRecurrenceRules,
+    contractValue,
+    createAutomatedInformatives,
+    createAutomatedSchedules,
+    downPaymentValue,
+    dueDayInput,
+    firstDueDate,
+    firstVisitDate,
+    firstVisitTime,
+    installmentsCountInput,
+    recurrenceServiceTypeId,
+    selectedTemplateId,
+    selectedUnitIds,
+    services,
+    startDate,
+  ])
+  const draftSnapshot = useMemo(
+    () => JSON.stringify({ clientId: selectedClientId, formData: fillingDraftFormData }),
+    [fillingDraftFormData, selectedClientId],
+  )
+  draftSnapshotRef.current = draftSnapshot
+  const hasUnsavedChanges = Boolean(draftBaseline) && (draftSnapshot !== draftBaseline || editorDirty)
   const editingService = services.find(s => s.id === editingServiceId)
   const clausesEditingService = services.find((service) => service.id === clausesServiceId) ?? null
   const clausesEditingServiceType = clausesEditingService
@@ -552,23 +617,62 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
   useEffect(() => {
     if (!contract) return
 
+    if (contract.internalStatus === "filling") {
+      const formDraft = contract.formDraft as Partial<{
+        selectedTemplateId: string
+        createAutomatedSchedules: boolean
+        createAutomatedInformatives: boolean
+        startDate: string
+        firstDueDate: string
+        firstVisitDate: string
+        firstVisitTime: string
+        installmentsCountInput: string
+        dueDayInput: string
+        selectedUnitIds: string[]
+        recurrenceServiceTypeId: string
+        services: ContractService[]
+        contractValue: number
+        downPaymentValue: number
+        contractRecurrenceRules: RecurrenceRule[]
+      }>
+
+      setSelectedClientId(contract.clientId)
+      setSelectedTemplateId(formDraft.selectedTemplateId ?? "")
+      setCreateAutomatedSchedules(Boolean(formDraft.createAutomatedSchedules))
+      setCreateAutomatedInformatives(Boolean(formDraft.createAutomatedInformatives))
+      setStartDate(formDraft.startDate ?? "")
+      setFirstDueDate(formDraft.firstDueDate ?? "")
+      setFirstVisitDate(formDraft.firstVisitDate ?? "")
+      setFirstVisitTime(formDraft.firstVisitTime ?? "08:00")
+      setInstallmentsCountInput(formDraft.installmentsCountInput ?? "1")
+      setDueDayInput(formDraft.dueDayInput ?? "10")
+      setSelectedUnitIds(formDraft.selectedUnitIds ?? [])
+      setRecurrenceServiceTypeId(formDraft.recurrenceServiceTypeId ?? DEFAULT_RECURRENCE_SERVICE_TYPE_ID)
+      setServices(
+        (formDraft.services ?? []).map((service) =>
+          normalizeContractServiceForForm(service, contract),
+        ),
+      )
+      setContractValue(Number(formDraft.contractValue ?? 0))
+      setDownPaymentValue(Number(formDraft.downPaymentValue ?? 0))
+      setContractRecurrenceRules(
+        formDraft.contractRecurrenceRules?.map((rule) => ({
+          ...rule,
+          maxUnits: rule.maxUnits === Number.MAX_SAFE_INTEGER ? Infinity : rule.maxUnits,
+        })) ?? createDefaultContractRecurrenceRules(),
+      )
+      window.setTimeout(() => {
+        setDraftBaseline(draftSnapshotRef.current)
+        setEditorDirty(false)
+      }, 0)
+      return
+    }
+
     const directUnitIds = contract.unitIds ?? []
     const serviceUnitIds = contract.services?.flatMap((service) => service.unitIds ?? []) ?? []
-    const initialServiceList = (contract.services ?? []).map((service) => ({
-      id: service.id,
-      serviceTypeId: service.serviceTypeId,
-      informativeTemplateId: service.informativeTemplateId ?? contract.automationInformativeTemplateId ?? "",
-      certificateTemplateId: service.certificateTemplateId ?? contract.automationCertificateTemplateId ?? "",
-      autoSendInformative: Boolean(service.informativeTemplateId ?? contract.automationInformativeTemplateId),
-      generateCertificateRequest: Boolean(service.certificateTemplateId ?? contract.automationCertificateTemplateId),
-      teamIds: service.teamIds ?? [],
-      employeeIds: service.additionalEmployeeIds ?? [],
-      recurrence: service.recurrence ?? "monthly",
-      duration: Number(service.duration ?? 1),
-      durationType: service.durationType ?? "hours",
-      clauses: [...(service.clauses ?? [])],
-      isRecurrenceService: Boolean(service.isRecurrenceService),
-    }))
+    const initialServiceList = (contract.services ?? []).map((service) =>
+      normalizeContractServiceForForm(service, contract),
+    )
 
     setSelectedClientId(contract.clientId ?? "")
     setSelectedTemplateId(contract.templateId ?? "")
@@ -601,24 +705,24 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
           }))
         : createDefaultContractRecurrenceRules(),
     )
+    window.setTimeout(() => {
+      setDraftBaseline(draftSnapshotRef.current)
+      setEditorDirty(false)
+    }, 0)
   }, [contract])
 
   useEffect(() => {
-    setDownPaymentValue((current) => Math.min(current, contractValue))
-  }, [contractValue])
+    if (isEditing || draftBaseline) return
+    const timeout = window.setTimeout(() => setDraftBaseline(draftSnapshotRef.current), 0)
+    return () => window.clearTimeout(timeout)
+  }, [draftBaseline, isEditing])
 
   useEffect(() => {
     return () => clearClausesDialogCloseTimeout()
   }, [])
 
   useEffect(() => {
-    if (!createAutomatedSchedules) {
-      setCreateAutomatedInformatives(false)
-    }
-  }, [createAutomatedSchedules])
-
-  useEffect(() => {
-    if (serviceTypes.length === 0) return
+    if (isEditing || serviceTypes.length === 0) return
     setServices((current) =>
       current.map((service) => {
         if (!service.serviceTypeId) return service
@@ -644,13 +748,13 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
         }
       }),
     )
-  }, [serviceTypes, teams])
+  }, [isEditing, serviceTypes, teams])
 
   useEffect(() => {
-    if (createAutomatedSchedules && startDate && !firstVisitDate) {
+    if (!isEditing && createAutomatedSchedules && startDate && !firstVisitDate) {
       setFirstVisitDate(startDate)
     }
-  }, [createAutomatedSchedules, firstVisitDate, startDate])
+  }, [createAutomatedSchedules, firstVisitDate, isEditing, startDate])
 
   const selectedUnitsForDraft = useMemo(() => {
     const units = selectedClient?.units ?? []
@@ -678,16 +782,17 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
 
   // Auto-select all filiais when client changes
   useEffect(() => {
-    if (!selectedClient?.units?.length) {
+    if (isEditing) return
+    if (!selectedClientId) {
       setSelectedUnitIds([])
       return
     }
-    if (!isEditing) {
-      setSelectedUnitIds(selectedClient.units.map(u => u.id))
-    }
-  }, [selectedClientId])
+    if (!selectedClient?.units?.length) return
+    setSelectedUnitIds(selectedClient.units.map((unit) => unit.id))
+  }, [isEditing, selectedClient, selectedClientId])
 
   useEffect(() => {
+    if (isEditing && !recurrenceAutomationTouchedRef.current) return
     if (!recurrenceServiceTypeId || serviceTypes.length === 0) return
     const serviceType = serviceTypes.find((item) => item.id === recurrenceServiceTypeId)
     if (!serviceType) return
@@ -757,7 +862,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
         }
       })
     })
-  }, [recurrenceForSelectedUnits, recurrenceServiceTypeId, serviceTypes, teams])
+  }, [isEditing, recurrenceForSelectedUnits, recurrenceServiceTypeId, serviceTypes, teams])
 
   const getRecurrenceLabel = (recurrence: string) => {
     const labels: Record<string, string> = {
@@ -814,6 +919,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
   }
 
   const updateContractRule = (ruleIndex: number, field: keyof RecurrenceRule, value: number | string) => {
+    recurrenceAutomationTouchedRef.current = true
     setContractRecurrenceRules(prev => {
       const rules = [...prev]
       rules[ruleIndex] = { ...rules[ruleIndex], [field]: value }
@@ -822,6 +928,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
   }
 
   const addContractRule = (ruleType: RecurrenceRuleType) => {
+    recurrenceAutomationTouchedRef.current = true
     const newRule: RecurrenceRule = ruleType === "range"
       ? { type: "range", minUnits: 1, maxUnits: 100, recurrence: "monthly" as RecurrenceType }
       : { type: "above", minUnits: 100, maxUnits: Infinity, recurrence: "monthly" as RecurrenceType }
@@ -830,6 +937,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
   }
 
   const removeContractRule = (ruleIndex: number) => {
+    recurrenceAutomationTouchedRef.current = true
     setContractRecurrenceRules(prev => prev.filter((_, i) => i !== ruleIndex))
   }
 
@@ -1042,6 +1150,11 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
     mutationFn: previewContract,
   })
 
+  const previewUpdateMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: ContractPayload }) =>
+      previewContractUpdate(id, payload),
+  })
+
   const createMutation = useMutation({
     mutationFn: createContract,
     onSuccess: async () => {
@@ -1058,6 +1171,115 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
       await queryClient.invalidateQueries({ queryKey: ["contracts", "list"] })
     },
   })
+
+  const fillingDraftMutation = useMutation({
+    mutationFn: ({ id, clientId, formData }: {
+      id?: string
+      clientId: string
+      formData: Record<string, unknown>
+    }) => id
+      ? updateContractFillingDraft(id, { clientId, formData })
+      : createContractFillingDraft({ clientId, formData }),
+    onSuccess: async (response) => {
+      await queryClient.invalidateQueries({ queryKey: ["contract", response.data.id] })
+      await queryClient.invalidateQueries({ queryKey: ["contracts"] })
+      await queryClient.invalidateQueries({ queryKey: ["contracts", "list"] })
+    },
+  })
+
+  const saveFillingDraft = async (navigateAfterSave = true) => {
+    if (!selectedClientId) {
+      toast.error("Selecione um cliente antes de salvar como Em preenchimento.")
+      return false
+    }
+
+    const toastId = toast.loading("Salvando contrato em preenchimento...")
+    try {
+      await fillingDraftMutation.mutateAsync({
+        id: contractId,
+        clientId: selectedClientId,
+        formData: fillingDraftFormData,
+      })
+      setDraftBaseline(draftSnapshotRef.current)
+      setEditorDirty(false)
+      allowNavigationRef.current = true
+      toast.success("Contrato salvo como Em preenchimento.", { id: toastId })
+      if (navigateAfterSave) {
+        router.replace(formBackHref)
+      }
+      return true
+    } catch (error) {
+      allowNavigationRef.current = false
+      toast.error(getApiErrorMessage(error, "Não foi possível salvar o contrato em preenchimento."), { id: toastId })
+      return false
+    }
+  }
+
+  const navigateWithoutGuard = (destination: { href?: string; back?: boolean } | null) => {
+    allowNavigationRef.current = true
+    setDraftBaseline(draftSnapshotRef.current)
+    setEditorDirty(false)
+    setLeaveDialogOpen(false)
+    setPendingNavigation(null)
+    if (destination?.back) {
+      window.setTimeout(() => window.history.back(), 0)
+      return
+    }
+    router.push(destination?.href || formBackHref)
+  }
+
+  const requestNavigation = (destination: { href?: string; back?: boolean }) => {
+    if (!hasUnsavedChanges || allowNavigationRef.current) {
+      navigateWithoutGuard(destination)
+      return
+    }
+    setPendingNavigation(destination)
+    setLeaveDialogOpen(true)
+  }
+
+  useEffect(() => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!hasUnsavedChanges || allowNavigationRef.current) return
+      event.preventDefault()
+      event.returnValue = ""
+    }
+
+    const handleDocumentClick = (event: MouseEvent) => {
+      if (!hasUnsavedChanges || allowNavigationRef.current || event.defaultPrevented) return
+      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+      const target = event.target
+      if (!(target instanceof Element)) return
+      const anchor = target.closest<HTMLAnchorElement>("a[href]")
+      if (!anchor || anchor.target === "_blank" || anchor.hasAttribute("download")) return
+      const url = new URL(anchor.href, window.location.href)
+      if (url.origin !== window.location.origin || url.href === window.location.href) return
+      event.preventDefault()
+      event.stopPropagation()
+      setPendingNavigation({ href: `${url.pathname}${url.search}${url.hash}` })
+      setLeaveDialogOpen(true)
+    }
+
+    const handlePopState = () => {
+      if (restoringHistoryRef.current) {
+        restoringHistoryRef.current = false
+        return
+      }
+      if (!hasUnsavedChanges || allowNavigationRef.current) return
+      restoringHistoryRef.current = true
+      window.history.forward()
+      setPendingNavigation({ back: true })
+      setLeaveDialogOpen(true)
+    }
+
+    window.addEventListener("beforeunload", handleBeforeUnload)
+    document.addEventListener("click", handleDocumentClick, true)
+    window.addEventListener("popstate", handlePopState)
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload)
+      document.removeEventListener("click", handleDocumentClick, true)
+      window.removeEventListener("popstate", handlePopState)
+    }
+  }, [hasUnsavedChanges])
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteContract(id),
@@ -1306,6 +1528,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
   }, [deferredEmployeeSearchTerm, editingService, employees, teams])
 
   const toggleUnit = (unitId: string) => {
+    recurrenceAutomationTouchedRef.current = true
     setSelectedUnitIds(prev =>
       prev.includes(unitId)
         ? prev.filter(id => id !== unitId)
@@ -1315,10 +1538,24 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (previewMutation.isPending || updateMutation.isPending || createMutation.isPending || isFinalizingCreate) return
+    const submitter = (e.nativeEvent as SubmitEvent).submitter as HTMLElement | null
+    const submitIntent = submitter?.dataset.contractAction ?? "document"
+    if (
+      previewMutation.isPending ||
+      previewUpdateMutation.isPending ||
+      updateMutation.isPending ||
+      createMutation.isPending ||
+      fillingDraftMutation.isPending ||
+      isFinalizingCreate
+    ) return
 
     if (isEditing && isContractSigned(contract)) {
       toast.error("Contratos assinados não podem ser editados.")
+      return
+    }
+
+    if (isEditing && submitIntent === "save" && contract?.internalStatus === "filling") {
+      await saveFillingDraft()
       return
     }
 
@@ -1414,11 +1651,34 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
         : undefined,
     )
 
+    if (isEditing && submitIntent === "save") {
+      if (!contractId) return
+      const toastId = toast.loading("Salvando alterações do contrato...")
+      try {
+        await updateMutation.mutateAsync({
+          id: contractId,
+          payload: {
+            ...payload,
+            deferClicksignReplacement: true,
+          },
+        })
+        allowNavigationRef.current = true
+        setDraftBaseline(draftSnapshotRef.current)
+        setEditorDirty(false)
+        toast.success("Alterações do contrato salvas.", { id: toastId })
+        router.replace(formBackHref)
+      } catch (error) {
+        allowNavigationRef.current = false
+        toast.error(getApiErrorMessage(error, "Não foi possível salvar as alterações do contrato."), { id: toastId })
+      }
+      return
+    }
+
     if (isEditing) {
       if (!contractId) return
       const toastId = toast.loading("Gerando prévia do contrato...")
       try {
-        const preview = await previewMutation.mutateAsync(payload)
+        const preview = await previewUpdateMutation.mutateAsync({ id: contractId, payload })
         const contractNumber = contract?.contractNumber || preview.data.contractNumber
         setDraftMeta({
           contractNumber,
@@ -1508,6 +1768,9 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
             ? "Contrato atualizado e salvo como rascunho."
           : "Contrato salvo como rascunho. Revise os agendamentos antes de enviar ao ClickSign.",
       )
+      allowNavigationRef.current = true
+      setDraftBaseline(draftSnapshotRef.current)
+      setEditorDirty(false)
       router.replace(
         isEditing
           ? formBackHref
@@ -1528,6 +1791,50 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
       setIsFinalizingCreate(false)
     }
   }
+
+  const leaveGuardDialog = (
+    <AlertDialog open={leaveDialogOpen} onOpenChange={(open) => {
+      if (fillingDraftMutation.isPending) return
+      setLeaveDialogOpen(open)
+      if (!open) setPendingNavigation(null)
+    }}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Salvar o contrato em preenchimento?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Existem alterações que ainda não foram concluídas. Você pode salvar o preenchimento para continuar depois ou descartar as alterações.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={fillingDraftMutation.isPending}>
+            Continuar editando
+          </AlertDialogCancel>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={fillingDraftMutation.isPending}
+            onClick={() => navigateWithoutGuard(pendingNavigation)}
+          >
+            Descartar alterações
+          </Button>
+          <AlertDialogAction
+            disabled={fillingDraftMutation.isPending}
+            onClick={async (event) => {
+              event.preventDefault()
+              const destination = pendingNavigation
+              if (await saveFillingDraft(false)) {
+                navigateWithoutGuard(destination)
+              }
+            }}
+            className="bg-primary hover:bg-primary/90"
+          >
+            <Save className="mr-2 h-4 w-4" />
+            {fillingDraftMutation.isPending ? "Salvando..." : "Salvar rascunho"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  )
 
   if (step === "editor") {
     const contractNumber = draftMeta?.contractNumber ?? createDraftContractNumber()
@@ -1568,7 +1875,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
                   ? "Salvando..."
                   : isReplacingClicksignDocument
                     ? "Concluir e reenviar"
-                    : "Concluir e salvar rascunho"}
+                    : "Concluir e salvar"}
               </Button>
             </div>
           </div>
@@ -1578,6 +1885,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
               ref={docxEditorRef}
               activeTab={editorView}
               applyVariablesToEditor
+              onDirtyChange={setEditorDirty}
               baseFileName={selectedTemplate?.baseFileName}
               kind="contract"
               previewDataKey={[
@@ -1625,12 +1933,12 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
               <AlertDialogTitle>
                 {isReplacingClicksignDocument
                   ? "Substituir o documento enviado para assinatura?"
-                  : "Salvar este contrato como rascunho?"}
+                  : "Concluir e salvar o contrato?"}
               </AlertDialogTitle>
               <AlertDialogDescription>
                 {isReplacingClicksignDocument
                   ? "O documento anterior será cancelado no ClickSign. Um novo documento será enviado e todas as pessoas deverão assinar novamente, mesmo quem já assinou a versão anterior."
-                  : "O contrato ainda não será enviado ao ClickSign. No perfil do contrato, você poderá revisar e salvar os agendamentos previstos antes do envio para assinatura."}
+                  : "O documento será salvo como rascunho e ainda não será enviado ao ClickSign. Quando estiver pronto, o envio para assinatura poderá ser feito pelo perfil do contrato."}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -1649,11 +1957,12 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
                   ? "Salvando..."
                   : isReplacingClicksignDocument
                     ? "Salvar e reenviar"
-                    : "Salvar rascunho"}
+                    : "Salvar"}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+        {leaveGuardDialog}
       </div>
     )
   }
@@ -1704,6 +2013,30 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
 
   return (
     <form noValidate onSubmit={handleSubmit} className="space-y-6">
+      <div className="flex justify-end">
+        <Button
+          type={isEditing ? "submit" : "button"}
+          variant={isEditing ? "default" : "outline"}
+          className={isEditing ? "bg-primary hover:bg-primary/90" : undefined}
+          data-contract-action={isEditing ? "save" : undefined}
+          onClick={isEditing ? undefined : () => saveFillingDraft()}
+          disabled={
+            fillingDraftMutation.isPending ||
+            previewMutation.isPending ||
+            previewUpdateMutation.isPending ||
+            updateMutation.isPending ||
+            isFinalizingCreate
+          }
+        >
+          <Save className="mr-2 h-4 w-4" />
+          {fillingDraftMutation.isPending || updateMutation.isPending
+            ? "Salvando..."
+            : isEditing
+              ? "Salvar"
+              : "Salvar rascunho"}
+        </Button>
+      </div>
+
       {/* Client Selection */}
       <Card className="p-4 sm:p-6">
         <h3 className="font-semibold mb-4 flex items-center gap-2">
@@ -1728,7 +2061,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
                   variant="outline"
                   role="combobox"
                   className="w-full justify-between font-normal"
-                  disabled={isEditing}
+                  disabled={isEditing && contract?.internalStatus !== "filling"}
                 >
                   {selectedClientId
                     ? selectedClient?.companyName
@@ -1753,6 +2086,10 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
                             key={c.id}
                             value={c.companyName}
                             onSelect={() => {
+                              if (c.id !== selectedClientId) {
+                                recurrenceAutomationTouchedRef.current = true
+                                setSelectedUnitIds(c.units.map((unit) => unit.id))
+                              }
                               setSelectedClientId(c.id)
                               setClientPopoverOpen(false)
                             }}
@@ -2003,7 +2340,11 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
               <Checkbox
                 className="mt-0.5"
                 checked={createAutomatedSchedules}
-                onCheckedChange={(checked) => setCreateAutomatedSchedules(Boolean(checked))}
+                onCheckedChange={(checked) => {
+                  const enabled = Boolean(checked)
+                  setCreateAutomatedSchedules(enabled)
+                  if (!enabled) setCreateAutomatedInformatives(false)
+                }}
               />
               <span className="min-w-0">
                 <span className="block text-sm font-semibold leading-5">Criar agendamentos automatizados</span>
@@ -2316,6 +2657,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
                           value={service.serviceTypeId}
                           onValueChange={(v) => {
                             if (service.isRecurrenceService) {
+                              recurrenceAutomationTouchedRef.current = true
                               setRecurrenceServiceTypeId(v)
                               return
                             }
@@ -2501,7 +2843,10 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
             <Label>Valor do Contrato *</Label>
             <CurrencyInput
               value={contractValue}
-              onChange={setContractValue}
+              onChange={(value) => {
+                setContractValue(value)
+                setDownPaymentValue((current) => Math.min(current, value))
+              }}
             />
             <p className="text-xs text-muted-foreground">
               Informe o valor total contratado para geração das parcelas e relatórios financeiros.
@@ -2570,13 +2915,59 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
               Remover
             </Button>
           ) : null}
-          <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => router.push(formBackHref)} disabled={previewMutation.isPending || updateMutation.isPending || createMutation.isPending || isFinalizingCreate}>
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full sm:w-auto"
+            onClick={() => requestNavigation({ href: formBackHref })}
+            disabled={previewMutation.isPending || previewUpdateMutation.isPending || updateMutation.isPending || createMutation.isPending || isFinalizingCreate}
+          >
             Cancelar
           </Button>
-          <Button type="submit" className="w-full bg-primary hover:bg-primary/90 sm:w-auto" disabled={previewMutation.isPending || updateMutation.isPending || createMutation.isPending || isFinalizingCreate}>
-            <Save className="w-4 h-4 mr-2" />
-            {previewMutation.isPending || updateMutation.isPending ? "Salvando..." : isEditing ? "Salvar Alterações" : "Criar Contrato"}
-          </Button>
+          {isEditing ? (
+            <>
+              <Button
+                type="submit"
+                data-contract-action="save"
+                className="w-full bg-primary hover:bg-primary/90 sm:w-auto"
+                disabled={fillingDraftMutation.isPending || previewMutation.isPending || previewUpdateMutation.isPending || updateMutation.isPending || createMutation.isPending || isFinalizingCreate}
+              >
+                <Save className="mr-2 h-4 w-4" />
+                {fillingDraftMutation.isPending || updateMutation.isPending ? "Salvando..." : "Salvar"}
+              </Button>
+              <Button
+                type="submit"
+                data-contract-action="document"
+                className="w-full bg-primary hover:bg-primary/90 sm:w-auto"
+                disabled={fillingDraftMutation.isPending || previewMutation.isPending || previewUpdateMutation.isPending || updateMutation.isPending || createMutation.isPending || isFinalizingCreate}
+              >
+                <FilePenLine className="mr-2 h-4 w-4" />
+                {previewUpdateMutation.isPending ? "Carregando..." : "Editar documento"}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full sm:w-auto"
+                onClick={() => saveFillingDraft()}
+                disabled={fillingDraftMutation.isPending || previewMutation.isPending || previewUpdateMutation.isPending || updateMutation.isPending || createMutation.isPending || isFinalizingCreate}
+              >
+                <Save className="mr-2 h-4 w-4" />
+                {fillingDraftMutation.isPending ? "Salvando..." : "Salvar rascunho"}
+              </Button>
+              <Button
+                type="submit"
+                data-contract-action="document"
+                className="w-full bg-primary hover:bg-primary/90 sm:w-auto"
+                disabled={previewMutation.isPending || previewUpdateMutation.isPending || updateMutation.isPending || createMutation.isPending || isFinalizingCreate}
+              >
+                <ArrowRight className="mr-2 h-4 w-4" />
+                {previewMutation.isPending ? "Carregando..." : "Avançar"}
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
@@ -2596,6 +2987,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
           deleteMutation.mutate(contractId)
         }}
       />
+      {leaveGuardDialog}
 
       <Dialog open={clausesDialogOpen && Boolean(clausesEditingService)} onOpenChange={(open) => {
         if (open) {
@@ -2700,6 +3092,11 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
                                   "mr-2 h-4 w-4",
                                   editingService.teamIds.includes(team.id) ? "opacity-100" : "opacity-0"
                                 )}
+                              />
+                              <span
+                                className="mr-2 h-2.5 w-2.5 shrink-0 rounded-full"
+                                style={{ backgroundColor: getColorFromClass(team.color) }}
+                                aria-hidden="true"
                               />
                               <span>{team.name}</span>
                             </CommandItem>

@@ -46,7 +46,11 @@ import { addCivilDaysKey, formatCivilDate, parseCivilDate, toBrasiliaTimeKey, to
 import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 import { formatConfiguredScheduleDuration, minutesToScheduleDuration, scheduleDurationToMinutes } from "@/lib/schedule-duration"
-import { checkScheduleAvailability, formatAvailabilitySlot } from "@/lib/schedule-availability"
+import {
+  checkScheduleAvailability,
+  formatAvailabilitySlot,
+  isScheduleConflictErrorMessage,
+} from "@/lib/schedule-availability"
 import { canStartSchedule } from "@/lib/schedule-permissions"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -607,6 +611,9 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
 
       if (scheduleId && isRecurringScheduleUpdate) {
         const response = await updateSchedule(scheduleId, {
+          serviceTypeId: formData.serviceTypeIds[0],
+          serviceTypeIds: formData.serviceTypeIds,
+          serviceDocumentSettings: formData.serviceDocumentSettings,
           teamIds: formData.teamIds,
           additionalEmployeeIds: formData.employeeIds,
           scheduledDate: formData.date,
@@ -632,7 +639,9 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
       const payload = {
         clientId: formData.clientId,
         unitId: primaryUnit.id,
-        serviceTypeId: formData.serviceTypeId,
+        serviceTypeId: formData.serviceTypeIds[0],
+        serviceTypeIds: formData.serviceTypeIds,
+        serviceDocumentSettings: formData.serviceDocumentSettings,
         teamIds: formData.teamIds,
         additionalEmployeeIds: formData.employeeIds,
         scheduledDate: formData.date,
@@ -663,19 +672,36 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
       return createSchedule(payload)
     },
     onMutate: (variables) => {
-      const toastId = toast.loading(variables.scheduleId ? "Salvando agendamento..." : "Criando atendimento...")
+      const toastId = toast.loading(
+        variables.scheduleId
+          ? "Salvando agendamento e preparando os alertas..."
+          : "Criando atendimento e preparando os alertas...",
+      )
       return { toastId }
     },
-    onSuccess: async ({ data }, variables, context) => {
-      await invalidateSchedules()
-      closeScheduleDialog()
+    onSuccess: ({ data }, variables, context) => {
       toast.success(variables.scheduleId ? "Agendamento atualizado." : "Agendamento criado.", {
         id: context?.toastId,
         description: `${data.clientName} • ${data.serviceTypeName}`,
       })
+      void invalidateSchedules().catch(() => undefined)
     },
-    onError: (error: any, _variables, context) => {
-      toast.error(getApiErrorMessage(error, "Não foi possível salvar o agendamento."), {
+    onError: (error: any, variables, context) => {
+      const message = getApiErrorMessage(error, "Não foi possível salvar o agendamento.")
+      if (!variables.allowConflict && isScheduleConflictErrorMessage(message)) {
+        toast.dismiss(context?.toastId)
+        setAvailabilitySuggestion({
+          formData: variables.formData,
+          scheduleId: variables.scheduleId,
+          requested: {
+            date: variables.formData.date,
+            time: variables.formData.time,
+          },
+        })
+        return
+      }
+
+      toast.error(message, {
         id: context?.toastId,
       })
     },
@@ -734,16 +760,16 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
   const cancelMutation = useMutation({
     mutationFn: ({ id, reason }: { id: string; reason: string }) => cancelSchedule(id, { cancellationReason: reason }),
     onMutate: () => {
+      setCancelTarget(null)
       const toastId = toast.loading("Cancelando agendamento...")
       return { toastId }
     },
-    onSuccess: async (_data, _variables, context) => {
-      await invalidateSchedules()
-      setCancelTarget(null)
+    onSuccess: (_data, _variables, context) => {
       toast.success("Agendamento cancelado.", {
         id: context?.toastId,
         description: "O motivo foi salvo no histórico.",
       })
+      void invalidateSchedules().catch(() => undefined)
     },
     onError: (error, _variables, context) => {
       toast.error(getApiErrorMessage(error, "Não foi possível cancelar o agendamento."), {
@@ -820,12 +846,11 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
       return completeSchedule(schedule.id, { startDate, startTime, endDate, endTime })
     },
     onMutate: () => {
+      setCompletionTarget(null)
       const toastId = toast.loading("Concluindo atendimento...")
       return { toastId }
     },
-    onSuccess: async (_response, _variables, context) => {
-      await invalidateSchedules()
-      setCompletionTarget(null)
+    onSuccess: (_response, _variables, context) => {
       setCompletionStartDate("")
       setCompletionStartTime("")
       setCompletionEndDate("")
@@ -835,6 +860,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
         id: context?.toastId,
         description: "A agenda foi atualizada com o horário executado.",
       })
+      void invalidateSchedules().catch(() => undefined)
     },
     onError: (error: any, _variables, context) => {
       toast.error(getApiErrorMessage(error, "Não foi possível concluir o atendimento."), {
@@ -893,6 +919,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
     const statusOnlyChange = Boolean(isEditing && scheduleId && canManageScheduleStatus && editingSchedule?.status !== formData.status)
     if (!canManageAgenda && !statusOnlyChange) return
     if (!canManageAgenda && statusOnlyChange) {
+      closeScheduleDialog()
       saveMutation.mutate({
         formData,
         scheduleId,
@@ -905,6 +932,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
       teams,
       formData,
       ignoreScheduleId: scheduleId,
+      mode: "manual",
     })
 
     if (!availability.available) {
@@ -920,6 +948,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
       return
     }
 
+    closeScheduleDialog()
     saveMutation.mutate({
       formData,
       scheduleId,
@@ -1560,6 +1589,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
               className="border-amber-300 text-amber-800 hover:bg-amber-50 hover:text-amber-900"
               onClick={() => {
                 if (!availabilitySuggestion) return
+                closeScheduleDialog()
                 saveMutation.mutate({
                   formData: availabilitySuggestion.formData,
                   scheduleId: availabilitySuggestion.scheduleId,
@@ -1568,12 +1598,13 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                 setAvailabilitySuggestion(null)
               }}
             >
-              Manter horário solicitado
+              Continuar mesmo assim
             </Button>
             {availabilitySuggestion?.suggested ? <Button
               type="button"
               onClick={() => {
                 if (!availabilitySuggestion) return
+                closeScheduleDialog()
                 saveMutation.mutate({
                   formData: {
                     ...availabilitySuggestion.formData,

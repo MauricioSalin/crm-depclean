@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { Check, ChevronsUpDown, X } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { cn, getColorFromClass } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
   Command,
@@ -107,6 +107,13 @@ export function MultiSelect({
                         selected.includes(option.id) ? "opacity-100" : "opacity-0"
                       )}
                     />
+                    {option.color ? (
+                      <span
+                        className="mr-2 h-2.5 w-2.5 shrink-0 rounded-full"
+                        style={{ backgroundColor: getColorFromClass(option.color) }}
+                        aria-hidden="true"
+                      />
+                    ) : null}
                     <div className="flex flex-col">
                       <span>{option.name}</span>
                       {option.subtitle && (
@@ -127,18 +134,19 @@ export function MultiSelect({
         <div className="mt-2 flex flex-wrap gap-2">
           {selectedOptions.map((option) => {
             const hasColor = Boolean(option.color)
+            const resolvedColor = option.color ? getColorFromClass(option.color) : undefined
 
             return (
               <Badge
                 key={option.id}
                 variant={hasColor ? "secondary" : "outline"}
                 className="flex items-center gap-2 px-3 py-1 text-foreground/80"
-                style={hasColor ? { backgroundColor: `${option.color}1A` } : undefined}
+                style={hasColor ? { backgroundColor: `${resolvedColor}1A` } : undefined}
               >
                 {hasColor ? (
                   <span
                     className="h-2.5 w-2.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: option.color }}
+                    style={{ backgroundColor: resolvedColor }}
                   />
                 ) : null}
                 <span>{option.name}</span>

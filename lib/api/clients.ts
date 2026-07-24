@@ -51,6 +51,7 @@ export type ClientRecord = {
   preferredServiceWeekday: number | null
   preferredServiceShift: "" | "morning" | "afternoon"
   isActive: boolean
+  isDelinquent: boolean
   units: ClientUnitRecord[]
   createdAt: string
   updatedAt: string

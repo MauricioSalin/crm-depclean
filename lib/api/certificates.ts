@@ -29,6 +29,7 @@ export type CertificateContextRecord = {
   variables: Record<string, unknown>
   schedule: {
     id: string
+    serviceTypeId: string
     date: string
     time: string
     startTime: string
@@ -72,14 +73,15 @@ export async function listCertificates() {
   return response.data
 }
 
-export async function getCertificateContext(scheduleId: string) {
+export async function getCertificateContext(scheduleId: string, serviceTypeId?: string) {
   const response = await api.get<{ success: true; data: CertificateContextRecord }>(
     `/certificates/${scheduleId}/context`,
+    { params: { serviceTypeId } },
   )
   return response.data
 }
 
-export async function sendCertificate(scheduleId: string, file: File, templateId?: string) {
+export async function sendCertificate(scheduleId: string, file: File, templateId?: string, serviceTypeId?: string) {
   const formData = new FormData()
   formData.append("file", file)
 
@@ -87,7 +89,7 @@ export async function sendCertificate(scheduleId: string, file: File, templateId
     `/certificates/${scheduleId}/send`,
     formData,
     {
-      params: { templateId },
+      params: { templateId, serviceTypeId },
       headers: {
         "Content-Type": "multipart/form-data",
       },
@@ -96,12 +98,19 @@ export async function sendCertificate(scheduleId: string, file: File, templateId
   return response.data
 }
 
-export async function resendCertificate(scheduleId: string) {
-  const response = await api.post<{ success: true; data: CertificateQueueRecord }>(`/certificates/${scheduleId}/resend`)
+export async function resendCertificate(scheduleId: string, serviceTypeId?: string) {
+  const response = await api.post<{ success: true; data: CertificateQueueRecord }>(
+    `/certificates/${scheduleId}/resend`,
+    undefined,
+    { params: { serviceTypeId } },
+  )
   return response.data
 }
 
-export async function deleteCertificate(scheduleId: string) {
-  const response = await api.delete<{ success: true; data: CertificateQueueRecord }>(`/certificates/${scheduleId}`)
+export async function deleteCertificate(scheduleId: string, serviceTypeId?: string) {
+  const response = await api.delete<{ success: true; data: CertificateQueueRecord }>(
+    `/certificates/${scheduleId}`,
+    { params: { serviceTypeId } },
+  )
   return response.data
 }

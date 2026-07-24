@@ -26,21 +26,35 @@ type AvailabilityResult = {
   }
 }
 
+type AvailabilityMode = "manual" | "automation"
+
 const DAY_END_MINUTES = 24 * 60
 const WORKDAY_START_MINUTES = 8 * 60
 const WORKDAY_END_MINUTES = 17 * 60
-const DAY_DURATION_MINUTES = 9 * 60
+const DAY_DURATION_MINUTES = 8 * 60
 const LUNCH_START_MINUTES = 12 * 60
 const LUNCH_END_MINUTES = 13 * 60
 const MAX_SINGLE_SIDE_LUNCH_DURATION = 4 * 60
 const SLOT_STEP_MINUTES = 30
+
+export function isScheduleConflictErrorMessage(message: string) {
+  const normalized = message
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+
+  return normalized.includes("possui atendimento neste horario")
+}
 
 export function checkScheduleAvailability(params: {
   schedules: ScheduleRecord[]
   teams: TeamRecord[]
   formData: AvailabilityFormData
   ignoreScheduleId?: string
+  allowWeekends?: boolean
+  mode?: AvailabilityMode
 }): AvailabilityResult {
+  const mode = params.mode ?? "automation"
   const requested = {
     date: params.formData.date,
     time: params.formData.time,
@@ -69,8 +83,9 @@ export function checkScheduleAvailability(params: {
       return buildScheduleBlocks({
         date: schedule.date,
         time: schedule.time || "08:00",
-        durationMinutes: Number(schedule.duration || 60),
+        durationMinutes: getScheduleDurationMinutes(schedule),
         durationType: schedule.durationType,
+        mode: "manual",
       }).map((block) => ({ ...block, resource }))
     })
     .filter((schedule) => hasResourceConflict(resource, schedule.resource))
@@ -82,9 +97,11 @@ export function checkScheduleAvailability(params: {
     time: requested.time,
     durationMinutes: requested.durationMinutes,
     durationType: params.formData.durationType,
+    allowWeekends: params.allowWeekends,
+    mode,
   })
   const isFullDay = isFullDaySchedule(requested.durationMinutes, params.formData.durationType)
-  const respectsBusinessHours = params.formData.isEmergency !== true
+  const respectsBusinessHours = mode === "automation" && params.formData.isEmergency !== true
   const outsideWorkday = respectsBusinessHours &&
     !isFullDay &&
     (requestedStart < WORKDAY_START_MINUTES || requestedEnd > WORKDAY_END_MINUTES)
@@ -114,6 +131,8 @@ export function checkScheduleAvailability(params: {
     durationType: params.formData.durationType,
     conflicts,
     isEmergency: params.formData.isEmergency === true,
+    allowWeekends: params.allowWeekends,
+    mode,
   })
 
   return {
@@ -138,6 +157,8 @@ export function getAvailableRescheduleTimes(params: {
   startMinutes?: number
   endMinutes?: number
   stepMinutes?: number
+  allowWeekends?: boolean
+  mode?: AvailabilityMode
 }) {
   const { schedule, date } = params
   if (!schedule || !date) return []
@@ -145,12 +166,17 @@ export function getAvailableRescheduleTimes(params: {
   const durationConfig = getScheduleDurationConfig(schedule)
   const durationMinutes = scheduleDurationToMinutes(durationConfig.duration, durationConfig.durationType)
   const stepMinutes = params.stepMinutes ?? SLOT_STEP_MINUTES
-  const startMinutes = params.startMinutes ?? WORKDAY_START_MINUTES
-  const endMinutes = params.endMinutes ?? WORKDAY_END_MINUTES
+  const mode = params.mode ?? "automation"
+  const startMinutes = params.startMinutes ?? (mode === "manual" ? 0 : WORKDAY_START_MINUTES)
+  const endMinutes = params.endMinutes ?? (mode === "manual" ? DAY_END_MINUTES : WORKDAY_END_MINUTES)
   const todayKey = toCivilDateKey(params.now ?? new Date())
   const isFullDay = isFullDaySchedule(durationMinutes, durationConfig.durationType)
 
-  if (date < todayKey || durationMinutes <= 0 || (!isFullDay && durationMinutes > endMinutes - startMinutes)) {
+  if (
+    date < todayKey ||
+    durationMinutes <= 0 ||
+    (mode === "automation" && !isFullDay && durationMinutes > endMinutes - startMinutes)
+  ) {
     return []
   }
 
@@ -165,11 +191,13 @@ export function getAvailableRescheduleTimes(params: {
     duration: durationConfig.duration,
   }
 
-  if (isFullDay) {
+  if (isFullDay && mode === "automation") {
     const availability = checkScheduleAvailability({
       schedules: params.schedules,
       teams: params.teams,
       ignoreScheduleId: schedule.id,
+      allowWeekends: params.allowWeekends,
+      mode,
       formData: {
         ...baseFormData,
         time: "08:00",
@@ -179,12 +207,18 @@ export function getAvailableRescheduleTimes(params: {
     return availability.available ? ["08:00"] : []
   }
 
-  for (let start = firstSlot; start + durationMinutes <= endMinutes; start += stepMinutes) {
+  for (
+    let start = firstSlot;
+    mode === "manual" ? start < endMinutes : start + durationMinutes <= endMinutes;
+    start += stepMinutes
+  ) {
     const time = timeFromMinutes(start)
     const availability = checkScheduleAvailability({
       schedules: params.schedules,
       teams: params.teams,
       ignoreScheduleId: schedule.id,
+      allowWeekends: params.allowWeekends,
+      mode,
       formData: {
         ...baseFormData,
         time,
@@ -216,7 +250,40 @@ function findNextAvailableSlot(params: {
   durationType?: ScheduleDurationType
   conflicts: Array<{ date: string; startMinutes: number; endMinutes: number }>
   isEmergency?: boolean
+  allowWeekends?: boolean
+  mode: AvailabilityMode
 }) {
+  if (params.mode === "manual") {
+    let currentDate = params.date
+    let firstStart = Math.max(0, Math.min(DAY_END_MINUTES - 1, roundToNextStep(params.startMinutes)))
+
+    for (let dayOffset = 0; dayOffset < 60; dayOffset += 1) {
+      for (let startMinutes = firstStart; startMinutes < DAY_END_MINUTES; startMinutes += SLOT_STEP_MINUTES) {
+        const blocks = buildScheduleBlocks({
+          date: currentDate,
+          time: timeFromMinutes(startMinutes),
+          durationMinutes: params.durationMinutes,
+          durationType: params.durationType,
+          mode: "manual",
+        })
+        const hasConflict = blocks.some((block) =>
+          params.conflicts.some((item) =>
+            item.date === block.date &&
+            block.startMinutes < item.endMinutes &&
+            block.endMinutes > item.startMinutes,
+          ),
+        )
+
+        if (!hasConflict) return { date: currentDate, time: timeFromMinutes(startMinutes) }
+      }
+
+      currentDate = addCivilDaysKey(currentDate, 1)
+      firstStart = 0
+    }
+
+    return undefined
+  }
+
   if (!params.isEmergency && isFullDaySchedule(params.durationMinutes, params.durationType)) {
     return findNextAvailableFullDaySlot(params)
   }
@@ -258,8 +325,9 @@ function findNextAvailableFullDaySlot(params: {
   durationMinutes: number
   durationType?: ScheduleDurationType
   conflicts: Array<{ date: string; startMinutes: number; endMinutes: number }>
+  allowWeekends?: boolean
 }) {
-  let currentDate = toBusinessDateKey(params.date)
+  let currentDate = params.allowWeekends ? params.date : toBusinessDateKey(params.date)
 
   for (let dayOffset = 0; dayOffset < 60; dayOffset += 1) {
     const blocks = buildScheduleBlocks({
@@ -267,6 +335,8 @@ function findNextAvailableFullDaySlot(params: {
       time: "08:00",
       durationMinutes: params.durationMinutes,
       durationType: "days",
+      allowWeekends: params.allowWeekends,
+      mode: "automation",
     })
     const hasConflict = blocks.some((block) =>
       params.conflicts.some((item) =>
@@ -277,7 +347,9 @@ function findNextAvailableFullDaySlot(params: {
     )
 
     if (!hasConflict) return { date: currentDate, time: "08:00" }
-    currentDate = nextBusinessDateKey(currentDate)
+    currentDate = params.allowWeekends
+      ? addCivilDaysKey(currentDate, 1)
+      : nextBusinessDateKey(currentDate)
   }
 
   return undefined
@@ -288,32 +360,55 @@ function buildScheduleBlocks(params: {
   time: string
   durationMinutes: number
   durationType?: ScheduleDurationType
+  allowWeekends?: boolean
+  mode?: AvailabilityMode
 }) {
   const durationMinutes = Math.max(1, Number(params.durationMinutes || 60))
+  const mode = params.mode ?? "automation"
 
   if (isFullDaySchedule(durationMinutes, params.durationType)) {
     const blocks: Array<{ date: string; startMinutes: number; endMinutes: number }> = []
-    let currentDate = toBusinessDateKey(params.date)
+    let currentDate = mode === "manual" || params.allowWeekends ? params.date : toBusinessDateKey(params.date)
     const days = scheduleDaySpan(durationMinutes, params.durationType)
+    const startMinutes = mode === "manual"
+      ? minutesFromTime(params.time || "08:00")
+      : WORKDAY_START_MINUTES
+    const endMinutes = startMinutes + DAY_DURATION_MINUTES
 
     for (let index = 0; index < days; index += 1) {
-      blocks.push({
-        date: currentDate,
-        startMinutes: WORKDAY_START_MINUTES,
-        endMinutes: WORKDAY_END_MINUTES,
-      })
-      currentDate = nextBusinessDateKey(currentDate)
+      blocks.push(...splitBlockAcrossDates(currentDate, startMinutes, endMinutes))
+      currentDate = mode === "manual" || params.allowWeekends
+        ? addCivilDaysKey(currentDate, 1)
+        : nextBusinessDateKey(currentDate)
     }
 
     return blocks
   }
 
   const startMinutes = minutesFromTime(params.time || "08:00")
-  return [{
-    date: params.date,
-    startMinutes,
-    endMinutes: startMinutes + durationMinutes,
-  }]
+  return splitBlockAcrossDates(params.date, startMinutes, startMinutes + durationMinutes)
+}
+
+function splitBlockAcrossDates(date: string, startMinutes: number, endMinutes: number) {
+  const blocks: Array<{ date: string; startMinutes: number; endMinutes: number }> = []
+  let currentDate = date
+  let currentStart = startMinutes
+  let remaining = Math.max(1, endMinutes - startMinutes)
+
+  while (remaining > 0) {
+    const availableToday = Math.max(1, DAY_END_MINUTES - currentStart)
+    const currentDuration = Math.min(remaining, availableToday)
+    blocks.push({
+      date: currentDate,
+      startMinutes: currentStart,
+      endMinutes: currentStart + currentDuration,
+    })
+    remaining -= currentDuration
+    currentDate = addCivilDaysKey(currentDate, 1)
+    currentStart = 0
+  }
+
+  return blocks
 }
 
 function isFullDaySchedule(durationMinutes: number, durationType?: ScheduleDurationType) {
@@ -342,7 +437,7 @@ function nextBusinessDateKey(date: string) {
   return current
 }
 
-function isWeekendDateKey(date: string) {
+export function isWeekendDateKey(date: string) {
   const [year, month, day] = date.split("-").map((value) => Number(value))
   const weekday = new Date(Date.UTC(year || 0, (month || 1) - 1, day || 1)).getUTCDay()
   return weekday === 0 || weekday === 6
@@ -409,4 +504,9 @@ function getScheduleDurationConfig(schedule: ScheduleRecord) {
     duration: Number.isFinite(durationMinutes) && durationMinutes > 0 ? durationMinutes / 60 : 1,
     durationType: "hours" as ScheduleDurationType,
   }
+}
+
+function getScheduleDurationMinutes(schedule: ScheduleRecord) {
+  const config = getScheduleDurationConfig(schedule)
+  return scheduleDurationToMinutes(config.duration, config.durationType)
 }

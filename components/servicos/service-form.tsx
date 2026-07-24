@@ -526,6 +526,11 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
                       {filteredTeams.map((team) => (
                         <CommandItem key={team.id} value={team.name} onSelect={() => toggleTeam(team.id)} className="cursor-pointer">
                           <Check className={cn("mr-2 h-4 w-4", formData.teamIds.includes(team.id) ? "opacity-100" : "opacity-0")} />
+                          <span
+                            className="mr-2 h-2.5 w-2.5 shrink-0 rounded-full"
+                            style={{ backgroundColor: team.color }}
+                            aria-hidden="true"
+                          />
                           <span>{team.name}</span>
                         </CommandItem>
                       ))}

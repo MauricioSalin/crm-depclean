@@ -31,6 +31,7 @@ import type { ServiceRecord } from "@/lib/api/services"
 import type { TeamRecord } from "@/lib/api/teams"
 import { addCivilDaysKey, parseCivilDate, toCivilDateKey } from "@/lib/date-utils"
 import { getAvailableRescheduleTimes } from "@/lib/schedule-availability"
+import { formatContractNumber } from "@/lib/utils"
 
 type ContractSchedulePlanDialogProps = {
   open: boolean
@@ -201,7 +202,7 @@ export function ContractSchedulePlanDialog({
   const exportMutation = useMutation({
     mutationFn: () => exportContractSchedulePlan(contract.id, toPayload(items)),
     onSuccess: (blob) => {
-      const safeNumber = contract.contractNumber.toLowerCase().replace(/[^a-z0-9]+/g, "-")
+      const safeNumber = formatContractNumber(contract.contractNumber).toLowerCase().replace(/[^a-z0-9]+/g, "-")
       downloadBlob(blob, `agendamentos-${safeNumber}.xlsx`)
       toast.success("Planilha de agendamentos exportada.")
     },
@@ -215,7 +216,7 @@ export function ContractSchedulePlanDialog({
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !busy && onOpenChange(nextOpen)}>
-      <DialogContent className="flex max-h-[92dvh] w-[min(98vw,1480px)] max-w-none flex-col overflow-hidden p-0">
+      <DialogContent className="flex max-h-[92dvh] w-[min(96vw,1560px)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-[min(96vw,1560px)]">
         <DialogHeader className="px-6 pb-2 pt-5 pr-12">
           <DialogTitle className="flex items-center gap-2">
             <CalendarClock className="h-5 w-5 text-primary" />
@@ -226,7 +227,7 @@ export function ContractSchedulePlanDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="min-h-0 flex-1 overflow-auto px-6 py-4">
+        <div className="min-h-0 flex-1 overflow-auto px-6 pb-4 pt-0">
           {planQuery.isLoading ? (
             <div className="space-y-3">
               {Array.from({ length: 5 }).map((_, index) => <Skeleton key={index} className="h-16 w-full" />)}

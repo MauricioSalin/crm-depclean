@@ -47,11 +47,17 @@ function Button({
     asChild?: boolean
   }) {
   const Comp = asChild ? Slot : 'button'
+  const isCombobox = props.role === 'combobox'
 
   return (
     <Comp
       data-slot="button"
-      className={cn(buttonVariants({ variant, size, className }))}
+      className={cn(
+        buttonVariants({ variant, size }),
+        isCombobox &&
+          'hover:bg-transparent hover:text-foreground dark:hover:bg-input/30 aria-expanded:border-ring aria-expanded:bg-transparent aria-expanded:ring-ring/50 aria-expanded:ring-[3px] data-[state=open]:border-ring data-[state=open]:bg-transparent data-[state=open]:ring-ring/50 data-[state=open]:ring-[3px]',
+        className,
+      )}
       {...props}
     />
   )

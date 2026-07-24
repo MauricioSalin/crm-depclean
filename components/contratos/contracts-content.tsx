@@ -22,6 +22,10 @@ import { EmptyState, TableEmptyState } from "@/components/ui/empty-state"
 import { CardSkeletonGrid, TableSkeletonRows } from "@/components/ui/table-skeleton"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Badge } from "@/components/ui/badge"
+import {
+  BusinessStatusBadge,
+  isContractAwaitingSchedules,
+} from "@/components/ui/business-status-badges"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -97,6 +101,7 @@ const isContractSigned = (contract: Pick<ContractRecord, "status" | "clicksign">
 
 const CONTRACT_STATUS_FILTER_VALUES = new Set([
   "all",
+  "filling",
   "draft",
   "running",
   "closed",
@@ -160,9 +165,16 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
   const currentHref = buildPathWithSearchParams(pathname, searchParams)
   const getContractProfileHref = (contractId: string) => withReturnTo(`/contratos/${contractId}`, currentHref)
   const getContractEditHref = (contractId: string) => withReturnTo(`/contratos/${contractId}/editar`, getContractProfileHref(contractId))
+  const getContractPrimaryHref = (contract: ContractRecord) => (
+    contract.internalStatus === "filling"
+      ? withReturnTo(`/contratos/${contract.id}/editar`, currentHref)
+      : getContractProfileHref(contract.id)
+  )
   const filteredContracts = useMemo(() => {
     return contracts.filter((contract) => {
       if (statusFilter === "all") return true
+      if (statusFilter === "filling") return contract.internalStatus === "filling"
+      if (contract.internalStatus === "filling") return false
       return normalizeClicksignContractStatus(contract.status) === statusFilter
     }).filter((contract) => {
       if (validityFilter === "active") return isOperationallyActiveContract(contract)
@@ -181,8 +193,11 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
     return filteredContracts.slice(start, start + pageSize)
   }, [currentPage, filteredContracts, pageSize])
 
-  const getStatusBadge = (status: string) => {
-    const normalized = normalizeClicksignContractStatus(status)
+  const getStatusBadge = (contract: ContractRecord) => {
+    if (contract.internalStatus === "filling") {
+      return <Badge className="shrink-0 bg-amber-100 text-amber-700 hover:bg-amber-100">Em preenchimento</Badge>
+    }
+    const normalized = normalizeClicksignContractStatus(contract.status)
     const className = normalized === "closed"
       ? "bg-green-100 text-green-700 hover:bg-green-100"
       : normalized === "running"
@@ -262,6 +277,7 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
             setCurrentPage(1)
           }}
           options={[
+            { value: "filling", label: "Em preenchimento" },
             { value: "draft", label: "Rascunho" },
             { value: "running", label: "Aguardando assinatura" },
             { value: "closed", label: "Assinado" },
@@ -318,11 +334,11 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
                       tabIndex={0}
                       className="cursor-pointer"
                       aria-label={`Abrir contrato ${formatContractNumber(contract.contractNumber)}`}
-                      onClick={() => router.push(getContractProfileHref(contract.id))}
+                      onClick={() => router.push(getContractPrimaryHref(contract))}
                       onKeyDown={(event) => {
                         if (event.key !== "Enter" && event.key !== " ") return
                         event.preventDefault()
-                        router.push(getContractProfileHref(contract.id))
+                        router.push(getContractPrimaryHref(contract))
                       }}
                     >
                       <TableCell className="w-[300px] max-w-[300px]">
@@ -343,12 +359,16 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
                         </div>
                       </TableCell>
                       <TableCell className="hidden md:table-cell">
-                        <div>
-                          <p className="font-medium">{formatCurrency(contract.totalValue)}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {paidInstallments}/{contract.installmentsCount} parcelas
-                          </p>
-                        </div>
+                        {contract.internalStatus === "filling" ? (
+                          <span className="text-sm text-muted-foreground">Ainda não definido</span>
+                        ) : (
+                          <div>
+                            <p className="font-medium">{formatCurrency(contract.totalValue)}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {paidInstallments}/{contract.installmentsCount} parcelas
+                            </p>
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell className="hidden text-sm lg:table-cell">
                         {hasEffectiveValidity ? (
@@ -364,7 +384,15 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
                           </div>
                         ) : null}
                       </TableCell>
-                      <TableCell>{getStatusBadge(contract.status)}</TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {getStatusBadge(contract)}
+                          {isContractAwaitingSchedules(contract) ? (
+                            <BusinessStatusBadge status="awaiting-schedules" />
+                          ) : null}
+                          {contract.isClientDelinquent ? <BusinessStatusBadge status="delinquent" /> : null}
+                        </div>
+                      </TableCell>
                       <TableCell
                         className="text-right"
                         onClick={(event) => event.stopPropagation()}
@@ -377,21 +405,26 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem asChild>
-                              <Link href={getContractProfileHref(contract.id)}>
-                                <Eye className="mr-2 h-4 w-4" />
-                                Ver Detalhes
-                              </Link>
-                            </DropdownMenuItem>
+                            {contract.internalStatus !== "filling" ? (
+                              <DropdownMenuItem asChild>
+                                <Link href={getContractPrimaryHref(contract)}>
+                                  <Eye className="mr-2 h-4 w-4" />
+                                  Ver Detalhes
+                                </Link>
+                              </DropdownMenuItem>
+                            ) : null}
                             {canEditContracts && !isContractSigned(contract) ? (
                               <DropdownMenuItem asChild>
-                                <Link href={getContractEditHref(contract.id)}>
+                                <Link href={contract.internalStatus === "filling"
+                                  ? getContractPrimaryHref(contract)
+                                  : getContractEditHref(contract.id)}
+                                >
                                   <Edit className="mr-2 h-4 w-4" />
                                   Editar
                                 </Link>
                               </DropdownMenuItem>
                             ) : null}
-                            {clicksignUrl ? (
+                            {contract.internalStatus !== "filling" && clicksignUrl ? (
                               <DropdownMenuItem asChild>
                                 <a href={clicksignUrl} target="_blank" rel="noreferrer">
                                   <ExternalLink className="mr-2 h-4 w-4" />
@@ -430,11 +463,11 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
                   tabIndex={0}
                   className="h-full cursor-pointer overflow-hidden"
                   aria-label={`Abrir contrato ${formatContractNumber(contract.contractNumber)}`}
-                  onClick={() => router.push(getContractProfileHref(contract.id))}
+                  onClick={() => router.push(getContractPrimaryHref(contract))}
                   onKeyDown={(event) => {
                     if (event.key !== "Enter" && event.key !== " ") return
                     event.preventDefault()
-                    router.push(getContractProfileHref(contract.id))
+                    router.push(getContractPrimaryHref(contract))
                   }}
                 >
                   <CardContent className="flex h-full flex-col px-6">
@@ -446,16 +479,22 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                             <h3 className="min-w-0 break-words text-sm font-semibold">{formatContractNumber(contract.contractNumber)}</h3>
-                            <span className="inline-flex shrink-0">
-                              {getStatusBadge(contract.status)}
-                            </span>
+                            {getStatusBadge(contract)}
+                            {isContractAwaitingSchedules(contract) ? (
+                              <BusinessStatusBadge status="awaiting-schedules" />
+                            ) : null}
+                            {contract.isClientDelinquent ? <BusinessStatusBadge status="delinquent" /> : null}
                           </div>
                           <p className="truncate text-xs text-muted-foreground">{contract.clientCompanyName}</p>
                         </div>
                       </div>
                       <div className="space-y-2 text-sm">
                         <div>
-                          <p className="font-medium text-foreground">{formatCurrency(contract.totalValue)}</p>
+                          <p className="font-medium text-foreground">
+                            {contract.internalStatus === "filling"
+                              ? "Dados financeiros ainda não definidos"
+                              : formatCurrency(contract.totalValue)}
+                          </p>
                         </div>
                         {hasEffectiveValidity ? (
                           <div className="flex items-center gap-1 text-muted-foreground">
@@ -468,17 +507,19 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
                       </div>
                     </div>
                     <div className="mt-auto space-y-3 pt-3">
-                      <div>
-                        <div className="mb-2 flex justify-between text-xs">
-                          <span>
-                            {paidInstallments}/{contract.installmentsCount} parcelas pagas
-                          </span>
-                          <span>{Math.round(progress)}%</span>
+                      {contract.internalStatus !== "filling" ? (
+                        <div>
+                          <div className="mb-2 flex justify-between text-xs">
+                            <span>
+                              {paidInstallments}/{contract.installmentsCount} parcelas pagas
+                            </span>
+                            <span>{Math.round(progress)}%</span>
+                          </div>
+                          <div className="h-2 overflow-hidden rounded-full bg-muted">
+                            <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${progress}%` }} />
+                          </div>
                         </div>
-                        <div className="h-2 overflow-hidden rounded-full bg-muted">
-                          <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${progress}%` }} />
-                        </div>
-                      </div>
+                      ) : null}
                       <div
                         className="flex gap-2"
                         onClick={(event) => event.stopPropagation()}
@@ -486,18 +527,23 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
                       >
                         {canEditContracts && !isContractSigned(contract) ? (
                           <Button variant="outline" size="sm" className="flex-1" asChild>
-                            <Link href={getContractEditHref(contract.id)}>
+                            <Link href={contract.internalStatus === "filling"
+                              ? getContractPrimaryHref(contract)
+                              : getContractEditHref(contract.id)}
+                            >
                               <Edit className="mr-1 h-4 w-4" />
                               Editar
                             </Link>
                           </Button>
                         ) : null}
-                        <Button size="sm" className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90" asChild>
-                          <Link href={getContractProfileHref(contract.id)}>
-                            <Eye className="mr-1 h-4 w-4" />
-                            Ver
-                          </Link>
-                        </Button>
+                        {contract.internalStatus !== "filling" ? (
+                          <Button size="sm" className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90" asChild>
+                            <Link href={getContractPrimaryHref(contract)}>
+                              <Eye className="mr-1 h-4 w-4" />
+                              Ver
+                            </Link>
+                          </Button>
+                        ) : null}
                       </div>
                     </div>
                   </CardContent>

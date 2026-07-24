@@ -28,6 +28,7 @@ import {
 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
+import { BusinessStatusBadge } from "@/components/ui/business-status-badges"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { DatePicker } from "@/components/ui/date-picker"
@@ -980,6 +981,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                 >
                   {clientType?.name ?? "Cliente"}
                 </Badge>
+                {client.isDelinquent ? <BusinessStatusBadge status="delinquent" /> : null}
               </div>
               <p className="font-mono text-sm text-muted-foreground">{formatCNPJ(client.cnpj)}</p>
 

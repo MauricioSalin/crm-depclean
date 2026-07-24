@@ -3,6 +3,7 @@
 import { useDeferredValue, useEffect, useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
+import { DatePicker } from "@/components/ui/date-picker"
 import { Input } from "@/components/ui/input"
 import { NumericInput } from "@/components/ui/numeric-input"
 import { Badge } from "@/components/ui/badge"
@@ -49,8 +50,10 @@ import type { ClientRecord } from "@/lib/api/clients"
 import type { EmployeeRecord } from "@/lib/api/employees"
 import type { ServiceRecord } from "@/lib/api/services"
 import type { TeamRecord } from "@/lib/api/teams"
+import type { ScheduleDocumentSetting } from "@/lib/api/schedules"
 import { listTemplates } from "@/lib/api/templates"
 import { toast } from "sonner"
+import { parseCivilDate, toCivilDateKey } from "@/lib/date-utils"
 
 type ScheduleManualStatus = "draft" | "scheduled" | "in_progress" | "completed" | "cancelled" | "rescheduled"
 
@@ -70,6 +73,8 @@ function isValidDateKey(value: string) {
 export interface SchedulingFormData {
   clientId: string
   serviceTypeId: string
+  serviceTypeIds: string[]
+  serviceDocumentSettings: ScheduleDocumentSetting[]
   teamIds: string[]
   employeeIds: string[]
   date: string
@@ -93,6 +98,8 @@ interface EditingSchedule {
   isManual?: boolean
   clientId: string
   serviceTypeId: string
+  serviceTypeIds?: string[]
+  serviceDocumentSettings?: ScheduleDocumentSetting[]
   informativeTemplateId?: string
   certificateTemplateId?: string
   autoSendInformative?: boolean
@@ -131,6 +138,8 @@ interface SchedulingFormDialogProps {
 const DEFAULT_FORM_DATA: SchedulingFormData = {
   clientId: "",
   serviceTypeId: "",
+  serviceTypeIds: [],
+  serviceDocumentSettings: [],
   teamIds: [],
   employeeIds: [],
   date: "",
@@ -175,24 +184,27 @@ export function SchedulingFormDialog({
   const [formData, setFormData] = useState<SchedulingFormData>(DEFAULT_FORM_DATA)
 
   const [clientPopoverOpen, setClientPopoverOpen] = useState(false)
+  const [servicesPopoverOpen, setServicesPopoverOpen] = useState(false)
   const [teamsPopoverOpen, setTeamsPopoverOpen] = useState(false)
   const [employeesPopoverOpen, setEmployeesPopoverOpen] = useState(false)
   const [clientSearchTerm, setClientSearchTerm] = useState("")
+  const [serviceSearchTerm, setServiceSearchTerm] = useState("")
   const [teamSearchTerm, setTeamSearchTerm] = useState("")
   const [employeeSearchTerm, setEmployeeSearchTerm] = useState("")
   const deferredClientSearchTerm = useDeferredValue(clientSearchTerm)
+  const deferredServiceSearchTerm = useDeferredValue(serviceSearchTerm)
   const deferredTeamSearchTerm = useDeferredValue(teamSearchTerm)
   const deferredEmployeeSearchTerm = useDeferredValue(employeeSearchTerm)
 
   const informativeTemplatesQuery = useQuery({
     queryKey: ["templates", "schedule-form", "informative"],
     queryFn: () => listTemplates("", "informative"),
-    enabled: open,
+    staleTime: 60_000,
   })
   const certificateTemplatesQuery = useQuery({
     queryKey: ["templates", "schedule-form", "certificate"],
     queryFn: () => listTemplates("", "certificate"),
-    enabled: open,
+    staleTime: 60_000,
   })
 
   const filteredClients = useMemo(() => {
@@ -210,6 +222,15 @@ export function SchedulingFormDialog({
     return teams.filter(t => t.name.toLowerCase().includes(term))
   }, [teams, deferredTeamSearchTerm])
 
+  const filteredServices = useMemo(() => {
+    const term = deferredServiceSearchTerm.trim().toLowerCase()
+    if (!term) return serviceTypes
+    return serviceTypes.filter((service) =>
+      service.name.toLowerCase().includes(term) ||
+      service.description.toLowerCase().includes(term),
+    )
+  }, [deferredServiceSearchTerm, serviceTypes])
+
   const filteredEmployees = useMemo(() => {
     const term = deferredEmployeeSearchTerm.trim().toLowerCase()
     const availableEmployees = employees.filter((employee) =>
@@ -223,9 +244,9 @@ export function SchedulingFormDialog({
   }, [employees, deferredEmployeeSearchTerm, formData.teamIds, teams])
 
   const clientById = useMemo(() => new Map(clients.map((client) => [client.id, client])), [clients])
+  const serviceById = useMemo(() => new Map(serviceTypes.map((service) => [service.id, service])), [serviceTypes])
   const teamById = useMemo(() => new Map(teams.map((team) => [team.id, team])), [teams])
   const employeeById = useMemo(() => new Map(employees.map((employee) => [employee.id, employee])), [employees])
-  const serviceOptions = useMemo(() => serviceTypes.map((st) => ({ value: st.id, label: st.name })), [serviceTypes])
   const activeInformativeTemplates = useMemo(
     () => (informativeTemplatesQuery.data?.data ?? []).filter((template) => template.isActive && template.format === "docx"),
     [informativeTemplatesQuery.data?.data],
@@ -243,7 +264,23 @@ export function SchedulingFormDialog({
     : "Novo atendimento avulso"
 
   const getInitialFormData = (schedule: EditingSchedule): SchedulingFormData => {
-    const serviceType = serviceTypes.find((item) => item.id === schedule.serviceTypeId)
+    const serviceTypeIds = schedule.serviceTypeIds?.length
+      ? [...new Set(schedule.serviceTypeIds)]
+      : [schedule.serviceTypeId].filter(Boolean)
+    const serviceType = serviceTypes.find((item) => item.id === serviceTypeIds[0])
+    const existingSettings = new Map(
+      (schedule.serviceDocumentSettings ?? []).map((setting) => [setting.serviceTypeId, setting] as const),
+    )
+    const serviceDocumentSettings = serviceTypeIds.map((serviceTypeId, index) => {
+      const setting = existingSettings.get(serviceTypeId)
+      return {
+        serviceTypeId,
+        informativeTemplateId: setting?.informativeTemplateId
+          ?? (index === 0 ? schedule.informativeTemplateId ?? "" : ""),
+        certificateTemplateId: setting?.certificateTemplateId
+          ?? (index === 0 ? schedule.certificateTemplateId ?? "" : ""),
+      }
+    })
     let durationFields = minutesToScheduleDuration(schedule.duration, serviceType)
     const configuredDuration = Number(schedule.durationValue)
 
@@ -262,17 +299,19 @@ export function SchedulingFormDialog({
 
     return {
       clientId: schedule.clientId,
-      serviceTypeId: schedule.serviceTypeId,
+      serviceTypeId: serviceTypeIds[0] ?? "",
+      serviceTypeIds,
+      serviceDocumentSettings,
       teamIds: selection.teamIds,
       employeeIds: selection.employeeIds,
       date: schedule.date,
       time: schedule.time ?? "",
       durationType: durationFields.durationType,
       duration: durationFields.duration,
-      informativeTemplateId: schedule.informativeTemplateId ?? "",
-      certificateTemplateId: schedule.certificateTemplateId ?? "",
-      autoSendInformative: Boolean(schedule.informativeTemplateId) || schedule.autoSendInformative === true,
-      generateCertificateRequest: Boolean(schedule.certificateTemplateId) || schedule.generateCertificateRequest === true,
+      informativeTemplateId: serviceDocumentSettings[0]?.informativeTemplateId ?? "",
+      certificateTemplateId: serviceDocumentSettings[0]?.certificateTemplateId ?? "",
+      autoSendInformative: serviceDocumentSettings.some((setting) => Boolean(setting.informativeTemplateId)),
+      generateCertificateRequest: serviceDocumentSettings.some((setting) => Boolean(setting.certificateTemplateId)),
       value: schedule.billable ? Number(schedule.value ?? 0) : 0,
       createContract: Boolean(schedule.billable),
       isEmergency: schedule.isEmergency ?? false,
@@ -289,7 +328,23 @@ export function SchedulingFormDialog({
       return
     }
 
-    setFormData({ ...DEFAULT_FORM_DATA, ...(initialFormData ?? {}) })
+    const initial = { ...DEFAULT_FORM_DATA, ...(initialFormData ?? {}) }
+    const serviceTypeIds = initial.serviceTypeIds?.length
+      ? initial.serviceTypeIds
+      : [initial.serviceTypeId].filter(Boolean)
+    const serviceDocumentSettings = initial.serviceDocumentSettings?.length
+      ? initial.serviceDocumentSettings
+      : serviceTypeIds.map((serviceTypeId, index) => ({
+          serviceTypeId,
+          informativeTemplateId: index === 0 ? initial.informativeTemplateId : "",
+          certificateTemplateId: index === 0 ? initial.certificateTemplateId : "",
+        }))
+    setFormData({
+      ...initial,
+      serviceTypeId: serviceTypeIds[0] ?? "",
+      serviceTypeIds,
+      serviceDocumentSettings,
+    })
   }, [open, editingSchedule, initialFormData, serviceTypes, teams])
 
   const toggleTeam = (teamId: string) => {
@@ -315,6 +370,83 @@ export function SchedulingFormDialog({
     }
   }
 
+  const toggleService = (serviceTypeId: string) => {
+    setFormData((current) => {
+      const isSelected = current.serviceTypeIds.includes(serviceTypeId)
+      const serviceTypeIds = isSelected
+        ? current.serviceTypeIds.filter((id) => id !== serviceTypeId)
+        : [...current.serviceTypeIds, serviceTypeId]
+      const selectedService = serviceById.get(serviceTypeId)
+      const serviceDocumentSettings = isSelected
+        ? current.serviceDocumentSettings.filter((setting) => setting.serviceTypeId !== serviceTypeId)
+        : [
+            ...current.serviceDocumentSettings,
+            {
+              serviceTypeId,
+              informativeTemplateId: selectedService?.defaultInformativeTemplateId ?? "",
+              certificateTemplateId: selectedService?.defaultCertificateTemplateId ?? "",
+            },
+          ]
+      const primarySetting = serviceDocumentSettings.find((setting) => setting.serviceTypeId === serviceTypeIds[0])
+      const isFirstService = !isSelected && current.serviceTypeIds.length === 0
+
+      if (!isFirstService) {
+        return {
+          ...current,
+          serviceTypeId: serviceTypeIds[0] ?? "",
+          serviceTypeIds,
+          serviceDocumentSettings,
+          informativeTemplateId: primarySetting?.informativeTemplateId ?? "",
+          certificateTemplateId: primarySetting?.certificateTemplateId ?? "",
+          autoSendInformative: serviceDocumentSettings.some((setting) => Boolean(setting.informativeTemplateId)),
+          generateCertificateRequest: serviceDocumentSettings.some((setting) => Boolean(setting.certificateTemplateId)),
+        }
+      }
+
+      const selection = normalizeTeamEmployeeSelection({
+        teamIds: selectedService?.teamIds || [],
+        employeeIds: selectedService?.employeeIds || [],
+        teams,
+      })
+      return {
+        ...current,
+        serviceTypeId,
+        serviceTypeIds,
+        serviceDocumentSettings,
+        teamIds: selection.teamIds,
+        employeeIds: selection.employeeIds,
+        durationType: selectedService?.durationType ?? current.durationType,
+        duration: selectedService?.defaultDuration ?? current.duration,
+        informativeTemplateId: primarySetting?.informativeTemplateId ?? "",
+        certificateTemplateId: primarySetting?.certificateTemplateId ?? "",
+        autoSendInformative: serviceDocumentSettings.some((setting) => Boolean(setting.informativeTemplateId)),
+        generateCertificateRequest: serviceDocumentSettings.some((setting) => Boolean(setting.certificateTemplateId)),
+        value: current.createContract ? selectedService?.baseValue ?? current.value : 0,
+      }
+    })
+  }
+
+  const updateDocumentSetting = (
+    serviceTypeId: string,
+    field: "informativeTemplateId" | "certificateTemplateId",
+    value: string,
+  ) => {
+    setFormData((current) => {
+      const serviceDocumentSettings = current.serviceDocumentSettings.map((setting) =>
+        setting.serviceTypeId === serviceTypeId ? { ...setting, [field]: value } : setting,
+      )
+      const primarySetting = serviceDocumentSettings.find((setting) => setting.serviceTypeId === current.serviceTypeIds[0])
+      return {
+        ...current,
+        serviceDocumentSettings,
+        informativeTemplateId: primarySetting?.informativeTemplateId ?? "",
+        certificateTemplateId: primarySetting?.certificateTemplateId ?? "",
+        autoSendInformative: serviceDocumentSettings.some((setting) => Boolean(setting.informativeTemplateId)),
+        generateCertificateRequest: serviceDocumentSettings.some((setting) => Boolean(setting.certificateTemplateId)),
+      }
+    })
+  }
+
   const resetForm = () => {
     onOpenChange(false)
   }
@@ -330,8 +462,11 @@ export function SchedulingFormDialog({
       toast.error("Selecione um cliente válido para o agendamento.")
       return
     }
-    if (!formData.serviceTypeId || !serviceTypes.some((service) => service.id === formData.serviceTypeId)) {
-      toast.error("Selecione um serviço válido para o agendamento.")
+    if (
+      formData.serviceTypeIds.length === 0 ||
+      formData.serviceTypeIds.some((serviceTypeId) => !serviceById.has(serviceTypeId))
+    ) {
+      toast.error("Selecione ao menos um serviço válido para o agendamento.")
       return
     }
     if (!isValidDateKey(formData.date)) {
@@ -351,23 +486,35 @@ export function SchedulingFormDialog({
       return
     }
 
+    const serviceDocumentSettings = formData.serviceTypeIds.map((serviceTypeId) => {
+      const setting = formData.serviceDocumentSettings.find((item) => item.serviceTypeId === serviceTypeId)
+      return {
+        serviceTypeId,
+        informativeTemplateId: setting?.informativeTemplateId ?? "",
+        certificateTemplateId: setting?.certificateTemplateId ?? "",
+      }
+    })
+    const primarySetting = serviceDocumentSettings[0]
+
     onSubmit({
       ...formData,
-      informativeTemplateId: formData.informativeTemplateId,
-      certificateTemplateId: formData.certificateTemplateId,
-      autoSendInformative: Boolean(formData.informativeTemplateId),
-      generateCertificateRequest: Boolean(formData.certificateTemplateId),
+      serviceTypeId: formData.serviceTypeIds[0],
+      serviceDocumentSettings,
+      informativeTemplateId: primarySetting?.informativeTemplateId ?? "",
+      certificateTemplateId: primarySetting?.certificateTemplateId ?? "",
+      autoSendInformative: serviceDocumentSettings.some((setting) => Boolean(setting.informativeTemplateId)),
+      generateCertificateRequest: serviceDocumentSettings.some((setting) => Boolean(setting.certificateTemplateId)),
     }, !!editingSchedule)
   }
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger className="hidden" />
-      <DialogContent className="flex max-h-[90dvh] max-w-2xl flex-col gap-0 overflow-hidden p-0 max-sm:left-0 max-sm:top-4 max-sm:h-[calc(100dvh-2rem)] max-sm:max-h-none max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none max-sm:border-0">
+      <DialogContent className="flex min-w-0 max-h-[90dvh] max-w-2xl flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl max-sm:left-0 max-sm:top-4 max-sm:h-[calc(100dvh-2rem)] max-sm:max-h-none max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none max-sm:border-0">
         <DialogHeader className="shrink-0 px-6 pb-3 pt-6 pr-12 text-left sm:text-left">
           <DialogTitle>{dialogTitle}</DialogTitle>
         </DialogHeader>
-        <form id="schedule-form" autoComplete="off" noValidate onSubmit={handleSubmit} className="min-h-0 flex-1 space-y-6 overflow-y-auto px-6 py-5">
+        <form id="schedule-form" autoComplete="off" noValidate onSubmit={handleSubmit} className="min-h-0 min-w-0 w-full max-w-full flex-1 space-y-6 overflow-y-auto overflow-x-hidden px-6 py-5">
           <div className="flex flex-col items-center gap-2 text-center">
             <Badge variant={isRecurringSchedule ? "secondary" : "outline"} className="w-fit justify-center">
               {scheduleTypeLabel}
@@ -400,7 +547,7 @@ export function SchedulingFormDialog({
             </div>
           ) : null}
 
-          <fieldset disabled={!canEditDetails} className="m-0 grid min-w-0 gap-5 border-0 p-0">
+          <fieldset disabled={!canEditDetails} className="m-0 grid min-w-0 w-full max-w-full gap-5 border-0 p-0">
           {/* Client Selection */}
           <div className="space-y-2">
             <Label>Cliente *</Label>
@@ -453,42 +600,60 @@ export function SchedulingFormDialog({
 
           {/* Service Type */}
           <div className="space-y-2">
-            <Label>Serviço *</Label>
-            <SearchableSelect
-              value={formData.serviceTypeId}
-              onValueChange={(value) => {
-                const serviceType = serviceTypes.find(st => st.id === value)
-                const selection = normalizeTeamEmployeeSelection({
-                  teamIds: serviceType?.teamIds || [],
-                  employeeIds: serviceType?.employeeIds || [],
-                  teams,
-                })
-                const autoSendInformative = serviceType?.autoSendInformative === true
-                const generateCertificateRequest = serviceType?.generateCertificateRequest === true
-                const informativeTemplateId = autoSendInformative ? serviceType?.defaultInformativeTemplateId ?? "" : ""
-                const certificateTemplateId = generateCertificateRequest ? serviceType?.defaultCertificateTemplateId ?? "" : ""
-                setFormData({
-                  ...formData,
-                  serviceTypeId: value,
-                  teamIds: selection.teamIds,
-                  employeeIds: selection.employeeIds,
-                  durationType: serviceType?.durationType ?? formData.durationType,
-                  duration: serviceType?.defaultDuration ?? formData.duration,
-                  informativeTemplateId,
-                  certificateTemplateId,
-                  autoSendInformative,
-                  generateCertificateRequest,
-                  value: formData.createContract ? serviceType?.baseValue ?? formData.value : 0,
-                })
-              }}
-              options={serviceOptions}
-              placeholder="Selecione o serviço"
-              searchPlaceholder="Buscar serviço..."
-              emptyMessage="Nenhum serviço encontrado."
-              includeAll={false}
-              className="w-full"
-              disabled={isRecurringSchedule}
-            />
+            <Label>Serviços *</Label>
+            <Popover open={servicesPopoverOpen} onOpenChange={setServicesPopoverOpen}>
+              <PopoverTrigger asChild>
+                <Button variant="outline" role="combobox" className="w-full justify-between font-normal">
+                  <span className="text-muted-foreground">Buscar e adicionar serviços...</span>
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                <Command shouldFilter={false}>
+                  <CommandInput
+                    placeholder="Buscar serviço..."
+                    value={serviceSearchTerm}
+                    onValueChange={setServiceSearchTerm}
+                  />
+                  <CommandList>
+                    <CommandEmpty>Nenhum serviço encontrado.</CommandEmpty>
+                    <CommandGroup>
+                      {filteredServices.map((service) => {
+                        const selected = formData.serviceTypeIds.includes(service.id)
+                        return (
+                          <CommandItem
+                            key={service.id}
+                            value={service.id}
+                            onSelect={() => toggleService(service.id)}
+                            className="cursor-pointer"
+                          >
+                            <Check className={cn("mr-2 h-4 w-4", selected ? "opacity-100" : "opacity-0")} />
+                            {service.name}
+                          </CommandItem>
+                        )
+                      })}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+            {formData.serviceTypeIds.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {formData.serviceTypeIds.map((serviceTypeId) => (
+                  <Badge key={serviceTypeId} variant="secondary" className="gap-1 pr-1">
+                    {serviceById.get(serviceTypeId)?.name ?? serviceTypeId}
+                    <button
+                      type="button"
+                      onClick={() => toggleService(serviceTypeId)}
+                      className="rounded-sm p-0.5 hover:bg-muted-foreground/10"
+                      aria-label={`Remover ${serviceById.get(serviceTypeId)?.name ?? "serviço"}`}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+            ) : null}
           </div>
 
           {/* Teams */}
@@ -527,6 +692,11 @@ export function SchedulingFormDialog({
                               "mr-2 h-4 w-4",
                               formData.teamIds.includes(team.id) ? "opacity-100" : "opacity-0"
                             )}
+                          />
+                          <span
+                            className="mr-2 h-2.5 w-2.5 shrink-0 rounded-full"
+                            style={{ backgroundColor: team.color }}
+                            aria-hidden="true"
                           />
                           <span>{team.name}</span>
                         </CommandItem>
@@ -640,14 +810,17 @@ export function SchedulingFormDialog({
           </div>
 
           {/* Date, Time, Duration */}
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid min-w-0 gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
             <div className="space-y-3">
               <Label>Data *</Label>
-              <Input
-                type="date"
-                value={formData.date}
-                onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                required
+              <DatePicker
+                value={parseCivilDate(formData.date)}
+                onChange={(date) => setFormData((current) => ({
+                  ...current,
+                  date: date ? toCivilDateKey(date) : "",
+                }))}
+                placeholder="Selecionar data"
+                disabledDates={isEditing ? undefined : { dayOfWeek: [0, 6] }}
               />
             </div>
             <div className="space-y-2">
@@ -661,7 +834,7 @@ export function SchedulingFormDialog({
             </div>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid min-w-0 gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
             <div className="space-y-2">
               <Label>Tipo de Duração</Label>
               <Select
@@ -757,50 +930,77 @@ export function SchedulingFormDialog({
             </div>
           )}
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <SearchableSelect
-              value={formData.informativeTemplateId || NO_INFORMATIVE_TEMPLATE_VALUE}
-              onValueChange={(value) => {
-                const informativeTemplateId = value === NO_INFORMATIVE_TEMPLATE_VALUE ? "" : value
-                setFormData({
-                  ...formData,
-                  informativeTemplateId,
-                  autoSendInformative: Boolean(informativeTemplateId),
-                })
-              }}
-              options={[
-                { value: NO_INFORMATIVE_TEMPLATE_VALUE, label: "Sem informativo" },
-                ...activeInformativeTemplates.map((template) => ({ value: template.id, label: template.name })),
-              ]}
-              placeholder="Sem informativo"
-              searchPlaceholder="Buscar informativo..."
-              emptyMessage="Nenhum informativo encontrado."
-              includeAll={false}
-              disabled={activeInformativeTemplates.length === 0}
-              className="w-full"
-            />
+          <div className="space-y-2">
+            <Label>Documentos por serviço</Label>
+            <div className="w-0 min-w-full max-w-full overflow-x-auto overscroll-x-contain rounded-lg">
+              <div className="min-w-[680px]">
+                <div className="grid grid-cols-[minmax(180px,1fr)_minmax(220px,1fr)_minmax(220px,1fr)] gap-3 bg-muted/70 px-4 py-3 text-sm font-medium">
+                  <span>Serviço</span>
+                  <span>Informativo</span>
+                  <span>Certificado</span>
+                </div>
+                {formData.serviceTypeIds.map((serviceTypeId) => {
+                  const service = serviceById.get(serviceTypeId)
+                  const setting = formData.serviceDocumentSettings.find(
+                    (item) => item.serviceTypeId === serviceTypeId,
+                  )
 
-            <SearchableSelect
-              value={formData.certificateTemplateId || NO_CERTIFICATE_TEMPLATE_VALUE}
-              onValueChange={(value) => {
-                const certificateTemplateId = value === NO_CERTIFICATE_TEMPLATE_VALUE ? "" : value
-                setFormData({
-                  ...formData,
-                  certificateTemplateId,
-                  generateCertificateRequest: Boolean(certificateTemplateId),
-                })
-              }}
-              options={[
-                { value: NO_CERTIFICATE_TEMPLATE_VALUE, label: "Sem certificado" },
-                ...activeCertificateTemplates.map((template) => ({ value: template.id, label: template.name })),
-              ]}
-              placeholder="Sem certificado"
-              searchPlaceholder="Buscar certificado..."
-              emptyMessage="Nenhum certificado encontrado."
-              includeAll={false}
-              disabled={activeCertificateTemplates.length === 0}
-              className="w-full"
-            />
+                  return (
+                    <div
+                      key={serviceTypeId}
+                      className="grid grid-cols-[minmax(180px,1fr)_minmax(220px,1fr)_minmax(220px,1fr)] items-center gap-3 border-t px-4 py-3"
+                    >
+                      <span className="text-sm font-medium">{service?.name || "Serviço"}</span>
+                      <SearchableSelect
+                        value={setting?.informativeTemplateId || NO_INFORMATIVE_TEMPLATE_VALUE}
+                        onValueChange={(value) => updateDocumentSetting(
+                          serviceTypeId,
+                          "informativeTemplateId",
+                          value === NO_INFORMATIVE_TEMPLATE_VALUE ? "" : value,
+                        )}
+                        options={[
+                          { value: NO_INFORMATIVE_TEMPLATE_VALUE, label: "Sem informativo" },
+                          ...activeInformativeTemplates.map((template) => ({
+                            value: template.id,
+                            label: template.name,
+                          })),
+                        ]}
+                        placeholder="Sem informativo"
+                        searchPlaceholder="Buscar informativo..."
+                        emptyMessage="Nenhum informativo encontrado."
+                        includeAll={false}
+                        className="w-full"
+                      />
+                      <SearchableSelect
+                        value={setting?.certificateTemplateId || NO_CERTIFICATE_TEMPLATE_VALUE}
+                        onValueChange={(value) => updateDocumentSetting(
+                          serviceTypeId,
+                          "certificateTemplateId",
+                          value === NO_CERTIFICATE_TEMPLATE_VALUE ? "" : value,
+                        )}
+                        options={[
+                          { value: NO_CERTIFICATE_TEMPLATE_VALUE, label: "Sem certificado" },
+                          ...activeCertificateTemplates.map((template) => ({
+                            value: template.id,
+                            label: template.name,
+                          })),
+                        ]}
+                        placeholder="Sem certificado"
+                        searchPlaceholder="Buscar certificado..."
+                        emptyMessage="Nenhum certificado encontrado."
+                        includeAll={false}
+                        className="w-full"
+                      />
+                    </div>
+                  )
+                })}
+                {formData.serviceTypeIds.length === 0 && (
+                  <p className="border-t px-4 py-5 text-center text-sm text-muted-foreground">
+                    Selecione ao menos um serviço para configurar os documentos.
+                  </p>
+                )}
+              </div>
+            </div>
           </div>
           </fieldset>
 

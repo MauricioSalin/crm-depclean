@@ -24,6 +24,10 @@ export type DepAIArtifact = {
   previewUrl?: string
   expiresAt?: string
   chartType?: DepAIChartType
+  chartData?: {
+    series: string[]
+    data: Array<Record<string, string | number>>
+  }
   status: "ready" | "processing" | "expired"
 }
 

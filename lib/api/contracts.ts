@@ -73,6 +73,8 @@ export type ContractRecord = {
   clientCompanyName?: string | null
   templateId: string
   templateName?: string | null
+  internalStatus: "filling" | "ready"
+  formDraft: Record<string, unknown>
   automationCreateSchedules?: boolean
   automationCreateInformatives?: boolean
   automationInformativeTemplateId?: string
@@ -81,6 +83,8 @@ export type ContractRecord = {
   automationSchedulePlanCount?: number
   automationSchedulePlanSavedAt?: string
   automationSchedulePlanPublishedAt?: string
+  isAwaitingSchedules: boolean
+  isClientDelinquent: boolean
   unitIds: string[]
   totalValue: number
   downPaymentValue: number
@@ -222,6 +226,11 @@ export type ContractUpdatePayload = Partial<ContractPayload> & {
   deferClicksignReplacement?: boolean
 }
 
+export type ContractFillingDraftPayload = {
+  clientId: string
+  formData: Record<string, unknown>
+}
+
 export type ContractImportResult = {
   importedCount: number
   contracts: ContractRecord[]
@@ -252,8 +261,29 @@ export async function previewContract(payload: ContractPayload) {
   return response.data
 }
 
+export async function previewContractUpdate(id: string, payload: ContractPayload) {
+  const response = await api.post<{ success: true; data: ContractPreviewRecord }>(
+    `/contracts/${resolveContractId(id)}/preview`,
+    payload,
+  )
+  return response.data
+}
+
 export async function createContract(payload: ContractPayload) {
   const response = await api.post<{ success: true; data: ContractRecord }>("/contracts", payload)
+  return response.data
+}
+
+export async function createContractFillingDraft(payload: ContractFillingDraftPayload) {
+  const response = await api.post<{ success: true; data: ContractRecord }>("/contracts/filling-draft", payload)
+  return response.data
+}
+
+export async function updateContractFillingDraft(id: string, payload: ContractFillingDraftPayload) {
+  const response = await api.patch<{ success: true; data: ContractRecord }>(
+    `/contracts/${resolveContractId(id)}/filling-draft`,
+    payload,
+  )
   return response.data
 }
 

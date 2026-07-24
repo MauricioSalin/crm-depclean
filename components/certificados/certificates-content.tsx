@@ -11,7 +11,6 @@ import { buildApiFileUrl } from "@/lib/api/client"
 import { deleteCertificate, listCertificates, type CertificateQueueRecord } from "@/lib/api/certificates"
 import { listClients } from "@/lib/api/clients"
 import { getApiErrorMessage } from "@/lib/api/errors"
-import { listSchedules, type ScheduleRecord } from "@/lib/api/schedules"
 import { getStoredUser } from "@/lib/auth/session"
 import { formatCivilDate } from "@/lib/date-utils"
 import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
@@ -67,14 +66,19 @@ function hasResponsible(record: CertificateQueueRecord) {
   return record.teams.length > 0 || record.additionalEmployees.length > 0
 }
 
-function formatScheduleOption(schedule: ScheduleRecord) {
-  const time = schedule.time || "--:--"
-  const unit = schedule.unitName || "Unidade principal"
-  return `${time} - ${schedule.serviceTypeName} (${unit})`
+function formatScheduleOption(record: CertificateQueueRecord) {
+  const time = record.time || "--:--"
+  const unit = record.unitName || "Unidade principal"
+  return `${time} - ${record.serviceTypeName} (${unit})`
 }
 
 function getCertificateUrl(record: CertificateQueueRecord) {
   return record.certificateUrl ? buildApiFileUrl(record.certificateUrl) : ""
+}
+
+function getCertificateEditorPath(record: Pick<CertificateQueueRecord, "scheduleId" | "serviceTypeId">) {
+  const query = new URLSearchParams({ serviceTypeId: record.serviceTypeId })
+  return `/certificados/${record.scheduleId}?${query.toString()}`
 }
 
 export function CertificatesContent({ viewMode, viewToggle, createOpen = false, onCreateOpenChange }: CertificatesContentProps) {
@@ -125,27 +129,20 @@ export function CertificatesContent({ viewMode, viewToggle, createOpen = false, 
     enabled: mounted && canManage && createOpen,
   })
 
-  const manualSchedulesQuery = useQuery({
-    queryKey: ["schedules", "certificate-manual", manualDate],
-    queryFn: () => listSchedules({ status: "completed", dateFrom: manualDate, dateTo: manualDate }),
-    enabled: mounted && canManage && createOpen && Boolean(manualDate),
-  })
-
   const records = certificatesQuery.data?.data ?? []
   const manualClients = clientsQuery.data?.data ?? []
-  const completedSchedulesForManualCertificate = (manualSchedulesQuery.data?.data ?? []).filter(
-    (schedule) =>
-      schedule.status === "completed" &&
-      schedule.clientId === manualClientId &&
-      schedule.date === manualDate,
+  const completedSchedulesForManualCertificate = records.filter(
+    (record) =>
+      record.clientId === manualClientId &&
+      record.date === manualDate,
   )
   const manualClientOptions = manualClients.map((client) => ({
     value: client.id,
     label: client.companyName,
   }))
-  const manualScheduleOptions = completedSchedulesForManualCertificate.map((schedule) => ({
-    value: schedule.id,
-    label: formatScheduleOption(schedule),
+  const manualScheduleOptions = completedSchedulesForManualCertificate.map((record) => ({
+    value: record.id,
+    label: formatScheduleOption(record),
   }))
 
   const invalidateCertificates = async (clientId?: string) => {
@@ -157,7 +154,7 @@ export function CertificatesContent({ viewMode, viewToggle, createOpen = false, 
   }
 
   const deleteMutation = useMutation({
-    mutationFn: (record: CertificateQueueRecord) => deleteCertificate(record.scheduleId),
+    mutationFn: (record: CertificateQueueRecord) => deleteCertificate(record.scheduleId, record.serviceTypeId),
     onMutate: () => {
       const toastId = toast.loading("Excluindo certificado...")
       return { toastId }
@@ -216,7 +213,7 @@ export function CertificatesContent({ viewMode, viewToggle, createOpen = false, 
 
   const openCertificateIssue = (record: CertificateQueueRecord) => {
     if (!canIssueCertificate(record)) return
-    router.push(`/certificados/${record.scheduleId}`)
+    router.push(getCertificateEditorPath(record))
   }
 
   const closeCreateDialog = () => {
@@ -241,7 +238,12 @@ export function CertificatesContent({ viewMode, viewToggle, createOpen = false, 
       return
     }
     closeCreateDialog()
-    router.push(`/certificados/${manualScheduleId}`)
+    const selectedRecord = records.find((record) => record.id === manualScheduleId)
+    if (!selectedRecord) {
+      toast.error("O certificado selecionado não está mais disponível.")
+      return
+    }
+    router.push(getCertificateEditorPath(selectedRecord))
   }
 
   if (mounted && !canView) {
@@ -317,13 +319,13 @@ export function CertificatesContent({ viewMode, viewToggle, createOpen = false, 
                   onValueChange={setManualScheduleId}
                   options={manualScheduleOptions}
                   includeAll={false}
-                  placeholder={manualSchedulesQuery.isLoading ? "Carregando agendamentos..." : "Selecione um agendamento"}
+                  placeholder={certificatesQuery.isLoading ? "Carregando agendamentos..." : "Selecione um agendamento"}
                   searchPlaceholder="Buscar agendamento..."
                   emptyMessage="Nenhum agendamento concluído nessa data."
                   className="w-full"
-                  disabled={!canManage || manualSchedulesQuery.isLoading || manualScheduleOptions.length === 0}
+                  disabled={!canManage || certificatesQuery.isLoading || manualScheduleOptions.length === 0}
                 />
-                {!manualSchedulesQuery.isLoading && manualScheduleOptions.length === 0 ? (
+                {!certificatesQuery.isLoading && manualScheduleOptions.length === 0 ? (
                   <p className="text-xs text-muted-foreground">
                     Nenhum agendamento concluído encontrado para esse cliente nessa data.
                   </p>
@@ -476,7 +478,7 @@ export function CertificatesContent({ viewMode, viewToggle, createOpen = false, 
                                   size="sm"
                                   className="h-9 rounded-full bg-primary px-3 text-primary-foreground hover:bg-primary/90"
                                 >
-                                  <Link href={`/certificados/${record.scheduleId}`} aria-label="Emitir certificado" className="gap-2">
+                                  <Link href={getCertificateEditorPath(record)} aria-label="Emitir certificado" className="gap-2">
                                     <Award className="h-4 w-4" />
                                     <span>Emitir</span>
                                   </Link>
@@ -506,7 +508,7 @@ export function CertificatesContent({ viewMode, viewToggle, createOpen = false, 
                                   <>
                                     <DropdownMenuItem
                                       className="cursor-pointer"
-                                      onClick={() => router.push(`/certificados/${record.scheduleId}`)}
+                                      onClick={() => router.push(getCertificateEditorPath(record))}
                                     >
                                       <RotateCcw className="mr-2 h-4 w-4" />
                                       Reemitir
@@ -629,7 +631,7 @@ export function CertificatesContent({ viewMode, viewToggle, createOpen = false, 
                         <>
                         {record.status === "pending" ? (
                           <Button asChild className="h-9 flex-1 text-sm">
-                            <Link href={`/certificados/${record.scheduleId}`}>
+                            <Link href={getCertificateEditorPath(record)}>
                               <Award className="mr-2 h-4 w-4" />
                               Emitir
                             </Link>
@@ -640,7 +642,7 @@ export function CertificatesContent({ viewMode, viewToggle, createOpen = false, 
                               type="button"
                               variant="outline"
                               className="h-9 flex-1 text-sm"
-                              onClick={() => router.push(`/certificados/${record.scheduleId}`)}
+                              onClick={() => router.push(getCertificateEditorPath(record))}
                             >
                               <RotateCcw className="mr-2 h-4 w-4" />
                               Reemitir

@@ -8,6 +8,7 @@ import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
 import { Input } from "@/components/ui/input"
 import { FilterSearchInput } from "@/components/ui/filter-search-input"
 import { Badge } from "@/components/ui/badge"
+import { BusinessStatusBadge } from "@/components/ui/business-status-badges"
 import {
   Table,
   TableBody,
@@ -332,7 +333,10 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
                             <Building2 className="w-5 h-5" style={{ color: clientTypeColor }} />
                           </div>
                           <div className="min-w-0">
-                            <p className="truncate font-semibold text-foreground">{client.companyName}</p>
+                            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                              <p className="min-w-0 truncate font-semibold text-foreground">{client.companyName}</p>
+                              {client.isDelinquent ? <BusinessStatusBadge status="delinquent" /> : null}
+                            </div>
                             <p className="text-xs text-muted-foreground md:hidden">{formatCNPJ(client.cnpj)}</p>
                           </div>
                         </Link>
@@ -430,7 +434,10 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-start justify-between gap-x-2 gap-y-1">
-                            <h3 className="min-w-0 flex-1 break-words text-sm font-semibold text-foreground">{client.companyName}</h3>
+                            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+                              <h3 className="min-w-0 break-words text-sm font-semibold text-foreground">{client.companyName}</h3>
+                              {client.isDelinquent ? <BusinessStatusBadge status="delinquent" /> : null}
+                            </div>
                             <Badge
                               style={{ backgroundColor: clientTypeColor }}
                               className="shrink-0 border-0 text-xs text-white hover:opacity-90"
