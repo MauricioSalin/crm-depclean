@@ -227,7 +227,7 @@ export function ContractSchedulePlanDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="min-h-0 flex-1 overflow-auto px-6 pb-4 pt-0">
+        <div className="min-h-0 flex-1 px-6 pb-4 pt-0">
           {planQuery.isLoading ? (
             <div className="space-y-3">
               {Array.from({ length: 5 }).map((_, index) => <Skeleton key={index} className="h-16 w-full" />)}
@@ -255,9 +255,9 @@ export function ContractSchedulePlanDialog({
                   Resetar
                 </Button>
               </div>
-              <div className="overflow-x-auto">
+              <div className="max-h-[min(56dvh,620px)] overflow-auto overscroll-contain">
                 <Table>
-                  <TableHeader>
+                  <TableHeader className="sticky top-0 z-10 bg-background">
                     <TableRow className="bg-muted/60 hover:bg-muted/60">
                       <TableHead className="min-w-[178px]">Data</TableHead>
                       <TableHead className="min-w-[140px]">Horário</TableHead>
@@ -377,7 +377,7 @@ export function ContractSchedulePlanDialog({
           )}
         </div>
 
-        <DialogFooter className="border-t px-6 py-4 sm:justify-between">
+        <DialogFooter className="px-6 py-4 sm:justify-between">
           <Button
             type="button"
             variant="outline"

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { ArrowLeft, Check, ChevronsUpDown, Clock, ClipboardList, FileText, Plus, Save, Users, X } from "lucide-react"
+import { ArrowLeft, Check, ChevronsUpDown, Clock, ClipboardList, FileText, Pencil, Plus, Save, Users, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -63,6 +63,8 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
   const [employeesPopoverOpen, setEmployeesPopoverOpen] = useState(false)
   const [teamSearchTerm, setTeamSearchTerm] = useState("")
   const [employeeSearchTerm, setEmployeeSearchTerm] = useState("")
+  const [editingClauseIndex, setEditingClauseIndex] = useState<number | null>(null)
+  const [editingClauseDraft, setEditingClauseDraft] = useState("")
 
   const serviceQuery = useQuery({
     queryKey: ["service", serviceId],
@@ -216,6 +218,39 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
         ? current.employeeIds.filter((id) => id !== employeeId)
         : [...current.employeeIds, employeeId],
     }))
+  }
+
+  function startEditingClause(index: number) {
+    setEditingClauseIndex(index)
+    setEditingClauseDraft(formData.clauses[index] ?? "")
+  }
+
+  function confirmClauseEdit() {
+    if (editingClauseIndex === null) return
+
+    const clause = editingClauseDraft.trim()
+    if (!clause) return
+
+    setFormData((current) => ({
+      ...current,
+      clauses: current.clauses.map((item, index) => (index === editingClauseIndex ? clause : item)),
+    }))
+    setEditingClauseIndex(null)
+    setEditingClauseDraft("")
+  }
+
+  function removeClause(index: number) {
+    setFormData((current) => ({
+      ...current,
+      clauses: current.clauses.filter((_, clauseIndex) => clauseIndex !== index),
+    }))
+
+    if (editingClauseIndex === index) {
+      setEditingClauseIndex(null)
+      setEditingClauseDraft("")
+    } else if (editingClauseIndex !== null && editingClauseIndex > index) {
+      setEditingClauseIndex(editingClauseIndex - 1)
+    }
   }
 
   function handleSubmit(event: React.FormEvent) {
@@ -639,40 +674,72 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
         </p>
 
         <div className="space-y-3">
-          {formData.clauses.map((clause, index) => (
-            <div key={`${clause}-${index}`} className="flex items-start gap-2 rounded-lg bg-muted/50 p-3">
-              <span className="flex-1 whitespace-pre-wrap text-sm">{clause}</span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6 shrink-0"
-                onClick={() =>
-                  setFormData((current) => ({
-                    ...current,
-                    clauses: current.clauses.filter((_, clauseIndex) => clauseIndex !== index),
-                  }))
-                }
-              >
-                <X className="h-3 w-3" />
-              </Button>
-            </div>
-          ))}
+          {formData.clauses.map((clause, index) => {
+            const isEditingClause = editingClauseIndex === index
+
+            return (
+              <div key={index} className="flex items-start gap-2 rounded-lg bg-muted/50 p-3">
+                {isEditingClause ? (
+                  <Textarea
+                    value={editingClauseDraft}
+                    onChange={(event) => setEditingClauseDraft(event.target.value)}
+                    rows={Math.max(3, editingClauseDraft.split("\n").length)}
+                    className="min-h-24 flex-1 resize-y bg-background"
+                    autoFocus
+                  />
+                ) : (
+                  <span className="flex-1 whitespace-pre-wrap text-sm">{clause}</span>
+                )}
+
+                {!isEditingClause ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 shrink-0"
+                    onClick={() => startEditingClause(index)}
+                    aria-label="Editar cláusula"
+                    title="Editar cláusula"
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </Button>
+                ) : null}
+
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 shrink-0"
+                  onClick={() => removeClause(index)}
+                  aria-label="Remover cláusula"
+                  title="Remover cláusula"
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              </div>
+            )
+          })}
 
           <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-end">
             <Textarea
-              placeholder="Adicionar nova cláusula..."
+              placeholder={editingClauseIndex === null ? "Adicionar nova cláusula..." : "Conclua a edição da cláusula selecionada acima."}
               value={formData.newClause}
               onChange={(event) => setFormData((current) => ({ ...current, newClause: event.target.value }))}
               rows={3}
               className="w-full resize-y md:max-w-[50%]"
+              disabled={editingClauseIndex !== null}
             />
             <Button
               type="button"
               variant="outline"
               size="icon"
               className="self-end shrink-0"
+              disabled={editingClauseIndex === null ? !formData.newClause.trim() : !editingClauseDraft.trim()}
               onClick={() => {
+                if (editingClauseIndex !== null) {
+                  confirmClauseEdit()
+                  return
+                }
                 if (!formData.newClause.trim()) return
                 setFormData((current) => ({
                   ...current,
@@ -680,8 +747,10 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
                   newClause: "",
                 }))
               }}
+              aria-label={editingClauseIndex === null ? "Adicionar cláusula" : "Concluir edição da cláusula"}
+              title={editingClauseIndex === null ? "Adicionar cláusula" : "Concluir edição da cláusula"}
             >
-              <Plus className="h-4 w-4" />
+              {editingClauseIndex === null ? <Plus className="h-4 w-4" /> : <Check className="h-4 w-4" />}
             </Button>
           </div>
         </div>

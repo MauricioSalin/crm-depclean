@@ -44,7 +44,7 @@ export function DatePicker({
           )}
         >
           <CalendarIcon className="mr-2 h-4 w-4 shrink-0" />
-          <span className="truncate text-sm">
+          <span className="truncate text-base md:text-sm">
             {value ? format(value, "dd/MM/yyyy", { locale: ptBR }) : placeholder}
           </span>
         </Button>

@@ -1319,6 +1319,77 @@ function buildDocxInlineHtmlXml(html: string, baseRunPropertiesXml = "") {
   return `</w:t></w:r>${lines.join("<w:r><w:br/></w:r><w:r><w:br/></w:r>")}<w:r>${baseRunPropertiesXml}<w:t xml:space="preserve">`
 }
 
+function getDocxParagraphText(paragraphXml: string) {
+  return [...paragraphXml.matchAll(/<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g)]
+    .map((match) => match[1] ?? "")
+    .join("")
+}
+
+function getDocxParagraphPropertiesXml(paragraphXml: string) {
+  return paragraphXml.match(/<w:pPr\b[\s\S]*?<\/w:pPr>/)?.[0] ?? ""
+}
+
+function buildLeftAlignedDocxParagraphProperties(paragraphPropertiesXml: string) {
+  const alignmentXml = '<w:jc w:val="left"/>'
+  const withoutAlignment = paragraphPropertiesXml.replace(
+    /<w:jc\b[^>]*(?:\/>|>[\s\S]*?<\/w:jc>)/gi,
+    "",
+  )
+
+  return withoutAlignment
+    ? withoutAlignment.replace(/<\/w:pPr>/, `${alignmentXml}</w:pPr>`)
+    : `<w:pPr>${alignmentXml}</w:pPr>`
+}
+
+function buildDocxParagraphHtmlXml(
+  html: string,
+  paragraphPropertiesXml: string,
+  baseRunPropertiesXml = "",
+) {
+  const paragraphMatches = [...html.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)]
+  const paragraphHtml = paragraphMatches.length > 0
+    ? paragraphMatches.map((match) => match[1] ?? "")
+    : [html]
+  const leftAlignedPropertiesXml = buildLeftAlignedDocxParagraphProperties(paragraphPropertiesXml)
+
+  return paragraphHtml
+    .map((innerHtml) => buildDocxRunsFromHtml(innerHtml, baseRunPropertiesXml))
+    .filter(Boolean)
+    .map((runsXml) => `<w:p>${leftAlignedPropertiesXml}${runsXml}</w:p>`)
+    .join("")
+}
+
+function replaceDocxTokenWithParagraphHtml(xml: string, token: string, html: string) {
+  let replacedParagraph = false
+  const nextXml = xml.replace(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/g, (paragraphXml: string, offset: number) => {
+    if (getDocxParagraphText(paragraphXml).trim() !== token.trim()) {
+      return paragraphXml
+    }
+
+    replacedParagraph = true
+    const firstRunIndex = paragraphXml.search(/<w:r(?:\s|>)/)
+    const runPropertiesXml = getDocxRunPropertiesWithFont(
+      xml,
+      offset + Math.max(firstRunIndex, 0),
+    )
+
+    return buildDocxParagraphHtmlXml(
+      html,
+      getDocxParagraphPropertiesXml(paragraphXml),
+      runPropertiesXml,
+    )
+  })
+
+  if (replacedParagraph) {
+    return nextXml
+  }
+
+  return xml.replace(buildDocxTokenRegex(token), (_match, offset: number) => {
+    const runPropertiesXml = getDocxRunPropertiesWithFont(xml, offset)
+    return buildDocxInlineHtmlXml(html, runPropertiesXml)
+  })
+}
+
 function buildDocxTableXmlFromHtml(html: string) {
   const rowMatches = [...html.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)]
   const rows = rowMatches
@@ -1472,10 +1543,7 @@ async function replaceDocxTemplateVariables(buffer: ArrayBuffer, variables: Reco
             ? buildDocxTableXmlFromHtml(rawValue)
             : escapeXml(rawValue).replace(/\r?\n/g, "</w:t><w:br/><w:t>")
           const nextXml = isServiceSectionsHtml
-            ? xml.replace(tokenRegex, (_match, offset: number) => {
-                const runPropertiesXml = getDocxRunPropertiesWithFont(xml, offset)
-                return buildDocxInlineHtmlXml(rawValue, runPropertiesXml)
-              })
+            ? replaceDocxTokenWithParagraphHtml(xml, token, rawValue)
             : xml.replace(tokenRegex, replacement)
           if (nextXml !== xml) {
             xml = nextXml

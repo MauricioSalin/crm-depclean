@@ -1,4 +1,4 @@
-import { toCivilDateKey } from "@/lib/date-utils"
+import { parseCivilDate, toCivilDateKey } from "@/lib/date-utils"
 
 export const CLICKSIGN_CONTRACT_STATUSES = ["draft", "running", "closed", "canceled"] as const
 
@@ -6,6 +6,7 @@ export type ClicksignContractStatus = (typeof CLICKSIGN_CONTRACT_STATUSES)[numbe
 
 const STATUS_ALIASES: Record<string, ClicksignContractStatus> = {
   draft: "draft",
+  send_failed: "draft",
   pending: "running",
   pending_signature: "running",
   waiting_signature: "running",
@@ -46,12 +47,29 @@ export function getClicksignContractStatusLabel(value: unknown) {
   }
 }
 
+function contractCivilDateKey(value?: string | Date | null) {
+  const date = parseCivilDate(value)
+  return date ? toCivilDateKey(date) : ""
+}
+
 export function isOperationallyActiveContract(contract: {
-  status?: string
-  startDate?: string
-  endDate?: string
-}) {
+  status?: unknown
+  startDate?: string | Date | null
+  endDate?: string | Date | null
+}, now = new Date()) {
   if (!isClosedClicksignContractStatus(contract.status) || !contract.startDate || !contract.endDate) return false
-  const today = toCivilDateKey(new Date())
-  return toCivilDateKey(new Date(contract.startDate)) <= today && toCivilDateKey(new Date(contract.endDate)) >= today
+  const startDateKey = contractCivilDateKey(contract.startDate)
+  const endDateKey = contractCivilDateKey(contract.endDate)
+  if (!startDateKey || !endDateKey) return false
+  const today = toCivilDateKey(now)
+  return startDateKey <= today && endDateKey >= today
+}
+
+export function isContractExpiredByValidity(contract: {
+  status?: unknown
+  endDate?: string | Date | null
+}, now = new Date()) {
+  if (!isClosedClicksignContractStatus(contract.status) || !contract.endDate) return false
+  const endDateKey = contractCivilDateKey(contract.endDate)
+  return Boolean(endDateKey) && endDateKey < toCivilDateKey(now)
 }

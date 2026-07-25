@@ -9,6 +9,7 @@ import { useSearchParams } from "next/navigation"
 export default function NewContractPage() {
   const searchParams = useSearchParams()
   const backHref = getSafeReturnTo(searchParams.get("returnTo"), "/contratos")
+  const renewFromContractId = searchParams.get("renewFrom") || undefined
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -17,11 +18,18 @@ export default function NewContractPage() {
       </div>
       <main className="flex-1 px-3 pb-4 md:px-4 lg:px-5 lg:ml-60">
         <Header
-          title="Novo Contrato"
-          description="Crie um novo contrato para um cliente"
+          title={renewFromContractId ? "Renovar Contrato" : "Novo Contrato"}
+          description={
+            renewFromContractId
+              ? "Revise os dados herdados e informe as novas condições financeiras"
+              : "Crie um novo contrato para um cliente"
+          }
         />
         <div className="mt-4 md:mt-5">
-          <ContractForm returnTo={backHref} />
+          <ContractForm
+            renewFromContractId={renewFromContractId}
+            returnTo={backHref}
+          />
         </div>
       </main>
     </div>

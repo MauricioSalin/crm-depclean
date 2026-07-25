@@ -63,6 +63,7 @@ import { getContractClicksignUrl } from "@/lib/clicksign"
 import {
   getClicksignContractStatusLabel,
   isClosedClicksignContractStatus,
+  isContractExpiredByValidity,
   normalizeClicksignContractStatus,
 } from "@/lib/contract-status"
 import { BRASILIA_TIME_ZONE, formatCivilDate } from "@/lib/date-utils"
@@ -148,8 +149,11 @@ const getRecurrenceLabel = (value: string) =>
     } as Record<string, string>
   )[value] ?? value
 
-const getStatusBadge = (status: string) => {
-  const normalized = normalizeClicksignContractStatus(status)
+const getStatusBadge = (contract: { status?: string; endDate?: string | null }) => {
+  if (isContractExpiredByValidity(contract)) {
+    return <Badge className="bg-red-100 text-red-700 hover:bg-red-100">Vencido</Badge>
+  }
+  const normalized = normalizeClicksignContractStatus(contract.status)
   const className = normalized === "closed"
     ? "bg-green-100 text-green-700 hover:bg-green-100"
     : normalized === "running"
@@ -868,7 +872,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
             <div className="min-w-0 flex-1">
               <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-1">
                 <h2 className="min-w-0 break-words text-xl font-bold">{formatContractNumber(contract.contractNumber)}</h2>
-                <span className="inline-flex shrink-0">{getStatusBadge(contract.status)}</span>
+                <span className="inline-flex shrink-0">{getStatusBadge(contract)}</span>
                 {isContractAwaitingSchedules(contract) ? (
                   <BusinessStatusBadge status="awaiting-schedules" />
                 ) : null}

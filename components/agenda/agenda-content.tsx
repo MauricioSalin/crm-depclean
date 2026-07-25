@@ -51,7 +51,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { DatePicker } from "@/components/ui/date-picker"
 import { Input } from "@/components/ui/input"
+import { TimeInput } from "@/components/ui/time-input"
 import { FilterSearchInput } from "@/components/ui/filter-search-input"
 import { Label } from "@/components/ui/label"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -737,11 +739,11 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
     if (!canManageAgenda) return
 
     const now = currentCompletionDateTime()
-    const defaultDate = schedule.date || now.date
+    const defaultDate = schedule.completionStartDate || now.date || schedule.date
     setCompletionTarget(schedule)
-    setCompletionStartDate(schedule.completionStartDate || defaultDate)
+    setCompletionStartDate(defaultDate)
     setCompletionStartTime(schedule.completionStartTime || schedule.time || "")
-    setCompletionEndDate(schedule.completionEndDate || now.date || schedule.completionStartDate || defaultDate)
+    setCompletionEndDate(schedule.completionEndDate || now.date || defaultDate)
     setCompletionEndTime(schedule.completionEndTime || now.time)
     setCompletionFiles([])
   }
@@ -927,36 +929,33 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
             <div className="grid min-w-0 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="agenda-completion-start-date">Data de início *</Label>
-                <Input
-                  id="agenda-completion-start-date"
-                  type="date"
-                  value={completionStartDate}
-                  onChange={(event) => setCompletionStartDate(event.target.value)}
+                <DatePicker
+                  value={parseCivilDate(completionStartDate)}
+                  onChange={(date) => setCompletionStartDate(date ? toCivilDateKey(date) : "")}
+                  placeholder="Selecionar data"
+                  disabled
                 />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="agenda-completion-start">Horário de início *</Label>
-                <Input
+                <TimeInput
                   id="agenda-completion-start"
-                  type="time"
                   value={completionStartTime}
                   onChange={(event) => setCompletionStartTime(event.target.value)}
                 />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="agenda-completion-end-date">Data de fim *</Label>
-                <Input
-                  id="agenda-completion-end-date"
-                  type="date"
-                  value={completionEndDate}
-                  onChange={(event) => setCompletionEndDate(event.target.value)}
+                <DatePicker
+                  value={parseCivilDate(completionEndDate)}
+                  onChange={(date) => setCompletionEndDate(date ? toCivilDateKey(date) : "")}
+                  placeholder="Selecionar data"
                 />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="agenda-completion-end">Horário de fim *</Label>
-                <Input
+                <TimeInput
                   id="agenda-completion-end"
-                  type="time"
                   value={completionEndTime}
                   onChange={(event) => setCompletionEndTime(event.target.value)}
                 />

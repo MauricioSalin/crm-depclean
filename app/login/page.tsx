@@ -18,6 +18,44 @@ import { getApiErrorMessage } from "@/lib/api/errors"
 import { isAuthenticated, persistSession } from "@/lib/auth/session"
 import { cn } from "@/lib/utils"
 
+const CPF_MAX_DIGITS = 11
+
+function isCpfLike(value: string) {
+  return value.length > 0 && /^[\d.\s-]+$/.test(value)
+}
+
+function formatCpf(value: string) {
+  const digits = value.replace(/\D/g, "").slice(0, CPF_MAX_DIGITS)
+
+  if (digits.length <= 3) return digits
+  if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`
+  if (digits.length <= 9) {
+    return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`
+  }
+
+  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`
+}
+
+function normalizeLoginIdentifier(value: string) {
+  const trimmedValue = value.trim()
+
+  return isCpfLike(trimmedValue)
+    ? trimmedValue.replace(/\D/g, "")
+    : trimmedValue
+}
+
+function formatLoginIdentifierInput(nextValue: string, currentValue: string) {
+  if (!nextValue || isCpfLike(nextValue)) {
+    return formatCpf(nextValue)
+  }
+
+  if (isCpfLike(currentValue)) {
+    return nextValue.replace(/[.\s-]/g, "")
+  }
+
+  return nextValue
+}
+
 export default function LoginPage() {
   const router = useRouter()
   const [showPassword, setShowPassword] = useState(false)
@@ -69,9 +107,9 @@ export default function LoginPage() {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    const trimmedIdentifier = identifier.trim()
+    const normalizedIdentifier = normalizeLoginIdentifier(identifier)
 
-    if (!trimmedIdentifier) {
+    if (!normalizedIdentifier) {
       toast.error("Informe seu e-mail ou CPF para continuar.")
       return
     }
@@ -79,11 +117,11 @@ export default function LoginPage() {
     if (loginStep === "identifier") {
       setIdentifySubmitting(true)
       try {
-        const response = await identifyLogin({ identifier: trimmedIdentifier })
+        const response = await identifyLogin({ identifier: normalizedIdentifier })
         if (response.data.authMode === "code") {
-          const codeResponse = await requestLoginCode({ identifier: trimmedIdentifier })
+          const codeResponse = await requestLoginCode({ identifier: normalizedIdentifier })
           const deliveryChannel = codeResponse.data.deliveryChannel ?? response.data.codeDeliveryChannel ?? "whatsapp"
-          setLoginCodeIdentifier(trimmedIdentifier)
+          setLoginCodeIdentifier(normalizedIdentifier)
           setLoginCodeChannel(deliveryChannel)
           setLoginCode("")
           setLoginCodeOpen(true)
@@ -106,7 +144,7 @@ export default function LoginPage() {
     }
 
     loginMutation.mutate({
-      identifier: trimmedIdentifier,
+      identifier: normalizedIdentifier,
       password,
     })
   }
@@ -151,7 +189,7 @@ export default function LoginPage() {
     setLoginCodeSubmitting(true)
     try {
       const response = await confirmLoginCode({
-        identifier: loginCodeIdentifier || identifier,
+        identifier: loginCodeIdentifier || normalizeLoginIdentifier(identifier),
         code: loginCode,
       })
       persistSession({
@@ -173,7 +211,7 @@ export default function LoginPage() {
 
   const handleRequestPasswordReset = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    const resetLoginIdentifier = (resetIdentifier || identifier).trim()
+    const resetLoginIdentifier = normalizeLoginIdentifier(resetIdentifier || identifier)
 
     if (!resetLoginIdentifier) {
       toast.error("Informe seu e-mail ou CPF para recuperar a senha.")
@@ -268,7 +306,9 @@ export default function LoginPage() {
                         type="text" autoComplete="username"
                         value={identifier}
                         onChange={(event) => {
-                          setIdentifier(event.target.value)
+                          setIdentifier(
+                            formatLoginIdentifierInput(event.target.value, identifier),
+                          )
                           setPassword("")
                           setLoginStep("identifier")
                         }}
@@ -435,7 +475,11 @@ export default function LoginPage() {
                 id="reset-identifier"
                 type="text" autoComplete="username"
                 value={resetIdentifier}
-                onChange={(event) => setResetIdentifier(event.target.value)}
+                onChange={(event) => {
+                  setResetIdentifier(
+                    formatLoginIdentifierInput(event.target.value, resetIdentifier),
+                  )
+                }}
                 placeholder="E-mail ou CPF"
                 required
               />

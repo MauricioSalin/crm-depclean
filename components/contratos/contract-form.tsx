@@ -203,6 +203,7 @@ function buildServiceSectionsHtml(
 interface ContractFormProps {
   contractId?: string
   isEditing?: boolean
+  renewFromContractId?: string
   returnTo?: string
 }
 
@@ -313,11 +314,18 @@ const isContractSigned = (contract?: { status?: string; clicksign?: { status?: s
   )
 }
 
-export function ContractForm({ contractId, isEditing = false, returnTo }: ContractFormProps) {
+export function ContractForm({
+  contractId,
+  isEditing = false,
+  renewFromContractId,
+  returnTo,
+}: ContractFormProps) {
   const router = useRouter()
   const queryClient = useQueryClient()
   const formBackHref = returnTo || "/contratos"
   const canDeleteContracts = useHasAnyPermission(["contracts_delete"])
+  const isRenewal = Boolean(renewFromContractId && !isEditing)
+  const sourceContractId = isEditing ? contractId : renewFromContractId
 
   const clientsQuery = useQuery({
     queryKey: ["clients", "contract-form"],
@@ -356,9 +364,9 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
     queryFn: () => getOrganizationSettings(),
   })
   const contractQuery = useQuery({
-    queryKey: ["contract", contractId],
-    queryFn: () => getContractById(contractId!),
-    enabled: Boolean(contractId),
+    queryKey: ["contract", sourceContractId],
+    queryFn: () => getContractById(sourceContractId!),
+    enabled: Boolean(sourceContractId),
   })
 
   const clients = clientsQuery.data?.data ?? []
@@ -409,7 +417,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
   const allowNavigationRef = useRef(false)
   const restoringHistoryRef = useRef(false)
   const draftSnapshotRef = useRef("")
-  const recurrenceAutomationTouchedRef = useRef(!isEditing)
+  const recurrenceAutomationTouchedRef = useRef(!isEditing && !isRenewal)
 
   const initialUnitIds = useMemo(() => {
     const direct = (contract as unknown as { unitIds?: string[] })?.unitIds ?? []
@@ -617,7 +625,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
   useEffect(() => {
     if (!contract) return
 
-    if (contract.internalStatus === "filling") {
+    if (!isRenewal && contract.internalStatus === "filling") {
       const formDraft = contract.formDraft as Partial<{
         selectedTemplateId: string
         createAutomatedSchedules: boolean
@@ -674,6 +682,39 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
       normalizeContractServiceForForm(service, contract),
     )
 
+    if (isRenewal) {
+      setSelectedClientId(contract.clientId ?? "")
+      setSelectedTemplateId(contract.templateId ?? "")
+      setCreateAutomatedSchedules(contract.automationCreateSchedules ?? true)
+      setCreateAutomatedInformatives(contract.automationCreateInformatives ?? true)
+      setStartDate("")
+      setFirstDueDate("")
+      setFirstVisitDate("")
+      setFirstVisitTime(contract.firstVisitTime || "08:00")
+      setInstallmentsCountInput("")
+      setDueDayInput("")
+      setSelectedUnitIds(Array.from(new Set([...directUnitIds, ...serviceUnitIds])))
+      setRecurrenceServiceTypeId(contract.recurrenceServiceTypeId || DEFAULT_RECURRENCE_SERVICE_TYPE_ID)
+      setServices(initialServiceList)
+      setContractValue(0)
+      setDownPaymentValue(0)
+      setContractRecurrenceRules(
+        contract.recurrenceRules?.length
+          ? contract.recurrenceRules.map((rule) => ({
+              type: rule.type,
+              minUnits: rule.minUnits,
+              maxUnits: rule.maxUnits,
+              recurrence: rule.recurrence as RecurrenceType,
+            }))
+          : createDefaultContractRecurrenceRules(),
+      )
+      window.setTimeout(() => {
+        setDraftBaseline(draftSnapshotRef.current)
+        setEditorDirty(false)
+      }, 0)
+      return
+    }
+
     setSelectedClientId(contract.clientId ?? "")
     setSelectedTemplateId(contract.templateId ?? "")
     setCreateAutomatedSchedules(contract.automationCreateSchedules ?? true)
@@ -709,20 +750,20 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
       setDraftBaseline(draftSnapshotRef.current)
       setEditorDirty(false)
     }, 0)
-  }, [contract])
+  }, [contract, isRenewal])
 
   useEffect(() => {
-    if (isEditing || draftBaseline) return
+    if (isEditing || isRenewal || draftBaseline) return
     const timeout = window.setTimeout(() => setDraftBaseline(draftSnapshotRef.current), 0)
     return () => window.clearTimeout(timeout)
-  }, [draftBaseline, isEditing])
+  }, [draftBaseline, isEditing, isRenewal])
 
   useEffect(() => {
     return () => clearClausesDialogCloseTimeout()
   }, [])
 
   useEffect(() => {
-    if (isEditing || serviceTypes.length === 0) return
+    if (isEditing || isRenewal || serviceTypes.length === 0) return
     setServices((current) =>
       current.map((service) => {
         if (!service.serviceTypeId) return service
@@ -748,13 +789,13 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
         }
       }),
     )
-  }, [isEditing, serviceTypes, teams])
+  }, [isEditing, isRenewal, serviceTypes, teams])
 
   useEffect(() => {
-    if (!isEditing && createAutomatedSchedules && startDate && !firstVisitDate) {
+    if (!isEditing && !isRenewal && createAutomatedSchedules && startDate && !firstVisitDate) {
       setFirstVisitDate(startDate)
     }
-  }, [createAutomatedSchedules, firstVisitDate, isEditing, startDate])
+  }, [createAutomatedSchedules, firstVisitDate, isEditing, isRenewal, startDate])
 
   const selectedUnitsForDraft = useMemo(() => {
     const units = selectedClient?.units ?? []
@@ -782,17 +823,17 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
 
   // Auto-select all filiais when client changes
   useEffect(() => {
-    if (isEditing) return
+    if (isEditing || isRenewal) return
     if (!selectedClientId) {
       setSelectedUnitIds([])
       return
     }
     if (!selectedClient?.units?.length) return
     setSelectedUnitIds(selectedClient.units.map((unit) => unit.id))
-  }, [isEditing, selectedClient, selectedClientId])
+  }, [isEditing, isRenewal, selectedClient, selectedClientId])
 
   useEffect(() => {
-    if (isEditing && !recurrenceAutomationTouchedRef.current) return
+    if ((isEditing || isRenewal) && !recurrenceAutomationTouchedRef.current) return
     if (!recurrenceServiceTypeId || serviceTypes.length === 0) return
     const serviceType = serviceTypes.find((item) => item.id === recurrenceServiceTypeId)
     if (!serviceType) return
@@ -1798,20 +1839,21 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
       setLeaveDialogOpen(open)
       if (!open) setPendingNavigation(null)
     }}>
-      <AlertDialogContent>
+      <AlertDialogContent className="sm:max-w-xl">
         <AlertDialogHeader>
           <AlertDialogTitle>Salvar o contrato em preenchimento?</AlertDialogTitle>
           <AlertDialogDescription>
             Existem alterações que ainda não foram concluídas. Você pode salvar o preenchimento para continuar depois ou descartar as alterações.
           </AlertDialogDescription>
         </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={fillingDraftMutation.isPending}>
+        <AlertDialogFooter className="sm:flex-wrap">
+          <AlertDialogCancel className="w-full sm:w-auto" disabled={fillingDraftMutation.isPending}>
             Continuar editando
           </AlertDialogCancel>
           <Button
             type="button"
             variant="outline"
+            className="w-full sm:w-auto"
             disabled={fillingDraftMutation.isPending}
             onClick={() => navigateWithoutGuard(pendingNavigation)}
           >
@@ -1826,7 +1868,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
                 navigateWithoutGuard(destination)
               }
             }}
-            className="bg-primary hover:bg-primary/90"
+            className="w-full bg-primary hover:bg-primary/90 sm:w-auto"
           >
             <Save className="mr-2 h-4 w-4" />
             {fillingDraftMutation.isPending ? "Salvando..." : "Salvar rascunho"}
@@ -1967,7 +2009,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
     )
   }
 
-  if (isEditing && contractQuery.isLoading) {
+  if ((isEditing || isRenewal) && contractQuery.isLoading) {
     return (
       <Card className="space-y-5 p-6">
         <div className="grid gap-4 md:grid-cols-2">
@@ -1985,7 +2027,7 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
     )
   }
 
-  if (isEditing && contractQuery.isError) {
+  if ((isEditing || isRenewal) && contractQuery.isError) {
     return (
       <Card className="p-8 text-center">
         <FileText className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
@@ -2032,7 +2074,9 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
           {fillingDraftMutation.isPending || updateMutation.isPending
             ? "Salvando..."
             : isEditing
-              ? "Salvar"
+              ? contract?.internalStatus === "filling"
+                ? "Salvar rascunho"
+                : "Salvar"
               : "Salvar rascunho"}
         </Button>
       </div>
@@ -2933,7 +2977,11 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
                 disabled={fillingDraftMutation.isPending || previewMutation.isPending || previewUpdateMutation.isPending || updateMutation.isPending || createMutation.isPending || isFinalizingCreate}
               >
                 <Save className="mr-2 h-4 w-4" />
-                {fillingDraftMutation.isPending || updateMutation.isPending ? "Salvando..." : "Salvar"}
+                {fillingDraftMutation.isPending || updateMutation.isPending
+                  ? "Salvando..."
+                  : contract?.internalStatus === "filling"
+                    ? "Salvar rascunho"
+                    : "Salvar"}
               </Button>
               <Button
                 type="submit"
@@ -2941,8 +2989,16 @@ export function ContractForm({ contractId, isEditing = false, returnTo }: Contra
                 className="w-full bg-primary hover:bg-primary/90 sm:w-auto"
                 disabled={fillingDraftMutation.isPending || previewMutation.isPending || previewUpdateMutation.isPending || updateMutation.isPending || createMutation.isPending || isFinalizingCreate}
               >
-                <FilePenLine className="mr-2 h-4 w-4" />
-                {previewUpdateMutation.isPending ? "Carregando..." : "Editar documento"}
+                {contract?.internalStatus === "filling" ? (
+                  <ArrowRight className="mr-2 h-4 w-4" />
+                ) : (
+                  <FilePenLine className="mr-2 h-4 w-4" />
+                )}
+                {previewUpdateMutation.isPending
+                  ? "Carregando..."
+                  : contract?.internalStatus === "filling"
+                    ? "Avançar"
+                    : "Editar documento"}
               </Button>
             </>
           ) : (

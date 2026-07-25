@@ -75,6 +75,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
+import { TimeInput } from "@/components/ui/time-input"
 import { FilterSearchInput } from "@/components/ui/filter-search-input"
 import { Label } from "@/components/ui/label"
 import { DataPagination } from "@/components/ui/data-pagination"
@@ -120,6 +121,18 @@ function currentCompletionDateTime() {
   const date = toCivilDateKey(now)
   const time = toBrasiliaTimeKey(now)
   return { date, time }
+}
+
+function getDisplayedScheduleDate(schedule: ScheduleRecord) {
+  return schedule.status === "completed" && schedule.completionStartDate
+    ? schedule.completionStartDate
+    : schedule.date
+}
+
+function getDisplayedScheduleTime(schedule: ScheduleRecord) {
+  return schedule.status === "completed" && schedule.completionStartTime
+    ? schedule.completionStartTime
+    : schedule.time
 }
 
 function getScheduleIconTone(_schedule: Pick<ScheduleRecord, "isEmergency">) {
@@ -962,12 +975,12 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
     if (!(canManageAgenda || canManageScheduleStatus || schedule.canAttachNa)) return
 
     const now = currentCompletionDateTime()
-    const defaultDate = schedule.date || now.date
+    const defaultDate = schedule.completionStartDate || now.date || schedule.date
     setCompletionTarget(schedule)
     setCompletionStep("attachments")
-    setCompletionStartDate(schedule.completionStartDate || defaultDate)
+    setCompletionStartDate(defaultDate)
     setCompletionStartTime(schedule.completionStartTime || schedule.time || "")
-    setCompletionEndDate(schedule.completionEndDate || now.date || schedule.completionStartDate || defaultDate)
+    setCompletionEndDate(schedule.completionEndDate || now.date || defaultDate)
     setCompletionEndTime(schedule.completionEndTime || now.time)
     setCompletionFiles([])
   }
@@ -1078,13 +1091,13 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                     value={parseCivilDate(completionStartDate)}
                     onChange={(date) => setCompletionStartDate(date ? toCivilDateKey(date) : "")}
                     placeholder="Selecionar data"
+                    disabled
                   />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="completion-start">Horário de início *</Label>
-                  <Input
+                  <TimeInput
                     id="completion-start"
-                    type="time"
                     value={completionStartTime}
                     onChange={(event) => setCompletionStartTime(event.target.value)}
                   />
@@ -1099,9 +1112,8 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="completion-end">Horário de fim *</Label>
-                  <Input
+                  <TimeInput
                     id="completion-end"
-                    type="time"
                     value={completionEndTime}
                     onChange={(event) => setCompletionEndTime(event.target.value)}
                   />
@@ -1329,11 +1341,11 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                       <TableCell>
                         <div className="flex items-center gap-1 text-muted-foreground">
                           <Calendar className="h-3 w-3" />
-                          <span>{formatCivilDate(schedule.date)}</span>
+                          <span>{formatCivilDate(getDisplayedScheduleDate(schedule))}</span>
                         </div>
                         <div className="flex items-center gap-1 text-sm text-muted-foreground">
                           <Clock className="h-3 w-3" />
-                          <span>{schedule.time}</span>
+                          <span>{getDisplayedScheduleTime(schedule)}</span>
                         </div>
                       </TableCell>
                       <TableCell>{getStatusBadge(schedule.status)}</TableCell>
@@ -1460,11 +1472,11 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                     <div className="space-y-1 text-xs text-muted-foreground">
                       <div className="flex items-center gap-2">
                         <Clock className="h-3 w-3" />
-                        {schedule.time} ({formatConfiguredScheduleDuration(schedule)})
+                        {getDisplayedScheduleTime(schedule)} ({formatConfiguredScheduleDuration(schedule)})
                       </div>
                       <div className="flex items-center gap-2">
                         <Calendar className="h-3 w-3" />
-                        {formatCivilDate(schedule.date)}
+                        {formatCivilDate(getDisplayedScheduleDate(schedule))}
                       </div>
                     </div>
                     {schedule.teams.length > 0 || schedule.additionalEmployees.length > 0 ? (

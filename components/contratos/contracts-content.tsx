@@ -14,6 +14,7 @@ import {
   Eye,
   FileText,
   MoreHorizontal,
+  RefreshCw,
   Search,
 } from "lucide-react"
 
@@ -44,6 +45,7 @@ import { getContractClicksignUrl } from "@/lib/clicksign"
 import {
   getClicksignContractStatusLabel,
   isClosedClicksignContractStatus,
+  isContractExpiredByValidity,
   isOperationallyActiveContract,
   normalizeClicksignContractStatus,
 } from "@/lib/contract-status"
@@ -130,6 +132,7 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
   const searchParams = useSearchParams()
   const mobileFiltersOpen = useMobileFiltersOpen()
   const canEditContracts = useHasAnyPermission(["contracts_edit"])
+  const canCreateContracts = useHasAnyPermission(["contracts_create"])
   const [searchTerm, setSearchTerm] = useUrlQueryState("q")
   const [statusFilterParam, setStatusFilter] = useUrlQueryState("status", "all", { debounceMs: 0 })
   const statusFilter = normalizeContractStatusFilter(statusFilterParam)
@@ -170,15 +173,19 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
       ? withReturnTo(`/contratos/${contract.id}/editar`, currentHref)
       : getContractProfileHref(contract.id)
   )
+  const getContractRenewHref = (contractId: string) => (
+    withReturnTo(`/contratos/novo?renewFrom=${encodeURIComponent(contractId)}`, currentHref)
+  )
   const filteredContracts = useMemo(() => {
     return contracts.filter((contract) => {
       if (statusFilter === "all") return true
       if (statusFilter === "filling") return contract.internalStatus === "filling"
       if (contract.internalStatus === "filling") return false
+      if (statusFilter === "expired") return isContractExpiredByValidity(contract)
       return normalizeClicksignContractStatus(contract.status) === statusFilter
     }).filter((contract) => {
       if (validityFilter === "active") return isOperationallyActiveContract(contract)
-      if (validityFilter === "inactive") return !isOperationallyActiveContract(contract)
+      if (validityFilter === "inactive") return isContractExpiredByValidity(contract)
       return true
     })
   }, [contracts, statusFilter, validityFilter])
@@ -196,6 +203,9 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
   const getStatusBadge = (contract: ContractRecord) => {
     if (contract.internalStatus === "filling") {
       return <Badge className="shrink-0 bg-amber-100 text-amber-700 hover:bg-amber-100">Em preenchimento</Badge>
+    }
+    if (isContractExpiredByValidity(contract)) {
+      return <Badge className="shrink-0 bg-red-100 text-red-700 hover:bg-red-100">Vencido</Badge>
     }
     const normalized = normalizeClicksignContractStatus(contract.status)
     const className = normalized === "closed"
@@ -413,6 +423,14 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
                                 </Link>
                               </DropdownMenuItem>
                             ) : null}
+                            {canCreateContracts && isContractExpiredByValidity(contract) ? (
+                              <DropdownMenuItem asChild>
+                                <Link href={getContractRenewHref(contract.id)}>
+                                  <RefreshCw className="mr-2 h-4 w-4" />
+                                  Renovar
+                                </Link>
+                              </DropdownMenuItem>
+                            ) : null}
                             {canEditContracts && !isContractSigned(contract) ? (
                               <DropdownMenuItem asChild>
                                 <Link href={contract.internalStatus === "filling"
@@ -533,6 +551,14 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
                             >
                               <Edit className="mr-1 h-4 w-4" />
                               Editar
+                            </Link>
+                          </Button>
+                        ) : null}
+                        {canCreateContracts && isContractExpiredByValidity(contract) ? (
+                          <Button variant="outline" size="sm" className="flex-1" asChild>
+                            <Link href={getContractRenewHref(contract.id)}>
+                              <RefreshCw className="mr-1 h-4 w-4" />
+                              Renovar
                             </Link>
                           </Button>
                         ) : null}
