@@ -148,8 +148,16 @@ function isFullDaySchedule(schedule: Pick<AgendaScheduledServiceRow, "duration" 
   return schedule.durationType === "days" || (!schedule.durationType && Number(schedule.duration) > AGENDA_DAY_DURATION_MINUTES)
 }
 
-function scheduleDaySpan(schedule: Pick<AgendaScheduledServiceRow, "duration" | "durationType">) {
+function scheduleDaySpan(schedule: Pick<AgendaScheduledServiceRow, "duration" | "durationValue" | "durationType">) {
   if (!isFullDaySchedule(schedule)) return 1
+
+  if (schedule.durationType === "days") {
+    const configuredDays = Number(schedule.durationValue)
+    if (Number.isFinite(configuredDays) && configuredDays > 0) {
+      return Math.max(1, Math.ceil(configuredDays))
+    }
+  }
+
   return Math.max(1, Math.ceil(Number(schedule.duration || AGENDA_DAY_DURATION_MINUTES) / AGENDA_DAY_DURATION_MINUTES))
 }
 

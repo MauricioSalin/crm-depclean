@@ -418,6 +418,7 @@ export function ContractForm({
   const restoringHistoryRef = useRef(false)
   const draftSnapshotRef = useRef("")
   const recurrenceAutomationTouchedRef = useRef(!isEditing && !isRenewal)
+  const renewalRecurrenceHydratedRef = useRef<string | null>(null)
 
   const initialUnitIds = useMemo(() => {
     const direct = (contract as unknown as { unitIds?: string[] })?.unitIds ?? []
@@ -683,6 +684,7 @@ export function ContractForm({
     )
 
     if (isRenewal) {
+      renewalRecurrenceHydratedRef.current = null
       setSelectedClientId(contract.clientId ?? "")
       setSelectedTemplateId(contract.templateId ?? "")
       setCreateAutomatedSchedules(contract.automationCreateSchedules ?? true)
@@ -694,7 +696,7 @@ export function ContractForm({
       setInstallmentsCountInput("")
       setDueDayInput("")
       setSelectedUnitIds(Array.from(new Set([...directUnitIds, ...serviceUnitIds])))
-      setRecurrenceServiceTypeId(contract.recurrenceServiceTypeId || DEFAULT_RECURRENCE_SERVICE_TYPE_ID)
+      setRecurrenceServiceTypeId(DEFAULT_RECURRENCE_SERVICE_TYPE_ID)
       setServices(initialServiceList)
       setContractValue(0)
       setDownPaymentValue(0)
@@ -831,6 +833,76 @@ export function ContractForm({
     if (!selectedClient?.units?.length) return
     setSelectedUnitIds(selectedClient.units.map((unit) => unit.id))
   }, [isEditing, isRenewal, selectedClient, selectedClientId])
+
+  useEffect(() => {
+    if (!isRenewal || !contract || selectedClientId !== contract.clientId) return
+    if (renewalRecurrenceHydratedRef.current === contract.id) return
+    if (!selectedClient || serviceTypes.length === 0) return
+
+    const recurrenceServiceType = serviceTypes.find(
+      (serviceType) => serviceType.id === DEFAULT_RECURRENCE_SERVICE_TYPE_ID,
+    )
+    if (!recurrenceServiceType) return
+
+    setServices((currentServices) => {
+      const recurrenceServiceIndex = currentServices.findIndex(
+        (service) => service.serviceTypeId === DEFAULT_RECURRENCE_SERVICE_TYPE_ID,
+      )
+      const preservedServices = currentServices.map((service) =>
+        service.isRecurrenceService ? { ...service, isRecurrenceService: false } : service,
+      )
+
+      if (recurrenceServiceIndex >= 0) {
+        return preservedServices.map((service, index) =>
+          index === recurrenceServiceIndex
+            ? {
+                ...service,
+                recurrence: recurrenceForSelectedUnits,
+                isRecurrenceService: true,
+              }
+            : service,
+        )
+      }
+
+      const defaultSelection = normalizeTeamEmployeeSelection({
+        teamIds: [...(recurrenceServiceType.teamIds ?? [])],
+        employeeIds: [...(recurrenceServiceType.employeeIds ?? [])],
+        teams,
+      })
+
+      return [
+        ...preservedServices,
+        {
+          id: `temp-${crypto.randomUUID()}`,
+          serviceTypeId: DEFAULT_RECURRENCE_SERVICE_TYPE_ID,
+          informativeTemplateId: recurrenceServiceType.defaultInformativeTemplateId || "",
+          certificateTemplateId: recurrenceServiceType.defaultCertificateTemplateId || "",
+          autoSendInformative: Boolean(recurrenceServiceType.autoSendInformative),
+          generateCertificateRequest: Boolean(
+            recurrenceServiceType.generateCertificateRequest,
+          ),
+          teamIds: defaultSelection.teamIds,
+          employeeIds: defaultSelection.employeeIds,
+          recurrence: recurrenceForSelectedUnits,
+          duration: Number(recurrenceServiceType.defaultDuration ?? 1),
+          durationType: recurrenceServiceType.durationType || "hours",
+          clauses: recurrenceServiceType.clauses ?? [],
+          isRecurrenceService: true,
+        },
+      ]
+    })
+
+    renewalRecurrenceHydratedRef.current = contract.id
+    recurrenceAutomationTouchedRef.current = true
+  }, [
+    contract,
+    isRenewal,
+    recurrenceForSelectedUnits,
+    selectedClient,
+    selectedClientId,
+    serviceTypes,
+    teams,
+  ])
 
   useEffect(() => {
     if ((isEditing || isRenewal) && !recurrenceAutomationTouchedRef.current) return

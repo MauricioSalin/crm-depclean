@@ -23,7 +23,14 @@ import { Plus, Trash2, Building2, MapPin, Save, Loader2, Users, CalendarClock } 
 import { useRouter } from "next/navigation"
 import { formatCNPJ, formatCPF, formatPhone, isValidCNPJ, isValidCPF, onlyDigits } from "@/lib/masks"
 import { toast } from "sonner"
-import { createClient, deleteClient, getClientById, updateClient, type ClientPayload } from "@/lib/api/clients"
+import {
+  createClient,
+  deleteClient,
+  getClientById,
+  lookupClientCnpj,
+  updateClient,
+  type ClientPayload,
+} from "@/lib/api/clients"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { listClientTypes } from "@/lib/api/settings"
 import { useHasAnyPermission } from "@/hooks/use-permissions"
@@ -178,45 +185,85 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
   const [cnpjLoading, setCnpjLoading] = useState(false)
   const [cnpjError, setCnpjError] = useState("")
   const cnpjLookedUpRef = React.useRef("")
+  const cnpjLookupInFlightRef = React.useRef("")
+  const currentCnpjRef = React.useRef("")
 
   const lookupCNPJ = async (cnpjDigits: string) => {
-    if (cnpjDigits.length !== 14 || cnpjDigits === cnpjLookedUpRef.current) return
-    cnpjLookedUpRef.current = cnpjDigits
+    if (
+      cnpjDigits.length !== 14 ||
+      cnpjDigits === cnpjLookedUpRef.current ||
+      cnpjDigits === cnpjLookupInFlightRef.current
+    ) {
+      return
+    }
+
+    cnpjLookupInFlightRef.current = cnpjDigits
     setCnpjLoading(true)
     setCnpjError("")
+
     try {
-      const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpjDigits}`)
-      if (!res.ok) throw new Error("CNPJ não encontrado")
-      const data = await res.json()
+      const response = await lookupClientCnpj(cnpjDigits)
+      if (currentCnpjRef.current !== cnpjDigits) return
+
+      const data = response.data
+      cnpjLookedUpRef.current = cnpjDigits
       setFormData(prev => ({
         ...prev,
-        companyName: data.razao_social || prev.companyName,
-        phone: data.ddd_telefone_1 ? formatPhone(`${data.ddd_telefone_1}`) : prev.phone,
-        email: data.email && data.email !== "null" ? data.email.toLowerCase() : prev.email,
+        companyName: prev.companyName || data.companyName || data.tradeName,
+        responsibleName: prev.responsibleName || data.responsibleName,
+        phone: prev.phone || (data.phone ? formatPhone(data.phone) : ""),
+        email: prev.email || data.email,
       }))
-      if (data.logradouro && units.length > 0) {
+
+      if (Object.values(data.address).some(Boolean)) {
         setUnits(prev => {
+          if (prev.length === 0) return prev
+
           const updated = [...prev]
+          const existingAddress = updated[0].address ?? {
+            street: "",
+            number: "",
+            complement: "",
+            neighborhood: "",
+            city: "",
+            state: "",
+            zipCode: "",
+          }
+
           updated[0] = {
             ...updated[0],
             address: {
-              ...updated[0].address!,
-              street: data.logradouro || "",
-              number: data.numero || "",
-              complement: data.complemento || "",
-              neighborhood: data.bairro || "",
-              city: data.municipio || "",
-              state: data.uf || "",
-              zipCode: data.cep ? formatCEP(data.cep) : "",
+              street: existingAddress.street || data.address.street,
+              number: existingAddress.number || data.address.number,
+              complement:
+                existingAddress.complement || data.address.complement || "",
+              neighborhood:
+                existingAddress.neighborhood || data.address.neighborhood,
+              city: existingAddress.city || data.address.city,
+              state: existingAddress.state || data.address.state,
+              zipCode:
+                existingAddress.zipCode ||
+                (data.address.zipCode ? formatCEP(data.address.zipCode) : ""),
             },
           }
           return updated
         })
       }
-    } catch {
-      setCnpjError("CNPJ não encontrado")
+    } catch (error) {
+      if (currentCnpjRef.current === cnpjDigits) {
+        cnpjLookedUpRef.current = ""
+        setCnpjError(
+          getApiErrorMessage(
+            error,
+            "Não foi possível consultar o CNPJ. Tente novamente.",
+          ),
+        )
+      }
     } finally {
-      setCnpjLoading(false)
+      if (cnpjLookupInFlightRef.current === cnpjDigits) {
+        cnpjLookupInFlightRef.current = ""
+        setCnpjLoading(false)
+      }
     }
   }
 
@@ -714,12 +761,23 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
                     handleInputChange("cnpj", formatted)
                     setCnpjError("")
                     const digits = formatted.replace(/\D/g, "")
+                    currentCnpjRef.current = digits
+                    if (digits !== cnpjLookedUpRef.current) {
+                      cnpjLookedUpRef.current = ""
+                    }
                     if (digits.length === 14) {
                       if (isValidCNPJ(formatted)) {
-                        lookupCNPJ(digits)
+                        void lookupCNPJ(digits)
                       } else {
                         setCnpjError("Informe um CNPJ válido")
                       }
+                    }
+                  }}
+                  onBlur={() => {
+                    const digits = formData.cnpj.replace(/\D/g, "")
+                    currentCnpjRef.current = digits
+                    if (digits.length === 14 && isValidCNPJ(formData.cnpj)) {
+                      void lookupCNPJ(digits)
                     }
                   }}
                   placeholder="00.000.000/0000-00"

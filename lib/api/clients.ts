@@ -57,6 +57,25 @@ export type ClientRecord = {
   updatedAt: string
 }
 
+export type ClientCnpjLookupRecord = {
+  cnpj: string
+  companyName: string
+  tradeName: string
+  responsibleName: string
+  phone: string
+  email: string
+  status: string
+  address: {
+    street: string
+    number: string
+    complement?: string
+    neighborhood: string
+    city: string
+    state: string
+    zipCode: string
+  }
+}
+
 export type ClientAttachmentRecord = {
   id: string
   clientId: string
@@ -156,6 +175,14 @@ const legacyClientIds: Record<string, string> = {
 
 export function resolveClientId(id: string) {
   return legacyClientIds[id] ?? id
+}
+
+export async function lookupClientCnpj(cnpj: string) {
+  const digits = cnpj.replace(/\D/g, "")
+  const response = await api.get<{ success: true; data: ClientCnpjLookupRecord }>(
+    `/clients/cnpj/${digits}`,
+  )
+  return response.data
 }
 
 export async function listClients(search = "") {
