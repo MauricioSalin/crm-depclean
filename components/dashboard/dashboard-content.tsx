@@ -160,10 +160,10 @@ export function DashboardContent() {
 
         <div className="grid grid-cols-1 gap-3 md:gap-4 lg:grid-cols-2">
           <div className="h-full">
-            <ContractStatusChart {...dashboardParams} />
+            <ContractStatusChart />
           </div>
           <div className="h-full">
-            <ContractRenewalChart {...dashboardParams} />
+            <ContractRenewalChart />
           </div>
         </div>
       </div>

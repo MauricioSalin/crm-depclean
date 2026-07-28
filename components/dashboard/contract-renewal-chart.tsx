@@ -1,7 +1,8 @@
 "use client"
 
+import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { ArrowRight, CalendarClock } from "lucide-react"
+import { ArrowRight, CalendarClock, ChevronDown } from "lucide-react"
 import Link from "next/link"
 import {
   Bar,
@@ -15,12 +16,18 @@ import {
 
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   getDashboardAnalytics,
   type ContractExpirationPoint,
-  type DashboardAnalyticsParams,
 } from "@/lib/api/analytics"
 
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
@@ -37,6 +44,18 @@ const compactCurrencyFormatter = new Intl.NumberFormat("pt-BR", {
 })
 
 type RenewalChartMode = "contracts" | "value"
+const RENEWAL_PERIOD_OPTIONS = [1, 3, 6] as const
+type RenewalPeriod = (typeof RENEWAL_PERIOD_OPTIONS)[number]
+
+function formatRenewalPeriod(months: RenewalPeriod) {
+  return `${months} ${months === 1 ? "mês" : "meses"}`
+}
+
+function formatRenewalDescription(months: RenewalPeriod) {
+  return months === 1
+    ? "Vencimentos no próximo mês"
+    : `Vencimentos nos próximos ${months} meses`
+}
 
 function RenewalBarChart({
   data,
@@ -95,23 +114,58 @@ function RenewalBarChart({
   )
 }
 
-export function ContractRenewalChart(period: DashboardAnalyticsParams = {}) {
+export function ContractRenewalChart() {
+  const [renewalPeriod, setRenewalPeriod] = useState<RenewalPeriod>(6)
   const dashboardQuery = useQuery({
-    queryKey: ["analytics", "dashboard", period],
-    queryFn: () => getDashboardAnalytics(period),
+    queryKey: ["analytics", "dashboard", "contract-widgets"],
+    queryFn: () => getDashboardAnalytics(),
   })
   const isLoading = dashboardQuery.isLoading || (dashboardQuery.isFetching && !dashboardQuery.data)
-  const data = dashboardQuery.data?.data.contractExpirationsData ?? []
+  const allData = dashboardQuery.data?.data.contractExpirationsData ?? []
+  const data = allData.slice(0, renewalPeriod)
   const totalContracts = data.reduce((total, item) => total + item.contracts, 0)
   const totalValue = data.reduce((total, item) => total + item.totalValue, 0)
   const hasData = totalContracts > 0
+  const renewalPeriodPicker = (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className="inline-flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-full bg-primary/10 px-2 text-[10px] font-semibold leading-none text-primary transition-colors hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+          aria-label="Selecionar período das renovações"
+        >
+          <span>{formatRenewalPeriod(renewalPeriod)}</span>
+          <ChevronDown className="h-3 w-3" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="min-w-32">
+        <DropdownMenuRadioGroup
+          value={String(renewalPeriod)}
+          onValueChange={(value) => setRenewalPeriod(Number(value) as RenewalPeriod)}
+        >
+          {RENEWAL_PERIOD_OPTIONS.map((months) => (
+            <DropdownMenuRadioItem
+              key={months}
+              value={String(months)}
+              className="pl-2 data-[state=checked]:bg-accent data-[state=checked]:text-accent-foreground [&>span]:hidden"
+            >
+              {formatRenewalPeriod(months)}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
 
   return (
-    <Card className="flex h-full flex-col p-4 transition-all duration-500 hover:shadow-xl lg:min-h-[360px] lg:max-h-[460px]">
+    <Card className="flex h-full min-w-0 flex-col p-4 transition-all duration-500 hover:shadow-xl lg:min-h-[360px]">
       <div className="mb-3 flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold text-foreground">Renovações de Contratos</h2>
-          <p className="text-xs text-muted-foreground">Vencimentos nos próximos seis meses</p>
+        <div className="min-w-0">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <h2 className="text-lg font-semibold text-foreground">Renovações de Contratos</h2>
+            {renewalPeriodPicker}
+          </div>
+          <p className="text-xs text-muted-foreground">{formatRenewalDescription(renewalPeriod)}</p>
         </div>
         <Link href="/contratos">
           <Button variant="ghost" size="sm" className="text-xs text-foreground hover:text-foreground/80">
@@ -161,7 +215,9 @@ export function ContractRenewalChart(period: DashboardAnalyticsParams = {}) {
             <div className="flex min-h-[220px] flex-1 flex-col items-center justify-center rounded-xl border border-dashed text-center">
               <CalendarClock className="mb-2 h-8 w-8 text-primary/70" />
               <p className="text-sm font-medium">Nenhum vencimento próximo</p>
-              <p className="mt-1 text-xs text-muted-foreground">Não há contratos assinados vencendo nos próximos seis meses.</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Não há contratos assinados vencendo nesse período.
+              </p>
             </div>
           )}
         </Tabs>

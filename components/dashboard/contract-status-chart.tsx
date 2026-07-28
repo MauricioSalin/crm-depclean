@@ -8,7 +8,7 @@ import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import { getDashboardAnalytics, type DashboardAnalyticsParams } from "@/lib/api/analytics"
+import { getDashboardAnalytics } from "@/lib/api/analytics"
 
 const EMPTY_CHART_COLOR = "#DDE7D5"
 
@@ -23,10 +23,10 @@ function formatContractCount(value: number) {
   return `${value} contrato${value === 1 ? "" : "s"}`
 }
 
-export function ContractStatusChart(period: DashboardAnalyticsParams = {}) {
+export function ContractStatusChart() {
   const dashboardQuery = useQuery({
-    queryKey: ["analytics", "dashboard", period],
-    queryFn: () => getDashboardAnalytics(period),
+    queryKey: ["analytics", "dashboard", "contract-widgets"],
+    queryFn: () => getDashboardAnalytics(),
   })
   const isLoading = dashboardQuery.isLoading || (dashboardQuery.isFetching && !dashboardQuery.data)
   const stats = dashboardQuery.data?.data.stats
@@ -53,7 +53,7 @@ export function ContractStatusChart(period: DashboardAnalyticsParams = {}) {
     : [{ name: "Sem dados", value: 1, color: EMPTY_CHART_COLOR, isEmpty: true }]
 
   return (
-    <Card className="flex h-full flex-col p-4 transition-all duration-500 hover:shadow-xl lg:min-h-[360px] lg:max-h-[460px]">
+    <Card className="flex h-full min-w-0 flex-col p-4 transition-all duration-500 hover:shadow-xl lg:min-h-[360px]">
       <div className="mb-4 flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold text-foreground">Contratos por status</h2>
@@ -69,10 +69,10 @@ export function ContractStatusChart(period: DashboardAnalyticsParams = {}) {
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center">
         {isLoading ? (
           <>
-            <div className="relative my-2 h-[190px] w-[190px] animate-pulse rounded-full bg-muted">
+            <div className="relative my-2 aspect-square w-full max-w-[190px] shrink-0 animate-pulse rounded-full bg-muted">
               <div className="absolute inset-12 rounded-full bg-card" />
             </div>
-            <div className="grid w-full grid-cols-2 gap-2">
+            <div className="grid w-full grid-cols-1 gap-2 min-[420px]:grid-cols-2">
               {Array.from({ length: 2 }, (_, index) => (
                 <div key={index} className="rounded-xl border bg-card p-3">
                   <Skeleton className="mb-2 h-3 w-16" />
@@ -83,15 +83,15 @@ export function ContractStatusChart(period: DashboardAnalyticsParams = {}) {
           </>
         ) : (
           <>
-            <div className="relative h-[220px] w-full max-w-[300px]">
+            <div className="relative aspect-square w-full max-w-[220px] shrink-0">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
                     data={chartData}
                     cx="50%"
                     cy="50%"
-                    innerRadius={64}
-                    outerRadius={96}
+                    innerRadius="58%"
+                    outerRadius="86%"
                     dataKey="value"
                     nameKey="name"
                     startAngle={90}
@@ -125,15 +125,15 @@ export function ContractStatusChart(period: DashboardAnalyticsParams = {}) {
               </div>
             </div>
 
-            <div className="grid w-full grid-cols-2 gap-2">
+            <div className="grid w-full grid-cols-1 gap-2 min-[420px]:grid-cols-2">
               {legendData.map((item) => {
                 const percentage = totalContracts > 0 ? Math.round((item.value / totalContracts) * 100) : 0
 
                 return (
                   <div key={item.name} className="rounded-xl border bg-card p-3">
-                    <div className="mb-2 flex items-center gap-2">
-                      <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.color }} />
-                      <span className="text-xs text-muted-foreground">{item.name}</span>
+                    <div className="mb-2 flex min-w-0 items-start gap-2">
+                      <span className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: item.color }} />
+                      <span className="min-w-0 text-xs leading-tight text-muted-foreground">{item.name}</span>
                     </div>
                     <div className="flex items-end justify-between gap-2">
                       <span className="text-xl font-semibold text-foreground">{item.value}</span>
