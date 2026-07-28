@@ -25,8 +25,8 @@ interface AssignmentBadgesProps {
 export function AssignmentBadges({
   teams = [],
   employees = [],
-  emptyLabel = "Não definida",
-  showEmptyIcon = true,
+  emptyLabel = "-",
+  showEmptyIcon = false,
   className,
 }: AssignmentBadgesProps) {
   if (teams.length === 0 && employees.length === 0) {

@@ -451,7 +451,8 @@ export function CertificatesContent({ viewMode, viewToggle, createOpen = false, 
                         <AssignmentBadges
                           teams={record.teams}
                           employees={record.additionalEmployees}
-                          emptyLabel="Sem responsável"
+                          emptyLabel="-"
+                          showEmptyIcon={false}
                           className="justify-center"
                         />
                       </TableCell>

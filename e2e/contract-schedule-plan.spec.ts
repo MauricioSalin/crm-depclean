@@ -277,7 +277,7 @@ test("libera data para linha sem responsável e permite excluí-la do plano", as
   })
 })
 
-test("adiciona uma ocorrência hoje e permite trocar o serviço contratado em qualquer linha", async ({ page }) => {
+test("adiciona uma ocorrência sem data e permite configurá-la antes de salvar", async ({ page }) => {
   const schedulePlanMock = await installSchedulePlanMock(page)
 
   await page.goto(`/contratos/${contractFixture.id}`)
@@ -292,9 +292,21 @@ test("adiciona uma ocorrência hoje e permite trocar o serviço contratado em qu
   await dialog.getByRole("button", { name: "Adicionar novo" }).click()
   const addedRow = dialog.locator('[data-schedule-id^="sched-added-"]')
   await expect(addedRow).toBeVisible()
+  await expect(addedRow.getByRole("button", { name: "Selecionar data" })).toBeVisible()
+  await expect(addedRow.getByText("-", { exact: true })).toBeVisible()
+  await expect(page.getByText("Não há horário disponível hoje para o serviço selecionado.")).toHaveCount(0)
+  await expect(dialog.getByRole("button", { name: "Exportar" })).toBeDisabled()
+  await expect(dialog.getByRole("button", { name: "Salvar agendamentos" })).toBeDisabled()
+
   await addedRow.getByRole("combobox", { name: "Serviço de Limpeza de rede" }).click()
   await page.getByRole("option", { name: "Inspeção preventiva" }).click()
   await expect(addedRow.getByRole("textbox", { name: "Duração de Inspeção preventiva" })).toHaveValue("1")
+
+  await addedRow.getByRole("button", { name: "Selecionar data" }).click()
+  await page.getByRole("button", { name: /29 de julho de 2026/i }).click()
+  await expect(addedRow.getByRole("button", { name: "29/07/2026" })).toBeVisible()
+  await expect(dialog.getByRole("button", { name: "Exportar" })).toBeEnabled()
+  await expect(dialog.getByRole("button", { name: "Salvar agendamentos" })).toBeEnabled()
 
   await dialog.getByRole("button", { name: "Salvar agendamentos" }).click()
   await expect.poll(() => schedulePlanMock.getSavedPayload()).not.toBeNull()
@@ -307,8 +319,8 @@ test("adiciona uma ocorrência hoje e permite trocar o serviço contratado em qu
   })
   expect(savedItems.find((item) => item.id.startsWith("sched-added-"))).toMatchObject({
     contractServiceId: inspectionContractService.id,
-    date: "2026-07-28",
-    time: "09:00",
+    date: "2026-07-29",
+    time: "08:00",
     durationValue: 1,
     durationType: "hours",
   })

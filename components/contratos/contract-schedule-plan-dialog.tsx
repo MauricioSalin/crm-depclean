@@ -259,17 +259,10 @@ export function ContractSchedulePlanDialog({
     const addedItem: ScheduleRecord = {
       ...cloneItems([template])[0],
       id: `${ADDED_PLAN_ITEM_PREFIX}${crypto.randomUUID()}`,
-      date: todayDateKey,
+      date: "",
       time: "",
       status: "scheduled",
     }
-    const times = availableTimes(addedItem, todayDateKey)
-    if (times.length === 0) {
-      toast.error("Não há horário disponível hoje para o serviço selecionado.")
-      return
-    }
-
-    addedItem.time = times[0]
     setItems((current) => [...current, addedItem])
   }
 
@@ -300,6 +293,7 @@ export function ContractSchedulePlanDialog({
   const busy = saveMutation.isPending || exportMutation.isPending
   const isPublished = Boolean(planQuery.data?.data.isPublished)
   const editingDisabled = busy || isPublished
+  const hasIncompleteItems = items.some((item) => !item.date || !item.time)
   const anchorDate = planQuery.data?.data.anchorDate ?? ""
 
   return (
@@ -476,10 +470,14 @@ export function ContractSchedulePlanDialog({
                           </Select>
                         </TableCell>
                         <TableCell className="align-top">
-                          <div className="flex items-start gap-2 text-sm">
-                            <Users className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                            <span>{responsible || "Não definido"}</span>
-                          </div>
+                          {responsible ? (
+                            <div className="flex items-start gap-2 text-sm">
+                              <Users className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                              <span>{responsible}</span>
+                            </div>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">-</span>
+                          )}
                         </TableCell>
                         <TableCell className="align-top text-right">
                           <Button
@@ -512,7 +510,7 @@ export function ContractSchedulePlanDialog({
             type="button"
             variant="outline"
             className="gap-2"
-            disabled={busy || items.length === 0 || planQuery.isLoading}
+            disabled={busy || items.length === 0 || hasIncompleteItems || planQuery.isLoading}
             onClick={() => exportMutation.mutate()}
           >
             {exportMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
@@ -525,7 +523,7 @@ export function ContractSchedulePlanDialog({
             <Button
               type="button"
               className="gap-2"
-              disabled={editingDisabled || items.length === 0 || planQuery.isLoading}
+              disabled={editingDisabled || items.length === 0 || hasIncompleteItems || planQuery.isLoading}
               onClick={() => saveMutation.mutate()}
             >
               {saveMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
