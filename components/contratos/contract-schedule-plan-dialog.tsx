@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { CalendarClock, Clock3, Download, Loader2, MapPin, RotateCcw, Save, Users } from "lucide-react"
+import { CalendarClock, Clock3, Download, Loader2, MapPin, RotateCcw, Save, Trash2, Users } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -150,6 +150,10 @@ export function ContractSchedulePlanDialog({
     setItems((current) => current.map((item) => item.id === id ? { ...item, ...changes } : item))
   }
 
+  const removeItem = (id: string) => {
+    setItems((current) => current.filter((item) => item.id !== id))
+  }
+
   const hasDailyServiceCapacity = (item: ScheduleRecord, date: string) => {
     const dailyLimit = serviceTypeMap.get(item.serviceTypeId)?.dailyScheduleLimit
     if (!dailyLimit) return true
@@ -265,6 +269,7 @@ export function ContractSchedulePlanDialog({
                       <TableHead className="min-w-[220px]">Serviço</TableHead>
                       <TableHead className="min-w-[220px]">Técnico / equipe</TableHead>
                       <TableHead className="min-w-[280px]">Local</TableHead>
+                      <TableHead className="min-w-[120px] text-right">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -366,6 +371,21 @@ export function ContractSchedulePlanDialog({
                             <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
                             <span>{[item.unitName, item.address].filter(Boolean).join(" - ")}</span>
                           </div>
+                        </TableCell>
+                        <TableCell className="align-top text-right">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="gap-2 text-destructive hover:text-destructive"
+                            disabled={editingDisabled || items.length <= 1}
+                            aria-label={`Excluir ${item.serviceTypeName} do plano`}
+                            title={items.length <= 1 ? "O plano deve manter ao menos um agendamento." : undefined}
+                            onClick={() => removeItem(item.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            Excluir
+                          </Button>
                         </TableCell>
                       </TableRow>
                     )

@@ -459,7 +459,7 @@ function hasResourceConflict(
 ) {
   const sourceHasAssignments = source.teamIds.length > 0 || source.employeeIds.length > 0
   const targetHasAssignments = target.teamIds.length > 0 || target.employeeIds.length > 0
-  if (!sourceHasAssignments || !targetHasAssignments) return true
+  if (!sourceHasAssignments || !targetHasAssignments) return false
 
   return hasIntersection(source.teamIds, target.teamIds) || hasIntersection(source.employeeIds, target.employeeIds)
 }
