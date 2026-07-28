@@ -148,7 +148,7 @@ export function ServicesPeriodLineChart({ data }: { data: ServicesByPeriodPoint[
 
   return (
     <ResponsiveContainer width="100%" height="100%">
-      <LineChart data={chartData} margin={{ top: 5, right: 8, left: 0, bottom: 5 }}>
+      <LineChart data={chartData} margin={{ top: 5, right: 40, left: 0, bottom: 5 }}>
         <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
         <XAxis
           dataKey="period"
