@@ -4,6 +4,7 @@ import { useMemo, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { addCivilDaysKey, BRASILIA_TIME_ZONE, minutesFromBrasiliaDate, parseCivilDate, toCivilDateKey } from "@/lib/date-utils"
 
 interface TimelineEvent {
@@ -46,6 +47,20 @@ const POINTER_TOOLTIP_OFFSET = 14
 const POINTER_TOOLTIP_VIEWPORT_MARGIN = 8
 
 const DAY_LABELS_SHORT = ["DOM.", "SEG.", "TER.", "QUA.", "QUI.", "SEX.", "SÁB."]
+const MONTH_LABELS = [
+  "Janeiro",
+  "Fevereiro",
+  "Março",
+  "Abril",
+  "Maio",
+  "Junho",
+  "Julho",
+  "Agosto",
+  "Setembro",
+  "Outubro",
+  "Novembro",
+  "Dezembro",
+] as const
 
 type PositionedTimelineEvent = TimelineEvent & {
   top: number
@@ -167,6 +182,12 @@ export function WeekTimeline({
   onEventClick,
   onSlotClick,
 }: WeekTimelineProps) {
+  const currentDateKey = toCivilDateKey(currentDate)
+  const displayedYear = Number(currentDateKey.slice(0, 4))
+  const displayedMonth = Number(currentDateKey.slice(5, 7)) - 1
+  const [periodSelectorOpen, setPeriodSelectorOpen] = useState(false)
+  const [periodMonth, setPeriodMonth] = useState(displayedMonth)
+  const [periodYear, setPeriodYear] = useState(displayedYear)
   const weekDays = useMemo(() => getWeekDays(currentDate), [currentDate])
   const scrollRef = useRef<HTMLDivElement>(null)
   const pointerTooltipRef = useRef<HTMLDivElement>(null)
@@ -258,6 +279,30 @@ export function WeekTimeline({
     onDateChange(new Date())
   }
 
+  const periodYearOptions = useMemo(
+    () => Array.from({ length: 51 }, (_, index) => displayedYear - 25 + index),
+    [displayedYear],
+  )
+
+  const handlePeriodSelectorOpenChange = (open: boolean) => {
+    if (open) {
+      setPeriodMonth(displayedMonth)
+      setPeriodYear(displayedYear)
+    }
+    setPeriodSelectorOpen(open)
+  }
+
+  const goToSelectedPeriod = () => {
+    const monthStart = parseCivilDate(
+      `${periodYear}-${String(periodMonth + 1).padStart(2, "0")}-01`,
+    )
+    if (!monthStart) return
+
+    onDateChange(monthStart)
+    onDaySelect(monthStart)
+    setPeriodSelectorOpen(false)
+  }
+
   const positionedEventsByDate = useMemo(() => {
     const map: Record<string, TimelineEvent[]> = {}
     for (const ev of events) {
@@ -299,7 +344,60 @@ export function WeekTimeline({
             <span className="sr-only">Próxima semana</span>
             <ChevronRight className="h-5 w-5" />
           </Button>
-          <span className="ml-2 text-base font-semibold capitalize leading-none">{headerLabel}</span>
+          <Popover open={periodSelectorOpen} onOpenChange={handlePeriodSelectorOpenChange}>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                aria-label={`Selecionar mês e ano: ${headerLabel}`}
+                className="ml-2 rounded-md px-2 py-2 text-base font-semibold capitalize leading-none transition-colors hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
+                {headerLabel}
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-72 space-y-4">
+              <div>
+                <p className="text-sm font-semibold">Ir para mês e ano</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  A agenda abrirá na primeira semana do período.
+                </p>
+              </div>
+              <div className="grid grid-cols-[1fr_96px] gap-2">
+                <label className="grid gap-1.5 text-xs font-medium">
+                  Mês
+                  <select
+                    aria-label="Mês"
+                    value={periodMonth}
+                    onChange={(event) => setPeriodMonth(Number(event.target.value))}
+                    className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+                  >
+                    {MONTH_LABELS.map((month, index) => (
+                      <option key={month} value={index}>
+                        {month}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="grid gap-1.5 text-xs font-medium">
+                  Ano
+                  <select
+                    aria-label="Ano"
+                    value={periodYear}
+                    onChange={(event) => setPeriodYear(Number(event.target.value))}
+                    className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+                  >
+                    {periodYearOptions.map((year) => (
+                      <option key={year} value={year}>
+                        {year}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <Button type="button" className="w-full" onClick={goToSelectedPeriod}>
+                Mostrar primeira semana
+              </Button>
+            </PopoverContent>
+          </Popover>
         </div>
         <Button variant="outline" size="sm" className="h-9 rounded-full px-4 text-sm" onClick={goToToday}>
           Hoje
