@@ -1,7 +1,7 @@
 "use client"
 
 import { Suspense, useEffect, useState } from "react"
-import { LayoutGrid, List, Plus } from "lucide-react"
+import { Download, LayoutGrid, List, Plus } from "lucide-react"
 
 import { AgendamentosContent } from "@/components/agendamentos/agendamentos-content"
 import { Header } from "@/components/dashboard/header"
@@ -19,6 +19,7 @@ type AgendamentosPageClientProps = {
 
 export function AgendamentosPageClient({ initialScheduleId }: AgendamentosPageClientProps) {
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [exportDialogOpen, setExportDialogOpen] = useState(false)
   const [viewMode, setViewMode] = useResponsiveDefaultViewMode("table", "cards")
   const [currentUser, setCurrentUser] = useState<ReturnType<typeof getStoredUser>>(null)
   const canManageAgenda = hasAnyPermission(currentUser, ["agenda_manage"])
@@ -58,6 +59,15 @@ export function AgendamentosPageClient({ initialScheduleId }: AgendamentosPageCl
           actions={canManageAgenda ? (
             <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
               <Button
+                type="button"
+                variant="outline"
+                onClick={() => setExportDialogOpen(true)}
+                className="h-9 min-w-0 flex-1 text-sm sm:w-auto sm:flex-none"
+              >
+                <Download className="h-4 shrink-0 sm:mr-2" />
+                <span className="truncate">Exportar</span>
+              </Button>
+              <Button
                 onClick={() => setDialogOpen(true)}
                 className="h-9 min-w-0 flex-1 bg-primary text-sm text-primary-foreground hover:bg-primary/90 sm:w-auto sm:flex-none"
               >
@@ -73,6 +83,8 @@ export function AgendamentosPageClient({ initialScheduleId }: AgendamentosPageCl
             viewToggle={toggle}
             openDialog={canManageAgenda && dialogOpen}
             onDialogChange={setDialogOpen}
+            openExport={canManageAgenda && exportDialogOpen}
+            onExportChange={setExportDialogOpen}
             initialScheduleId={initialScheduleId}
           />
         </Suspense>

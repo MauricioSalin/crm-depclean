@@ -28,6 +28,7 @@ import {
   completeSchedule,
   createSchedule,
   deleteSchedule,
+  exportSchedules,
   getScheduleById,
   listSchedules,
   reactivateSchedule,
@@ -100,6 +101,8 @@ interface AgendamentosContentProps {
   viewToggle?: React.ReactNode
   openImport?: boolean
   onImportChange?: (open: boolean) => void
+  openExport?: boolean
+  onExportChange?: (open: boolean) => void
   initialScheduleId?: string
 }
 
@@ -444,7 +447,17 @@ const SCHEDULE_IMPORT_FIELDS: CsvImportField[] = [
   { key: "notes", label: "Observações" },
 ]
 
-export function AgendamentosContent({ viewMode, openDialog, onDialogChange, viewToggle, openImport = false, onImportChange, initialScheduleId }: AgendamentosContentProps) {
+export function AgendamentosContent({
+  viewMode,
+  openDialog,
+  onDialogChange,
+  viewToggle,
+  openImport = false,
+  onImportChange,
+  openExport = false,
+  onExportChange,
+  initialScheduleId,
+}: AgendamentosContentProps) {
   const router = useRouter()
   const queryClient = useQueryClient()
   const mobileFiltersOpen = useMobileFiltersOpen()
@@ -908,6 +921,31 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
       toast.error(getApiErrorMessage(error, "Não foi possível excluir o agendamento."), {
         id: context?.toastId,
       })
+    },
+  })
+
+  const exportMutation = useMutation({
+    mutationFn: () => exportSchedules({
+      search: searchTerm.trim() || undefined,
+      status: statusFilter === "all" ? undefined : statusFilter,
+      dateFrom: dateRange?.from ? format(dateRange.from, "yyyy-MM-dd") : undefined,
+      dateTo: dateRange?.to ? format(dateRange.to, "yyyy-MM-dd") : undefined,
+    }),
+    onSuccess: (blob) => {
+      const dateKey = format(new Date(), "yyyy-MM-dd")
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `agendamentos-filtrados-${dateKey}.xlsx`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(url)
+      onExportChange?.(false)
+      toast.success("Planilha de agendamentos exportada.")
+    },
+    onError: (error) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível exportar os agendamentos."))
     },
   })
 
@@ -1620,6 +1658,20 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
           />
         ) : null}
       </div>
+
+      <ConfirmActionDialog
+        open={openExport}
+        title="Exportar agendamentos"
+        description="O resultado será gerado de acordo com os filtros aplicados na página."
+        confirmLabel="Exportar"
+        cancelLabel="Cancelar"
+        confirmVariant="default"
+        busy={exportMutation.isPending}
+        onOpenChange={(open) => {
+          if (!exportMutation.isPending) onExportChange?.(open)
+        }}
+        onConfirm={() => exportMutation.mutate()}
+      />
 
       <ConfirmActionDialog
         open={!!pendingDelete}

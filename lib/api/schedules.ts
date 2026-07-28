@@ -121,6 +121,19 @@ export async function listSchedules(params?: {
   return response.data
 }
 
+export async function exportSchedules(params?: {
+  search?: string
+  status?: string
+  dateFrom?: string
+  dateTo?: string
+}) {
+  const response = await api.get<Blob>("/schedules/export", {
+    params,
+    responseType: "blob",
+  })
+  return response.data
+}
+
 export async function getScheduleById(id: string) {
   const response = await api.get<{ success: true; data: ScheduleRecord }>(`/schedules/${id}`)
   return response.data
