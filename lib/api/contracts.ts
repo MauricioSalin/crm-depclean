@@ -181,6 +181,7 @@ export type PublishedContractSchedulePlanRecord = {
 export type ContractSchedulePlanPayload = {
   items: Array<{
     id: string
+    contractServiceId: string
     date: string
     time: string
     durationValue: number

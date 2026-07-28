@@ -4,11 +4,12 @@ import * as React from "react"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { CalendarIcon } from "lucide-react"
-import type { Matcher } from "react-day-picker"
+import { DayButton, type Matcher } from "react-day-picker"
 
 import { Button } from "@/components/ui/button"
-import { Calendar } from "@/components/ui/calendar"
+import { Calendar, CalendarDayButton } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 
 type DatePickerProps = {
@@ -19,6 +20,7 @@ type DatePickerProps = {
   className?: string
   disabled?: boolean
   disabledDates?: Matcher | Matcher[]
+  dateTooltip?: (date: Date) => string | undefined
 }
 
 export function DatePicker({
@@ -29,6 +31,7 @@ export function DatePicker({
   className,
   disabled = false,
   disabledDates,
+  dateTooltip,
 }: DatePickerProps) {
   const [open, setOpen] = React.useState(false)
 
@@ -64,8 +67,37 @@ export function DatePicker({
           disabled={disabledDates}
           showOutsideDays={false}
           locale={ptBR}
+          components={dateTooltip ? {
+            DayButton: (props) => (
+              <DatePickerDayButton
+                {...props}
+                tooltip={dateTooltip(props.day.date)}
+              />
+            ),
+          } : undefined}
         />
       </PopoverContent>
     </Popover>
+  )
+}
+
+function DatePickerDayButton({
+  tooltip,
+  ...props
+}: React.ComponentProps<typeof DayButton> & {
+  tooltip?: string
+}) {
+  const button = <CalendarDayButton {...props} />
+  if (!tooltip) return button
+
+  return (
+    <Tooltip delayDuration={250}>
+      <TooltipTrigger asChild>
+        <span className="block size-full">{button}</span>
+      </TooltipTrigger>
+      <TooltipContent side="top" sideOffset={6}>
+        {tooltip}
+      </TooltipContent>
+    </Tooltip>
   )
 }

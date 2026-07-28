@@ -49,6 +49,9 @@ import { formatConfiguredScheduleDuration, minutesToScheduleDuration, scheduleDu
 import {
   checkScheduleAvailability,
   formatAvailabilitySlot,
+  formatScheduleConflictConfirmation,
+  getScheduleConflictResourceNames,
+  hasDailyServiceCapacity,
   isScheduleConflictErrorMessage,
 } from "@/lib/schedule-availability"
 import { canStartSchedule } from "@/lib/schedule-permissions"
@@ -468,6 +471,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
     scheduleId?: string
     requested: { date: string; time: string }
     suggested?: { date: string; time: string }
+    conflictingResources: string[]
   } | null>(null)
   const scheduleDialogResetTimeoutRef = useRef<number | null>(null)
   const [currentUser, setCurrentUser] = useState<ReturnType<typeof getStoredUser>>(null)
@@ -694,6 +698,13 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
       const message = getApiErrorMessage(error, "Não foi possível salvar o agendamento.")
       if (!variables.allowConflict && isScheduleConflictErrorMessage(message)) {
         toast.dismiss(context?.toastId)
+        const availability = checkScheduleAvailability({
+          schedules,
+          teams,
+          formData: variables.formData,
+          ignoreScheduleId: variables.scheduleId,
+          mode: "manual",
+        })
         setAvailabilitySuggestion({
           formData: variables.formData,
           scheduleId: variables.scheduleId,
@@ -701,6 +712,11 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
             date: variables.formData.date,
             time: variables.formData.time,
           },
+          suggested: availability.suggested,
+          conflictingResources: getScheduleConflictResourceNames(availability.conflict, {
+            teams,
+            employees,
+          }),
         })
         return
       }
@@ -932,6 +948,20 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
       return
     }
 
+    if (!hasDailyServiceCapacity({
+      schedules,
+      ignoreScheduleId: scheduleId,
+      serviceTypeIds: formData.serviceTypeIds,
+      serviceTypes: services,
+      date: formData.date,
+      time: formData.time,
+      durationMinutes: scheduleDurationToMinutes(formData.duration, formData.durationType),
+      durationType: formData.durationType,
+    })) {
+      toast.error("O limite diário deste serviço foi atingido na data selecionada.")
+      return
+    }
+
     const availability = checkScheduleAvailability({
       schedules,
       teams,
@@ -949,6 +979,10 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
           time: availability.requested.time,
         },
         suggested: availability.suggested,
+        conflictingResources: getScheduleConflictResourceNames(availability.conflict, {
+          teams,
+          employees,
+        }),
       })
       return
     }
@@ -1035,6 +1069,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
         schedule={selectedSchedule}
         schedules={schedules}
         teams={teams}
+        serviceTypes={services}
         isStartingAttendance={startMutation.isPending}
         canManage={canManageAgenda}
         canStart={selectedSchedule ? canStartSchedule(selectedSchedule, currentUser, teams) : false}
@@ -1610,9 +1645,11 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
       >
         <DialogContent className="max-sm:left-0 max-sm:top-3 max-sm:h-[calc(100dvh-1.5rem)] max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:overflow-y-auto max-sm:rounded-none max-sm:border-0 sm:max-w-md">
           <DialogHeader className="min-w-0 pr-6">
-            <DialogTitle>Horário indisponível</DialogTitle>
+            <DialogTitle>Conflito de horário</DialogTitle>
             <DialogDescription>
-              Já existe um agendamento para a equipe ou funcionário nesse intervalo. Você pode usar a sugestão ou manter o horário solicitado conscientemente.
+              {availabilitySuggestion
+                ? formatScheduleConflictConfirmation(availabilitySuggestion.conflictingResources)
+                : "O técnico ou a equipe selecionada terá um conflito de horário. Deseja continuar?"}
             </DialogDescription>
           </DialogHeader>
           {availabilitySuggestion ? (
@@ -1633,12 +1670,10 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
           ) : null}
           <DialogFooter className="gap-2 sm:gap-2">
             <Button type="button" variant="outline" onClick={() => setAvailabilitySuggestion(null)}>
-              Voltar
+              Cancelar
             </Button>
             <Button
               type="button"
-              variant="outline"
-              className="border-amber-300 text-amber-800 hover:bg-amber-50 hover:text-amber-900"
               onClick={() => {
                 if (!availabilitySuggestion) return
                 closeScheduleDialog()
@@ -1650,10 +1685,11 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                 setAvailabilitySuggestion(null)
               }}
             >
-              Continuar mesmo assim
+              Continuar
             </Button>
             {availabilitySuggestion?.suggested ? <Button
               type="button"
+              variant="outline"
               onClick={() => {
                 if (!availabilitySuggestion) return
                 closeScheduleDialog()

@@ -24,6 +24,11 @@ type AvailabilityResult = {
     date: string
     time: string
   }
+  conflict?: {
+    reason: "resource" | "lunch" | "outside_workday" | "full_day_start"
+    teamIds: string[]
+    employeeIds: string[]
+  }
 }
 
 type AvailabilityMode = "manual" | "automation"
@@ -112,13 +117,15 @@ export function checkScheduleAvailability(params: {
     requestedStart < LUNCH_END_MINUTES &&
     requestedEnd > LUNCH_START_MINUTES
   const fullDayBadStart = respectsBusinessHours && isFullDay && requestedStart !== WORKDAY_START_MINUTES
-  const hasConflict = conflicts.some((schedule) =>
+  const overlappingConflicts = conflicts.filter((schedule) =>
     requestedBlocks.some((block) =>
       schedule.date === block.date &&
       block.startMinutes < schedule.endMinutes &&
       block.endMinutes > schedule.startMinutes,
     ),
-  ) || lunchConflict || outsideWorkday || fullDayBadStart
+  )
+  const hasResourceOverlap = overlappingConflicts.length > 0
+  const hasConflict = hasResourceOverlap || lunchConflict || outsideWorkday || fullDayBadStart
 
   if (!hasConflict) {
     return { available: true, requested }
@@ -139,7 +146,123 @@ export function checkScheduleAvailability(params: {
     available: false,
     requested,
     suggested,
+    conflict: {
+      reason: hasResourceOverlap
+        ? "resource"
+        : lunchConflict
+          ? "lunch"
+          : outsideWorkday
+            ? "outside_workday"
+            : "full_day_start",
+      teamIds: hasResourceOverlap
+        ? unique(overlappingConflicts.flatMap((item) => intersection(resource.teamIds, item.resource.teamIds)))
+        : [],
+      employeeIds: hasResourceOverlap
+        ? unique(overlappingConflicts.flatMap((item) => intersection(resource.employeeIds, item.resource.employeeIds)))
+        : [],
+    },
   }
+}
+
+export function getScheduleConflictResourceNames(
+  conflict: AvailabilityResult["conflict"],
+  catalogs: {
+    teams: Array<{ id: string; name: string }>
+    employees: Array<{ id: string; name: string }>
+  },
+) {
+  if (!conflict || conflict.reason !== "resource") return []
+
+  const teamNames = conflict.teamIds
+    .map((id) => catalogs.teams.find((team) => team.id === id)?.name)
+    .filter((name): name is string => Boolean(name))
+  const employeeNames = conflict.employeeIds
+    .map((id) => catalogs.employees.find((employee) => employee.id === id)?.name)
+    .filter((name): name is string => Boolean(name))
+
+  return unique([...employeeNames, ...teamNames])
+}
+
+export function formatScheduleConflictConfirmation(resources: string[]) {
+  if (resources.length === 0) {
+    return "O técnico ou a equipe selecionada terá um conflito de horário. Deseja continuar?"
+  }
+
+  const formatted = resources.length === 1
+    ? resources[0]
+    : `${resources.slice(0, -1).join(", ")} e ${resources[resources.length - 1]}`
+
+  return resources.length === 1
+    ? `${formatted} terá um conflito de horário. Deseja continuar?`
+    : `${formatted} terão conflito de horário. Deseja continuar?`
+}
+
+export function hasScheduleDailyServiceCapacity(params: {
+  schedules: ScheduleRecord[]
+  schedule: ScheduleRecord
+  serviceTypes: Array<{ id: string; dailyScheduleLimit?: number | null }>
+  date: string
+}) {
+  return hasDailyServiceCapacity({
+    schedules: params.schedules,
+    ignoreScheduleId: params.schedule.id,
+    serviceTypeIds: params.schedule.serviceTypeIds?.length
+      ? params.schedule.serviceTypeIds
+      : [params.schedule.serviceTypeId],
+    serviceTypes: params.serviceTypes,
+    date: params.date,
+    time: params.schedule.time || "08:00",
+    durationMinutes: getScheduleDurationMinutes(params.schedule),
+    durationType: params.schedule.durationType,
+  })
+}
+
+export function hasDailyServiceCapacity(params: {
+  schedules: ScheduleRecord[]
+  ignoreScheduleId?: string
+  serviceTypeIds: string[]
+  serviceTypes: Array<{ id: string; dailyScheduleLimit?: number | null }>
+  date: string
+  time: string
+  durationMinutes: number
+  durationType?: ScheduleDurationType
+}) {
+  const serviceTypeIds = unique(params.serviceTypeIds)
+  if (serviceTypeIds.length === 0) return true
+
+  const candidateDates = new Set(buildScheduleBlocks({
+    date: params.date,
+    time: params.time || "08:00",
+    durationMinutes: params.durationMinutes,
+    durationType: params.durationType,
+    mode: "manual",
+  }).map((block) => block.date))
+
+  return serviceTypeIds.every((serviceTypeId) => {
+    const configuredLimit = params.serviceTypes.find((service) => service.id === serviceTypeId)?.dailyScheduleLimit
+    const dailyLimit = Number(configuredLimit)
+    if (!Number.isInteger(dailyLimit) || dailyLimit < 1) return true
+
+    return [...candidateDates].every((candidateDate) => {
+      const usage = params.schedules.filter((schedule) => {
+        if (schedule.id === params.ignoreScheduleId || ["cancelled", "completed"].includes(schedule.status)) return false
+        const scheduleServiceIds = schedule.serviceTypeIds?.length
+          ? schedule.serviceTypeIds
+          : [schedule.serviceTypeId]
+        if (!scheduleServiceIds.includes(serviceTypeId)) return false
+
+        return buildScheduleBlocks({
+          date: schedule.date,
+          time: schedule.time || "08:00",
+          durationMinutes: getScheduleDurationMinutes(schedule),
+          durationType: schedule.durationType,
+          mode: "manual",
+        }).some((block) => block.date === candidateDate)
+      }).length
+
+      return usage < dailyLimit
+    })
+  })
 }
 
 export function formatAvailabilitySlot(date: string, time: string) {
@@ -468,6 +591,12 @@ function hasIntersection(source: string[], target: string[]) {
   if (source.length === 0 || target.length === 0) return false
   const set = new Set(source)
   return target.some((item) => set.has(item))
+}
+
+function intersection(source: string[], target: string[]) {
+  if (source.length === 0 || target.length === 0) return []
+  const targetSet = new Set(target)
+  return source.filter((item) => targetSet.has(item))
 }
 
 function unique(values: string[]) {

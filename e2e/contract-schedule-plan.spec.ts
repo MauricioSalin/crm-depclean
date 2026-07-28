@@ -11,6 +11,23 @@ import { installAuthenticatedSession } from "./support/session"
 
 const FIXED_NOW = new Date("2026-07-28T12:00:00.000Z")
 const API_TIMESTAMP = FIXED_NOW.toISOString()
+const inspectionService = {
+  ...serviceFixture,
+  id: "service-inspection",
+  name: "Inspeção preventiva",
+  defaultDuration: 1,
+  durationType: "hours",
+  defaultRecurrence: "quarterly",
+  dailyScheduleLimit: null,
+}
+const inspectionContractService = {
+  ...contractFixture.services[0],
+  id: "contract-service-inspection",
+  serviceTypeId: inspectionService.id,
+  recurrence: "quarterly",
+  duration: 1,
+  durationType: "hours" as const,
+}
 
 const planItems = [
   {
@@ -27,9 +44,14 @@ const planItems = [
     ...scheduleFixture,
     id: "schedule-plan-inspection",
     contractId: contractFixture.id,
+    contractServiceId: inspectionContractService.id,
+    contractServiceIds: [inspectionContractService.id],
+    serviceTypeId: inspectionService.id,
+    serviceTypeIds: [inspectionService.id],
     serviceTypeName: "Inspeção preventiva",
-    teams: [],
-    additionalEmployees: [],
+    duration: 60,
+    durationValue: 1,
+    durationType: "hours",
     date: "2026-09-14",
     time: "08:00",
   },
@@ -46,6 +68,30 @@ const occupiedSchedule = {
   additionalEmployees: [],
   date: "2026-08-13",
   time: "08:00",
+}
+
+const limitSchedule = {
+  ...scheduleFixture,
+  id: "schedule-service-limit",
+  contractId: "contract-limit",
+  teams: [],
+  additionalEmployees: [],
+  date: "2026-08-12",
+  time: "08:00",
+}
+
+const resourceConflictSchedule = {
+  ...scheduleFixture,
+  id: "schedule-resource-conflict",
+  contractId: "contract-resource-conflict",
+  serviceTypeId: "service-other",
+  serviceTypeIds: ["service-other"],
+  serviceTypeName: "Outro serviço",
+  date: "2026-09-15",
+  time: "08:00",
+  duration: 540,
+  durationValue: 9,
+  durationType: "hours",
 }
 
 function success(data: unknown) {
@@ -72,6 +118,13 @@ async function installSchedulePlanMock(page: Page) {
     signedAt: "2026-07-28",
     automationCreateSchedules: true,
     automationSchedulePlanSavedAt: API_TIMESTAMP,
+    services: [
+      {
+        ...contractFixture.services[0],
+        serviceTypeId: serviceFixture.id,
+      },
+      inspectionContractService,
+    ],
     clicksign: {
       envelopeId: "envelope-e2e",
       documentKey: "document-e2e",
@@ -82,14 +135,34 @@ async function installSchedulePlanMock(page: Page) {
       signers: [],
     },
   }
-  let savedPayload: { items: Array<{ id: string; date: string; time: string }> } | null = null
+  let savedPayload: {
+    items: Array<{
+      id: string
+      contractServiceId: string
+      date: string
+      time: string
+      durationValue: number
+      durationType: string
+    }>
+  } | null = null
 
   await page.route("**/api/v1/contracts/contract-e2e/schedule-plan", async (route) => {
     if (route.request().method() === "PATCH") {
       savedPayload = route.request().postDataJSON()
       const savedItems = savedPayload!.items.map((payloadItem) => {
-        const source = planItems.find((item) => item.id === payloadItem.id)!
-        return { ...source, date: payloadItem.date, time: payloadItem.time }
+        const source = planItems.find((item) => item.id === payloadItem.id) ??
+          planItems.find((item) => item.contractServiceId === payloadItem.contractServiceId) ??
+          planItems[0]
+        return {
+          ...source,
+          id: payloadItem.id,
+          contractServiceId: payloadItem.contractServiceId,
+          contractServiceIds: [payloadItem.contractServiceId],
+          date: payloadItem.date,
+          time: payloadItem.time,
+          durationValue: payloadItem.durationValue,
+          durationType: payloadItem.durationType,
+        }
       })
       await fulfill(route, {
         items: savedItems,
@@ -133,7 +206,7 @@ async function installSchedulePlanMock(page: Page) {
       await route.fallback()
       return
     }
-    await fulfill(route, [occupiedSchedule])
+    await fulfill(route, [occupiedSchedule, limitSchedule, resourceConflictSchedule])
   })
 
   await page.route("**/api/v1/services**", async (route) => {
@@ -142,7 +215,10 @@ async function installSchedulePlanMock(page: Page) {
       await route.fallback()
       return
     }
-    await fulfill(route, [{ ...serviceFixture, name: "Limpeza de rede", dailyScheduleLimit: 1 }])
+    await fulfill(route, [
+      { ...serviceFixture, name: "Limpeza de rede", dailyScheduleLimit: 1 },
+      inspectionService,
+    ])
   })
 
   return {
@@ -163,26 +239,77 @@ test("libera data para linha sem responsável e permite excluí-la do plano", as
   await page.getByRole("button", { name: "Agendamentos", exact: true }).click()
 
   const dialog = page.getByRole("dialog", { name: "Agendamentos previstos" })
-  const networkRow = dialog.getByRole("row").filter({ hasText: "Limpeza de rede" })
+  await expect(dialog.getByRole("columnheader", { name: "Local" })).toHaveCount(0)
+  const networkRow = dialog.locator('[data-schedule-id="schedule-plan-network"]')
   await networkRow.getByRole("button", { name: "14/08/2026" }).click()
+
+  const augustTwelfth = page.getByRole("button", { name: /12 de agosto de 2026/i })
+  await augustTwelfth.locator("..").hover()
+  await expect(page.getByRole("tooltip")).toHaveText("Limite atingido")
 
   const augustThirteenth = page.getByRole("button", { name: /13 de agosto de 2026/i })
   await expect(augustThirteenth).toBeEnabled()
   await augustThirteenth.click()
   await expect(networkRow.getByRole("button", { name: "13/08/2026" })).toBeVisible()
 
-  const inspectionRow = dialog.getByRole("row").filter({ hasText: "Inspeção preventiva" })
-  await inspectionRow.getByRole("button", { name: "Excluir Inspeção preventiva do plano" }).click()
+  const inspectionRow = dialog.locator('[data-schedule-id="schedule-plan-inspection"]')
+  await inspectionRow.getByRole("button", { name: "14/09/2026" }).click()
+  const septemberFifteenth = page.getByRole("button", { name: /15 de setembro de 2026/i })
+  await septemberFifteenth.locator("..").hover()
+  await expect(page.getByRole("tooltip")).toHaveText("Horário indisponível")
+  await page.keyboard.press("Escape")
+
+  const deleteInspectionButton = inspectionRow.getByRole("button", { name: "Excluir Inspeção preventiva do plano" })
+  await expect(deleteInspectionButton).toHaveText("")
+  await deleteInspectionButton.click()
   await expect(inspectionRow).toHaveCount(0)
 
   await dialog.getByRole("button", { name: "Salvar agendamentos" }).click()
   await expect.poll(() => schedulePlanMock.getSavedPayload()).toEqual({
     items: [{
       id: "schedule-plan-network",
+      contractServiceId: "contract-service-e2e",
       date: "2026-08-13",
       time: "08:00",
       durationValue: 120,
       durationType: "minutes",
     }],
+  })
+})
+
+test("adiciona uma ocorrência hoje e permite trocar o serviço contratado em qualquer linha", async ({ page }) => {
+  const schedulePlanMock = await installSchedulePlanMock(page)
+
+  await page.goto(`/contratos/${contractFixture.id}`)
+  await page.getByRole("button", { name: "Agendamentos", exact: true }).click()
+
+  const dialog = page.getByRole("dialog", { name: "Agendamentos previstos" })
+  const networkRow = dialog.locator('[data-schedule-id="schedule-plan-network"]')
+  await networkRow.getByRole("combobox", { name: "Serviço de Limpeza de rede" }).click()
+  await page.getByRole("option", { name: "Inspeção preventiva" }).click()
+  await expect(networkRow.getByRole("combobox", { name: "Serviço de Inspeção preventiva" })).toBeVisible()
+
+  await dialog.getByRole("button", { name: "Adicionar novo" }).click()
+  const addedRow = dialog.locator('[data-schedule-id^="sched-added-"]')
+  await expect(addedRow).toBeVisible()
+  await addedRow.getByRole("combobox", { name: "Serviço de Limpeza de rede" }).click()
+  await page.getByRole("option", { name: "Inspeção preventiva" }).click()
+  await expect(addedRow.getByRole("textbox", { name: "Duração de Inspeção preventiva" })).toHaveValue("1")
+
+  await dialog.getByRole("button", { name: "Salvar agendamentos" }).click()
+  await expect.poll(() => schedulePlanMock.getSavedPayload()).not.toBeNull()
+
+  const savedItems = schedulePlanMock.getSavedPayload()!.items
+  expect(savedItems.find((item) => item.id === "schedule-plan-network")).toMatchObject({
+    contractServiceId: inspectionContractService.id,
+    durationValue: 1,
+    durationType: "hours",
+  })
+  expect(savedItems.find((item) => item.id.startsWith("sched-added-"))).toMatchObject({
+    contractServiceId: inspectionContractService.id,
+    date: "2026-07-28",
+    time: "09:00",
+    durationValue: 1,
+    durationType: "hours",
   })
 })

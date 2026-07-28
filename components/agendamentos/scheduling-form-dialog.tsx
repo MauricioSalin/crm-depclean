@@ -664,6 +664,7 @@ export function SchedulingFormDialog({
                 <Button
                   variant="outline"
                   role="combobox"
+                  aria-label="Buscar e adicionar equipes"
                   className="w-full justify-between font-normal"
                 >
                   <span className="text-muted-foreground">Buscar e adicionar equipes...</span>
@@ -746,6 +747,7 @@ export function SchedulingFormDialog({
                 <Button
                   variant="outline"
                   role="combobox"
+                  aria-label="Buscar e adicionar funcionários"
                   className="w-full justify-between font-normal"
                 >
                   <span className="text-muted-foreground">Buscar e adicionar funcionários...</span>

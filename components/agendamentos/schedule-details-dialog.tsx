@@ -15,12 +15,16 @@ import { Label } from "@/components/ui/label"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { getScheduleRescheduleOptions, rescheduleSchedule, type ScheduleRecord } from "@/lib/api/schedules"
+import type { ServiceRecord } from "@/lib/api/services"
 import type { TeamRecord } from "@/lib/api/teams"
 import { formatCivilDate, parseCivilDate, toCivilDateKey } from "@/lib/date-utils"
 import {
   checkScheduleAvailability,
   formatAvailabilitySlot,
+  formatScheduleConflictConfirmation,
   getAvailableRescheduleTimes,
+  getScheduleConflictResourceNames,
+  hasScheduleDailyServiceCapacity,
   isScheduleConflictErrorMessage,
 } from "@/lib/schedule-availability"
 import { formatConfiguredScheduleDuration } from "@/lib/schedule-duration"
@@ -32,6 +36,7 @@ interface ScheduleDetailsDialogProps {
   schedule: ScheduleRecord | null
   schedules?: ScheduleRecord[]
   teams?: TeamRecord[]
+  serviceTypes?: ServiceRecord[]
   onStartAttendance: (schedule: ScheduleRecord) => Promise<void> | void
   isStartingAttendance?: boolean
   canManage?: boolean
@@ -70,6 +75,7 @@ export function ScheduleDetailsDialog({
   schedule,
   schedules = [],
   teams = [],
+  serviceTypes = [],
   onStartAttendance,
   isStartingAttendance = false,
   canManage = true,
@@ -86,6 +92,7 @@ export function ScheduleDetailsDialog({
   const [rescheduleConflict, setRescheduleConflict] = useState<{
     requested: { date: string; time: string }
     suggested?: { date: string; time: string }
+    conflictingResources: string[]
   } | null>(null)
   const canStartAction = canStart ?? (canManage && !schedule?.isClientDelinquent)
   const canRescheduleAction = canReschedule ?? canManage
@@ -120,6 +127,30 @@ export function ScheduleDetailsDialog({
       }),
     [customDate, schedule, schedules, teams],
   )
+
+  const getDateUnavailabilityReason = (date: Date) => {
+    const dateKey = toCivilDateKey(date)
+    if (dateKey < toCivilDateKey(new Date())) return "Data anterior ao dia atual"
+    if (!schedule) return undefined
+    if (!hasScheduleDailyServiceCapacity({
+      schedules,
+      schedule,
+      serviceTypes,
+      date: dateKey,
+    })) {
+      return "Limite atingido"
+    }
+
+    return getAvailableRescheduleTimes({
+      schedules,
+      teams,
+      schedule,
+      date: dateKey,
+      mode: "manual",
+    }).length === 0
+      ? "Horário indisponível"
+      : undefined
+  }
 
   useEffect(() => {
     if (!open || mode !== "reschedule" || !schedule || !customDate) return
@@ -157,6 +188,7 @@ export function ScheduleDetailsDialog({
             date: variables.scheduledDate,
             time: variables.scheduledTime || schedule?.time || "08:00",
           },
+          conflictingResources: [],
         })
         return
       }
@@ -208,6 +240,16 @@ export function ScheduleDetailsDialog({
       return
     }
     const scheduledTime = time || schedule.time || "08:00"
+    if (!hasScheduleDailyServiceCapacity({
+      schedules,
+      schedule,
+      serviceTypes,
+      date,
+    })) {
+      toast.error("O limite diário deste serviço foi atingido na data selecionada.")
+      return
+    }
+
     if (validateAvailability && !allowConflict) {
       const durationType = schedule.durationType ?? "hours"
       const duration = Number(schedule.durationValue) > 0
@@ -232,6 +274,10 @@ export function ScheduleDetailsDialog({
         setRescheduleConflict({
           requested: { date, time: scheduledTime },
           suggested: availability.suggested,
+          conflictingResources: getScheduleConflictResourceNames(availability.conflict, {
+            teams: schedule.teams,
+            employees: schedule.additionalEmployees,
+          }),
         })
         return
       }
@@ -358,6 +404,7 @@ export function ScheduleDetailsDialog({
                         className="rounded-full"
                         disabled={rescheduleMutation.isPending}
                         disabledDates={(date) => toCivilDateKey(date) < toCivilDateKey(new Date())}
+                        dateTooltip={getDateUnavailabilityReason}
                       />
                     </div>
                     <div className="space-y-2">
@@ -385,9 +432,12 @@ export function ScheduleDetailsDialog({
                       <div className="flex items-start gap-2">
                         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
                         <div>
-                          <p className="font-semibold">Horário indisponível</p>
+                          <p className="font-semibold">Conflito de horário</p>
                           <p className="mt-1 text-amber-900/80">
-                            Já existe um atendimento para a equipe ou funcionário em {formatAvailabilitySlot(rescheduleConflict.requested.date, rescheduleConflict.requested.time)}.
+                            {formatScheduleConflictConfirmation(rescheduleConflict.conflictingResources)}
+                          </p>
+                          <p className="mt-1 text-amber-900/80">
+                            Horário solicitado: {formatAvailabilitySlot(rescheduleConflict.requested.date, rescheduleConflict.requested.time)}.
                           </p>
                         </div>
                       </div>
@@ -400,7 +450,13 @@ export function ScheduleDetailsDialog({
                         <Button
                           type="button"
                           variant="outline"
-                          className="border-amber-300 bg-white text-amber-900 hover:bg-amber-100"
+                          disabled={rescheduleMutation.isPending}
+                          onClick={() => setRescheduleConflict(null)}
+                        >
+                          Cancelar
+                        </Button>
+                        <Button
+                          type="button"
                           disabled={rescheduleMutation.isPending}
                           onClick={() => submitReschedule(
                             rescheduleConflict.requested.date,
@@ -409,11 +465,12 @@ export function ScheduleDetailsDialog({
                             true,
                           )}
                         >
-                          Continuar mesmo assim
+                          Continuar
                         </Button>
                         {rescheduleConflict.suggested ? (
                           <Button
                             type="button"
+                            variant="outline"
                             disabled={rescheduleMutation.isPending}
                             onClick={() => submitReschedule(
                               rescheduleConflict.suggested!.date,
