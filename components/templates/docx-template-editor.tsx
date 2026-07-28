@@ -903,7 +903,7 @@ function getNativeToolbarTooltip(target: EventTarget | null, host: HTMLElement |
 async function serializeDocumentModel(document: unknown) {
   if (!document) return null
 
-  const module = (await import("@eigenpal/docx-js-editor")) as {
+  const editorModule = (await import("@eigenpal/docx-js-editor")) as {
     DocumentAgent: {
       fromDocument: (document: never) => {
         toBuffer: () => Promise<ArrayBuffer>
@@ -911,7 +911,7 @@ async function serializeDocumentModel(document: unknown) {
     }
   }
 
-  return module.DocumentAgent.fromDocument(document as never).toBuffer()
+  return editorModule.DocumentAgent.fromDocument(document as never).toBuffer()
 }
 
 async function waitForEditorMutationFlush() {
@@ -924,8 +924,8 @@ function preloadDocxEditorFonts() {
   if (typeof document === "undefined") return Promise.resolve()
 
   preloadedDocxEditorFonts ??= import("@eigenpal/docx-js-editor")
-    .then((module) => {
-      const loadFonts = (module as { loadFonts?: (fonts: string[]) => Promise<void> }).loadFonts
+    .then((editorModule) => {
+      const loadFonts = (editorModule as { loadFonts?: (fonts: string[]) => Promise<void> }).loadFonts
       return loadFonts?.(DOCX_EDITOR_FONT_NAMES)
     })
     .then(() => undefined)
@@ -939,7 +939,7 @@ async function renderDocxEditor(
   container: HTMLElement,
   options: DocxEditorOptions = {}
 ) {
-  const module = (await import("@eigenpal/docx-js-editor")) as { DocxEditor: unknown }
+  const editorModule = (await import("@eigenpal/docx-js-editor")) as { DocxEditor: unknown }
   const root = createRoot(container)
   const editorRef = createRef<DocxEditorHandleLike>()
 
@@ -977,7 +977,7 @@ async function renderDocxEditor(
     }
 
     root.render(
-      createElement(module.DocxEditor as never, {
+        createElement(editorModule.DocxEditor as never, {
         ...options,
         documentBuffer: input,
         onChange: (document: unknown) => {

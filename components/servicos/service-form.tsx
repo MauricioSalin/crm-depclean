@@ -547,7 +547,12 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
             <Label>Equipes Responsáveis</Label>
             <Popover open={teamsPopoverOpen} onOpenChange={setTeamsPopoverOpen}>
               <PopoverTrigger asChild>
-                <Button variant="outline" role="combobox" className="w-full justify-between font-normal md:max-w-[320px]">
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-label="Selecionar equipes responsáveis"
+                  className="w-full justify-between font-normal md:max-w-[320px]"
+                >
                   <span className="min-w-0 truncate text-muted-foreground">Buscar e adicionar equipes...</span>
                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
@@ -603,7 +608,12 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
             <Label>Funcionários Avulsos</Label>
             <Popover open={employeesPopoverOpen} onOpenChange={setEmployeesPopoverOpen}>
               <PopoverTrigger asChild>
-                <Button variant="outline" role="combobox" className="w-full justify-between font-normal md:max-w-[320px]">
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-label="Selecionar funcionários avulsos"
+                  className="w-full justify-between font-normal md:max-w-[320px]"
+                >
                   <span className="min-w-0 truncate text-muted-foreground">Buscar e adicionar funcionários...</span>
                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>

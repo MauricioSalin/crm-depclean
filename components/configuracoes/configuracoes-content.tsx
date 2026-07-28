@@ -1121,8 +1121,8 @@ export function ConfiguracoesContent() {
   }, [getModulePermissions])
 
   const getModuleSelectionState = (moduleKey: string) => {
-    const module = PERMISSION_MODULES.find((item) => item.key === moduleKey)
-    const modulePermissions = module ? getModulePermissions(module) : []
+    const permissionModule = PERMISSION_MODULES.find((item) => item.key === moduleKey)
+    const modulePermissions = permissionModule ? getModulePermissions(permissionModule) : []
     const moduleKeys = modulePermissions.map((permission) => permission.key)
     const isAgendaModule = moduleKey === "agenda"
     const actionKeys = isAgendaModule

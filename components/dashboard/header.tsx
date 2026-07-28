@@ -208,6 +208,7 @@ export function Header({ title, description, titleAddon, headerActions, actions,
                     <Button
                       variant="ghost"
                       size="icon"
+                      aria-label="Abrir notificações"
                       className="relative h-8 w-8 transition-all duration-300 hover:scale-110 hover:bg-secondary"
                     >
                       <Bell className="w-4 h-4" />
@@ -280,7 +281,11 @@ export function Header({ title, description, titleAddon, headerActions, actions,
 
                 <DropdownMenu open={userMenuOpen} onOpenChange={setUserMenuOpen}>
                   <DropdownMenuTrigger asChild>
-                    <button className="flex items-center gap-2 pl-2 md:pl-3 border-l border-border cursor-pointer hover:opacity-80 transition-opacity">
+                    <button
+                      type="button"
+                      aria-label="Abrir menu do usuário"
+                      className="flex items-center gap-2 pl-2 md:pl-3 border-l border-border cursor-pointer hover:opacity-80 transition-opacity"
+                    >
                       <Avatar className="h-7 w-7 md:h-8 md:w-8 ring-2 ring-primary/20 transition-all duration-300 hover:ring-primary/40">
                         <AvatarImage src={resolveAvatarUrl(currentUser?.avatar)} alt={currentUser?.name || "Usuário"} />
                         <AvatarFallback className="text-xs">

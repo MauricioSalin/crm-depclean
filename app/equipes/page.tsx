@@ -19,8 +19,8 @@ export default function EquipesPage() {
   const toggle = (
     <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "grid" | "table")}>
       <TabsList>
-        <TabsTrigger value="table"><List className="h-4 w-4" /></TabsTrigger>
-        <TabsTrigger value="grid"><LayoutGrid className="h-4 w-4" /></TabsTrigger>
+        <TabsTrigger value="table" aria-label="Visualizar equipes em tabela"><List className="h-4 w-4" /></TabsTrigger>
+        <TabsTrigger value="grid" aria-label="Visualizar equipes em cartões"><LayoutGrid className="h-4 w-4" /></TabsTrigger>
       </TabsList>
     </Tabs>
   )

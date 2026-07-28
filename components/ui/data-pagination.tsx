@@ -62,7 +62,7 @@ export function DataPagination({
           value={safePageSize.toString()}
           onValueChange={(value) => onPageSizeChange(Number(value))}
         >
-          <SelectTrigger className="h-8 w-[70px]">
+          <SelectTrigger className="h-8 w-[70px]" aria-label="Itens por página">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -86,6 +86,7 @@ export function DataPagination({
           <Button
             variant="outline"
             size="icon"
+            aria-label="Ir para a primeira página"
             className="h-8 w-8"
             onClick={() => onPageChange(1)}
             disabled={currentPage === 1}
@@ -95,6 +96,7 @@ export function DataPagination({
           <Button
             variant="outline"
             size="icon"
+            aria-label="Ir para a página anterior"
             className="h-8 w-8"
             onClick={() => onPageChange(currentPage - 1)}
             disabled={currentPage === 1}
@@ -107,6 +109,7 @@ export function DataPagination({
           <Button
             variant="outline"
             size="icon"
+            aria-label="Ir para a próxima página"
             className="h-8 w-8"
             onClick={() => onPageChange(currentPage + 1)}
             disabled={currentPage >= safeTotalPages}
@@ -116,6 +119,7 @@ export function DataPagination({
           <Button
             variant="outline"
             size="icon"
+            aria-label="Ir para a última página"
             className="h-8 w-8"
             onClick={() => onPageChange(safeTotalPages)}
             disabled={currentPage >= safeTotalPages}

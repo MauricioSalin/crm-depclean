@@ -417,7 +417,11 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
                       >
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              aria-label={`Abrir ações do contrato ${contract.contractNumber}`}
+                            >
                               <MoreHorizontal className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>

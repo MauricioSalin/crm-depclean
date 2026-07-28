@@ -2210,6 +2210,7 @@ export function ContractForm({
                 <Button
                   variant="outline"
                   role="combobox"
+                  aria-label="Selecionar cliente"
                   className="w-full justify-between font-normal"
                   disabled={isEditing && contract?.internalStatus !== "filling"}
                 >
@@ -2424,6 +2425,7 @@ export function ContractForm({
                 <Button
                   variant="outline"
                   role="combobox"
+                  aria-label="Selecionar template do contrato"
                   className="w-full justify-between font-normal"
                 >
                   {selectedTemplateId

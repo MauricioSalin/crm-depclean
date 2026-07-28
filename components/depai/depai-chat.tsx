@@ -2581,7 +2581,14 @@ function ChatComposer({
             event.target.value = ""
           }}
         />
-        <Button type="button" variant="ghost" size="icon" className="h-10 w-10 shrink-0 rounded-full" onClick={() => fileInputRef.current?.click()}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-10 w-10 shrink-0 rounded-full"
+          aria-label="Adicionar arquivo"
+          onClick={() => fileInputRef.current?.click()}
+        >
           <Plus className="h-5 w-5" />
         </Button>
         <Textarea
@@ -2599,7 +2606,13 @@ function ChatComposer({
           className="max-h-40 min-h-10 flex-1 resize-none border-0 bg-transparent px-0 py-2 shadow-none focus-visible:ring-0"
           onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); onSubmit() } }}
         />
-        <Button type="submit" size="icon" className="h-10 w-10 shrink-0 rounded-full" disabled={!input.trim() || isPending}>
+        <Button
+          type="submit"
+          size="icon"
+          className="h-10 w-10 shrink-0 rounded-full"
+          aria-label="Enviar mensagem"
+          disabled={!input.trim() || isPending}
+        >
           {isPending ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
         </Button>
       </div>
