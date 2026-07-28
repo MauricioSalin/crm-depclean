@@ -76,6 +76,13 @@ export type ClientCnpjLookupRecord = {
   }
 }
 
+export type ClientTypeOptionRecord = {
+  id: string
+  name: string
+  color: string
+  contractSignerRole: "owner" | "assessor" | "syndic"
+}
+
 export type ClientAttachmentRecord = {
   id: string
   clientId: string
@@ -117,6 +124,18 @@ export type ClientExtraRecord = {
   paidValue?: number
   createdAt: string
   updatedAt: string
+}
+
+export type ClientServiceRecord = {
+  id: string
+  contractId: string | null
+  isEmergency: boolean
+  isManual: boolean
+  serviceTypeName: string
+  teams: Array<{ id: string; name: string; color: string }>
+  additionalEmployees: Array<{ id: string; name: string }>
+  date: string
+  status: "scheduled" | "in_progress" | "completed" | "cancelled" | "rescheduled"
 }
 
 export type CreateClientExtraPayload = {
@@ -190,6 +209,11 @@ export async function listClients(search = "") {
   return response.data
 }
 
+export async function listClientTypeOptions() {
+  const response = await api.get<{ success: true; data: ClientTypeOptionRecord[] }>("/clients/catalog/types")
+  return response.data
+}
+
 export async function getClientById(id: string) {
   const response = await api.get<{ success: true; data: ClientRecord }>(`/clients/${resolveClientId(id)}`)
   return response.data
@@ -197,6 +221,11 @@ export async function getClientById(id: string) {
 
 export async function getClientAttachments(id: string) {
   const response = await api.get<{ success: true; data: ClientAttachmentRecord[] }>(`/clients/${resolveClientId(id)}/attachments`)
+  return response.data
+}
+
+export async function listClientServices(id: string) {
+  const response = await api.get<{ success: true; data: ClientServiceRecord[] }>(`/clients/${resolveClientId(id)}/services`)
   return response.data
 }
 

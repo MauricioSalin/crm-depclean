@@ -35,6 +35,7 @@ interface MultiSelectProps {
   emptyMessage?: string
   className?: string
   showSelectedTags?: boolean
+  ariaLabel?: string
 }
 
 export function MultiSelect({
@@ -46,6 +47,7 @@ export function MultiSelect({
   emptyMessage = "Nenhum item encontrado.",
   className,
   showSelectedTags = true,
+  ariaLabel,
 }: MultiSelectProps) {
   const [open, setOpen] = React.useState(false)
   const [searchTerm, setSearchTerm] = React.useState("")
@@ -77,6 +79,7 @@ export function MultiSelect({
           <Button
             variant="outline"
             role="combobox"
+            aria-label={ariaLabel ?? placeholder}
             aria-expanded={open}
             className="w-full justify-between font-normal"
           >

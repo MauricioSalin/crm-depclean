@@ -7,7 +7,10 @@
     "build": "next build",
     "dev": "next dev -p 3100",
     "lint": "eslint .",
-    "start": "next start -p 3100"
+    "start": "next start -p 3100",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:report": "playwright show-report"
   },
   "dependencies": {
     "@eigenpal/docx-js-editor": "^0.0.35",
@@ -69,10 +72,13 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.0",
     "@tailwindcss/postcss": "^4.1.9",
     "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.0.10",
     "postcss": "^8.5",
     "tailwindcss": "^4.1.9",
     "tw-animate-css": "1.3.3",

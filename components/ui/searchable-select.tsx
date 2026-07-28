@@ -30,6 +30,7 @@ interface SearchableSelectProps {
   includeAll?: boolean
   className?: string
   disabled?: boolean
+  ariaLabel?: string
 }
 
 export function SearchableSelect({
@@ -44,6 +45,7 @@ export function SearchableSelect({
   includeAll = true,
   className,
   disabled = false,
+  ariaLabel,
 }: SearchableSelectProps) {
   const [open, setOpen] = React.useState(false)
   const selectionInProgressRef = React.useRef<string | null>(null)
@@ -76,6 +78,7 @@ export function SearchableSelect({
           id={id}
           variant="outline"
           role="combobox"
+          aria-label={ariaLabel ?? placeholder}
           aria-expanded={!disabled && open}
           disabled={disabled}
           className={cn(

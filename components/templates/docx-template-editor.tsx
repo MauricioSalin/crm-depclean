@@ -903,7 +903,7 @@ function getNativeToolbarTooltip(target: EventTarget | null, host: HTMLElement |
 async function serializeDocumentModel(document: unknown) {
   if (!document) return null
 
-  const module = (await import("@eigenpal/docx-js-editor")) as {
+  const editorModule = (await import("@eigenpal/docx-js-editor")) as {
     DocumentAgent: {
       fromDocument: (document: never) => {
         toBuffer: () => Promise<ArrayBuffer>
@@ -911,7 +911,7 @@ async function serializeDocumentModel(document: unknown) {
     }
   }
 
-  return module.DocumentAgent.fromDocument(document as never).toBuffer()
+  return editorModule.DocumentAgent.fromDocument(document as never).toBuffer()
 }
 
 async function waitForEditorMutationFlush() {
@@ -924,8 +924,8 @@ function preloadDocxEditorFonts() {
   if (typeof document === "undefined") return Promise.resolve()
 
   preloadedDocxEditorFonts ??= import("@eigenpal/docx-js-editor")
-    .then((module) => {
-      const loadFonts = (module as { loadFonts?: (fonts: string[]) => Promise<void> }).loadFonts
+    .then((editorModule) => {
+      const loadFonts = (editorModule as { loadFonts?: (fonts: string[]) => Promise<void> }).loadFonts
       return loadFonts?.(DOCX_EDITOR_FONT_NAMES)
     })
     .then(() => undefined)
@@ -939,7 +939,7 @@ async function renderDocxEditor(
   container: HTMLElement,
   options: DocxEditorOptions = {}
 ) {
-  const module = (await import("@eigenpal/docx-js-editor")) as { DocxEditor: unknown }
+  const editorModule = (await import("@eigenpal/docx-js-editor")) as { DocxEditor: unknown }
   const root = createRoot(container)
   const editorRef = createRef<DocxEditorHandleLike>()
 
@@ -977,7 +977,7 @@ async function renderDocxEditor(
     }
 
     root.render(
-      createElement(module.DocxEditor as never, {
+        createElement(editorModule.DocxEditor as never, {
         ...options,
         documentBuffer: input,
         onChange: (document: unknown) => {
@@ -1347,10 +1347,35 @@ function removeDocxParagraphProperty(paragraphPropertiesXml: string, propertyNam
   )
 }
 
-function buildLeftAlignedDocxParagraphProperties(paragraphPropertiesXml: string) {
+function normalizeInheritedClauseSpacing(paragraphPropertiesXml: string) {
+  return paragraphPropertiesXml.replace(
+    /<w:spacing\b[^>]*(?:\/>|><\/w:spacing>)/gi,
+    (spacingXml) => {
+      const spacing = getDocxParagraphSpacing(spacingXml)
+      const line = Number(spacing.line)
+      const hasUnsafeExactLine =
+        spacing.line !== undefined &&
+        Number.isFinite(line) &&
+        spacing.lineRule === "exact" &&
+        line < 120
+
+      return hasUnsafeExactLine
+        ? buildDocxParagraphSpacingXml({
+            before: spacing.before,
+            after: spacing.after,
+            beforeAutospacing: spacing.beforeAutospacing,
+            afterAutospacing: spacing.afterAutospacing,
+            line: "240",
+            lineRule: "auto",
+          })
+        : spacingXml
+    },
+  )
+}
+
+function buildInheritedClauseParagraphProperties(paragraphPropertiesXml: string) {
   const inheritedPropertiesToReset = [
     "jc",
-    "spacing",
     "framePr",
     "keepNext",
     "keepLines",
@@ -1358,12 +1383,9 @@ function buildLeftAlignedDocxParagraphProperties(paragraphPropertiesXml: string)
     "contextualSpacing",
     "snapToGrid",
   ]
-  const clausePropertiesXml = [
-    '<w:spacing w:before="0" w:after="160" w:line="240" w:lineRule="auto"/>',
-    '<w:jc w:val="left"/>',
-  ].join("")
+  const clausePropertiesXml = '<w:jc w:val="left"/>'
 
-  let sanitizedPropertiesXml = paragraphPropertiesXml
+  let sanitizedPropertiesXml = normalizeInheritedClauseSpacing(paragraphPropertiesXml)
   for (const propertyName of inheritedPropertiesToReset) {
     sanitizedPropertiesXml = removeDocxParagraphProperty(sanitizedPropertiesXml, propertyName)
   }
@@ -1387,12 +1409,12 @@ function buildDocxParagraphHtmlXml(
   const paragraphHtml = paragraphMatches.length > 0
     ? paragraphMatches.map((match) => match[1] ?? "")
     : [html]
-  const leftAlignedPropertiesXml = buildLeftAlignedDocxParagraphProperties(paragraphPropertiesXml)
+  const inheritedPropertiesXml = buildInheritedClauseParagraphProperties(paragraphPropertiesXml)
 
   return paragraphHtml
     .map((innerHtml) => buildDocxRunsFromHtml(innerHtml, baseRunPropertiesXml))
     .filter(Boolean)
-    .map((runsXml) => `<w:p>${leftAlignedPropertiesXml}${runsXml}</w:p>`)
+    .map((runsXml) => `<w:p>${inheritedPropertiesXml}${runsXml}</w:p>`)
     .join("")
 }
 

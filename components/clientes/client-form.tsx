@@ -27,12 +27,12 @@ import {
   createClient,
   deleteClient,
   getClientById,
+  listClientTypeOptions,
   lookupClientCnpj,
   updateClient,
   type ClientPayload,
 } from "@/lib/api/clients"
 import { getApiErrorMessage } from "@/lib/api/errors"
-import { listClientTypes } from "@/lib/api/settings"
 import { useHasAnyPermission } from "@/hooks/use-permissions"
 import { getColorFromClass } from "@/lib/utils"
 
@@ -126,11 +126,11 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
 
   const clientTypesQuery = useQuery({
     queryKey: ["client-types", "client-form"],
-    queryFn: () => listClientTypes(""),
+    queryFn: listClientTypeOptions,
   })
 
   const client = clientQuery.data?.data
-  const clientTypes = clientTypesQuery.data?.data.items ?? []
+  const clientTypes = clientTypesQuery.data?.data ?? []
   
   const [formData, setFormData] = useState({
     companyName: client?.companyName || "",

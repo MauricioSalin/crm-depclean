@@ -399,7 +399,18 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
                               <span>{formatDate(contract.endDate)}</span>
                             </div>
                           </div>
-                        ) : null}
+                        ) : (
+                          <div className="space-y-0.5">
+                            <div className="flex items-center gap-1 text-muted-foreground">
+                              <Calendar className="h-3 w-3" />
+                              <span>-</span>
+                            </div>
+                            <div className="flex items-center gap-1 text-muted-foreground">
+                              <CalendarCheck className="h-3 w-3" />
+                              <span>-</span>
+                            </div>
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap items-center gap-1.5">
@@ -417,7 +428,11 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
                       >
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              aria-label={`Abrir ações do contrato ${contract.contractNumber}`}
+                            >
                               <MoreHorizontal className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>

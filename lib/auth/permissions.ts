@@ -6,7 +6,6 @@ const SETTINGS_MANAGE_PERMISSION = "settings_manage"
 const REPORTS_PERMISSION_GROUP = ["reports_view", "reports_export", "financial_view", "financial_manage"]
 
 const ALWAYS_ALLOWED_PATHS = [
-  "/ajuda",
   "/logout",
   "/notificacoes",
   "/perfil",
@@ -41,6 +40,7 @@ const routePermissionRules: RoutePermissionRule[] = [
   { pattern: /^\/templates$/, permissions: ["templates_view", "templates_manage"] },
   { pattern: /^\/logs$/, permissions: ["logs_view", "logs_manage"] },
   { pattern: /^\/depai$/, permissions: ["depai_access"] },
+  { pattern: /^\/ajuda$/, permissions: ["help_view"] },
 ]
 
 const firstAllowedPathCandidates = [
@@ -80,5 +80,5 @@ export function canAccessPath(pathname: string, user: PermissionUser) {
 }
 
 export function getFirstAllowedPath(user: PermissionUser) {
-  return firstAllowedPathCandidates.find((path) => canAccessPath(path, user)) ?? "/ajuda"
+  return firstAllowedPathCandidates.find((path) => canAccessPath(path, user)) ?? "/perfil"
 }

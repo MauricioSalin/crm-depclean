@@ -20,8 +20,8 @@ export default function CertificadosPage() {
   const toggle = (
     <Tabs value={viewMode} onValueChange={(value) => setViewMode(value as "table" | "cards")}>
       <TabsList>
-        <TabsTrigger value="table"><List className="h-4 w-4" /></TabsTrigger>
-        <TabsTrigger value="cards"><LayoutGrid className="h-4 w-4" /></TabsTrigger>
+        <TabsTrigger value="table" aria-label="Visualizar certificados em tabela"><List className="h-4 w-4" /></TabsTrigger>
+        <TabsTrigger value="cards" aria-label="Visualizar certificados em cartões"><LayoutGrid className="h-4 w-4" /></TabsTrigger>
       </TabsList>
     </Tabs>
   )

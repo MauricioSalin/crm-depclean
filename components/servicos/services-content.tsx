@@ -185,8 +185,8 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
           <Table containerClassName="md:h-full" onSortChange={() => setCurrentPage(1)}>
             <TableHeader>
               <TableRow>
-                <TableHead>Serviço</TableHead>
-                <TableHead className="hidden sm:table-cell">Descrição</TableHead>
+                <TableHead className="w-[280px] min-w-[280px]">Serviço</TableHead>
+                <TableHead className="hidden w-[420px] max-w-[420px] sm:table-cell">Descrição</TableHead>
                 <TableHead className="hidden md:table-cell">Equipe / Funcionários</TableHead>
                 <TableHead className="min-w-[110px]">Duração</TableHead>
                 <TableHead className="hidden min-w-[180px] lg:table-cell">Limite de serviços no dia</TableHead>
@@ -218,7 +218,7 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
                     onClick={() => openServiceDetails(type)}
                     onKeyDown={(event) => handleServiceKeyDown(event, type)}
                   >
-                    <TableCell>
+                    <TableCell className="w-[280px] min-w-[280px]">
                       <div className="flex items-center gap-3">
                         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
                           <ClipboardList className="h-5 w-5 text-primary" />
@@ -228,7 +228,7 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell className="hidden text-muted-foreground sm:table-cell">
+                    <TableCell className="hidden w-[420px] max-w-[420px] overflow-hidden text-muted-foreground sm:table-cell">
                       <span className="line-clamp-1">{type.description || "-"}</span>
                     </TableCell>
                     <TableCell className="hidden md:table-cell">

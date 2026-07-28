@@ -59,6 +59,8 @@ import {
   getClientAttachments,
   getClientById,
   listClientExtras,
+  listClientServices,
+  listClientTypeOptions,
   updateClientExtraStatus,
   uploadClientAttachment,
   type ClientAttachmentRecord,
@@ -67,9 +69,6 @@ import {
 import { listContracts, type ContractInstallmentRecord } from "@/lib/api/contracts"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { listSchedules, type ScheduleRecord } from "@/lib/api/schedules"
-import { listServices } from "@/lib/api/services"
-import { listClientTypes } from "@/lib/api/settings"
-import { listTeams } from "@/lib/api/teams"
 import { listTemplates, type TemplateRecord } from "@/lib/api/templates"
 import {
   getClicksignContractStatusLabel,
@@ -121,10 +120,10 @@ const clientProfileTabUrlValue: Record<ClientProfileTab, string> = {
 }
 
 const clientProfileTabTriggerClassName =
-  "h-10 w-36 shrink-0 cursor-pointer rounded-full bg-muted px-4 py-2 text-sm transition-[background-color,color,transform] duration-300 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground lg:w-full"
+  "h-10 w-36 shrink-0 cursor-pointer rounded-full bg-muted px-4 py-2 text-sm transition-[background-color,color,transform] duration-300 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground lg:w-auto lg:min-w-0 lg:flex-1"
 
 const clientProfileTabsListClassName =
-  "flex h-auto min-w-full w-max justify-start gap-2 overflow-visible bg-transparent p-0 lg:grid lg:w-full lg:grid-cols-7 [&_[data-slot=tabs-indicator]]:hidden"
+  "flex h-auto min-w-full w-max justify-start gap-2 overflow-visible bg-transparent p-0 lg:w-full [&_[data-slot=tabs-indicator]]:hidden"
 
 const getClientProfileTabFromUrl = (value: string | null): ClientProfileTab =>
   value ? clientProfileTabByUrlValue[value] ?? defaultClientProfileTab : defaultClientProfileTab
@@ -358,9 +357,13 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
   const canEditClients = useHasAnyPermission(["clients_edit"])
   const canDeleteClients = useHasAnyPermission(["clients_delete"])
   const canViewContracts = useHasAnyPermission(["contracts_view", "contracts_edit", "contracts_create", "contracts_delete"])
-  const canManageInstallments = useHasAnyPermission(["financial_manage", "contracts_edit"])
-  const canManageExtras = useHasAnyPermission(["financial_manage"])
-  const canModifyClientAttachments = canEditClients || canDeleteClients
+  const canViewServices = useHasAnyPermission(["services_view", "services_manage"])
+  const canViewAgenda = useHasAnyPermission(["agenda_own_view", "agenda_view"])
+  const hasInstallmentManagementPermission = useHasAnyPermission(["financial_manage", "contracts_edit"])
+  const hasExtraManagementPermission = useHasAnyPermission(["financial_manage"])
+  const canManageInstallments = canViewContracts && hasInstallmentManagementPermission
+  const canManageExtras = canViewContracts && hasExtraManagementPermission
+  const canModifyClientAttachments = canViewContracts && (canEditClients || canDeleteClients)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const informativePdfEditorRef = useRef<DocxTemplateEditorRef | null>(null)
   const [informativePdfJob, setInformativePdfJob] = useState<{
@@ -379,26 +382,18 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
   const contractsQuery = useQuery({
     queryKey: ["contracts", "client-profile"],
     queryFn: () => listContracts(""),
+    enabled: canViewContracts,
   })
 
   const schedulesQuery = useQuery({
     queryKey: ["schedules", "client-profile"],
     queryFn: () => listSchedules({}),
-  })
-
-  const servicesQuery = useQuery({
-    queryKey: ["services", "client-profile"],
-    queryFn: () => listServices(""),
-  })
-
-  const teamsQuery = useQuery({
-    queryKey: ["teams", "catalog"],
-    queryFn: () => listTeams(""),
+    enabled: canViewAgenda,
   })
 
   const clientTypesQuery = useQuery({
     queryKey: ["client-types", "client-profile"],
-    queryFn: () => listClientTypes(""),
+    queryFn: listClientTypeOptions,
   })
 
   const client = clientQuery.data?.data
@@ -407,18 +402,24 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
   const attachmentsQuery = useQuery({
     queryKey: ["client-attachments", resolvedClientId],
     queryFn: () => getClientAttachments(resolvedClientId),
-    enabled: Boolean(client?.id),
+    enabled: Boolean(client?.id) && canViewContracts,
   })
 
   const extrasQuery = useQuery({
     queryKey: ["client-extras", resolvedClientId],
     queryFn: () => listClientExtras(resolvedClientId),
-    enabled: Boolean(client?.id),
+    enabled: Boolean(client?.id) && canViewContracts,
+  })
+
+  const clientServicesQuery = useQuery({
+    queryKey: ["client-services", resolvedClientId],
+    queryFn: () => listClientServices(resolvedClientId),
+    enabled: Boolean(client?.id) && canViewServices,
   })
 
   const uploadAttachmentMutation = useMutation({
     mutationFn: (file: File) => {
-      if (!canEditClients) {
+      if (!canViewContracts || !canEditClients) {
         throw new Error("Sem permissao para anexar arquivos ao cliente.")
       }
 
@@ -552,7 +553,16 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
   const [attachmentsPageSize, setAttachmentsPageSize] = useState(10)
   const [extrasPage, setExtrasPage] = useState(1)
   const [extrasPageSize, setExtrasPageSize] = useState(10)
-  const activeTab = getClientProfileTabFromUrl(searchParams.get("tab"))
+  const visibleTabs = useMemo<ClientProfileTab[]>(() => {
+    const tabs: ClientProfileTab[] = ["dados"]
+    if (canViewContracts) tabs.push("contratos", "parcelas", "extras", "anexos")
+    if (canViewServices) tabs.push("servicos")
+    if (canViewAgenda) tabs.push("agenda")
+    return tabs
+  }, [canViewAgenda, canViewContracts, canViewServices])
+  const visibleTabSet = useMemo(() => new Set(visibleTabs), [visibleTabs])
+  const requestedTab = getClientProfileTabFromUrl(searchParams.get("tab"))
+  const activeTab = visibleTabSet.has(requestedTab) ? requestedTab : defaultClientProfileTab
   const backHref = getSafeReturnTo(searchParams.get("returnTo"), "/clientes")
   const contractReturnPath = buildPathWithSearchParams(pathname, searchParams, {
     tab: clientProfileTabUrlValue.contratos,
@@ -561,7 +571,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
     withReturnTo(`/contratos/${contractId}`, contractReturnPath)
 
   const handleTabChange = (value: string) => {
-    if (!isClientProfileTab(value)) return
+    if (!isClientProfileTab(value) || !visibleTabSet.has(value)) return
     const params = new URLSearchParams(searchParams.toString())
     params.set("tab", clientProfileTabUrlValue[value])
     router.replace(`${pathname}?${params.toString()}`, { scroll: false })
@@ -569,7 +579,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
 
   const handleManualAttachmentSelected = (file?: File) => {
     if (!file) return
-    if (!canEditClients) return
+    if (!canViewContracts || !canEditClients) return
     if (uploadAttachmentMutation.isPending) return
     uploadAttachmentMutation.mutate(file)
     if (fileInputRef.current) {
@@ -591,32 +601,25 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
       return new Date(rightReferenceDate).getTime() - new Date(leftReferenceDate).getTime()
     })[0]
   }, [clientContracts])
-  const clientServices = useMemo(
+  const scheduledServices = useMemo(
     () => (schedulesQuery.data?.data ?? []).filter((service) => service.clientId === resolvedClientId),
     [schedulesQuery.data?.data, resolvedClientId],
   )
+  const clientServices = clientServicesQuery.data?.data ?? []
   const clientAttachments = attachmentsQuery.data?.data ?? []
   const clientExtras = extrasQuery.data?.data ?? []
   const hasInformativeAttachments = clientAttachments.some((attachment) => attachment.type === "informative")
   const informativeTemplatesQuery = useQuery({
     queryKey: ["templates", "client-profile", "informative"],
     queryFn: () => listTemplates("", "informative"),
-    enabled: hasInformativeAttachments,
+    enabled: canViewContracts && hasInformativeAttachments,
   })
   const informativeTemplates = informativeTemplatesQuery.data?.data ?? []
-  const serviceTypeMap = useMemo(
-    () => new Map((servicesQuery.data?.data ?? []).map((service) => [service.id, service] as const)),
-    [servicesQuery.data?.data],
-  )
   const informativeTemplateMap = useMemo(
     () => new Map(informativeTemplates.map((template) => [template.id, template] as const)),
     [informativeTemplates],
   )
-  const teamMap = useMemo(
-    () => new Map((teamsQuery.data?.data ?? []).map((team) => [team.id, team] as const)),
-    [teamsQuery.data?.data],
-  )
-  const clientType = (clientTypesQuery.data?.data.items ?? []).find((item) => item.id === client?.clientTypeId)
+  const clientType = (clientTypesQuery.data?.data ?? []).find((item) => item.id === client?.clientTypeId)
   const clientTypeColor = resolveColor(clientType?.color)
   const activeContracts = clientContracts.filter((contract) => isOperationallyActiveContract(contract)).length
 
@@ -766,16 +769,8 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
       }),
     )
   }, [clientContracts, installmentOverrides])
-  const completedServices = useMemo(
-    () => clientServices.filter((service) => service.status === "completed"),
-    [clientServices],
-  )
-  const scheduledServices = useMemo(
-    () => clientServices,
-    [clientServices],
-  )
   const installmentsTotalPages = Math.max(1, Math.ceil(allInstallments.length / installmentsPageSize))
-  const servicesTotalPages = Math.max(1, Math.ceil(completedServices.length / servicesPageSize))
+  const servicesTotalPages = Math.max(1, Math.ceil(clientServices.length / servicesPageSize))
   const agendaTotalPages = Math.max(1, Math.ceil(scheduledServices.length / agendaPageSize))
   const attachmentsTotalPages = Math.max(1, Math.ceil(clientAttachments.length / attachmentsPageSize))
   const extrasTotalPages = Math.max(1, Math.ceil(clientExtras.length / extrasPageSize))
@@ -1031,7 +1026,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      {canViewContracts ? <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <Card className="p-4">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
@@ -1091,7 +1086,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
             </div>
           </div>
         </Card>
-      </div>
+      </div> : null}
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
         <div className="w-full overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -1104,54 +1099,64 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
               <Building2 className="h-4 w-4" />
               <span className="font-semibold">Dados</span>
             </TabsTrigger>
-            <TabsTrigger
-              onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
-              value="contratos"
-              className={clientProfileTabTriggerClassName}
-            >
-              <FileText className="h-4 w-4" />
-              <span className="font-semibold">Contratos ({clientContracts.length})</span>
-            </TabsTrigger>
-            <TabsTrigger
-              onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
-              value="parcelas"
-              className={clientProfileTabTriggerClassName}
-            >
-              <DollarSign className="h-4 w-4" />
-              <span className="font-semibold">Parcelas ({allInstallments.length})</span>
-            </TabsTrigger>
-            <TabsTrigger
-              onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
-              value="extras"
-              className={clientProfileTabTriggerClassName}
-            >
-              <DollarSign className="h-4 w-4" />
-              <span className="font-semibold">Extras ({clientExtras.length})</span>
-            </TabsTrigger>
-            <TabsTrigger
-              onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
-              value="servicos"
-              className={clientProfileTabTriggerClassName}
-            >
-              <Wrench className="h-4 w-4" />
-              <span className="font-semibold">Serviços ({completedServices.length})</span>
-            </TabsTrigger>
-            <TabsTrigger
-              onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
-              value="agenda"
-              className={clientProfileTabTriggerClassName}
-            >
-              <Calendar className="h-4 w-4" />
-              <span className="font-semibold">Agenda ({scheduledServices.length})</span>
-            </TabsTrigger>
-            <TabsTrigger
-              onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
-              value="anexos"
-              className={clientProfileTabTriggerClassName}
-            >
-              <Paperclip className="h-4 w-4" />
-              <span className="font-semibold">Anexos ({clientAttachments.length})</span>
-            </TabsTrigger>
+            {canViewContracts ? (
+              <>
+                <TabsTrigger
+                  onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
+                  value="contratos"
+                  className={clientProfileTabTriggerClassName}
+                >
+                  <FileText className="h-4 w-4" />
+                  <span className="font-semibold">Contratos ({clientContracts.length})</span>
+                </TabsTrigger>
+                <TabsTrigger
+                  onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
+                  value="parcelas"
+                  className={clientProfileTabTriggerClassName}
+                >
+                  <DollarSign className="h-4 w-4" />
+                  <span className="font-semibold">Parcelas ({allInstallments.length})</span>
+                </TabsTrigger>
+                <TabsTrigger
+                  onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
+                  value="extras"
+                  className={clientProfileTabTriggerClassName}
+                >
+                  <DollarSign className="h-4 w-4" />
+                  <span className="font-semibold">Extras ({clientExtras.length})</span>
+                </TabsTrigger>
+              </>
+            ) : null}
+            {canViewServices ? (
+              <TabsTrigger
+                onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
+                value="servicos"
+                className={clientProfileTabTriggerClassName}
+              >
+                <Wrench className="h-4 w-4" />
+                <span className="font-semibold">Serviços ({clientServices.length})</span>
+              </TabsTrigger>
+            ) : null}
+            {canViewAgenda ? (
+              <TabsTrigger
+                onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
+                value="agenda"
+                className={clientProfileTabTriggerClassName}
+              >
+                <Calendar className="h-4 w-4" />
+                <span className="font-semibold">Agenda ({scheduledServices.length})</span>
+              </TabsTrigger>
+            ) : null}
+            {canViewContracts ? (
+              <TabsTrigger
+                onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
+                value="anexos"
+                className={clientProfileTabTriggerClassName}
+              >
+                <Paperclip className="h-4 w-4" />
+                <span className="font-semibold">Anexos ({clientAttachments.length})</span>
+              </TabsTrigger>
+            ) : null}
           </TabsList>
         </div>
 
@@ -1534,45 +1539,38 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                     <TableHead>Tipo</TableHead>
                     <TableHead className="hidden md:table-cell">Equipe / Funcionários</TableHead>
                     <TableHead>Data</TableHead>
+                    <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody page={completedServices.length > 0 ? servicesPage : undefined} pageSize={completedServices.length > 0 ? servicesPageSize : undefined}>
-                  {completedServices.map((service) => {
-                      const serviceTeams =
-                        service.teams.length > 0
-                          ? service.teams
-                          : service.teamId && teamMap.get(service.teamId)
-                            ? [teamMap.get(service.teamId)!]
-                            : []
+                <TableBody page={clientServices.length > 0 ? servicesPage : undefined} pageSize={clientServices.length > 0 ? servicesPageSize : undefined}>
+                  {clientServices.map((service) => (
+                    <TableRow key={service.id}>
+                      <TableCell>
+                        <p className="font-medium">{service.serviceTypeName}</p>
+                      </TableCell>
+                      <TableCell>
+                        <ScheduleTypeBadge schedule={service} />
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell">
+                        <AssignmentBadges teams={service.teams} employees={service.additionalEmployees} />
+                      </TableCell>
+                      <TableCell className="text-sm">{formatDate(service.date)}</TableCell>
+                      <TableCell>{getScheduleStatusBadge(service.status)}</TableCell>
+                    </TableRow>
+                  ))}
 
-                      return (
-                        <TableRow key={service.id}>
-                          <TableCell>
-                            <p className="font-medium">{service.serviceTypeName}</p>
-                          </TableCell>
-                          <TableCell>
-                            <ScheduleTypeBadge schedule={service} />
-                          </TableCell>
-                          <TableCell className="hidden md:table-cell">
-                            <AssignmentBadges teams={serviceTeams} employees={service.additionalEmployees} />
-                          </TableCell>
-                          <TableCell className="text-sm">{formatDate(service.date)}</TableCell>
-                        </TableRow>
-                      )
-                    })}
-
-                  {completedServices.length === 0 ? (
-                    <TableEmptyState colSpan={4} icon={CheckCircle} title="Nenhum serviço realizado ainda." />
+                  {clientServices.length === 0 ? (
+                    <TableEmptyState colSpan={5} icon={CheckCircle} title="Nenhum serviço encontrado." />
                   ) : null}
                 </TableBody>
               </Table>
             </div>
-            {completedServices.length > 0 ? (
+            {clientServices.length > 0 ? (
               <DataPagination
                 currentPage={servicesPage}
                 totalPages={servicesTotalPages}
                 pageSize={servicesPageSize}
-                totalItems={completedServices.length}
+                totalItems={clientServices.length}
                 onPageChange={setServicesPage}
                 onPageSizeChange={(size) => {
                   setServicesPageSize(size)
@@ -1600,13 +1598,6 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                 </TableHeader>
                 <TableBody page={scheduledServices.length > 0 ? agendaPage : undefined} pageSize={scheduledServices.length > 0 ? agendaPageSize : undefined}>
                   {scheduledServices.map((service) => {
-                      const serviceTeams =
-                        service.teams.length > 0
-                          ? service.teams
-                          : service.teamId && teamMap.get(service.teamId)
-                            ? [teamMap.get(service.teamId)!]
-                            : []
-
                       return (
                         <TableRow key={service.id}>
                           <TableCell>
@@ -1619,7 +1610,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                             <ScheduleTypeBadge schedule={service} />
                           </TableCell>
                           <TableCell className="hidden md:table-cell">
-                            <AssignmentBadges teams={serviceTeams} employees={service.additionalEmployees} />
+                            <AssignmentBadges teams={service.teams} employees={service.additionalEmployees} />
                           </TableCell>
                           <TableCell className="text-sm">{formatDate(service.date)}</TableCell>
                           <TableCell className="text-sm">{service.time || "08:00"}</TableCell>

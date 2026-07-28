@@ -46,7 +46,7 @@ const menuItems = [
 const generalItems = [
   { icon: Bell, label: "Notificações", href: "/notificacoes", permissions: [] },
   { icon: Bot, label: "DepAI", href: "/depai", permissions: ["depai_access"] },
-  { icon: HelpCircle, label: "Ajuda", href: "/ajuda", permissions: [] },
+  { icon: HelpCircle, label: "Ajuda", href: "/ajuda", permissions: ["help_view"] },
 ]
 
 const ACTIVE_AGENDA_BADGE_STATUSES = new Set(["scheduled", "in_progress", "rescheduled"])
