@@ -2167,7 +2167,7 @@ export function ContractForm({
         </Button>
         <Button
           type={isEditing ? "submit" : "button"}
-          variant={!isEditing || contract?.internalStatus === "filling" ? "ghost" : "default"}
+          variant={!isEditing || contract?.internalStatus === "filling" ? "outline" : "default"}
           className={isEditing && contract?.internalStatus !== "filling" ? "bg-primary hover:bg-primary/90" : undefined}
           data-contract-action={isEditing ? "save" : undefined}
           onClick={isEditing ? undefined : () => saveFillingDraft()}
@@ -3109,7 +3109,7 @@ export function ContractForm({
             <>
               <Button
                 type="submit"
-                variant={contract?.internalStatus === "filling" ? "ghost" : "default"}
+                variant={contract?.internalStatus === "filling" ? "outline" : "default"}
                 data-contract-action="save"
                 className={
                   contract?.internalStatus === "filling"
@@ -3147,7 +3147,7 @@ export function ContractForm({
             <>
               <Button
                 type="button"
-                variant="ghost"
+                variant="outline"
                 className="w-full sm:w-auto"
                 onClick={() => saveFillingDraft()}
                 disabled={fillingDraftMutation.isPending || previewMutation.isPending || previewUpdateMutation.isPending || updateMutation.isPending || createMutation.isPending || isFinalizingCreate}
