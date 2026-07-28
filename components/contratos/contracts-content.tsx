@@ -315,8 +315,8 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
           <Table containerClassName="md:h-full" onSortChange={() => setCurrentPage(1)}>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[300px] min-w-[300px]">Contrato</TableHead>
-                <TableHead className="hidden w-[420px] min-w-[380px] sm:table-cell">Cliente</TableHead>
+                <TableHead className="w-[220px] min-w-[220px]">Contrato</TableHead>
+                <TableHead className="hidden w-[500px] min-w-[440px] sm:table-cell">Cliente</TableHead>
                 <TableHead className="hidden md:table-cell">Valor</TableHead>
                 <TableHead className="hidden lg:table-cell">Vigência</TableHead>
                 <TableHead>Status</TableHead>
@@ -359,21 +359,25 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
                         router.push(getContractPrimaryHref(contract))
                       }}
                     >
-                      <TableCell className="w-[300px] max-w-[300px]">
+                      <TableCell className="w-[220px] max-w-[220px]">
                         <div className="flex items-center gap-3">
                           <div className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 sm:flex">
                             <FileText className="h-5 w-5 text-primary" />
                           </div>
                           <div className="min-w-0">
                             <p className="truncate font-medium">{formatContractNumber(contract.contractNumber)}</p>
-                            <p className="text-xs text-muted-foreground sm:hidden">{contract.clientCompanyName}</p>
+                            <div className="flex min-w-0 items-center gap-1.5 sm:hidden">
+                              <p className="min-w-0 truncate text-xs text-muted-foreground">{contract.clientCompanyName}</p>
+                              {contract.isClientDelinquent ? <BusinessStatusBadge status="delinquent" /> : null}
+                            </div>
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell className="hidden w-[420px] max-w-[420px] sm:table-cell">
-                        <div className="flex items-center gap-2">
-                          <Building2 className="h-4 w-4 text-muted-foreground" />
-                          <span className="max-w-[360px] truncate">{contract.clientCompanyName}</span>
+                      <TableCell className="hidden w-[500px] max-w-[500px] sm:table-cell">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <Building2 className="h-4 w-4 shrink-0 text-muted-foreground" />
+                          <span className="min-w-0 truncate">{contract.clientCompanyName}</span>
+                          {contract.isClientDelinquent ? <BusinessStatusBadge status="delinquent" /> : null}
                         </div>
                       </TableCell>
                       <TableCell className="hidden md:table-cell">
@@ -419,7 +423,6 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
                           {isContractAwaitingSchedules(contract) ? (
                             <BusinessStatusBadge status="awaiting-schedules" />
                           ) : null}
-                          {contract.isClientDelinquent ? <BusinessStatusBadge status="delinquent" /> : null}
                         </div>
                       </TableCell>
                       <TableCell
@@ -524,9 +527,11 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
                             {isContractAwaitingSchedules(contract) ? (
                               <BusinessStatusBadge status="awaiting-schedules" />
                             ) : null}
+                          </div>
+                          <div className="flex min-w-0 items-center gap-1.5">
+                            <p className="min-w-0 truncate text-xs text-muted-foreground">{contract.clientCompanyName}</p>
                             {contract.isClientDelinquent ? <BusinessStatusBadge status="delinquent" /> : null}
                           </div>
-                          <p className="truncate text-xs text-muted-foreground">{contract.clientCompanyName}</p>
                         </div>
                       </div>
                       <div className="space-y-2 text-sm">
