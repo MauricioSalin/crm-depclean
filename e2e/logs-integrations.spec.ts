@@ -68,6 +68,14 @@ test("exibe detalhes e anexo do WhatsApp junto ao envio de contrato da ClickSign
                     status: "delivered",
                     providerStatusCode: 200,
                     providerResponse: { messages: [{ id: "wamid.message-1" }] },
+                  }, {
+                    id: "wamid.document-1",
+                    type: "document",
+                    status: "delivered",
+                    fileName: "informativo.pdf",
+                    includedInTemplate: false,
+                    providerStatusCode: 200,
+                    providerResponse: { messages: [{ id: "wamid.document-1" }] },
                   }],
                   whatsappWebhook: {
                     status: "delivered",
@@ -126,7 +134,8 @@ test("exibe detalhes e anexo do WhatsApp junto ao envio de contrato da ClickSign
   await expect(page.getByText("5551999999999", { exact: true })).toBeVisible()
   await expect(page.getByText("wamid.message-1", { exact: true })).toBeVisible()
   await expect(page.getByText("delivered", { exact: true }).first()).toBeVisible()
-  await expect(page.getByText("informativo.pdf", { exact: true })).toBeVisible()
+  await expect(page.getByText("informativo.pdf", { exact: true }).first()).toBeVisible()
+  await expect(page.getByText("Entregue", { exact: true }).last()).toBeVisible()
   const providerResponse = page.getByText("Retorno do WhatsApp", { exact: true }).locator("..")
   await expect(providerResponse).toContainText("recipientId")
 
@@ -135,4 +144,73 @@ test("exibe detalhes e anexo do WhatsApp junto ao envio de contrato da ClickSign
   await page.getByRole("button", { name: "Baixar informativo.pdf" }).click()
   await expect.poll(() => attachmentDownloads).toBe(1)
   await expect(page.getByText("Anexo baixado.", { exact: true })).toBeVisible()
+})
+
+test("simula o template exato e informa quando a mensagem não possui anexos", async ({ page }) => {
+  await page.route("**/api/v1/logs**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        success: true,
+        data: {
+          items: [{
+            id: "log-whatsapp-account-access",
+            type: "send",
+            typeLabel: "Envio",
+            status: "success",
+            module: "whatsapp",
+            moduleLabel: "WhatsApp",
+            title: "Mensagem enviada pelo WhatsApp",
+            description: "Mensagem de template para Vitor Costa da Silva.",
+            failureReason: "",
+            method: "POST",
+            path: "/integrations/whatsapp/messages",
+            statusCode: 200,
+            durationMs: 0,
+            actorUserId: "",
+            actorEmployeeId: "",
+            actorName: "Sistema",
+            actorEmail: "",
+            clientId: "",
+            clientName: "",
+            targetEmployeeId: "",
+            targetEmployeeName: "",
+            entityType: "whatsapp_message",
+            entityId: "wamid.account-access",
+            entityName: "Vitor Costa da Silva",
+            metadata: {
+              messageType: "template",
+              body: "",
+              templateName: "depclean_cadastro_pronto_v2",
+              recipientName: "Vitor Costa da Silva",
+              recipientPhone: "5551998734023",
+              deliveryStatus: "sent",
+              messageId: "wamid.account-access",
+              includedDocument: false,
+              providerStatusCode: 200,
+              providerResponse: {
+                messages: [{ id: "wamid.account-access" }],
+              },
+            },
+            createdAt: "2026-07-28T20:53:09.180Z",
+          }],
+          total: 1,
+          page: 1,
+          limit: 20,
+          totalPages: 1,
+        },
+      }),
+    })
+  })
+
+  await page.goto("/logs")
+  await page.getByText("Mensagem enviada pelo WhatsApp", { exact: true }).first().click()
+
+  const dialog = page.getByRole("dialog", { name: "Detalhes do log" })
+  await expect(dialog.getByText("Cadastro Depclean", { exact: true })).toBeVisible()
+  await expect(dialog).toContainText("Olá, Vitor Costa da Silva.")
+  await expect(dialog.getByText("Abrir plataforma", { exact: true })).toBeVisible()
+  await expect(dialog.getByText("depclean_cadastro_pronto_v2", { exact: true })).toBeVisible()
+  await expect(dialog.getByText("Nenhum anexo foi enviado nesta mensagem.", { exact: true })).toBeVisible()
 })
