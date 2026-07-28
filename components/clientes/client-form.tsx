@@ -33,6 +33,7 @@ import {
   type ClientPayload,
 } from "@/lib/api/clients"
 import { getApiErrorMessage } from "@/lib/api/errors"
+import { normalizeClientCompanyName } from "@/lib/client-company-name"
 import { useHasAnyPermission } from "@/hooks/use-permissions"
 import { getColorFromClass } from "@/lib/utils"
 
@@ -133,7 +134,7 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
   const clientTypes = clientTypesQuery.data?.data ?? []
   
   const [formData, setFormData] = useState({
-    companyName: client?.companyName || "",
+    companyName: normalizeClientCompanyName(client?.companyName || ""),
     cnpj: client?.cnpj || "",
     responsibleName: client?.responsibleName || "",
     responsibleCpf: client?.responsibleCpf || "",
@@ -209,7 +210,7 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
       cnpjLookedUpRef.current = cnpjDigits
       setFormData(prev => ({
         ...prev,
-        companyName: prev.companyName || data.companyName || data.tradeName,
+        companyName: normalizeClientCompanyName(prev.companyName || data.companyName || data.tradeName),
         responsibleName: prev.responsibleName || data.responsibleName,
         phone: prev.phone || (data.phone ? formatPhone(data.phone) : ""),
         email: prev.email || data.email,
@@ -274,7 +275,7 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
     if (!loadedClient) return
 
     setFormData({
-      companyName: loadedClient.companyName || "",
+      companyName: normalizeClientCompanyName(loadedClient.companyName || ""),
       cnpj: formatCNPJ(loadedClient.cnpj || ""),
       responsibleName: loadedClient.responsibleName || "",
       responsibleCpf: formatCPF(loadedClient.responsibleCpf || ""),
@@ -627,7 +628,7 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
   const saveMutation = useMutation({
     mutationFn: async () => {
       const payload: ClientPayload = {
-        companyName: formData.companyName.trim(),
+        companyName: normalizeClientCompanyName(formData.companyName.trim()),
         cnpj: formData.cnpj.trim(),
         responsibleName: formData.responsibleName.trim(),
         responsibleCpf: formData.responsibleCpf.trim(),
@@ -793,7 +794,7 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
               <Input
                 id="companyName"
                 value={formData.companyName}
-                onChange={(e) => handleInputChange("companyName", e.target.value)}
+                onChange={(e) => handleInputChange("companyName", normalizeClientCompanyName(e.target.value))}
                 placeholder={cnpjLoading ? "Buscando..." : "Nome completo da empresa"}
                 disabled={cnpjLoading}
                 required

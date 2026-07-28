@@ -22,6 +22,7 @@ import {
   Eye,
   MapPin,
   MoreHorizontal,
+  Pencil,
   RefreshCw,
   Send,
   Wrench,
@@ -50,10 +51,21 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "@/components/ui/use-toast"
 import { ServiceClausesDialog } from "@/components/servicos/service-clauses-dialog"
+import { InstallmentEditDialog } from "@/components/contratos/installment-edit-dialog"
 import { ContractSchedulePlanDialog } from "@/components/contratos/contract-schedule-plan-dialog"
 import { buildApiFileUrl } from "@/lib/api/client"
 import { getClientAttachments, getClientById, type ClientAttachmentRecord } from "@/lib/api/clients"
-import { getContractById, publishContractSchedulePlan, remindContractSigner, sendContractToClicksign, syncContractClicksign, updateInstallment, type ContractRecord } from "@/lib/api/contracts"
+import {
+  getContractById,
+  publishContractSchedulePlan,
+  remindContractSigner,
+  sendContractToClicksign,
+  syncContractClicksign,
+  updateInstallment,
+  type ContractInstallmentRecord,
+  type ContractRecord,
+  type UpdateContractInstallmentPayload,
+} from "@/lib/api/contracts"
 import { listEmployees } from "@/lib/api/employees"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { listSchedules } from "@/lib/api/schedules"
@@ -67,6 +79,7 @@ import {
   normalizeClicksignContractStatus,
 } from "@/lib/contract-status"
 import { BRASILIA_TIME_ZONE, formatCivilDate } from "@/lib/date-utils"
+import { invalidateInstallmentRelatedQueries } from "@/lib/query-invalidation"
 import { formatScheduleDurationValue } from "@/lib/schedule-duration"
 import { useHasAnyPermission } from "@/hooks/use-permissions"
 import { buildPathWithSearchParams, getSafeReturnTo, withReturnTo } from "@/lib/navigation"
@@ -407,7 +420,8 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
   const searchParams = useSearchParams()
   const canEditContracts = useHasAnyPermission(["contracts_edit"])
   const canSyncClicksign = useHasAnyPermission(["contracts_view", "contracts_edit"])
-  const canManageContractInstallments = useHasAnyPermission(["contracts_edit", "financial_manage"])
+  const canManageContractInstallments = canEditContracts
+  const [editingInstallment, setEditingInstallment] = useState<ContractInstallmentRecord | null>(null)
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null)
   const [serviceClausesOpen, setServiceClausesOpen] = useState(false)
   const [schedulePlanOpen, setSchedulePlanOpen] = useState(false)
@@ -646,31 +660,23 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
   const installmentMutation = useMutation({
     mutationFn: ({
       installmentId,
-      status,
+      payload,
     }: {
       installmentId: string
-      status: "pending" | "paid" | "late" | "overdue" | "cancelled"
+      payload: UpdateContractInstallmentPayload
     }) => {
       if (!canManageContractInstallments) {
         throw new Error("Sem permissao para alterar parcelas.")
       }
 
-      return updateInstallment(resolvedContractId, installmentId, {
-        status,
-        paidDate: status === "paid" ? new Date().toISOString() : undefined,
-        paidValue:
-          status === "paid" && contract
-            ? contract.installments.find((installment) => installment.id === installmentId)?.value
-            : undefined,
-      })
+      return updateInstallment(resolvedContractId, installmentId, payload)
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["contract", contractId] })
-      await queryClient.invalidateQueries({ queryKey: ["contract", resolvedContractId] })
-      await queryClient.invalidateQueries({ queryKey: ["contracts"] })
+      await invalidateInstallmentRelatedQueries(queryClient)
+      setEditingInstallment(null)
       toast({
         title: "Parcela atualizada",
-        description: "O status da parcela foi atualizado com sucesso.",
+        description: "Os dados da parcela foram atualizados com sucesso.",
       })
     },
     onError: (error) => {
@@ -680,6 +686,20 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
       })
     },
   })
+
+  const setInstallmentStatus = (
+    installment: ContractInstallmentRecord,
+    status: ContractInstallmentRecord["status"],
+  ) => {
+    if (!canManageContractInstallments || installmentMutation.isPending) return
+    installmentMutation.mutate({
+      installmentId: installment.id,
+      payload: {
+        status,
+        paidDate: status === "paid" ? new Date().toISOString() : undefined,
+      },
+    })
+  }
 
   const clicksignErrorToast = (error: unknown) => {
     toast({
@@ -1346,36 +1366,41 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                             <DropdownMenuItem
                               className="h-9 rounded-lg"
                               disabled={installmentMutation.isPending}
-                              onClick={() =>
-                                !installmentMutation.isPending &&
-                                installmentMutation.mutate({ installmentId: installment.id, status: "paid" })
-                              }
+                              onClick={() => setEditingInstallment(installment)}
                             >
-                              <CheckCircle className="mr-2 h-4 w-4" />
-                              Marcar como paga
+                              <Pencil className="mr-2 h-4 w-4" />
+                              Editar parcela
                             </DropdownMenuItem>
-                            <DropdownMenuItem
-                              className="h-9 rounded-lg"
-                              disabled={installmentMutation.isPending}
-                              onClick={() =>
-                                !installmentMutation.isPending &&
-                                installmentMutation.mutate({ installmentId: installment.id, status: "overdue" })
-                              }
-                            >
-                              <AlertTriangle className="mr-2 h-4 w-4" />
-                              Marcar como vencida
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              className="h-9 rounded-lg"
-                              disabled={installmentMutation.isPending}
-                              onClick={() =>
-                                !installmentMutation.isPending &&
-                                installmentMutation.mutate({ installmentId: installment.id, status: "pending" })
-                              }
-                            >
-                              <Clock className="mr-2 h-4 w-4" />
-                              Marcar como pendente
-                            </DropdownMenuItem>
+                            {installment.status !== "paid" ? (
+                              <DropdownMenuItem
+                                className="h-9 rounded-lg"
+                                disabled={installmentMutation.isPending}
+                                onClick={() => setInstallmentStatus(installment, "paid")}
+                              >
+                                <CheckCircle className="mr-2 h-4 w-4" />
+                                Marcar como paga
+                              </DropdownMenuItem>
+                            ) : null}
+                            {installment.status !== "overdue" ? (
+                              <DropdownMenuItem
+                                className="h-9 rounded-lg"
+                                disabled={installmentMutation.isPending}
+                                onClick={() => setInstallmentStatus(installment, "overdue")}
+                              >
+                                <AlertTriangle className="mr-2 h-4 w-4" />
+                                Marcar como vencida
+                              </DropdownMenuItem>
+                            ) : null}
+                            {installment.status !== "pending" ? (
+                              <DropdownMenuItem
+                                className="h-9 rounded-lg"
+                                disabled={installmentMutation.isPending}
+                                onClick={() => setInstallmentStatus(installment, "pending")}
+                              >
+                                <Clock className="mr-2 h-4 w-4" />
+                                Marcar como pendente
+                              </DropdownMenuItem>
+                            ) : null}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
@@ -1509,6 +1534,22 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
         }
         clausePrefix={selectedService ? String(contract.services.findIndex((service) => service.id === selectedService.id) + 1) : undefined}
         onOpenChange={handleServiceClausesOpenChange}
+      />
+
+      <InstallmentEditDialog
+        installment={editingInstallment}
+        open={Boolean(editingInstallment)}
+        isSaving={installmentMutation.isPending}
+        onOpenChange={(open) => {
+          if (!open) setEditingInstallment(null)
+        }}
+        onSave={(payload) => {
+          if (!editingInstallment) return
+          installmentMutation.mutate({
+            installmentId: editingInstallment.id,
+            payload,
+          })
+        }}
       />
 
       {contract.automationCreateSchedules && isClosedClicksignContractStatus(contract.status) && contract.signedAt ? (

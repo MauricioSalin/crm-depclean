@@ -369,16 +369,15 @@ export async function deleteContract(id: string) {
   return response.data
 }
 
+export type UpdateContractInstallmentPayload = {
+  status: "pending" | "paid" | "late" | "overdue" | "cancelled"
+  paidDate?: string
+}
+
 export async function updateInstallment(
   contractId: string,
   installmentId: string,
-  payload: {
-    status: "pending" | "paid" | "late" | "overdue" | "cancelled"
-    paidDate?: string
-    paidValue?: number
-    paymentMethod?: string
-    notes?: string
-  },
+  payload: UpdateContractInstallmentPayload,
 ) {
   const response = await api.patch<{ success: true; data: ContractRecord }>(
     `/contracts/${resolveContractId(contractId)}/installments/${installmentId}`,

@@ -2,7 +2,21 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { AlertTriangle, CheckCircle2, Clock, Database, Search, UserRound, X } from "lucide-react"
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Clock,
+  Database,
+  Download,
+  ExternalLink,
+  FileText,
+  MessageSquare,
+  Phone,
+  Search,
+  UserRound,
+  X,
+} from "lucide-react"
+import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -18,6 +32,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, type TableSortState } from "@/components/ui/table"
 import { TableSkeletonRows } from "@/components/ui/table-skeleton"
 import { listClients } from "@/lib/api/clients"
+import { buildApiFileUrl } from "@/lib/api/client"
 import { listEmployees } from "@/lib/api/employees"
 import { listAuditLogs, type AuditLogRecord } from "@/lib/api/logs"
 import { getApiErrorMessage } from "@/lib/api/errors"
@@ -80,6 +95,100 @@ const TYPE_BADGE_CLASS: Record<string, string> = {
 }
 
 const AUDIT_LOG_TABLE_SORT_FIELDS = ["createdAt", "type", "title", "clientName", "actorName", "status"] as const
+
+type WhatsAppAttachment = {
+  url: string
+  fileName: string
+  mimeType: string
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+}
+
+function firstText(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim()
+    if (typeof value === "number" && Number.isFinite(value)) return String(value)
+  }
+  return ""
+}
+
+function collectWhatsAppAttachments(metadata: Record<string, unknown>) {
+  const messageMetadata = asRecord(metadata.messageMetadata)
+  const nestedMetadata = asRecord(metadata.metadata)
+  const sources = [metadata, messageMetadata, nestedMetadata]
+  const attachments = new Map<string, WhatsAppAttachment>()
+
+  for (const source of sources) {
+    const url = firstText(source.documentUrl)
+    if (!url || attachments.has(url)) continue
+
+    attachments.set(url, {
+      url,
+      fileName: firstText(source.documentFileName, source.fileName) || "anexo",
+      mimeType: firstText(source.documentMimeType, source.mimeType) || "application/octet-stream",
+    })
+  }
+
+  return [...attachments.values()]
+}
+
+function getWhatsAppLogDetails(log: AuditLogRecord) {
+  const metadata = asRecord(log.metadata)
+  const messageMetadata = asRecord(metadata.messageMetadata)
+  const nestedMetadata = asRecord(metadata.metadata)
+  const whatsappMessages = Array.isArray(messageMetadata.whatsappMessages)
+    ? messageMetadata.whatsappMessages
+    : Array.isArray(metadata.whatsappMessages)
+      ? metadata.whatsappMessages
+      : []
+  const providerResponse = metadata.providerResponse
+    ?? messageMetadata.whatsappWebhook
+    ?? nestedMetadata.whatsappWebhook
+    ?? {}
+
+  return {
+    message: firstText(metadata.message, metadata.body, messageMetadata.message, nestedMetadata.message),
+    recipientName: firstText(metadata.recipientName, log.entityName),
+    recipientPhone: firstText(metadata.recipientPhone),
+    deliveryStatus: firstText(metadata.deliveryStatus, messageMetadata.deliveryStatus),
+    deliveryError: firstText(metadata.deliveryError, messageMetadata.deliveryError, log.failureReason),
+    deliveryAttempts: firstText(metadata.deliveryAttempts),
+    messageId: firstText(metadata.whatsappMessageId, metadata.messageId),
+    providerStatusCode: firstText(metadata.providerStatusCode),
+    providerResponse,
+    whatsappMessages,
+    attachments: collectWhatsAppAttachments(metadata),
+  }
+}
+
+async function downloadWhatsAppAttachment(attachment: WhatsAppAttachment) {
+  const toastId = toast.loading("Baixando anexo...")
+  const url = buildApiFileUrl(attachment.url)
+
+  try {
+    const response = await fetch(url)
+    if (!response.ok) {
+      throw new Error(`Falha ao carregar o anexo (${response.status}).`)
+    }
+
+    const blob = await response.blob()
+    const objectUrl = URL.createObjectURL(blob)
+    const anchor = document.createElement("a")
+    anchor.href = objectUrl
+    anchor.download = attachment.fileName
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 500)
+    toast.success("Anexo baixado.", { id: toastId })
+  } catch (error) {
+    toast.error(getApiErrorMessage(error, "Não foi possível baixar o anexo."), { id: toastId })
+  }
+}
 
 function toApiDateTime(value: string) {
   if (!value) return undefined
@@ -247,6 +356,10 @@ export function LogsContent() {
   const employeeOptions = useMemo(
     () => (employeesQuery.data?.data ?? []).map((employee) => ({ value: employee.id, label: employee.name })),
     [employeesQuery.data?.data],
+  )
+  const selectedWhatsAppDetails = useMemo(
+    () => selectedLog?.module === "whatsapp" ? getWhatsAppLogDetails(selectedLog) : null,
+    [selectedLog],
   )
 
   const resetPage = () => setPage(1)
@@ -551,6 +664,108 @@ export function LogsContent() {
                 <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
                   <p className="font-semibold">Motivo da falha</p>
                   <p className="mt-1">{getFailureReason(selectedLog) || "Motivo não registrado para este log."}</p>
+                </div>
+              ) : null}
+
+              {selectedWhatsAppDetails ? (
+                <div className="space-y-4 rounded-xl border bg-muted/20 p-4">
+                  <div className="flex items-center gap-2">
+                    <MessageSquare className="h-4 w-4 text-green-700" />
+                    <h3 className="font-semibold">Envio pelo WhatsApp</h3>
+                  </div>
+
+                  <div className="grid gap-3 text-sm sm:grid-cols-2">
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground">Destinatário</p>
+                      <p>{selectedWhatsAppDetails.recipientName || "-"}</p>
+                    </div>
+                    <div>
+                      <p className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+                        <Phone className="h-3 w-3" />
+                        Número
+                      </p>
+                      <p className="font-mono">{selectedWhatsAppDetails.recipientPhone || "-"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground">ID da mensagem</p>
+                      <p className="break-all font-mono text-xs">{selectedWhatsAppDetails.messageId || "-"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground">Status da entrega</p>
+                      <p>{selectedWhatsAppDetails.deliveryStatus || "-"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground">Tentativas</p>
+                      <p>{selectedWhatsAppDetails.deliveryAttempts || "-"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground">Retorno HTTP do Meta</p>
+                      <p>{selectedWhatsAppDetails.providerStatusCode || selectedLog.statusCode || "-"}</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1 text-sm">
+                    <p className="text-xs font-medium text-muted-foreground">Mensagem enviada</p>
+                    <p className="whitespace-pre-wrap rounded-md bg-background p-3">
+                      {selectedWhatsAppDetails.message || "-"}
+                    </p>
+                  </div>
+
+                  {selectedWhatsAppDetails.attachments.length > 0 ? (
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium text-muted-foreground">
+                        Anexos enviados ({selectedWhatsAppDetails.attachments.length})
+                      </p>
+                      {selectedWhatsAppDetails.attachments.map((attachment) => (
+                        <div
+                          key={attachment.url}
+                          className="flex flex-col gap-3 rounded-md border bg-background p-3 sm:flex-row sm:items-center sm:justify-between"
+                        >
+                          <div className="flex min-w-0 items-center gap-2">
+                            <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium">{attachment.fileName}</p>
+                              <p className="truncate text-xs text-muted-foreground">{attachment.mimeType}</p>
+                            </div>
+                          </div>
+                          <div className="flex shrink-0 gap-2">
+                            <Button asChild variant="outline" size="sm">
+                              <a
+                                href={buildApiFileUrl(attachment.url)}
+                                target="_blank"
+                                rel="noreferrer"
+                                aria-label={`Visualizar ${attachment.fileName}`}
+                              >
+                                <ExternalLink className="h-4 w-4" />
+                                Visualizar
+                              </a>
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => void downloadWhatsAppAttachment(attachment)}
+                              aria-label={`Baixar ${attachment.fileName}`}
+                            >
+                              <Download className="h-4 w-4" />
+                              Baixar
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground">Retorno do WhatsApp</p>
+                    <pre className="max-h-[220px] max-w-full overflow-auto rounded-md bg-background p-3 text-xs leading-relaxed text-foreground">
+                      {formatLogJson({
+                        deliveryError: selectedWhatsAppDetails.deliveryError,
+                        messages: selectedWhatsAppDetails.whatsappMessages,
+                        providerResponse: selectedWhatsAppDetails.providerResponse,
+                      })}
+                    </pre>
+                  </div>
                 </div>
               ) : null}
 

@@ -15,6 +15,7 @@ type DatePickerProps = {
   value?: Date | null
   onChange?: (date: Date | undefined) => void
   placeholder?: string
+  ariaLabel?: string
   className?: string
   disabled?: boolean
   disabledDates?: Matcher | Matcher[]
@@ -24,6 +25,7 @@ export function DatePicker({
   value,
   onChange,
   placeholder = "Selecionar data",
+  ariaLabel,
   className,
   disabled = false,
   disabledDates,
@@ -36,6 +38,7 @@ export function DatePicker({
         <Button
           type="button"
           variant="outline"
+          aria-label={ariaLabel}
           disabled={disabled}
           className={cn(
             "h-9 w-full justify-start text-left font-normal",

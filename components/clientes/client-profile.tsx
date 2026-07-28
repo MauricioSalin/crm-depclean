@@ -21,6 +21,7 @@ import {
   MapPin,
   MoreHorizontal,
   Paperclip,
+  Pencil,
   Phone,
   Trash2,
   Upload,
@@ -52,6 +53,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { AssignmentBadges } from "@/components/ui/assignment-badges"
 import { ScheduleTypeBadge } from "@/components/ui/schedule-type-badge"
 import { DocxTemplateEditor, type DocxTemplateEditorRef } from "@/components/templates/docx-template-editor"
+import { InstallmentEditDialog } from "@/components/contratos/installment-edit-dialog"
 import { buildApiFileUrl } from "@/lib/api/client"
 import {
   deleteClientAttachment,
@@ -66,7 +68,12 @@ import {
   type ClientAttachmentRecord,
   type ClientExtraStatus,
 } from "@/lib/api/clients"
-import { listContracts, type ContractInstallmentRecord } from "@/lib/api/contracts"
+import {
+  listContracts,
+  updateInstallment,
+  type ContractInstallmentRecord,
+  type UpdateContractInstallmentPayload,
+} from "@/lib/api/contracts"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { listSchedules, type ScheduleRecord } from "@/lib/api/schedules"
 import { listTemplates, type TemplateRecord } from "@/lib/api/templates"
@@ -80,10 +87,17 @@ import { formatCivilDate, parseCivilDate, toCivilDateKey } from "@/lib/date-util
 import { useHasAnyPermission } from "@/hooks/use-permissions"
 import { formatCPF } from "@/lib/masks"
 import { buildPathWithSearchParams, getSafeReturnTo, withReturnTo } from "@/lib/navigation"
+import { invalidateInstallmentRelatedQueries } from "@/lib/query-invalidation"
 import { formatContractNumber } from "@/lib/utils"
 
 interface ClientProfileProps {
   clientId: string
+}
+
+type ClientInstallmentRecord = ContractInstallmentRecord & {
+  contractId: string
+  contractNumber: string
+  installmentsCount: number
 }
 
 const clientProfileTabs = ["dados", "contratos", "parcelas", "extras", "servicos", "agenda", "anexos"] as const
@@ -357,11 +371,11 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
   const canEditClients = useHasAnyPermission(["clients_edit"])
   const canDeleteClients = useHasAnyPermission(["clients_delete"])
   const canViewContracts = useHasAnyPermission(["contracts_view", "contracts_edit", "contracts_create", "contracts_delete"])
+  const canEditContracts = useHasAnyPermission(["contracts_edit"])
   const canViewServices = useHasAnyPermission(["services_view", "services_manage"])
   const canViewAgenda = useHasAnyPermission(["agenda_own_view", "agenda_view"])
-  const hasInstallmentManagementPermission = useHasAnyPermission(["financial_manage", "contracts_edit"])
   const hasExtraManagementPermission = useHasAnyPermission(["financial_manage"])
-  const canManageInstallments = canViewContracts && hasInstallmentManagementPermission
+  const canManageInstallments = canViewContracts && canEditContracts
   const canManageExtras = canViewContracts && hasExtraManagementPermission
   const canModifyClientAttachments = canViewContracts && (canEditClients || canDeleteClients)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -374,6 +388,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
     toastId: string | number
   } | null>(null)
   const [isGeneratingInformativePdf, setIsGeneratingInformativePdf] = useState(false)
+  const [editingInstallment, setEditingInstallment] = useState<ClientInstallmentRecord | null>(null)
   const clientQuery = useQuery({
     queryKey: ["client", clientId],
     queryFn: () => getClientById(clientId),
@@ -540,9 +555,37 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
     },
   })
 
-  const [installmentOverrides, setInstallmentOverrides] = useState<
-    Record<string, { status: ContractInstallmentRecord["status"]; paidDate?: string; paidValue?: number }>
-  >({})
+  const installmentStatusMutation = useMutation({
+    mutationFn: ({
+      contractId,
+      installmentId,
+      payload,
+    }: {
+      contractId: string
+      installmentId: string
+      payload: UpdateContractInstallmentPayload
+    }) => {
+      if (!canManageInstallments) {
+        throw new Error("Sem permissão para alterar parcelas.")
+      }
+
+      return updateInstallment(contractId, installmentId, payload)
+    },
+    onMutate: () => {
+      const toastId = toast.loading("Atualizando parcela...")
+      return { toastId }
+    },
+    onSuccess: async (_data, _variables, context) => {
+      await invalidateInstallmentRelatedQueries(queryClient)
+      setEditingInstallment(null)
+      toast.success("Parcela atualizada.", { id: context?.toastId })
+    },
+    onError: (error, _variables, context) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível atualizar a parcela."), {
+        id: context?.toastId,
+      })
+    },
+  })
   const [installmentsPage, setInstallmentsPage] = useState(1)
   const [installmentsPageSize, setInstallmentsPageSize] = useState(10)
   const [servicesPage, setServicesPage] = useState(1)
@@ -748,17 +791,14 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
 
   const allInstallments = useMemo(() => {
     return clientContracts.flatMap((contract) =>
-      contract.installments.map((installment) => {
-        const override = installmentOverrides[installment.id]
-        return {
-          ...installment,
-          ...(override ?? {}),
-          contractNumber: contract.contractNumber,
-          installmentsCount: contract.installmentsCount,
-        }
-      }),
+      contract.installments.map((installment) => ({
+        ...installment,
+        contractId: contract.id,
+        contractNumber: contract.contractNumber,
+        installmentsCount: contract.installmentsCount,
+      })),
     )
-  }, [clientContracts, installmentOverrides])
+  }, [clientContracts])
   const installmentsTotalPages = Math.max(1, Math.ceil(allInstallments.length / installmentsPageSize))
   const servicesTotalPages = Math.max(1, Math.ceil(clientServices.length / servicesPageSize))
   const agendaTotalPages = Math.max(1, Math.ceil(scheduledServices.length / agendaPageSize))
@@ -878,44 +918,19 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
     return [fileName, size].filter(Boolean).join(" - ")
   }
 
-  const setInstallmentStatus = (installmentId: string, status: ContractInstallmentRecord["status"]) => {
+  const setInstallmentStatus = (
+    installment: ClientInstallmentRecord,
+    status: ContractInstallmentRecord["status"],
+  ) => {
     if (!canManageInstallments) return
-
-    setInstallmentOverrides((previous) => {
-      if (status === "paid") {
-        const original = clientContracts
-          .flatMap((contract) => contract.installments)
-          .find((installment) => installment.id === installmentId)
-        const value = original?.value ?? 0
-        return {
-          ...previous,
-          [installmentId]: {
-            status,
-            paidDate: new Date().toISOString(),
-            paidValue: value,
-          },
-        }
-      }
-
-      if (status === "overdue") {
-        return {
-          ...previous,
-          [installmentId]: {
-            status,
-            paidDate: undefined,
-            paidValue: undefined,
-          },
-        }
-      }
-
-      return {
-        ...previous,
-        [installmentId]: {
-          status: "pending",
-          paidDate: undefined,
-          paidValue: undefined,
-        },
-      }
+    if (installmentStatusMutation.isPending) return
+    installmentStatusMutation.mutate({
+      contractId: installment.contractId,
+      installmentId: installment.id,
+      payload: {
+        status,
+        paidDate: status === "paid" ? new Date().toISOString() : undefined,
+      },
     })
   }
 
@@ -1353,7 +1368,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                     <TableEmptyState colSpan={canManageInstallments ? 6 : 5} icon={DollarSign} title="Nenhuma parcela encontrada." />
                   ) : (
                     allInstallments.map((installment) => (
-                      <TableRow key={installment.id}>
+                      <TableRow key={`${installment.contractId}:${installment.id}`}>
                         <TableCell className="text-sm">{formatContractNumber(installment.contractNumber)}</TableCell>
                         <TableCell>
                           {installment.number}/{installment.installmentsCount}
@@ -1370,15 +1385,40 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => setInstallmentStatus(installment.id, "paid")}>
-                                  Marcar como paga
+                                <DropdownMenuItem
+                                  disabled={installmentStatusMutation.isPending}
+                                  onClick={() => setEditingInstallment(installment)}
+                                >
+                                  <Pencil className="mr-2 h-4 w-4" />
+                                  Editar parcela
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => setInstallmentStatus(installment.id, "overdue")}>
-                                  Marcar como vencida
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => setInstallmentStatus(installment.id, "pending")}>
-                                  Marcar como pendente
-                                </DropdownMenuItem>
+                                {installment.status !== "paid" ? (
+                                  <DropdownMenuItem
+                                    disabled={installmentStatusMutation.isPending}
+                                    onClick={() => setInstallmentStatus(installment, "paid")}
+                                  >
+                                    <CheckCircle className="mr-2 h-4 w-4" />
+                                    Marcar como paga
+                                  </DropdownMenuItem>
+                                ) : null}
+                                {installment.status !== "overdue" ? (
+                                  <DropdownMenuItem
+                                    disabled={installmentStatusMutation.isPending}
+                                    onClick={() => setInstallmentStatus(installment, "overdue")}
+                                  >
+                                    <AlertTriangle className="mr-2 h-4 w-4" />
+                                    Marcar como vencida
+                                  </DropdownMenuItem>
+                                ) : null}
+                                {installment.status !== "pending" ? (
+                                  <DropdownMenuItem
+                                    disabled={installmentStatusMutation.isPending}
+                                    onClick={() => setInstallmentStatus(installment, "pending")}
+                                  >
+                                    <Clock className="mr-2 h-4 w-4" />
+                                    Marcar como pendente
+                                  </DropdownMenuItem>
+                                ) : null}
                               </DropdownMenuContent>
                             </DropdownMenu>
                           </TableCell>
@@ -1738,6 +1778,23 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
           </div>
         </TabsContent>
       </Tabs>
+
+      <InstallmentEditDialog
+        installment={editingInstallment}
+        open={Boolean(editingInstallment)}
+        isSaving={installmentStatusMutation.isPending}
+        onOpenChange={(open) => {
+          if (!open) setEditingInstallment(null)
+        }}
+        onSave={(payload) => {
+          if (!editingInstallment) return
+          installmentStatusMutation.mutate({
+            contractId: editingInstallment.contractId,
+            installmentId: editingInstallment.id,
+            payload,
+          })
+        }}
+      />
 
       <Dialog
         open={isCreateExtraOpen}

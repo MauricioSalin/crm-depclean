@@ -44,6 +44,7 @@ import { updateScheduleBilling } from "@/lib/api/schedules"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { formatCivilDate, parseCivilDate, toCivilDateKey } from "@/lib/date-utils"
 import { buildPathWithSearchParams, withReturnTo } from "@/lib/navigation"
+import { invalidateInstallmentRelatedQueries } from "@/lib/query-invalidation"
 import { hasAnyPermission } from "@/lib/auth/permissions"
 import { getStoredUser } from "@/lib/auth/session"
 import { formatContractNumber } from "@/lib/utils"
@@ -143,17 +144,13 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
     { toastId: string | number }
   >({
     mutationFn: ({ installment, status }: { installment: FinancialInstallmentRecord; status: InstallmentStatusAction }) => {
-      const payload = {
-        status,
-        paidDate: status === "paid" ? new Date().toISOString() : undefined,
-        paidValue: status === "paid" ? installment.value : undefined,
-      }
+      const paidDate = status === "paid" ? new Date().toISOString() : undefined
 
       if (installment.source === "schedule") {
         return updateScheduleBilling(installment.scheduleId ?? installment.id.replace(/^schedule-/, ""), {
-          billingStatus: payload.status,
-          paidDate: payload.paidDate,
-          paidValue: payload.paidValue,
+          billingStatus: status,
+          paidDate,
+          paidValue: status === "paid" ? installment.value : undefined,
         })
       }
 
@@ -161,23 +158,26 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
         return updateClientExtraStatus(
           installment.clientId,
           installment.extraId ?? installment.id.replace(/^extra-/, ""),
-          payload.status,
+          status,
         )
       }
 
-      return updateInstallment(installment.contractId, installment.id, payload)
+      return updateInstallment(installment.contractId, installment.id, { status, paidDate })
     },
     onMutate: () => {
       const toastId = toast.loading("Atualizando parcela...")
       return { toastId }
     },
-    onSuccess: async (_data, _variables, context) => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["analytics"] }),
-        queryClient.invalidateQueries({ queryKey: ["client-extras"] }),
-        queryClient.invalidateQueries({ queryKey: ["contracts"] }),
-        queryClient.invalidateQueries({ queryKey: ["schedules"] }),
-      ])
+    onSuccess: async (_data, variables, context) => {
+      if (variables.installment.source === "contract") {
+        await invalidateInstallmentRelatedQueries(queryClient)
+      } else {
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["analytics"] }),
+          queryClient.invalidateQueries({ queryKey: ["client-extras"] }),
+          queryClient.invalidateQueries({ queryKey: ["schedules"] }),
+        ])
+      }
       toast.success("Parcela atualizada.", { id: context?.toastId })
     },
     onError: (error, _variables, context) => {
