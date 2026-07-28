@@ -39,6 +39,7 @@ const LOG_TYPE_OPTIONS = [
   { value: "duplicate", label: "Duplicação" },
   { value: "revoke", label: "Revogação" },
   { value: "execute", label: "Execução" },
+  { value: "receive", label: "Recebimento" },
 ]
 
 const LOG_MODULE_OPTIONS = [
@@ -57,6 +58,7 @@ const LOG_MODULE_OPTIONS = [
   { value: "support", label: "Ajuda" },
   { value: "teams", label: "Equipes" },
   { value: "templates", label: "Templates" },
+  { value: "whatsapp", label: "WhatsApp" },
 ]
 
 const TYPE_BADGE_CLASS: Record<string, string> = {
@@ -69,6 +71,7 @@ const TYPE_BADGE_CLASS: Record<string, string> = {
   duplicate: "bg-purple-100 text-purple-700 hover:bg-purple-100",
   execute: "bg-zinc-100 text-zinc-700 hover:bg-zinc-100",
   reactivate: "bg-emerald-100 text-emerald-700 hover:bg-emerald-100",
+  receive: "bg-violet-100 text-violet-700 hover:bg-violet-100",
   revoke: "bg-amber-100 text-amber-700 hover:bg-amber-100",
   send: "bg-cyan-100 text-cyan-700 hover:bg-cyan-100",
   start: "bg-lime-100 text-lime-700 hover:bg-lime-100",
@@ -98,6 +101,15 @@ function formatDateTime(value: string) {
 }
 
 function getLogStatusBadge(log: AuditLogRecord) {
+  if (log.status === "pending") {
+    return (
+      <Badge className="gap-1 bg-amber-100 text-amber-700 hover:bg-amber-100">
+        <Clock className="h-3 w-3" />
+        Pendente
+      </Badge>
+    )
+  }
+
   if (log.status === "error") {
     return (
       <Badge className="gap-1 bg-red-100 text-red-700 hover:bg-red-100">
@@ -157,7 +169,7 @@ export function LogsContent() {
   const [employeeId, setEmployeeId] = useState("all")
   const [type, setType] = useState("all")
   const [module, setModule] = useState("all")
-  const [status, setStatus] = useState<"all" | "success" | "error">("all")
+  const [status, setStatus] = useState<"all" | "success" | "error" | "pending">("all")
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
   const [tableSort, setTableSort] = useState<TableSortState>(null)
@@ -347,7 +359,7 @@ export function LogsContent() {
           </div>
           <div className="w-[124px] shrink-0 space-y-1">
             <Label>Status</Label>
-            <Select value={status} onValueChange={(value) => { setStatus(value as "all" | "success" | "error"); resetPage() }}>
+            <Select value={status} onValueChange={(value) => { setStatus(value as "all" | "success" | "error" | "pending"); resetPage() }}>
               <SelectTrigger className="w-full">
                 <SelectValue />
               </SelectTrigger>
@@ -355,6 +367,7 @@ export function LogsContent() {
                 <SelectItem value="all">Todos</SelectItem>
                 <SelectItem value="success">Sucesso</SelectItem>
                 <SelectItem value="error">Falha</SelectItem>
+                <SelectItem value="pending">Pendente</SelectItem>
               </SelectContent>
             </Select>
           </div>

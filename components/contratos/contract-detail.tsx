@@ -697,16 +697,31 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
 
       return sendContractToClicksign(resolvedContractId)
     },
+    onMutate: () => {
+      const optimisticToast = toast({
+        title: "Contrato enviado",
+        description: "O envio para assinatura no ClickSign foi iniciado em segundo plano.",
+      })
+      return { optimisticToast }
+    },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["contract", contractId] })
       await queryClient.invalidateQueries({ queryKey: ["contract", resolvedContractId] })
       await queryClient.invalidateQueries({ queryKey: ["contracts"] })
-      toast({
-        title: "Contrato enviado",
-        description: "O contrato foi enviado para assinatura no ClickSign.",
-      })
     },
-    onError: clicksignErrorToast,
+    onError: (error, _variables, context) => {
+      const description = getApiErrorMessage(error, "Não foi possível concluir a ação no ClickSign.")
+      if (context?.optimisticToast) {
+        context.optimisticToast.update({
+          id: context.optimisticToast.id,
+          title: "ClickSign",
+          description,
+          variant: "destructive",
+        })
+        return
+      }
+      clicksignErrorToast(error)
+    },
   })
 
   const publishSchedulePlanMutation = useMutation({
@@ -718,17 +733,12 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
     },
     onMutate: () => {
       setSchedulePublishConfirmOpen(false)
-      const toastId = sonnerToast.loading("Publicando agendamentos e preparando os alertas...")
+      const toastId = sonnerToast.success("Agendamentos enviados.", {
+        description: "A publicação e os alertas estão sendo processados em segundo plano.",
+      })
       return { toastId }
     },
-    onSuccess: (result, _variables, context) => {
-      const publication = result.data
-      sonnerToast.success(publication.alreadyPublished ? "Agendamentos já enviados." : "Agendamentos enviados.", {
-        id: context?.toastId,
-        description: publication.alreadyPublished
-          ? "Este plano já estava publicado na agenda. Nenhuma mensagem foi duplicada."
-          : `${publication.count} agendamento(s) foram publicados e os alertas foram enfileirados.`,
-      })
+    onSuccess: () => {
       void Promise.all([
         queryClient.invalidateQueries({ queryKey: ["contract", contractId] }),
         queryClient.invalidateQueries({ queryKey: ["contract", resolvedContractId] }),
@@ -740,7 +750,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
     onError: (error, _variables, context) => {
       sonnerToast.error("Não foi possível enviar os agendamentos.", {
         id: context?.toastId,
-        description: getApiErrorMessage(error, "Revise o plano salvo e tente novamente."),
+        description: getApiErrorMessage(error, "O plano anterior foi mantido. Revise e tente novamente."),
       })
     },
   })

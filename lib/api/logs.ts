@@ -1,6 +1,6 @@
 import { api } from "@/lib/api/client"
 
-export type AuditLogStatus = "success" | "error"
+export type AuditLogStatus = "success" | "error" | "pending"
 
 export type AuditLogRecord = {
   id: string

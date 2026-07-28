@@ -105,6 +105,99 @@ test("abre o documento correto no ClickSign em vez do envelope", async ({ page }
   )
 })
 
+test("mostra sucesso imediato no envio ClickSign e restaura a acao quando falha", async ({ page }) => {
+  await installContractMock(page, {
+    status: "draft",
+    clicksign: undefined,
+  })
+
+  let markRequestStarted: (() => void) | undefined
+  let releaseResponse: (() => void) | undefined
+  const requestStarted = new Promise<void>((resolve) => {
+    markRequestStarted = resolve
+  })
+  const responseGate = new Promise<void>((resolve) => {
+    releaseResponse = resolve
+  })
+
+  await page.route(`**/api/v1/clicksign/contracts/${contractFixture.id}/send`, async (route) => {
+    markRequestStarted?.()
+    await responseGate
+    await route.fulfill({
+      status: 502,
+      contentType: "application/json",
+      body: JSON.stringify({
+        message: "Falha de teste ao enviar para a ClickSign.",
+        error: "Bad Gateway",
+        statusCode: 502,
+      }),
+    })
+  })
+
+  await page.goto(`/contratos/${contractFixture.id}`)
+  await page.getByRole("button", { name: "Enviar ClickSign" }).click()
+  await requestStarted
+
+  await expect(page.getByText("O envio para assinatura no ClickSign foi iniciado em segundo plano.")).toBeVisible()
+
+  releaseResponse?.()
+
+  await expect(page.getByText("Falha de teste ao enviar para a ClickSign.")).toBeVisible()
+  await expect(page.getByRole("button", { name: "Enviar ClickSign" })).toBeEnabled()
+})
+
+test("mostra sucesso imediato ao enviar agendamentos e preserva o plano quando falha", async ({ page }) => {
+  await installContractMock(page, {
+    status: "closed",
+    signedAt: FIXED_NOW.toISOString(),
+    automationCreateSchedules: true,
+    automationSchedulePlanSavedAt: FIXED_NOW.toISOString(),
+    automationSchedulePlanPublishedAt: undefined,
+    clicksign: {
+      envelopeId: "envelope-e2e",
+      documentId: "document-e2e",
+      documentKey: "document-e2e",
+      status: "closed",
+      signers: [],
+    },
+  })
+
+  let markRequestStarted: (() => void) | undefined
+  let releaseResponse: (() => void) | undefined
+  const requestStarted = new Promise<void>((resolve) => {
+    markRequestStarted = resolve
+  })
+  const responseGate = new Promise<void>((resolve) => {
+    releaseResponse = resolve
+  })
+
+  await page.route(`**/api/v1/contracts/${contractFixture.id}/schedule-plan/publish`, async (route) => {
+    markRequestStarted?.()
+    await responseGate
+    await route.fulfill({
+      status: 502,
+      contentType: "application/json",
+      body: JSON.stringify({
+        message: "Falha de teste ao publicar os agendamentos.",
+        error: "Bad Gateway",
+        statusCode: 502,
+      }),
+    })
+  })
+
+  await page.goto(`/contratos/${contractFixture.id}`)
+  await page.getByRole("button", { name: "Enviar agendamentos" }).click()
+  await page.getByRole("dialog").getByRole("button", { name: "Enviar agendamentos" }).click()
+  await requestStarted
+
+  await expect(page.getByText("A publicação e os alertas estão sendo processados em segundo plano.")).toBeVisible()
+
+  releaseResponse?.()
+
+  await expect(page.getByText("Falha de teste ao publicar os agendamentos.")).toBeVisible()
+  await expect(page.getByRole("button", { name: "Enviar agendamentos" })).toBeEnabled()
+})
+
 test("exibe hífen sem ícone para equipe não definida no perfil do contrato", async ({ page }) => {
   await installContractMock(page, {
     services: contractFixture.services.map((service) => ({
