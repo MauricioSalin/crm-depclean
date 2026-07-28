@@ -89,7 +89,7 @@ import { addCivilMonthsKey, formatCivilDate, formatCivilLongDate, parseCivilDate
 import type { RecurrenceRule, RecurrenceRuleType, RecurrenceType } from "@/lib/types"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { listClients } from "@/lib/api/clients"
+import { listClients, listClientTypeOptions } from "@/lib/api/clients"
 import {
   createContract,
   createContractFillingDraft,
@@ -113,7 +113,7 @@ import { formatScheduleDurationValue } from "@/lib/schedule-duration"
 import { listTemplates } from "@/lib/api/templates"
 import { listTeams } from "@/lib/api/teams"
 import { listEmployees } from "@/lib/api/employees"
-import { getOrganizationSettings, listClientTypes } from "@/lib/api/settings"
+import { getOrganizationSettings } from "@/lib/api/settings"
 import {
   isEmployeeCoveredBySelectedTeams,
   normalizeTeamEmployeeSelection,
@@ -342,6 +342,13 @@ export function ContractForm({
   const router = useRouter()
   const queryClient = useQueryClient()
   const formBackHref = returnTo || "/contratos"
+  const getContractProfileHrefAfterSave = (savedContractId: string) => {
+    const profileHref = `/contratos/${savedContractId}`
+    const formBackPath = formBackHref.split(/[?#]/, 1)[0]
+    return formBackPath === profileHref
+      ? formBackHref
+      : withReturnTo(profileHref, formBackHref)
+  }
   const canDeleteContracts = useHasAnyPermission(["contracts_delete"])
   const isRenewal = Boolean(renewFromContractId && !isEditing)
   const sourceContractId = isEditing ? contractId : renewFromContractId
@@ -376,7 +383,7 @@ export function ContractForm({
   })
   const clientTypesQuery = useQuery({
     queryKey: ["client-types", "contract-form"],
-    queryFn: () => listClientTypes(""),
+    queryFn: listClientTypeOptions,
   })
   const organizationSettingsQuery = useQuery({
     queryKey: ["organization-settings", "contract-form"],
@@ -395,7 +402,7 @@ export function ContractForm({
   const certificateTemplates = certificateTemplatesQuery.data?.data ?? []
   const teams = teamsQuery.data?.data ?? []
   const employees = employeesQuery.data?.data ?? []
-  const clientTypes = clientTypesQuery.data?.data.items ?? []
+  const clientTypes = clientTypesQuery.data?.data ?? []
   const organizationSettings = organizationSettingsQuery.data?.data ?? null
   const getClientTypeById = (id: string) => clientTypes.find((type) => type.id === id)
   const contract = contractQuery.data?.data
@@ -1903,11 +1910,7 @@ export function ContractForm({
       allowNavigationRef.current = true
       setDraftBaseline(draftSnapshotRef.current)
       setEditorDirty(false)
-      router.replace(
-        isEditing
-          ? formBackHref
-          : withReturnTo(`/contratos/${response.data.id}`, formBackHref),
-      )
+      router.replace(getContractProfileHrefAfterSave(response.data.id))
     } catch (error) {
       toast.dismiss(loadingToast)
       toast.error(getApiErrorMessage(
@@ -1962,7 +1965,7 @@ export function ContractForm({
             className="w-full bg-primary hover:bg-primary/90 sm:w-auto"
           >
             <Save className="mr-2 h-4 w-4" />
-            {fillingDraftMutation.isPending ? "Salvando..." : "Salvar como Em preenchimento"}
+            {fillingDraftMutation.isPending ? "Salvando..." : "Salvar Rascunho"}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -2146,7 +2149,7 @@ export function ContractForm({
 
   return (
     <form noValidate onSubmit={handleSubmit} className="space-y-6">
-      <div className="flex justify-end gap-2">
+      <div className="flex flex-wrap justify-end gap-2">
         <Button
           type="button"
           variant="outline"
@@ -2181,10 +2184,36 @@ export function ContractForm({
             ? "Salvando..."
             : isEditing
               ? contract?.internalStatus === "filling"
-                ? "Salvar como Em preenchimento"
+                ? "Salvar Rascunho"
                 : "Salvar"
-              : "Salvar como Em preenchimento"}
+              : "Salvar Rascunho"}
         </Button>
+        {isEditing ? (
+          <Button
+            type="submit"
+            data-contract-action="document"
+            className="bg-primary hover:bg-primary/90"
+            disabled={
+              fillingDraftMutation.isPending ||
+              previewMutation.isPending ||
+              previewUpdateMutation.isPending ||
+              updateMutation.isPending ||
+              createMutation.isPending ||
+              isFinalizingCreate
+            }
+          >
+            {contract?.internalStatus === "filling" ? (
+              <ArrowRight className="mr-2 h-4 w-4" />
+            ) : (
+              <FilePenLine className="mr-2 h-4 w-4" />
+            )}
+            {previewUpdateMutation.isPending
+              ? "Carregando..."
+              : contract?.internalStatus === "filling"
+                ? "Avançar"
+                : "Editar documento"}
+          </Button>
+        ) : null}
       </div>
 
       {/* Client Selection */}
@@ -3088,7 +3117,7 @@ export function ContractForm({
                 {fillingDraftMutation.isPending || updateMutation.isPending
                   ? "Salvando..."
                   : contract?.internalStatus === "filling"
-                    ? "Salvar como Em preenchimento"
+                    ? "Salvar Rascunho"
                     : "Salvar"}
               </Button>
               <Button
@@ -3119,7 +3148,7 @@ export function ContractForm({
                 disabled={fillingDraftMutation.isPending || previewMutation.isPending || previewUpdateMutation.isPending || updateMutation.isPending || createMutation.isPending || isFinalizingCreate}
               >
                 <Save className="mr-2 h-4 w-4" />
-                {fillingDraftMutation.isPending ? "Salvando..." : "Salvar como Em preenchimento"}
+                {fillingDraftMutation.isPending ? "Salvando..." : "Salvar Rascunho"}
               </Button>
               <Button
                 type="submit"

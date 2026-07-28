@@ -40,9 +40,8 @@ import { DataPagination } from "@/components/ui/data-pagination"
 import { CsvImportDialog, type CsvImportField } from "@/components/ui/csv-import-dialog"
 import { EmptyState, TableEmptyState } from "@/components/ui/empty-state"
 import { CardSkeletonGrid, TableSkeletonRows } from "@/components/ui/table-skeleton"
-import { createClient, deleteClient, listClients, type ClientRecord } from "@/lib/api/clients"
+import { createClient, deleteClient, listClients, listClientTypeOptions, type ClientRecord } from "@/lib/api/clients"
 import { listContracts } from "@/lib/api/contracts"
-import { listClientTypes } from "@/lib/api/settings"
 import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 import { getApiErrorMessage } from "@/lib/api/errors"
@@ -139,12 +138,12 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
 
   const clientTypesQuery = useQuery({
     queryKey: ["client-types", "clients-content"],
-    queryFn: () => listClientTypes(""),
+    queryFn: listClientTypeOptions,
   })
 
   const clients = clientsQuery.data?.data ?? []
   const contracts = contractsQuery.data?.data ?? []
-  const clientTypes = clientTypesQuery.data?.data.items ?? []
+  const clientTypes = clientTypesQuery.data?.data ?? []
   const clientTypeOptions = useMemo(() => clientTypes.map(t => ({ value: t.id, label: t.name })), [clientTypes])
   const clientTypeById = useMemo(() => new Map(clientTypes.map((type) => [type.id, type])), [clientTypes])
   const contractsByClientId = useMemo(() => {

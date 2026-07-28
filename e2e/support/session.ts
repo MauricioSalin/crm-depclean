@@ -41,6 +41,7 @@ export const E2E_USER = {
     "templates_manage",
     "logs_view",
     "logs_manage",
+    "help_view",
     "depai_access",
   ],
   employeeId: "employee-e2e",
@@ -55,7 +56,7 @@ export const E2E_USER = {
   updatedAt: "2026-07-28T12:00:00.000Z",
 }
 
-export async function installAuthenticatedSession(page: Page) {
+export async function installAuthenticatedSession(page: Page, user: typeof E2E_USER = E2E_USER) {
   await page.addInitScript((user) => {
     const encode = (value: unknown) =>
       window.btoa(JSON.stringify(value)).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "")
@@ -68,5 +69,5 @@ export async function installAuthenticatedSession(page: Page) {
     window.localStorage.setItem("depclean.refreshToken", "e2e-refresh-token")
     window.localStorage.setItem("depclean.user", JSON.stringify(user))
     window.localStorage.setItem("depclean.expiresAt", String(Date.now() + 24 * 60 * 60 * 1000))
-  }, E2E_USER)
+  }, user)
 }

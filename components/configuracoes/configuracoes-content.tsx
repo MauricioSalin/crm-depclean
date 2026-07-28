@@ -174,6 +174,7 @@ const PERMISSION_MODULES: PermissionModule[] = [
   { key: "depai", title: "DepAI", description: "Acesso ao assistente de IA da plataforma" },
   { key: "templates", title: "Templates", description: "Acesso aos modelos de contratos" },
   { key: "logs", title: "Logs", description: "Acesso ao histórico de ações" },
+  { key: "help", title: "Ajuda", description: "Acesso à central de ajuda e suporte" },
 ]
 
 const AGENDA_RESTRICTED_VIEW_PERMISSION = "agenda_own_view"
@@ -293,7 +294,7 @@ export function ConfiguracoesContent() {
 
   const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false)
   const [editingProfile, setEditingProfile] = useState<PermissionProfileRecord | null>(null)
-  const [profileForm, setProfileForm] = useState({ name: "", description: "", permissions: [] as string[] })
+  const [profileForm, setProfileForm] = useState({ name: "", description: "", permissions: ["help_view"] as string[] })
 
   const [isUserDialogOpen, setIsUserDialogOpen] = useState(false)
   const [editingUser, setEditingUser] = useState<UserRecord | null>(null)
@@ -482,7 +483,7 @@ export function ConfiguracoesContent() {
 
   const resetProfileFormFields = () => {
     setEditingProfile(null)
-    setProfileForm({ name: "", description: "", permissions: [] })
+    setProfileForm({ name: "", description: "", permissions: ["help_view"] })
   }
 
   const closeProfileDialog = () => {

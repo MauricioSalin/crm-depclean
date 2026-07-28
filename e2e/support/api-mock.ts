@@ -151,6 +151,18 @@ export const scheduleFixture = {
   updatedAt: NOW,
 }
 
+export const clientServiceFixture = {
+  id: scheduleFixture.id,
+  contractId: scheduleFixture.contractId,
+  isManual: scheduleFixture.isManual,
+  isEmergency: scheduleFixture.isEmergency,
+  serviceTypeName: scheduleFixture.serviceTypeName,
+  teams: scheduleFixture.teams,
+  additionalEmployees: scheduleFixture.additionalEmployees,
+  date: scheduleFixture.date,
+  status: scheduleFixture.status,
+}
+
 export const contractFixture = {
   id: "contract-e2e",
   contractNumber: "E2E-0001",
@@ -264,7 +276,7 @@ const financialSummary = {
   adherenceRate: 0,
 }
 
-const clientTypeFixture = {
+export const clientTypeFixture = {
   id: "client-type-e2e",
   name: "Condomínio",
   description: "Tipo de cliente para testes.",
@@ -356,12 +368,14 @@ function analyticsResponse(path: string) {
   }
 }
 
-function resolveGet(path: string, url: URL): unknown {
-  if (path === "/profile/me") return { ...E2E_USER, profileDescription: "Perfil dos testes E2E." }
+function resolveGet(path: string, url: URL, currentUser = E2E_USER): unknown {
+  if (path === "/profile/me") return { ...currentUser, profileDescription: "Perfil dos testes E2E." }
   if (path === "/support/contact") {
     return { name: "Suporte Depclean", whatsapp: "51999999999", email: "suporte@depclean.test" }
   }
   if (path.startsWith("/analytics/")) return analyticsResponse(path)
+  if (path === "/clients/catalog/types") return [clientTypeFixture]
+  if (path === "/clients/client-e2e/services") return [clientServiceFixture]
   if (path === "/clients/client-e2e/attachments") return []
   if (path === "/clients/client-e2e/extras") return []
   if (path === "/clients/client-e2e") return clientFixture
@@ -478,7 +492,7 @@ function resolveMutation(path: string) {
   return success(null)
 }
 
-async function handleApiRoute(route: Route) {
+async function handleApiRoute(route: Route, currentUser = E2E_USER) {
   const request = route.request()
   const url = new URL(request.url())
   const path = url.pathname.startsWith(API_PREFIX)
@@ -489,7 +503,7 @@ async function handleApiRoute(route: Route) {
     await route.fulfill({
       status: 200,
       contentType: "application/json; charset=utf-8",
-      body: JSON.stringify(success(resolveGet(path, url))),
+      body: JSON.stringify(success(resolveGet(path, url, currentUser))),
     })
     return
   }
@@ -501,9 +515,10 @@ async function handleApiRoute(route: Route) {
   })
 }
 
-export async function installApiMock(page: Page) {
-  await page.route("http://localhost:3333/api/v1/**", handleApiRoute)
-  await page.route("http://127.0.0.1:3333/api/v1/**", handleApiRoute)
+export async function installApiMock(page: Page, currentUser: typeof E2E_USER = E2E_USER) {
+  const handleRoute = (route: Route) => handleApiRoute(route, currentUser)
+  await page.route("http://localhost:3333/api/v1/**", handleRoute)
+  await page.route("http://127.0.0.1:3333/api/v1/**", handleRoute)
   await page.route("https://viacep.com.br/**", async (route) => {
     await route.fulfill({
       status: 200,
