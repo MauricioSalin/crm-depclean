@@ -1263,7 +1263,12 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <AssignmentBadges teams={serviceTeams} employees={serviceEmployees} className="gap-2" />
+                        <AssignmentBadges
+                          teams={serviceTeams}
+                          employees={serviceEmployees}
+                          showEmptyIcon={false}
+                          className="gap-2"
+                        />
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2 text-foreground">
@@ -1443,7 +1448,11 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                         <TableCell className="font-medium">{schedule.serviceTypeName}</TableCell>
                         <TableCell>{schedule.unitName}</TableCell>
                         <TableCell>
-                          <AssignmentBadges teams={scheduleTeams} employees={schedule.additionalEmployees} />
+                          <AssignmentBadges
+                            teams={scheduleTeams}
+                            employees={schedule.additionalEmployees}
+                            showEmptyIcon={false}
+                          />
                         </TableCell>
                         <TableCell>{formatDate(schedule.date)}</TableCell>
                         <TableCell>{schedule.time}</TableCell>

@@ -104,3 +104,19 @@ test("abre o documento correto no ClickSign em vez do envelope", async ({ page }
     "https://app.clicksign.com/accounts/379383/folders/49449970/documents/cd01f2bf-7030-446f-9c02-b3c96c80245d",
   )
 })
+
+test("não exibe ícone ao lado de Não definida no perfil do contrato", async ({ page }) => {
+  await installContractMock(page, {
+    services: contractFixture.services.map((service) => ({
+      ...service,
+      teamIds: [],
+      additionalEmployeeIds: [],
+    })),
+  })
+
+  await page.goto(`/contratos/${contractFixture.id}`)
+
+  const emptyAssignment = page.getByText("Não definida", { exact: true }).first()
+  await expect(emptyAssignment).toBeVisible()
+  await expect(emptyAssignment.locator("xpath=ancestor::td[1]").locator("svg")).toHaveCount(0)
+})

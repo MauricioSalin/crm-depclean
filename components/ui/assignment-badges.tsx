@@ -18,6 +18,7 @@ interface AssignmentBadgesProps {
   teams?: AssignmentTeam[]
   employees?: AssignmentEmployee[]
   emptyLabel?: string
+  showEmptyIcon?: boolean
   className?: string
 }
 
@@ -25,12 +26,13 @@ export function AssignmentBadges({
   teams = [],
   employees = [],
   emptyLabel = "Não definida",
+  showEmptyIcon = true,
   className,
 }: AssignmentBadgesProps) {
   if (teams.length === 0 && employees.length === 0) {
     return (
       <div className={cn("flex items-center gap-2 text-sm text-muted-foreground", className)}>
-        <Users className="h-4 w-4" />
+        {showEmptyIcon ? <Users className="h-4 w-4" /> : null}
         <span>{emptyLabel}</span>
       </div>
     )
