@@ -1266,6 +1266,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                         <AssignmentBadges
                           teams={serviceTeams}
                           employees={serviceEmployees}
+                          emptyLabel="-"
                           showEmptyIcon={false}
                           className="gap-2"
                         />
@@ -1451,6 +1452,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                           <AssignmentBadges
                             teams={scheduleTeams}
                             employees={schedule.additionalEmployees}
+                            emptyLabel="-"
                             showEmptyIcon={false}
                           />
                         </TableCell>

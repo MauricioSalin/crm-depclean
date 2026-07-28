@@ -1,6 +1,12 @@
 import { expect, test } from "@playwright/test"
 
-import { clientFixture, clientTypeFixture, installApiMock, serviceFixture } from "./support/api-mock"
+import {
+  clientFixture,
+  clientServiceFixture,
+  clientTypeFixture,
+  installApiMock,
+  serviceFixture,
+} from "./support/api-mock"
 import { E2E_USER, installAuthenticatedSession } from "./support/session"
 
 const operationalUser = {
@@ -20,6 +26,34 @@ test("não exibe o atalho Acessar contrato no cabeçalho do perfil", async ({ pa
   await page.goto(`/clientes/${clientFixture.id}`)
 
   await expect(page.getByRole("button", { name: "Acessar contrato", exact: true })).toHaveCount(0)
+})
+
+test("exibe hífen sem ícone para equipe não definida na aba Serviços", async ({ page }) => {
+  await installAuthenticatedSession(page)
+  await installApiMock(page)
+  await page.route(`**/api/v1/clients/${clientFixture.id}/services`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        success: true,
+        message: "Serviço de teste carregado.",
+        data: [{
+          ...clientServiceFixture,
+          teams: [],
+          additionalEmployees: [],
+        }],
+      }),
+    })
+  })
+
+  await page.goto(`/clientes/${clientFixture.id}`)
+  await page.getByRole("tab", { name: "Serviços (1)" }).click()
+
+  const serviceRow = page.getByRole("row").filter({ hasText: serviceFixture.name })
+  const emptyAssignment = serviceRow.getByText("-", { exact: true })
+  await expect(emptyAssignment).toBeVisible()
+  await expect(emptyAssignment.locator("xpath=ancestor::td[1]").locator("svg")).toHaveCount(0)
 })
 
 test("o perfil do cliente respeita as permissões do menu e lista os serviços", async ({ page }) => {

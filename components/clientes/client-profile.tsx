@@ -1534,7 +1534,12 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                         <ScheduleTypeBadge schedule={service} />
                       </TableCell>
                       <TableCell className="hidden md:table-cell">
-                        <AssignmentBadges teams={service.teams} employees={service.additionalEmployees} />
+                        <AssignmentBadges
+                          teams={service.teams}
+                          employees={service.additionalEmployees}
+                          emptyLabel="-"
+                          showEmptyIcon={false}
+                        />
                       </TableCell>
                       <TableCell className="text-sm">{formatDate(service.date)}</TableCell>
                       <TableCell>{getScheduleStatusBadge(service.status)}</TableCell>

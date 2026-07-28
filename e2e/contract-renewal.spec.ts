@@ -105,7 +105,7 @@ test("abre o documento correto no ClickSign em vez do envelope", async ({ page }
   )
 })
 
-test("não exibe ícone ao lado de Não definida no perfil do contrato", async ({ page }) => {
+test("exibe hífen sem ícone para equipe não definida no perfil do contrato", async ({ page }) => {
   await installContractMock(page, {
     services: contractFixture.services.map((service) => ({
       ...service,
@@ -116,7 +116,7 @@ test("não exibe ícone ao lado de Não definida no perfil do contrato", async (
 
   await page.goto(`/contratos/${contractFixture.id}`)
 
-  const emptyAssignment = page.getByText("Não definida", { exact: true }).first()
+  const emptyAssignment = page.getByText("-", { exact: true }).first()
   await expect(emptyAssignment).toBeVisible()
   await expect(emptyAssignment.locator("xpath=ancestor::td[1]").locator("svg")).toHaveCount(0)
 })
