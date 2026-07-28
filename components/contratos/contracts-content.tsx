@@ -45,6 +45,7 @@ import { getContractClicksignUrl } from "@/lib/clicksign"
 import {
   getClicksignContractStatusLabel,
   isClosedClicksignContractStatus,
+  isContractEligibleForRenewal,
   isContractExpiredByValidity,
   isOperationallyActiveContract,
   normalizeClicksignContractStatus,
@@ -188,8 +189,8 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
       if (statusFilter === "expired") return isContractExpiredByValidity(contract)
       return normalizeClicksignContractStatus(contract.status) === statusFilter
     }).filter((contract) => {
-      if (validityFilter === "active") return isOperationallyActiveContract(contract)
-      if (validityFilter === "inactive") return isContractExpiredByValidity(contract)
+      if (validityFilter === "active" || validityFilter === "current") return isOperationallyActiveContract(contract)
+      if (validityFilter === "inactive" || validityFilter === "expired") return isContractExpiredByValidity(contract)
       return true
     })
   }, [contracts, statusFilter, validityFilter])
@@ -445,7 +446,7 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
                                 </Link>
                               </DropdownMenuItem>
                             ) : null}
-                            {canCreateContracts && isContractExpiredByValidity(contract) ? (
+                            {canCreateContracts && isContractEligibleForRenewal(contract) ? (
                               <DropdownMenuItem asChild>
                                 <Link href={getContractRenewHref(contract.id)}>
                                   <RefreshCw className="mr-2 h-4 w-4" />
@@ -576,7 +577,7 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
                             </Link>
                           </Button>
                         ) : null}
-                        {canCreateContracts && isContractExpiredByValidity(contract) ? (
+                        {canCreateContracts && isContractEligibleForRenewal(contract) ? (
                           <Button variant="outline" size="sm" className="flex-1" asChild>
                             <Link href={getContractRenewHref(contract.id)}>
                               <RefreshCw className="mr-1 h-4 w-4" />

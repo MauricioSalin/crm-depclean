@@ -151,7 +151,6 @@ export function GlobalSearch() {
           kind: "client",
           title: client.companyName,
           description: getClientDescription(client),
-          meta: client.isActive ? "Ativo" : "Inativo",
           href: withReturnTo(`/clientes/${client.id}`, currentHref),
           icon: <Building2 className="h-4 w-4" />,
           section: "Clientes",

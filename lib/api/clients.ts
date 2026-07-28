@@ -50,7 +50,6 @@ export type ClientRecord = {
   copyNotificationsToOwner: boolean
   preferredServiceWeekday: number | null
   preferredServiceShift: "" | "morning" | "afternoon"
-  isActive: boolean
   isDelinquent: boolean
   units: ClientUnitRecord[]
   createdAt: string
@@ -168,7 +167,6 @@ export type ClientPayload = {
   copyNotificationsToOwner?: boolean
   preferredServiceWeekday?: number | null
   preferredServiceShift?: "" | "morning" | "afternoon"
-  isActive?: boolean
   units: Array<{
     id?: string
     name: string

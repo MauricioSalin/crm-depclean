@@ -40,6 +40,8 @@ const EVENT_COLUMN_GUTTER = 6
 const EVENT_COLUMN_GAP = 4
 const MIN_EVENT_HEIGHT = 54
 const POINTER_TOOLTIP_DELAY_MS = 1000
+const EVENT_OPEN_TRANSITION_MS = 450
+const EVENT_CLOSE_TRANSITION_MS = 500
 const POINTER_TOOLTIP_OFFSET = 14
 const POINTER_TOOLTIP_VIEWPORT_MARGIN = 8
 
@@ -215,6 +217,7 @@ export function WeekTimeline({
 
     pointerTooltipTimerRef.current = window.setTimeout(() => {
       if (pointerTooltipEventIdRef.current === event.id) {
+        setActiveEventId(event.id)
         setPointerTooltipEvent(event)
       }
       pointerTooltipTimerRef.current = null
@@ -452,7 +455,6 @@ export function WeekTimeline({
                             onPointerDown={() => setActiveEventGroupId(hoverGroupId)}
                             onMouseEnter={(event) => {
                               setActiveEventGroupId(hoverGroupId)
-                              setActiveEventId(ev.id)
                               beginPointerTooltip(ev, event.clientX, event.clientY)
                             }}
                             onMouseMove={(event) => {
@@ -465,7 +467,6 @@ export function WeekTimeline({
                             }}
                             onFocus={(event) => {
                               setActiveEventGroupId(hoverGroupId)
-                              setActiveEventId(ev.id)
                               if (event.currentTarget.matches(":focus-visible")) {
                                 const rect = event.currentTarget.getBoundingClientRect()
                                 beginPointerTooltip(ev, rect.left + Math.min(rect.width / 2, 40), rect.top + 16)
@@ -476,10 +477,13 @@ export function WeekTimeline({
                               setActiveEventId((current) => (current === ev.id ? null : current))
                               clearPointerTooltip()
                             }}
-                            className={`group absolute flex min-w-0 cursor-pointer flex-col items-start justify-start gap-0.5 overflow-hidden rounded-md border border-transparent border-l-[3px] px-1.5 py-1 text-left transition-[left,width,box-shadow,background-color,transform] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 active:scale-[0.99] ${
+                            className={`group absolute flex min-w-0 cursor-pointer flex-col items-start justify-start gap-0.5 overflow-hidden rounded-md border border-transparent border-l-[3px] px-1.5 py-1 text-left transition-[left,width,box-shadow,background-color,transform] ease-[cubic-bezier(0.22,1,0.36,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 active:scale-[0.99] ${
                               isActive ? "-translate-y-0.5 scale-[1.015]" : "hover:-translate-y-0.5 hover:scale-[1.015]"
                             }`}
                             style={{
+                              transitionDuration: `${
+                                isDirectlyActive ? EVENT_OPEN_TRANSITION_MS : EVENT_CLOSE_TRANSITION_MS
+                              }ms`,
                               top: ev.top,
                               left: isDirectlyActive ? EVENT_COLUMN_GUTTER : eventLeft,
                               width: isDirectlyActive

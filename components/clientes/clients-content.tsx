@@ -202,7 +202,6 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
           syndicReceivesNotifications: parseCsvBoolean(row.syndicReceivesNotifications),
           responsibleReceivesNotifications: true,
           copyNotificationsToOwner: false,
-          isActive: true,
           units: [{
             name: row.unitName || "Matriz",
             isPrimary: true,

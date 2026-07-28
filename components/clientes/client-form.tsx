@@ -648,7 +648,6 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
         copyNotificationsToOwner: formData.copyNotificationsToOwner,
         preferredServiceWeekday: formData.preferredServiceWeekday === "" ? null : Number(formData.preferredServiceWeekday),
         preferredServiceShift: formData.preferredServiceShift as "" | "morning" | "afternoon",
-        isActive: true,
         units: units.map((unit, index) => ({
           id: typeof unit.id === "string" ? unit.id : undefined,
           name: unit.name || (index === 0 ? "Matriz" : `Filial ${index}`),

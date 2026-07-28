@@ -10,37 +10,45 @@ import { Card } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { getDashboardAnalytics, type DashboardAnalyticsParams } from "@/lib/api/analytics"
 
-const ACTIVE_CLIENT_COLOR = "var(--primary)"
-const INACTIVE_CLIENT_COLOR = "#94A3B8"
 const EMPTY_CHART_COLOR = "#DDE7D5"
 
-type ClientStatusPoint = {
+type ContractStatusPoint = {
   name: string
   value: number
   color: string
   isEmpty?: boolean
 }
 
-function formatClientCount(value: number) {
-  return `${value} cliente${value === 1 ? "" : "s"}`
+function formatContractCount(value: number) {
+  return `${value} contrato${value === 1 ? "" : "s"}`
 }
 
-export function ClientStatusChart(period: DashboardAnalyticsParams = {}) {
+export function ContractStatusChart(period: DashboardAnalyticsParams = {}) {
   const dashboardQuery = useQuery({
     queryKey: ["analytics", "dashboard", period],
     queryFn: () => getDashboardAnalytics(period),
   })
   const isLoading = dashboardQuery.isLoading || (dashboardQuery.isFetching && !dashboardQuery.data)
   const stats = dashboardQuery.data?.data.stats
-  const activeClients = stats?.activeClients ?? 0
-  const inactiveClients = stats?.inactiveClients ?? 0
-  const totalClients = activeClients + inactiveClients
-  const hasClientData = totalClients > 0
-  const legendData: ClientStatusPoint[] = [
-    { name: "Ativos", value: activeClients, color: ACTIVE_CLIENT_COLOR },
-    { name: "Inativos", value: inactiveClients, color: INACTIVE_CLIENT_COLOR },
+  const statusCounts = stats?.contractStatusCounts ?? {
+    awaitingSend: 0,
+    awaitingSignature: 0,
+    signed: 0,
+    current: 0,
+    expired: 0,
+    canceled: 0,
+  }
+  const legendData: ContractStatusPoint[] = [
+    { name: "Aguardando envio", value: statusCounts.awaitingSend, color: "#F59E0B" },
+    { name: "Aguardando assinatura", value: statusCounts.awaitingSignature, color: "#3B82F6" },
+    { name: "Assinados", value: statusCounts.signed, color: "#14B8A6" },
+    { name: "Vigentes", value: statusCounts.current, color: "var(--primary)" },
+    { name: "Vencidos", value: statusCounts.expired, color: "#EF4444" },
+    { name: "Cancelados", value: statusCounts.canceled, color: "#94A3B8" },
   ]
-  const chartData: ClientStatusPoint[] = hasClientData
+  const totalContracts = legendData.reduce((total, item) => total + item.value, 0)
+  const hasContractData = totalContracts > 0
+  const chartData: ContractStatusPoint[] = hasContractData
     ? legendData.filter((item) => item.value > 0)
     : [{ name: "Sem dados", value: 1, color: EMPTY_CHART_COLOR, isEmpty: true }]
 
@@ -48,9 +56,9 @@ export function ClientStatusChart(period: DashboardAnalyticsParams = {}) {
     <Card className="flex h-full flex-col p-4 transition-all duration-500 hover:shadow-xl lg:min-h-[360px] lg:max-h-[460px]">
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-foreground">Clientes por status</h2>
+          <h2 className="text-lg font-semibold text-foreground">Contratos por status</h2>
         </div>
-        <Link href="/clientes">
+        <Link href="/contratos">
           <Button variant="ghost" size="sm" className="text-xs text-foreground hover:text-foreground/80">
             Ver todos
             <ArrowRight className="ml-1 h-3 w-3" />
@@ -105,21 +113,21 @@ export function ClientStatusChart(period: DashboardAnalyticsParams = {}) {
                       fontSize: "12px",
                     }}
                     formatter={(value: number, _name, item) => [
-                      formatClientCount(item.payload.isEmpty ? 0 : value),
+                      formatContractCount(item.payload.isEmpty ? 0 : value),
                       item.payload.name,
                     ]}
                   />
                 </PieChart>
               </ResponsiveContainer>
               <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
-                <span className="text-3xl font-bold text-foreground">{totalClients}</span>
-                <span className="mt-1 text-xs text-muted-foreground">clientes</span>
+                <span className="text-3xl font-bold text-foreground">{totalContracts}</span>
+                <span className="mt-1 text-xs text-muted-foreground">contratos</span>
               </div>
             </div>
 
             <div className="grid w-full grid-cols-2 gap-2">
               {legendData.map((item) => {
-                const percentage = totalClients > 0 ? Math.round((item.value / totalClients) * 100) : 0
+                const percentage = totalContracts > 0 ? Math.round((item.value / totalContracts) * 100) : 0
 
                 return (
                   <div key={item.name} className="rounded-xl border bg-card p-3">

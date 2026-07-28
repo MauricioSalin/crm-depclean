@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { getContractById, type ContractRecord } from "@/lib/api/contracts"
 import {
   isClosedClicksignContractStatus,
-  isContractExpiredByValidity,
+  isContractEligibleForRenewal,
 } from "@/lib/contract-status"
 import { buildPathWithSearchParams, getSafeReturnTo, withReturnTo } from "@/lib/navigation"
 import { useHasAnyPermission } from "@/hooks/use-permissions"
@@ -52,7 +52,7 @@ export function ContractDetailHeaderActions({ contractId }: ContractDetailHeader
       {contractQuery.isLoading ? (
         <Skeleton className="h-9 flex-1 rounded-full sm:w-[150px] sm:flex-initial" />
       ) : null}
-      {canCreateContracts && contract && isContractExpiredByValidity(contract) ? (
+      {canCreateContracts && contract && isContractEligibleForRenewal(contract) ? (
         <Link
           href={withReturnTo(
             `/contratos/novo?renewFrom=${encodeURIComponent(contractId)}`,

@@ -81,12 +81,11 @@ export function getContractClicksignSigningUrl(contract?: Pick<ContractRecord, "
 }
 
 export function getContractClicksignManagementUrl(contract?: Pick<ContractRecord, "clicksign"> | null) {
-  const envelopeId = String(contract?.clicksign?.envelopeId ?? "").trim()
   const documentId = String(contract?.clicksign?.documentId || contract?.clicksign?.documentKey || "").trim()
-  if (!envelopeId && !documentId) return ""
+  if (!documentId) return ""
 
-  const documentReference = envelopeId || documentId
-  return `${clicksignManagementBaseUrl}/accounts/${clicksignManagementAccountId}/folders/${clicksignManagementFolderId}/documents/${encodeURIComponent(documentReference)}`
+  const folderId = String(contract?.clicksign?.folderId || clicksignManagementFolderId).trim()
+  return `${clicksignManagementBaseUrl}/accounts/${clicksignManagementAccountId}/folders/${encodeURIComponent(folderId)}/documents/${encodeURIComponent(documentId)}`
 }
 
 export function getContractClicksignUrl(contract?: Pick<ContractRecord, "signatureUrl" | "clicksign"> | null) {

@@ -83,6 +83,7 @@ import { CsvImportDialog, type CsvImportField } from "@/components/ui/csv-import
 import { EmptyState, TableEmptyState } from "@/components/ui/empty-state"
 import { CardSkeletonGrid, TableSkeletonRows } from "@/components/ui/table-skeleton"
 import { ScheduleTypeBadge } from "@/components/ui/schedule-type-badge"
+import { BusinessStatusBadge } from "@/components/ui/business-status-badges"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { SchedulingFormDialog, type SchedulingFormData } from "./scheduling-form-dialog"
 import { ScheduleDetailsDialog } from "./schedule-details-dialog"
@@ -1038,6 +1039,14 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
         canManage={canManageAgenda}
         canStart={selectedSchedule ? canStartSchedule(selectedSchedule, currentUser, teams) : false}
         canReschedule={canManageAgenda}
+        canEdit={Boolean(
+          selectedSchedule &&
+            (canManageScheduleStatus ||
+              (canManageAgenda && canEditSchedule(selectedSchedule, canManageLockedSchedules))),
+        )}
+        onEdit={() => {
+          if (selectedSchedule) openEditSchedule(selectedSchedule)
+        }}
         onStartAttendance={async (schedule) => {
           if (!canStartSchedule(schedule, currentUser, teams)) return
           await startMutation.mutateAsync(schedule)
@@ -1297,8 +1306,11 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                           <div className={`hidden h-10 w-10 shrink-0 items-center justify-center rounded-lg sm:flex ${getScheduleIconTone(schedule).wrapper}`}>
                             <Calendar className={`h-5 w-5 ${getScheduleIconTone(schedule).icon}`} />
                           </div>
-                          <div>
-                            <p className="font-semibold text-foreground">{schedule.clientName}</p>
+                          <div className="min-w-0">
+                            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                              <p className="min-w-0 truncate font-semibold text-foreground">{schedule.clientName}</p>
+                              {schedule.isClientDelinquent ? <BusinessStatusBadge status="delinquent" /> : null}
+                            </div>
                             <p className="text-xs text-muted-foreground sm:hidden">
                               {schedule.serviceTypeName} • {formatConfiguredScheduleDuration(schedule)}
                             </p>
@@ -1310,12 +1322,7 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                         <p className="text-xs text-muted-foreground">{formatConfiguredScheduleDuration(schedule)}</p>
                       </TableCell>
                       <TableCell className="hidden lg:table-cell">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <ScheduleTypeBadge schedule={schedule} />
-                          {schedule.isClientDelinquent ? (
-                            <Badge className="bg-red-100 text-red-700 hover:bg-red-100">Inadimplente</Badge>
-                          ) : null}
-                        </div>
+                        <ScheduleTypeBadge schedule={schedule} />
                       </TableCell>
                       <TableCell className="hidden md:table-cell">
                         <div className="flex flex-wrap gap-1.5">
@@ -1461,8 +1468,11 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                         <div className={`hidden h-10 w-10 shrink-0 items-center justify-center rounded-lg sm:flex ${getScheduleIconTone(schedule).wrapper}`}>
                           <Calendar className={`h-5 w-5 ${getScheduleIconTone(schedule).icon}`} />
                         </div>
-                        <div>
-                          <h4 className="text-sm font-semibold text-foreground">{schedule.clientName}</h4>
+                        <div className="min-w-0">
+                          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                            <h4 className="min-w-0 truncate text-sm font-semibold text-foreground">{schedule.clientName}</h4>
+                            {schedule.isClientDelinquent ? <BusinessStatusBadge status="delinquent" /> : null}
+                          </div>
                           <p className="text-xs text-muted-foreground">{schedule.serviceTypeName}</p>
                         </div>
                       </div>
@@ -1470,9 +1480,6 @@ export function AgendamentosContent({ viewMode, openDialog, onDialogChange, view
                     </div>
                     <div className="mb-2 flex flex-wrap items-center gap-1.5">
                       <ScheduleTypeBadge schedule={schedule} />
-                      {schedule.isClientDelinquent ? (
-                        <Badge className="bg-red-100 text-red-700 hover:bg-red-100">Inadimplente</Badge>
-                      ) : null}
                     </div>
                     <div className="space-y-1 text-xs text-muted-foreground">
                       <div className="flex items-center gap-2">

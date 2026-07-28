@@ -5,10 +5,11 @@ import { AnimatePresence, motion } from "framer-motion"
 import type { DateRange } from "react-day-picker"
 
 import { Header } from "@/components/dashboard/header"
-import { StatsCards, ProductivityCards } from "@/components/dashboard/stats-cards"
+import { StatsCards } from "@/components/dashboard/stats-cards"
 import { ProjectAnalytics } from "@/components/dashboard/project-analytics"
 import { UpcomingServices } from "@/components/dashboard/reminders"
-import { ClientStatusChart } from "@/components/dashboard/client-status-chart"
+import { ContractStatusChart } from "@/components/dashboard/contract-status-chart"
+import { ContractRenewalChart } from "@/components/dashboard/contract-renewal-chart"
 import { ServiceDistribution } from "@/components/dashboard/project-progress"
 import { LiveServicesWidget } from "@/components/dashboard/custom-dashboard-widgets"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -159,10 +160,10 @@ export function DashboardContent() {
 
         <div className="grid grid-cols-1 gap-3 md:gap-4 lg:grid-cols-2">
           <div className="h-full">
-            <ClientStatusChart {...dashboardParams} />
+            <ContractStatusChart {...dashboardParams} />
           </div>
           <div className="h-full">
-            <ProductivityCards {...dashboardParams} />
+            <ContractRenewalChart {...dashboardParams} />
           </div>
         </div>
       </div>

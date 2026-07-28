@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { AlertTriangle, ArrowLeft, CalendarDays, Clock3, Loader2, MapPin, OctagonX, Sparkles, Users } from "lucide-react"
+import { AlertTriangle, ArrowLeft, CalendarDays, Clock3, Loader2, MapPin, OctagonX, Pencil, Sparkles, Users } from "lucide-react"
 import { toast } from "sonner"
 
 import { AttendanceStartSlider } from "@/components/agendamentos/attendance-start-slider"
@@ -37,6 +37,8 @@ interface ScheduleDetailsDialogProps {
   canManage?: boolean
   canStart?: boolean
   canReschedule?: boolean
+  canEdit?: boolean
+  onEdit?: () => void
 }
 
 function getStatusLabel(status: ScheduleRecord["status"]) {
@@ -73,6 +75,8 @@ export function ScheduleDetailsDialog({
   canManage = true,
   canStart,
   canReschedule,
+  canEdit = false,
+  onEdit,
 }: ScheduleDetailsDialogProps) {
   const isMobile = useIsMobile()
   const queryClient = useQueryClient()
@@ -251,6 +255,17 @@ export function ScheduleDetailsDialog({
             : "sm:max-w-xl lg:max-w-2xl",
         )}
       >
+        {canEdit && onEdit && mode === "details" ? (
+          <button
+            type="button"
+            aria-label="Editar agendamento"
+            className="ring-offset-background focus-visible:ring-ring absolute right-14 top-4 z-20 inline-flex size-8 cursor-pointer items-center justify-center rounded-full bg-transparent text-muted-foreground opacity-100 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
+            onClick={onEdit}
+          >
+            <Pencil />
+            <span className="sr-only">Editar agendamento</span>
+          </button>
+        ) : null}
         <div className={cn("flex flex-col", isMobile ? "h-full" : "")}>
           {isMobile ? (
             <DialogHeader className="shrink-0 bg-background px-5 pb-2 pt-[calc(env(safe-area-inset-top)+1.75rem)] text-left">

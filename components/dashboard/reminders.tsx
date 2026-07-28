@@ -7,6 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { MapPin, Clock, ArrowRight } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import { getDashboardAnalytics, type DashboardAnalyticsParams } from "@/lib/api/analytics"
+import { addCivilDaysKey, formatCivilDate, toCivilDateKey } from "@/lib/date-utils"
 import Link from "next/link"
 
 export function UpcomingServices(period: DashboardAnalyticsParams = {}) {
@@ -16,6 +17,14 @@ export function UpcomingServices(period: DashboardAnalyticsParams = {}) {
   })
   const isLoading = dashboardQuery.isLoading || (dashboardQuery.isFetching && !dashboardQuery.data)
   const upcomingServices = dashboardQuery.data?.data.upcomingServices ?? []
+  const todayKey = toCivilDateKey(new Date())
+  const dateGroups = [
+    { date: todayKey, label: "Hoje" },
+    { date: addCivilDaysKey(todayKey, 1), label: "Amanhã" },
+  ].map((group) => ({
+    ...group,
+    services: upcomingServices.filter((service) => service.date === group.date),
+  }))
 
   return (
     <Card
@@ -47,40 +56,61 @@ export function UpcomingServices(period: DashboardAnalyticsParams = {}) {
               </div>
             </div>
           ))
-        ) : upcomingServices.map((service) => {
-          return (
-            <div 
-              key={service.id}
-              className="p-3 rounded-lg border border-border transition-all duration-300 hover:shadow-md hover:border-primary/30 cursor-pointer"
-            >
-              <div className="flex items-start justify-between gap-2 mb-2">
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-medium text-sm truncate">{service.serviceTypeName}</h3>
-                  <p className="text-xs text-muted-foreground truncate">{service.clientName}</p>
-                </div>
-                <Badge 
-                  className={`text-[10px] flex-shrink-0 ${
-                    service.status === "in_progress" 
-                      ? "bg-amber-100 text-amber-700 hover:bg-amber-100" 
-                      : "bg-blue-100 text-blue-700 hover:bg-blue-100"
-                  }`}
-                >
-                  {service.status === "in_progress" ? "Em andamento" : "Agendado"}
-                </Badge>
-              </div>
-              <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                <div className="flex items-center gap-1">
-                  <Clock className="w-3 h-3" />
-                  <span>{service.time || "08:00"}</span>
-                </div>
-                <div className="flex items-center gap-1 flex-1 min-w-0">
-                  <MapPin className="w-3 h-3 flex-shrink-0" />
-                  <span className="truncate">{service.neighborhood}</span>
-                </div>
-              </div>
+        ) : dateGroups.map((group) => (
+          <section key={group.date} aria-labelledby={`upcoming-services-${group.date}`}>
+            <div className="mb-2 flex items-center gap-2">
+              <h3 id={`upcoming-services-${group.date}`} className="text-sm font-semibold text-foreground">
+                {group.label}
+              </h3>
+              <span className="text-xs text-muted-foreground">{formatCivilDate(group.date, group.date)}</span>
             </div>
-          )
-        })}
+
+            {group.services.length === 0 ? (
+              <div className="rounded-lg border border-dashed px-3 py-4 text-center text-xs text-muted-foreground">
+                Nenhum serviço agendado.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {group.services.map((service) => (
+                  <div
+                    key={service.id}
+                    className="rounded-lg border border-border p-3 transition-all duration-300 hover:border-primary/30 hover:shadow-md"
+                  >
+                    <div className="mb-2 flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <h4 className="truncate text-sm font-medium">{service.serviceTypeName}</h4>
+                        <p className="truncate text-xs text-muted-foreground">{service.clientName}</p>
+                      </div>
+                      <Badge
+                        className={`flex-shrink-0 text-[10px] ${
+                          service.status === "in_progress"
+                            ? "bg-amber-100 text-amber-700 hover:bg-amber-100"
+                            : "bg-blue-100 text-blue-700 hover:bg-blue-100"
+                        }`}
+                      >
+                        {service.status === "in_progress"
+                          ? "Em andamento"
+                          : service.status === "rescheduled"
+                            ? "Reagendado"
+                            : "Agendado"}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                      <div className="flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        <span>{service.time || "08:00"}</span>
+                      </div>
+                      <div className="flex min-w-0 flex-1 items-center gap-1">
+                        <MapPin className="h-3 w-3 flex-shrink-0" />
+                        <span className="truncate">{service.neighborhood}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        ))}
       </div>
     </Card>
   )

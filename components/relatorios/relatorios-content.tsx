@@ -88,12 +88,18 @@ type ProductivityPoint = {
 
 const emptyReports: ReportsAnalyticsRecord = {
   dashboardStats: {
-    activeClients: 0,
-    activeClientsChange: 0,
-    inactiveClients: 0,
-    activeContracts: 0,
-    inactiveContracts: 0,
-    activeContractsGlobalValue: 0,
+    totalClients: 0,
+    currentContracts: 0,
+    expiredContracts: 0,
+    contractStatusCounts: {
+      awaitingSend: 0,
+      awaitingSignature: 0,
+      signed: 0,
+      current: 0,
+      expired: 0,
+      canceled: 0,
+    },
+    currentContractsGlobalValue: 0,
     monthlyRevenue: 0,
     monthlyRevenueChange: 0,
     monthlyRevenueMonthLabel: "",
@@ -1304,8 +1310,8 @@ export function RelatoriosContent() {
         ["Resumo financeiro", "Em atraso", data.financialSummary.totalLate ?? 0, "", "", "", ""],
         ["Resumo financeiro", "Vencidas", data.financialSummary.totalOverdue, "", "", "", ""],
         ["Indicadores", "Taxa de adimplência", `${data.financialSummary.adherenceRate}%`, "", "", "", ""],
-        ["Indicadores", "Ticket médio", data.dashboardStats.activeClients > 0 ? data.dashboardStats.monthlyRevenue / data.dashboardStats.activeClients : 0, "", "", "", ""],
-        ["Indicadores", "Contratos ativos", data.contracts.filter((contract) => isOperationallyActiveContract(contract)).length, "", "", "", ""],
+        ["Indicadores", "Ticket médio", data.dashboardStats.totalClients > 0 ? data.dashboardStats.monthlyRevenue / data.dashboardStats.totalClients : 0, "", "", "", ""],
+        ["Indicadores", "Contratos vigentes", data.contracts.filter((contract) => isOperationallyActiveContract(contract)).length, "", "", "", ""],
         [null],
         ["Período", "Total", "Pagas", "A receber", "Em atraso", "Vencidas"],
         ...data.monthlyRevenueData.map((item) => [

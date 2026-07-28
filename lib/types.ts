@@ -139,7 +139,6 @@ export interface Client {
   email: string
   clientTypeId: string
   units: ClientUnit[]
-  isActive: boolean
   createdAt: Date
   updatedAt: Date
 }
@@ -328,9 +327,17 @@ export interface NotificationRule {
 
 // Dashboard Stats
 export interface DashboardStats {
-  activeClients: number
-  activeClientsChange: number
-  inactiveClients: number
+  totalClients: number
+  currentContracts: number
+  expiredContracts: number
+  contractStatusCounts: {
+    awaitingSend: number
+    awaitingSignature: number
+    signed: number
+    current: number
+    expired: number
+    canceled: number
+  }
   monthlyRevenue: number
   monthlyRevenueChange: number
   scheduledServices: number

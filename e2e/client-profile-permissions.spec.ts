@@ -13,6 +13,15 @@ const operationalUser = {
   isSystemUser: false,
 }
 
+test("não exibe o atalho Acessar contrato no cabeçalho do perfil", async ({ page }) => {
+  await installAuthenticatedSession(page)
+  await installApiMock(page)
+
+  await page.goto(`/clientes/${clientFixture.id}`)
+
+  await expect(page.getByRole("button", { name: "Acessar contrato", exact: true })).toHaveCount(0)
+})
+
 test("o perfil do cliente respeita as permissões do menu e lista os serviços", async ({ page }) => {
   await installAuthenticatedSession(page, operationalUser)
   await installApiMock(page, operationalUser)

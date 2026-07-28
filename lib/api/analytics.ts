@@ -41,6 +41,13 @@ export type ServicesSummaryPoint = {
   averageDurationMinutes: number
 }
 
+export type ContractExpirationPoint = {
+  period: string
+  label: string
+  contracts: number
+  totalValue: number
+}
+
 export type ReportScheduleDetail = {
   id: string
   scheduledDate: string
@@ -82,12 +89,18 @@ export type ServiceClientSummaryRecord = {
 }
 
 export type DashboardStatsRecord = {
-  activeClients: number
-  activeClientsChange: number
-  inactiveClients: number
-  activeContracts: number
-  inactiveContracts: number
-  activeContractsGlobalValue: number
+  totalClients: number
+  currentContracts: number
+  expiredContracts: number
+  contractStatusCounts: {
+    awaitingSend: number
+    awaitingSignature: number
+    signed: number
+    current: number
+    expired: number
+    canceled: number
+  }
+  currentContractsGlobalValue: number
   globalValue?: number
   globalValueMode?: "general" | "contractual"
   generalGlobalValue?: number
@@ -165,6 +178,7 @@ export type DashboardAnalyticsRecord = {
   servicesByStatusData: ServicesByStatusPoint[]
   servicesByTeamData: ServicesByTeamPoint[]
   servicesSummaryData: ServicesSummaryPoint[]
+  contractExpirationsData: ContractExpirationPoint[]
   recentClients: Array<{
     id: string
     companyName: string
@@ -172,7 +186,7 @@ export type DashboardAnalyticsRecord = {
     clientTypeId: string
     clientTypeName: string
     clientTypeColor: string
-    activeContracts: number
+    currentContracts: number
   }>
   upcomingServices: Array<{
     id: string
@@ -210,7 +224,6 @@ export type ReportsAnalyticsRecord = {
     companyName: string
     responsibleName: string
     phone: string
-    isActive: boolean
     clientTypeName: string
   }>
   contracts: Array<{

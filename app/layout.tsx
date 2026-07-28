@@ -5,6 +5,7 @@ import { Analytics } from "@vercel/analytics/next"
 
 import { QueryProvider } from "@/components/providers/query-provider"
 import { PwaProvider } from "@/components/providers/pwa-provider"
+import { MobilePullToRefresh } from "@/components/providers/mobile-pull-to-refresh"
 import { ThemeProvider } from "@/components/theme-provider"
 import { AuthGate } from "@/components/auth/auth-gate"
 import { SidebarCollapseProvider } from "@/components/dashboard/sidebar-collapse-context"
@@ -85,6 +86,7 @@ export default function RootLayout({
               <AuthGate>
                 {children}
                 <FirstAccessDialog />
+                <MobilePullToRefresh />
               </AuthGate>
             </SidebarCollapseProvider>
             <Toaster richColors position="top-right" />

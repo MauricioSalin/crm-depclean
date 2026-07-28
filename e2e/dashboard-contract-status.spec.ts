@@ -1,0 +1,53 @@
+import { expect, test } from "@playwright/test"
+
+import { installApiMock } from "./support/api-mock"
+import { installAuthenticatedSession } from "./support/session"
+
+test("gráfico de contratos usa os mesmos totais dos indicadores", async ({ page }) => {
+  await installAuthenticatedSession(page)
+  await installApiMock(page)
+  await page.goto("/")
+
+  const activeCard = page
+    .getByRole("heading", { name: "Contratos Vigentes", exact: true })
+    .locator("xpath=ancestor::div[contains(@class,'rounded-xl')][1]")
+  const inactiveCard = page
+    .getByRole("heading", { name: "Contratos Vencidos", exact: true })
+    .locator("xpath=ancestor::div[contains(@class,'rounded-xl')][1]")
+  const chartHeading = page.getByRole("heading", { name: "Contratos por status", exact: true })
+  const chart = chartHeading.locator("xpath=ancestor::div[contains(@class,'rounded-xl')][1]")
+
+  await expect(activeCard.getByText("90", { exact: true })).toBeVisible()
+  await expect(inactiveCard.getByText("3", { exact: true })).toBeVisible()
+  await expect(chartHeading).toBeVisible()
+  await expect(chart.getByText("98", { exact: true })).toBeVisible()
+  await expect(chart.getByText("contratos", { exact: true })).toBeVisible()
+  await expect(chart.getByText("90", { exact: true })).toBeVisible()
+  await expect(chart.getByText("3", { exact: true })).toBeVisible()
+  await expect(chart.getByText("Aguardando envio", { exact: true })).toBeVisible()
+  await expect(chart.getByText("Aguardando assinatura", { exact: true })).toBeVisible()
+  await expect(chart.getByText("Assinados", { exact: true })).toBeVisible()
+  await expect(chart.getByText("Vigentes", { exact: true })).toBeVisible()
+  await expect(chart.getByText("Vencidos", { exact: true })).toBeVisible()
+  await expect(chart.getByText("Cancelados", { exact: true })).toBeVisible()
+  await expect(chart.getByRole("link", { name: /ver todos/i })).toHaveAttribute("href", "/contratos")
+  await expect(page.getByRole("heading", { name: "Clientes por status", exact: true })).toHaveCount(0)
+})
+
+test("exibe vencimentos e valor de renovação dos próximos seis meses", async ({ page }) => {
+  await installAuthenticatedSession(page)
+  await installApiMock(page)
+  await page.goto("/")
+
+  const heading = page.getByRole("heading", { name: "Renovações de Contratos", exact: true })
+  const chart = heading.locator("xpath=ancestor::div[contains(@class,'rounded-xl')][1]")
+
+  await expect(heading).toBeVisible()
+  await expect(chart.getByText("6 contratos", { exact: true })).toBeVisible()
+  await expect(chart.getByText(/R\$\s*27\.600/)).toBeVisible()
+  await expect(chart.getByRole("tab", { name: "Quantidade", exact: true })).toHaveAttribute("data-state", "active")
+  await chart.getByRole("tab", { name: "Valor", exact: true }).click()
+  await expect(chart.getByRole("tab", { name: "Valor", exact: true })).toHaveAttribute("data-state", "active")
+  await expect(chart.getByRole("link", { name: /ver contratos/i })).toHaveAttribute("href", "/contratos")
+  await expect(page.getByRole("heading", { name: "Produtividade das Equipes", exact: true })).toHaveCount(0)
+})

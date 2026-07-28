@@ -52,6 +52,21 @@ function contractCivilDateKey(value?: string | Date | null) {
   return date ? toCivilDateKey(date) : ""
 }
 
+function subtractOneCivilMonth(dateKey: string) {
+  const [year = 0, month = 1, day = 1] = dateKey.split("-").map((value) => Number(value))
+  const targetMonthIndex = year * 12 + month - 2
+  const targetYear = Math.floor(targetMonthIndex / 12)
+  const targetMonthIndexInYear = ((targetMonthIndex % 12) + 12) % 12
+  const lastDayOfTargetMonth = new Date(Date.UTC(targetYear, targetMonthIndexInYear + 1, 0)).getUTCDate()
+  const targetDay = Math.min(day, lastDayOfTargetMonth)
+
+  return [
+    targetYear,
+    String(targetMonthIndexInYear + 1).padStart(2, "0"),
+    String(targetDay).padStart(2, "0"),
+  ].join("-")
+}
+
 export function isOperationallyActiveContract(contract: {
   status?: unknown
   startDate?: string | Date | null
@@ -72,4 +87,13 @@ export function isContractExpiredByValidity(contract: {
   if (!isClosedClicksignContractStatus(contract.status) || !contract.endDate) return false
   const endDateKey = contractCivilDateKey(contract.endDate)
   return Boolean(endDateKey) && endDateKey < toCivilDateKey(now)
+}
+
+export function isContractEligibleForRenewal(contract: {
+  status?: unknown
+  endDate?: string | Date | null
+}, now = new Date()) {
+  if (!isClosedClicksignContractStatus(contract.status) || !contract.endDate) return false
+  const endDateKey = contractCivilDateKey(contract.endDate)
+  return Boolean(endDateKey) && toCivilDateKey(now) >= subtractOneCivilMonth(endDateKey)
 }

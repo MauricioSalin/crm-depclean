@@ -5,6 +5,7 @@ import { E2E_USER } from "./session"
 const API_PREFIX = "/api/v1"
 const NOW = "2026-07-28T12:00:00.000Z"
 const TODAY = "2026-07-28"
+const TOMORROW = "2026-07-29"
 
 export const clientFixture = {
   id: "client-e2e",
@@ -33,7 +34,6 @@ export const clientFixture = {
   copyNotificationsToOwner: false,
   preferredServiceWeekday: 2,
   preferredServiceShift: "morning",
-  isActive: true,
   isDelinquent: false,
   units: [{
     id: "unit-e2e",
@@ -236,12 +236,18 @@ const certificateFixture = {
 }
 
 const emptyStats = {
-  activeClients: 1,
-  activeClientsChange: 0,
-  inactiveClients: 0,
-  activeContracts: 1,
-  inactiveContracts: 0,
-  activeContractsGlobalValue: 4_200,
+  totalClients: 94,
+  currentContracts: 90,
+  expiredContracts: 3,
+  contractStatusCounts: {
+    awaitingSend: 1,
+    awaitingSignature: 2,
+    signed: 1,
+    current: 90,
+    expired: 3,
+    canceled: 1,
+  },
+  currentContractsGlobalValue: 4_200,
   globalValue: 4_200,
   globalValueMode: "contractual",
   generalGlobalValue: 4_200,
@@ -336,8 +342,37 @@ function analyticsResponse(path: string) {
       servicesByStatusData: [],
       servicesByTeamData: [],
       servicesSummaryData: [],
+      contractExpirationsData: [
+        { period: "2026-07", label: "Jul/26", contracts: 2, totalValue: 8_400 },
+        { period: "2026-08", label: "Ago/26", contracts: 1, totalValue: 4_200 },
+        { period: "2026-09", label: "Set/26", contracts: 0, totalValue: 0 },
+        { period: "2026-10", label: "Out/26", contracts: 1, totalValue: 5_000 },
+        { period: "2026-11", label: "Nov/26", contracts: 0, totalValue: 0 },
+        { period: "2026-12", label: "Dez/26", contracts: 2, totalValue: 10_000 },
+      ],
       recentClients: [],
-      upcomingServices: [],
+      upcomingServices: [
+        {
+          id: "schedule-dashboard-today",
+          clientId: clientFixture.id,
+          clientName: clientFixture.companyName,
+          serviceTypeName: "Limpeza de rede",
+          status: "in_progress",
+          time: "09:00",
+          neighborhood: "Centro",
+          date: TODAY,
+        },
+        {
+          id: "schedule-dashboard-tomorrow",
+          clientId: clientFixture.id,
+          clientName: clientFixture.companyName,
+          serviceTypeName: "Limpeza de caixa d'água",
+          status: "rescheduled",
+          time: "08:00",
+          neighborhood: "Vila Vista Alegre",
+          date: TOMORROW,
+        },
+      ],
       teamsWithActivity: [],
     }
   }

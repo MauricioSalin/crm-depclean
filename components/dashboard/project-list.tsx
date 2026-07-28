@@ -80,8 +80,8 @@ export function ClientList(period: DashboardAnalyticsParams = {}) {
                   >
                     {client.clientTypeName}
                   </Badge>
-                  {client.activeContracts > 0 && (
-                    <span className="text-[10px] text-muted-foreground">{client.activeContracts} contrato(s)</span>
+                  {client.currentContracts > 0 && (
+                    <span className="text-[10px] text-muted-foreground">{client.currentContracts} contrato(s)</span>
                   )}
                 </div>
               </div>

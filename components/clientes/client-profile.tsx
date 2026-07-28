@@ -591,16 +591,6 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
     () => (contractsQuery.data?.data ?? []).filter((contract) => contract.clientId === resolvedClientId),
     [contractsQuery.data?.data, resolvedClientId],
   )
-  const primaryContract = useMemo(() => {
-    return [...clientContracts].sort((left, right) => {
-      const operationalDifference = Number(isOperationallyActiveContract(right)) - Number(isOperationallyActiveContract(left))
-      if (operationalDifference !== 0) return operationalDifference
-
-      const rightReferenceDate = right.startDate ?? right.creationDate ?? right.createdAt
-      const leftReferenceDate = left.startDate ?? left.creationDate ?? left.createdAt
-      return new Date(rightReferenceDate).getTime() - new Date(leftReferenceDate).getTime()
-    })[0]
-  }, [clientContracts])
   const scheduledServices = useMemo(
     () => (schedulesQuery.data?.data ?? []).filter((service) => service.clientId === resolvedClientId),
     [schedulesQuery.data?.data, resolvedClientId],
@@ -621,7 +611,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
   )
   const clientType = (clientTypesQuery.data?.data ?? []).find((item) => item.id === client?.clientTypeId)
   const clientTypeColor = resolveColor(clientType?.color)
-  const activeContracts = clientContracts.filter((contract) => isOperationallyActiveContract(contract)).length
+  const currentContracts = clientContracts.filter((contract) => isOperationallyActiveContract(contract)).length
 
   const findInformativeTemplate = useCallback(
     async (attachment: ClientAttachmentRecord) => {
@@ -1000,14 +990,6 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
             </div>
           </div>
           <div className="flex w-full shrink-0 flex-wrap items-center justify-start gap-2 sm:w-auto sm:justify-end">
-            {canViewContracts && primaryContract ? (
-              <Link href={getContractProfileHref(primaryContract.id)}>
-                <Button variant="outline" className="h-9 bg-transparent text-sm">
-                  <FileText className="mr-2 h-4 w-4" />
-                  Acessar contrato
-                </Button>
-              </Link>
-            ) : null}
             {canManageExtras ? (
               <Button
                 type="button"
@@ -1033,8 +1015,8 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
               <FileText className="h-5 w-5 text-primary/80" />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Contratos ativos</p>
-              <p className="text-xl font-semibold text-primary/80">{activeContracts}</p>
+              <p className="text-sm text-muted-foreground">Contratos vigentes</p>
+              <p className="text-xl font-semibold text-primary/80">{currentContracts}</p>
             </div>
           </div>
         </Card>

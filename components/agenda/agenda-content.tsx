@@ -891,6 +891,14 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
         canManage={canManageAgenda}
         canStart={selectedSchedule ? canStartSchedule(selectedSchedule, currentUser, teams) : false}
         canReschedule={canManageAgenda}
+        canEdit={Boolean(
+          selectedSchedule &&
+            (canManageScheduleStatus ||
+              (canManageAgenda && canEditSchedule(selectedSchedule, canManageLockedSchedules))),
+        )}
+        onEdit={() => {
+          if (selectedSchedule) handleEditService(selectedSchedule)
+        }}
         onStartAttendance={async (schedule) => {
           if (!canStartSchedule(schedule, currentUser, teams)) return
           await startMutation.mutateAsync(schedule)
