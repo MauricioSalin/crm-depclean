@@ -12,7 +12,7 @@ export function BusinessStatusBadge({ status }: BusinessStatusBadgeProps) {
       className={
         isDelinquent
           ? "shrink-0 bg-red-100 text-red-700 hover:bg-red-100"
-          : "shrink-0 bg-amber-100 text-amber-700 hover:bg-amber-100"
+          : "shrink-0 bg-blue-100 text-blue-700 hover:bg-blue-100"
       }
     >
       {isDelinquent ? "Inadimplente" : "Aguardando agendamentos"}

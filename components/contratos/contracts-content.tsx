@@ -121,6 +121,10 @@ function formatCurrency(value: number) {
   }).format(value)
 }
 
+function hasDefinedContractValue(contract: ContractRecord) {
+  return Number.isFinite(contract.totalValue) && contract.totalValue > 0
+}
+
 function formatDate(value?: string) {
   return formatCivilDate(value)
 }
@@ -207,6 +211,9 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
     if (isContractExpiredByValidity(contract)) {
       return <Badge className="shrink-0 bg-red-100 text-red-700 hover:bg-red-100">Vencido</Badge>
     }
+    if (isContractAwaitingSchedules(contract)) {
+      return null
+    }
     const normalized = normalizeClicksignContractStatus(contract.status)
     const className = normalized === "closed"
       ? "bg-green-100 text-green-700 hover:bg-green-100"
@@ -288,7 +295,7 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
           }}
           options={[
             { value: "filling", label: "Em preenchimento" },
-            { value: "draft", label: "Rascunho" },
+            { value: "draft", label: "Aguardando envio" },
             { value: "running", label: "Aguardando assinatura" },
             { value: "closed", label: "Assinado" },
             { value: "canceled", label: "Cancelado" },
@@ -369,15 +376,15 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
                         </div>
                       </TableCell>
                       <TableCell className="hidden md:table-cell">
-                        {contract.internalStatus === "filling" ? (
-                          <span className="text-sm text-muted-foreground">Ainda não definido</span>
-                        ) : (
+                        {hasDefinedContractValue(contract) ? (
                           <div>
                             <p className="font-medium">{formatCurrency(contract.totalValue)}</p>
                             <p className="text-xs text-muted-foreground">
                               {paidInstallments}/{contract.installmentsCount} parcelas
                             </p>
                           </div>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">Ainda não definido</span>
                         )}
                       </TableCell>
                       <TableCell className="hidden text-sm lg:table-cell">
@@ -509,9 +516,9 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
                       <div className="space-y-2 text-sm">
                         <div>
                           <p className="font-medium text-foreground">
-                            {contract.internalStatus === "filling"
-                              ? "Dados financeiros ainda não definidos"
-                              : formatCurrency(contract.totalValue)}
+                            {hasDefinedContractValue(contract)
+                              ? formatCurrency(contract.totalValue)
+                              : "Dados financeiros ainda não definidos"}
                           </p>
                         </div>
                         {hasEffectiveValidity ? (

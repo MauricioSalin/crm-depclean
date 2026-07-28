@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label"
 import { confirmLoginCode, identifyLogin, login, requestLoginCode, requestPasswordReset, type LoginCodeDeliveryChannel } from "@/lib/api/auth"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { isAuthenticated, persistSession } from "@/lib/auth/session"
+import { getPostLoginPath } from "@/lib/navigation"
 import { cn } from "@/lib/utils"
 
 const CPF_MAX_DIGITS = 11
@@ -56,6 +57,10 @@ function formatLoginIdentifierInput(nextValue: string, currentValue: string) {
   return nextValue
 }
 
+function getLoginDestination() {
+  return typeof window === "undefined" ? "/" : getPostLoginPath(window.location.search)
+}
+
 export default function LoginPage() {
   const router = useRouter()
   const [showPassword, setShowPassword] = useState(false)
@@ -86,7 +91,7 @@ export default function LoginPage() {
       })
 
       toast.success(`Bem-vindo, ${response.data.user.name}.`)
-      router.push("/")
+      router.replace(getLoginDestination())
       router.refresh()
     },
     onError: (error) => {
@@ -96,7 +101,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (isAuthenticated()) {
-      router.replace("/")
+      router.replace(getLoginDestination())
     }
   }, [router])
 
@@ -200,7 +205,7 @@ export default function LoginPage() {
       })
       toast.success(`Bem-vindo, ${response.data.user.name}.`)
       setLoginCodeOpen(false)
-      router.push("/")
+      router.replace(getLoginDestination())
       router.refresh()
     } catch (error) {
       toast.error(getApiErrorMessage(error, "Código inválido ou expirado."))

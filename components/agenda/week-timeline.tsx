@@ -172,6 +172,7 @@ export function WeekTimeline({
   const pointerTooltipEventIdRef = useRef<string | null>(null)
   const pointerPositionRef = useRef({ x: 0, y: 0 })
   const [activeEventGroupId, setActiveEventGroupId] = useState<string | null>(null)
+  const [activeEventId, setActiveEventId] = useState<string | null>(null)
   const [pointerTooltipEvent, setPointerTooltipEvent] = useState<TimelineEvent | null>(null)
 
   const positionPointerTooltip = () => {
@@ -430,6 +431,7 @@ export function WeekTimeline({
                     const isOverlapping = ev.columnCount > 1
                     const hoverGroupId = ev.hoverGroupId ?? ev.scheduleId ?? ev.id
                     const isActive = activeEventGroupId === hoverGroupId
+                    const isDirectlyActive = activeEventId === ev.id
                     const fixedWidth = EVENT_COLUMN_GUTTER * 2 + Math.max(0, ev.columnCount - 1) * EVENT_COLUMN_GAP
                     const columnWidthPercent = 100 / ev.columnCount
                     const columnWidthAdjustment = fixedWidth / ev.columnCount
@@ -450,6 +452,7 @@ export function WeekTimeline({
                             onPointerDown={() => setActiveEventGroupId(hoverGroupId)}
                             onMouseEnter={(event) => {
                               setActiveEventGroupId(hoverGroupId)
+                              setActiveEventId(ev.id)
                               beginPointerTooltip(ev, event.clientX, event.clientY)
                             }}
                             onMouseMove={(event) => {
@@ -457,10 +460,12 @@ export function WeekTimeline({
                             }}
                             onMouseLeave={() => {
                               setActiveEventGroupId((current) => (current === hoverGroupId ? null : current))
+                              setActiveEventId((current) => (current === ev.id ? null : current))
                               clearPointerTooltip()
                             }}
                             onFocus={(event) => {
                               setActiveEventGroupId(hoverGroupId)
+                              setActiveEventId(ev.id)
                               if (event.currentTarget.matches(":focus-visible")) {
                                 const rect = event.currentTarget.getBoundingClientRect()
                                 beginPointerTooltip(ev, rect.left + Math.min(rect.width / 2, 40), rect.top + 16)
@@ -468,17 +473,20 @@ export function WeekTimeline({
                             }}
                             onBlur={() => {
                               setActiveEventGroupId((current) => (current === hoverGroupId ? null : current))
+                              setActiveEventId((current) => (current === ev.id ? null : current))
                               clearPointerTooltip()
                             }}
-                            className={`group absolute flex min-w-0 cursor-pointer flex-col items-start justify-start gap-0.5 overflow-hidden rounded-md border border-transparent border-l-[3px] px-1.5 py-1 text-left transition-[box-shadow,background-color,transform] duration-200 ease-out hover:-translate-y-0.5 hover:scale-[1.015] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 active:scale-[0.99] ${
-                              isActive ? "-translate-y-0.5 scale-[1.015]" : ""
+                            className={`group absolute flex min-w-0 cursor-pointer flex-col items-start justify-start gap-0.5 overflow-hidden rounded-md border border-transparent border-l-[3px] px-1.5 py-1 text-left transition-[left,width,box-shadow,background-color,transform] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 active:scale-[0.99] ${
+                              isActive ? "-translate-y-0.5 scale-[1.015]" : "hover:-translate-y-0.5 hover:scale-[1.015]"
                             }`}
                             style={{
                               top: ev.top,
-                              left: eventLeft,
-                              width: eventWidth,
+                              left: isDirectlyActive ? EVENT_COLUMN_GUTTER : eventLeft,
+                              width: isDirectlyActive
+                                ? `calc(100% - ${EVENT_COLUMN_GUTTER * 2}px)`
+                                : eventWidth,
                               height: ev.height,
-                              zIndex: isActive ? 100 : 10 + ev.columnIndex,
+                              zIndex: isDirectlyActive ? 110 : isActive ? 100 : 10 + ev.columnIndex,
                               backgroundColor: "#efefef",
                               borderColor: color,
                               borderLeftColor: color,

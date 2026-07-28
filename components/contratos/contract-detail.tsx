@@ -149,9 +149,16 @@ const getRecurrenceLabel = (value: string) =>
     } as Record<string, string>
   )[value] ?? value
 
-const getStatusBadge = (contract: { status?: string; endDate?: string | null }) => {
+const getStatusBadge = (contract: {
+  status?: string
+  endDate?: string | null
+  isAwaitingSchedules: boolean
+}) => {
   if (isContractExpiredByValidity(contract)) {
     return <Badge className="bg-red-100 text-red-700 hover:bg-red-100">Vencido</Badge>
+  }
+  if (isContractAwaitingSchedules(contract)) {
+    return null
   }
   const normalized = normalizeClicksignContractStatus(contract.status)
   const className = normalized === "closed"

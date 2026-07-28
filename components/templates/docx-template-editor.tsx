@@ -1290,6 +1290,17 @@ function buildDocxRunXml(text: string, bold = false, baseRunPropertiesXml = "") 
   return `<w:r>${runPropertiesXml}<w:t xml:space="preserve">${escapeXml(text)}</w:t></w:r>`
 }
 
+function buildDocxTextRunsXml(text: string, bold = false, baseRunPropertiesXml = "") {
+  const normalizedText = text.replace(/\r\n?/g, "\n")
+  const lines = normalizedText.split("\n")
+  const runPropertiesXml = bold ? ensureBoldRunPropertiesXml(baseRunPropertiesXml) : baseRunPropertiesXml
+  const breakRunXml = `<w:r>${runPropertiesXml}<w:br/></w:r>`
+
+  return lines
+    .map((line) => buildDocxRunXml(line, bold, baseRunPropertiesXml))
+    .join(breakRunXml)
+}
+
 function buildDocxRunsFromHtml(innerHtml: string, baseRunPropertiesXml = "") {
   const runs: string[] = []
   let cursor = 0
@@ -1297,12 +1308,12 @@ function buildDocxRunsFromHtml(innerHtml: string, baseRunPropertiesXml = "") {
   let match: RegExpExecArray | null
 
   while ((match = strongRegex.exec(innerHtml)) !== null) {
-    runs.push(buildDocxRunXml(decodeHtmlText(innerHtml.slice(cursor, match.index)), false, baseRunPropertiesXml))
-    runs.push(buildDocxRunXml(decodeHtmlText(match[1] ?? ""), true, baseRunPropertiesXml))
+    runs.push(buildDocxTextRunsXml(decodeHtmlText(innerHtml.slice(cursor, match.index)), false, baseRunPropertiesXml))
+    runs.push(buildDocxTextRunsXml(decodeHtmlText(match[1] ?? ""), true, baseRunPropertiesXml))
     cursor = match.index + match[0].length
   }
 
-  runs.push(buildDocxRunXml(decodeHtmlText(innerHtml.slice(cursor)), false, baseRunPropertiesXml))
+  runs.push(buildDocxTextRunsXml(decodeHtmlText(innerHtml.slice(cursor)), false, baseRunPropertiesXml))
   return runs.join("")
 }
 
@@ -1326,19 +1337,45 @@ function getDocxParagraphText(paragraphXml: string) {
 }
 
 function getDocxParagraphPropertiesXml(paragraphXml: string) {
-  return paragraphXml.match(/<w:pPr\b[\s\S]*?<\/w:pPr>/)?.[0] ?? ""
+  return paragraphXml.match(/<w:pPr\b(?:[^>]*\/>|[\s\S]*?<\/w:pPr>)/)?.[0] ?? ""
+}
+
+function removeDocxParagraphProperty(paragraphPropertiesXml: string, propertyName: string) {
+  return paragraphPropertiesXml.replace(
+    new RegExp(`<w:${propertyName}\\b[^>]*(?:\\/>|>[\\s\\S]*?<\\/w:${propertyName}>)`, "gi"),
+    "",
+  )
 }
 
 function buildLeftAlignedDocxParagraphProperties(paragraphPropertiesXml: string) {
-  const alignmentXml = '<w:jc w:val="left"/>'
-  const withoutAlignment = paragraphPropertiesXml.replace(
-    /<w:jc\b[^>]*(?:\/>|>[\s\S]*?<\/w:jc>)/gi,
-    "",
-  )
+  const inheritedPropertiesToReset = [
+    "jc",
+    "spacing",
+    "framePr",
+    "keepNext",
+    "keepLines",
+    "pageBreakBefore",
+    "contextualSpacing",
+    "snapToGrid",
+  ]
+  const clausePropertiesXml = [
+    '<w:spacing w:before="0" w:after="160" w:line="240" w:lineRule="auto"/>',
+    '<w:jc w:val="left"/>',
+  ].join("")
 
-  return withoutAlignment
-    ? withoutAlignment.replace(/<\/w:pPr>/, `${alignmentXml}</w:pPr>`)
-    : `<w:pPr>${alignmentXml}</w:pPr>`
+  let sanitizedPropertiesXml = paragraphPropertiesXml
+  for (const propertyName of inheritedPropertiesToReset) {
+    sanitizedPropertiesXml = removeDocxParagraphProperty(sanitizedPropertiesXml, propertyName)
+  }
+
+  if (!sanitizedPropertiesXml || /^<w:pPr\b[^>]*\/>$/.test(sanitizedPropertiesXml)) {
+    return `<w:pPr>${clausePropertiesXml}</w:pPr>`
+  }
+
+  return sanitizedPropertiesXml.replace(
+    /<\/w:pPr>/,
+    `${clausePropertiesXml}</w:pPr>`,
+  )
 }
 
 function buildDocxParagraphHtmlXml(

@@ -1,6 +1,7 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from "axios"
 
 import { clearSession, getStoredAccessToken } from "@/lib/auth/session"
+import { buildLoginHref } from "@/lib/navigation"
 
 let handlingUnauthorizedSession = false
 const mutatingMethods = new Set(["post", "put", "patch", "delete"])
@@ -99,7 +100,8 @@ api.interceptors.response.use(
       if (!handlingUnauthorizedSession) {
         handlingUnauthorizedSession = true
         clearSession()
-        window.location.replace("/login?sessionExpired=1")
+        const currentPath = `${window.location.pathname}${window.location.search}${window.location.hash}`
+        window.location.replace(buildLoginHref(currentPath, { sessionExpired: true }))
       }
 
       return new Promise(() => undefined)

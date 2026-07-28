@@ -1,6 +1,8 @@
 type SearchParamValue = string | string[] | undefined
 type SearchParamsRecord = Record<string, SearchParamValue>
 
+export const AUTH_REDIRECT_PARAM = "redirectTo"
+
 export const getFirstSearchParam = (value: SearchParamValue) => (Array.isArray(value) ? value[0] : value)
 
 export const isSafeInternalPath = (value?: string | null): value is string => {
@@ -12,6 +14,36 @@ export const isSafeInternalPath = (value?: string | null): value is string => {
 
 export const getSafeReturnTo = (value: string | null | undefined, fallback: string) =>
   isSafeInternalPath(value) ? value : fallback
+
+const isAuthPath = (value: string) => {
+  const pathname = value.split(/[?#]/, 1)[0]
+  return pathname === "/login" || pathname === "/resetar-senha"
+}
+
+export const getPostLoginPath = (search: string, fallback = "/") => {
+  const params = new URLSearchParams(search)
+  const redirectTo = params.get(AUTH_REDIRECT_PARAM)
+
+  return isSafeInternalPath(redirectTo) && !isAuthPath(redirectTo) ? redirectTo : fallback
+}
+
+export const buildLoginHref = (
+  redirectTo?: string | null,
+  options?: { sessionExpired?: boolean },
+) => {
+  const params = new URLSearchParams()
+
+  if (isSafeInternalPath(redirectTo) && !isAuthPath(redirectTo)) {
+    params.set(AUTH_REDIRECT_PARAM, redirectTo)
+  }
+
+  if (options?.sessionExpired) {
+    params.set("sessionExpired", "1")
+  }
+
+  const query = params.toString()
+  return `/login${query ? `?${query}` : ""}`
+}
 
 export const withReturnTo = (href: string, returnTo?: string | null) => {
   if (!isSafeInternalPath(returnTo)) return href

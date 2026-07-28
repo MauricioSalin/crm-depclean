@@ -4,7 +4,8 @@ import { useEffect, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
 
 import { canAccessPath, getFirstAllowedPath } from "@/lib/auth/permissions"
-import { getSessionExpiresAt, getStoredUser, isAuthenticated } from "@/lib/auth/session"
+import { getStoredUser, isAuthenticated } from "@/lib/auth/session"
+import { buildLoginHref, getPostLoginPath } from "@/lib/navigation"
 
 const PUBLIC_PATHS = ["/login", "/resetar-senha"]
 const PUBLIC_PATH_PREFIXES = ["/assinatura/"]
@@ -30,8 +31,6 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     const publicPath = isPublicPathname(pathname)
     const authPage = PUBLIC_PATHS.includes(pathname)
     const authenticated = isAuthenticated()
-    const expiresAt = getSessionExpiresAt()
-    const expired = Boolean(expiresAt && Date.now() > expiresAt)
 
     if (authenticated && !publicPath) {
       const user = getStoredUser()
@@ -42,16 +41,13 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     }
 
     if (authenticated && authPage) {
-      router.replace("/")
+      router.replace(getPostLoginPath(window.location.search))
       return
     }
 
     if (!authenticated && !publicPath) {
-      router.replace("/login")
-    }
-
-    if (expired && !publicPath) {
-      router.replace("/login")
+      const currentPath = `${window.location.pathname}${window.location.search}${window.location.hash}`
+      router.replace(buildLoginHref(currentPath))
     }
   }, [isAuthPage, mounted, router, pathname])
 

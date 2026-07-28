@@ -43,7 +43,7 @@ export function getClicksignContractStatusLabel(value: unknown) {
     case "canceled":
       return "Cancelado"
     default:
-      return "Rascunho"
+      return "Aguardando envio"
   }
 }
 

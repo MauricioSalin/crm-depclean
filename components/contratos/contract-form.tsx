@@ -180,6 +180,23 @@ const escapeHtml = (value: string) =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;")
 
+function buildNumberedClauseHtml(clause: string, clauseNumber: string) {
+  const paragraphs = clause
+    .replace(/\r\n?/g, "\n")
+    .split(/\n+/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean)
+
+  const firstParagraph = paragraphs[0]
+  if (!firstParagraph) return ""
+
+  const continuationParagraphs = paragraphs.slice(1)
+  return [
+    `<p><strong>${clauseNumber}.</strong> ${escapeHtml(firstParagraph)}</p>`,
+    ...continuationParagraphs.map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`),
+  ].join("")
+}
+
 function buildServiceSectionsHtml(
   contractServices: Array<{ serviceTypeId: string; clauses?: string[] }>,
   serviceTypes: Array<{ id: string; name: string; clauses?: string[] }>,
@@ -194,7 +211,9 @@ function buildServiceSectionsHtml(
     .filter(({ sourceClauses }) => sourceClauses.length > 0)
     .map(({ serviceType, sourceClauses }, serviceIndex) =>
       `<p><strong>${serviceIndex + 1}. ${escapeHtml(serviceType?.name ?? "Serviço")}</strong></p>${sourceClauses
-        .map((clause, clauseIndex) => `<p><strong>${serviceIndex + 1}.${clauseIndex + 1}.</strong> ${escapeHtml(clause)}</p>`)
+        .map((clause, clauseIndex) =>
+          buildNumberedClauseHtml(clause, `${serviceIndex + 1}.${clauseIndex + 1}`),
+        )
         .join("")}`,
     )
     .join("")
@@ -1836,7 +1855,7 @@ export function ContractForm({
     const loadingToast = toast.loading(
       isReplacingClicksignDocument
         ? "Salvando e reenviando contrato..."
-        : "Salvando contrato como rascunho...",
+        : "Salvando contrato com status Aguardando envio...",
     )
 
     try {
@@ -1878,8 +1897,8 @@ export function ContractForm({
         isReplacingClicksignDocument
           ? "Contrato atualizado. O envio anterior foi cancelado e todas as assinaturas foram solicitadas novamente."
           : isEditing
-            ? "Contrato atualizado e salvo como rascunho."
-          : "Contrato salvo como rascunho. Revise os agendamentos antes de enviar ao ClickSign.",
+            ? "Contrato atualizado com status Aguardando envio."
+          : "Contrato salvo com status Aguardando envio. Revise os agendamentos antes de enviar ao ClickSign.",
       )
       allowNavigationRef.current = true
       setDraftBaseline(draftSnapshotRef.current)
@@ -1943,7 +1962,7 @@ export function ContractForm({
             className="w-full bg-primary hover:bg-primary/90 sm:w-auto"
           >
             <Save className="mr-2 h-4 w-4" />
-            {fillingDraftMutation.isPending ? "Salvando..." : "Salvar rascunho"}
+            {fillingDraftMutation.isPending ? "Salvando..." : "Salvar como Em preenchimento"}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -2052,7 +2071,7 @@ export function ContractForm({
               <AlertDialogDescription>
                 {isReplacingClicksignDocument
                   ? "O documento anterior será cancelado no ClickSign. Um novo documento será enviado e todas as pessoas deverão assinar novamente, mesmo quem já assinou a versão anterior."
-                  : "O documento será salvo como rascunho e ainda não será enviado ao ClickSign. Quando estiver pronto, o envio para assinatura poderá ser feito pelo perfil do contrato."}
+                  : "O documento será salvo com status Aguardando envio e ainda não será enviado ao ClickSign. Quando estiver pronto, o envio para assinatura poderá ser feito pelo perfil do contrato."}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -2127,7 +2146,22 @@ export function ContractForm({
 
   return (
     <form noValidate onSubmit={handleSubmit} className="space-y-6">
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => requestNavigation({ href: formBackHref })}
+          disabled={
+            fillingDraftMutation.isPending ||
+            previewMutation.isPending ||
+            previewUpdateMutation.isPending ||
+            updateMutation.isPending ||
+            isFinalizingCreate
+          }
+        >
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Voltar
+        </Button>
         <Button
           type={isEditing ? "submit" : "button"}
           variant={isEditing ? "default" : "outline"}
@@ -2147,9 +2181,9 @@ export function ContractForm({
             ? "Salvando..."
             : isEditing
               ? contract?.internalStatus === "filling"
-                ? "Salvar rascunho"
+                ? "Salvar como Em preenchimento"
                 : "Salvar"
-              : "Salvar rascunho"}
+              : "Salvar como Em preenchimento"}
         </Button>
       </div>
 
@@ -2160,7 +2194,7 @@ export function ContractForm({
           Cliente
         </h3>
         <div className="flex flex-col items-start gap-4">
-          <div className="w-full space-y-2 md:w-[380px]">
+          <div className="w-full space-y-2 md:w-[440px]">
             <Label>Selecionar Cliente *</Label>
             <Popover
               open={clientPopoverOpen}
@@ -2234,7 +2268,7 @@ export function ContractForm({
 
             return (
               <>
-              <div className="w-full rounded-lg bg-muted/50 p-4 md:w-[380px]">
+              <div className="w-full rounded-lg bg-muted/50 p-4 md:w-[440px]">
                 <div className="flex items-start gap-3">
                   <div
                     className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
@@ -2270,7 +2304,7 @@ export function ContractForm({
               </div>
 
               {hasAssessor && (
-                <div className="w-full rounded-lg bg-muted/50 p-4 md:w-[380px]">
+                <div className="w-full rounded-lg bg-muted/50 p-4 md:w-[440px]">
                   <div className="flex items-start gap-3">
                     <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
                       <Users className="w-5 h-5 text-primary" />
@@ -2302,7 +2336,7 @@ export function ContractForm({
               )}
 
               {hasSyndic && (
-                <div className="w-full rounded-lg bg-muted/50 p-4 md:w-[380px]">
+                <div className="w-full rounded-lg bg-muted/50 p-4 md:w-[440px]">
                   <div className="flex items-start gap-3">
                     <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
                       <Users className="w-5 h-5 text-primary" />
@@ -3052,7 +3086,7 @@ export function ContractForm({
                 {fillingDraftMutation.isPending || updateMutation.isPending
                   ? "Salvando..."
                   : contract?.internalStatus === "filling"
-                    ? "Salvar rascunho"
+                    ? "Salvar como Em preenchimento"
                     : "Salvar"}
               </Button>
               <Button
@@ -3083,7 +3117,7 @@ export function ContractForm({
                 disabled={fillingDraftMutation.isPending || previewMutation.isPending || previewUpdateMutation.isPending || updateMutation.isPending || createMutation.isPending || isFinalizingCreate}
               >
                 <Save className="mr-2 h-4 w-4" />
-                {fillingDraftMutation.isPending ? "Salvando..." : "Salvar rascunho"}
+                {fillingDraftMutation.isPending ? "Salvando..." : "Salvar como Em preenchimento"}
               </Button>
               <Button
                 type="submit"
