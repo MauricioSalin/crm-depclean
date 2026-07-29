@@ -4,7 +4,8 @@ import { useMemo, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { addCivilDaysKey, BRASILIA_TIME_ZONE, minutesFromBrasiliaDate, parseCivilDate, toCivilDateKey } from "@/lib/date-utils"
 
 interface TimelineEvent {
@@ -47,20 +48,7 @@ const POINTER_TOOLTIP_OFFSET = 14
 const POINTER_TOOLTIP_VIEWPORT_MARGIN = 8
 
 const DAY_LABELS_SHORT = ["DOM.", "SEG.", "TER.", "QUA.", "QUI.", "SEX.", "SÁB."]
-const MONTH_LABELS = [
-  "Janeiro",
-  "Fevereiro",
-  "Março",
-  "Abril",
-  "Maio",
-  "Junho",
-  "Julho",
-  "Agosto",
-  "Setembro",
-  "Outubro",
-  "Novembro",
-  "Dezembro",
-] as const
+const MONTH_LABELS_SHORT = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"] as const
 
 type PositionedTimelineEvent = TimelineEvent & {
   top: number
@@ -292,12 +280,13 @@ export function WeekTimeline({
     setPeriodSelectorOpen(open)
   }
 
-  const goToSelectedPeriod = () => {
+  const goToSelectedPeriod = (month: number) => {
     const monthStart = parseCivilDate(
-      `${periodYear}-${String(periodMonth + 1).padStart(2, "0")}-01`,
+      `${periodYear}-${String(month + 1).padStart(2, "0")}-01`,
     )
     if (!monthStart) return
 
+    setPeriodMonth(month)
     onDateChange(monthStart)
     onDaySelect(monthStart)
     setPeriodSelectorOpen(false)
@@ -344,8 +333,8 @@ export function WeekTimeline({
             <span className="sr-only">Próxima semana</span>
             <ChevronRight className="h-5 w-5" />
           </Button>
-          <Popover open={periodSelectorOpen} onOpenChange={handlePeriodSelectorOpenChange}>
-            <PopoverTrigger asChild>
+          <DropdownMenu open={periodSelectorOpen} onOpenChange={handlePeriodSelectorOpenChange}>
+            <DropdownMenuTrigger asChild>
               <button
                 type="button"
                 aria-label={`Selecionar mês e ano: ${headerLabel}`}
@@ -353,51 +342,41 @@ export function WeekTimeline({
               >
                 {headerLabel}
               </button>
-            </PopoverTrigger>
-            <PopoverContent align="start" className="w-72 space-y-4">
-              <div>
-                <p className="text-sm font-semibold">Ir para mês e ano</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  A agenda abrirá na primeira semana do período.
-                </p>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-[252px] p-2">
+              <Select value={String(periodYear)} onValueChange={(year) => setPeriodYear(Number(year))}>
+                <SelectTrigger aria-label="Ano" className="mb-2 w-full">
+                  <SelectValue placeholder="Ano" />
+                </SelectTrigger>
+                <SelectContent>
+                  {periodYearOptions.map((year) => (
+                    <SelectItem key={year} value={String(year)}>
+                      {year}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <div className="grid grid-cols-3 gap-1">
+                {MONTH_LABELS_SHORT.map((month, index) => {
+                  const isSelected = periodMonth === index
+                  return (
+                    <button
+                      key={month}
+                      type="button"
+                      onClick={() => goToSelectedPeriod(index)}
+                      className={`h-8 rounded-md px-2 text-xs font-medium transition-colors ${
+                        isSelected
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                      }`}
+                    >
+                      {month}
+                    </button>
+                  )
+                })}
               </div>
-              <div className="grid grid-cols-[1fr_96px] gap-2">
-                <label className="grid gap-1.5 text-xs font-medium">
-                  Mês
-                  <select
-                    aria-label="Mês"
-                    value={periodMonth}
-                    onChange={(event) => setPeriodMonth(Number(event.target.value))}
-                    className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
-                  >
-                    {MONTH_LABELS.map((month, index) => (
-                      <option key={month} value={index}>
-                        {month}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="grid gap-1.5 text-xs font-medium">
-                  Ano
-                  <select
-                    aria-label="Ano"
-                    value={periodYear}
-                    onChange={(event) => setPeriodYear(Number(event.target.value))}
-                    className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
-                  >
-                    {periodYearOptions.map((year) => (
-                      <option key={year} value={year}>
-                        {year}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-              <Button type="button" className="w-full" onClick={goToSelectedPeriod}>
-                Mostrar primeira semana
-              </Button>
-            </PopoverContent>
-          </Popover>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
         <Button variant="outline" size="sm" className="h-9 rounded-full px-4 text-sm" onClick={goToToday}>
           Hoje

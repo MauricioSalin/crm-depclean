@@ -15,9 +15,9 @@ test("seleciona mês e ano e abre a primeira semana do período", async ({ page 
   const periodButton = page.getByRole("button", { name: /Selecionar mês e ano:/ })
   await periodButton.click()
 
-  await page.getByLabel("Mês", { exact: true }).selectOption("8")
-  await page.getByLabel("Ano", { exact: true }).selectOption("2027")
-  await page.getByRole("button", { name: "Mostrar primeira semana", exact: true }).click()
+  await page.getByRole("combobox", { name: "Ano", exact: true }).click()
+  await page.getByRole("option", { name: "2027", exact: true }).click()
+  await page.getByRole("menu").getByRole("button", { name: "Set", exact: true }).click()
 
   await expect(periodButton).toHaveText("Ago. - Set. 2027")
   await expect(page.getByRole("button", { name: "QUA. 1", exact: true })).toBeVisible()
