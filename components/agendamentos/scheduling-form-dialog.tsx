@@ -1,6 +1,6 @@
 "use client"
 
-import { useDeferredValue, useEffect, useMemo, useState } from "react"
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import { DatePicker } from "@/components/ui/date-picker"
@@ -133,6 +133,7 @@ interface SchedulingFormDialogProps {
   employees?: EmployeeRecord[]
   canManageStatus?: boolean
   canEditDetails?: boolean
+  isSubmitting?: boolean
 }
 
 const DEFAULT_FORM_DATA: SchedulingFormData = {
@@ -180,8 +181,10 @@ export function SchedulingFormDialog({
   employees = [],
   canManageStatus = false,
   canEditDetails = true,
+  isSubmitting = false,
 }: SchedulingFormDialogProps) {
   const [formData, setFormData] = useState<SchedulingFormData>(DEFAULT_FORM_DATA)
+  const initializedFormKeyRef = useRef("")
 
   const [clientPopoverOpen, setClientPopoverOpen] = useState(false)
   const [servicesPopoverOpen, setServicesPopoverOpen] = useState(false)
@@ -321,7 +324,14 @@ export function SchedulingFormDialog({
   }
 
   useEffect(() => {
-    if (!open) return
+    if (!open) {
+      initializedFormKeyRef.current = ""
+      return
+    }
+
+    const formKey = editingSchedule ? `edit:${editingSchedule.id}` : "create"
+    if (initializedFormKeyRef.current === formKey) return
+    initializedFormKeyRef.current = formKey
 
     if (editingSchedule) {
       setFormData(getInitialFormData(editingSchedule))
@@ -348,26 +358,31 @@ export function SchedulingFormDialog({
   }, [open, editingSchedule, initialFormData, serviceTypes, teams])
 
   const toggleTeam = (teamId: string) => {
-    const teamIds = formData.teamIds.includes(teamId)
-      ? formData.teamIds.filter(id => id !== teamId)
-      : [...formData.teamIds, teamId]
-    setFormData({
-      ...formData,
-      teamIds,
-      employeeIds: removeEmployeesCoveredByTeams(formData.employeeIds, teamIds, teams),
+    setFormData((current) => {
+      const teamIds = current.teamIds.includes(teamId)
+        ? current.teamIds.filter(id => id !== teamId)
+        : [...current.teamIds, teamId]
+      return {
+        ...current,
+        teamIds,
+        employeeIds: removeEmployeesCoveredByTeams(current.employeeIds, teamIds, teams),
+      }
     })
   }
 
   const toggleEmployee = (employeeId: string) => {
-    if (!formData.employeeIds.includes(employeeId) && isEmployeeCoveredBySelectedTeams(employeeId, formData.teamIds, teams)) {
-      return
-    }
+    setFormData((current) => {
+      if (!current.employeeIds.includes(employeeId) && isEmployeeCoveredBySelectedTeams(employeeId, current.teamIds, teams)) {
+        return current
+      }
 
-    if (formData.employeeIds.includes(employeeId)) {
-      setFormData({ ...formData, employeeIds: formData.employeeIds.filter(id => id !== employeeId) })
-    } else {
-      setFormData({ ...formData, employeeIds: [...formData.employeeIds, employeeId] })
-    }
+      return {
+        ...current,
+        employeeIds: current.employeeIds.includes(employeeId)
+          ? current.employeeIds.filter(id => id !== employeeId)
+          : [...current.employeeIds, employeeId],
+      }
+    })
   }
 
   const toggleService = (serviceTypeId: string) => {
@@ -389,6 +404,13 @@ export function SchedulingFormDialog({
           ]
       const primarySetting = serviceDocumentSettings.find((setting) => setting.serviceTypeId === serviceTypeIds[0])
       const isFirstService = !isSelected && current.serviceTypeIds.length === 0
+      const selection = !isSelected
+        ? normalizeTeamEmployeeSelection({
+            teamIds: [...current.teamIds, ...(selectedService?.teamIds || [])],
+            employeeIds: [...current.employeeIds, ...(selectedService?.employeeIds || [])],
+            teams,
+          })
+        : { teamIds: current.teamIds, employeeIds: current.employeeIds }
 
       if (!isFirstService) {
         return {
@@ -400,14 +422,11 @@ export function SchedulingFormDialog({
           certificateTemplateId: primarySetting?.certificateTemplateId ?? "",
           autoSendInformative: serviceDocumentSettings.some((setting) => Boolean(setting.informativeTemplateId)),
           generateCertificateRequest: serviceDocumentSettings.some((setting) => Boolean(setting.certificateTemplateId)),
+          teamIds: selection.teamIds,
+          employeeIds: selection.employeeIds,
         }
       }
 
-      const selection = normalizeTeamEmployeeSelection({
-        teamIds: selectedService?.teamIds || [],
-        employeeIds: selectedService?.employeeIds || [],
-        teams,
-      })
       return {
         ...current,
         serviceTypeId,
@@ -448,10 +467,12 @@ export function SchedulingFormDialog({
   }
 
   const resetForm = () => {
+    if (isSubmitting) return
     onOpenChange(false)
   }
 
   const handleOpenChange = (newOpen: boolean) => {
+    if (!newOpen && isSubmitting) return
     onOpenChange(newOpen)
   }
 
@@ -535,7 +556,7 @@ export function SchedulingFormDialog({
               <Label>Status manual</Label>
               <Select
                 value={formData.status}
-                onValueChange={(status) => setFormData({ ...formData, status: status as ScheduleManualStatus })}
+                onValueChange={(status) => setFormData((current) => ({ ...current, status: status as ScheduleManualStatus }))}
               >
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Selecione o status" />
@@ -551,7 +572,7 @@ export function SchedulingFormDialog({
             </div>
           ) : null}
 
-          <fieldset disabled={!canEditDetails} className="m-0 grid min-w-0 w-full max-w-full gap-5 border-0 p-0">
+          <fieldset disabled={!canEditDetails || isSubmitting} className="m-0 grid min-w-0 w-full max-w-full gap-5 border-0 p-0">
           {/* Client Selection */}
           <div className="space-y-2">
             <Label>Cliente *</Label>
@@ -587,7 +608,7 @@ export function SchedulingFormDialog({
                           key={client.id}
                           value={client.companyName}
                           onSelect={() => {
-                            setFormData({ ...formData, clientId: client.id })
+                            setFormData((current) => ({ ...current, clientId: client.id }))
                             setClientPopoverOpen(false)
                           }}
                           className="cursor-pointer"
@@ -834,7 +855,7 @@ export function SchedulingFormDialog({
               <Input
                 type="time"
                 value={formData.time}
-                onChange={(e) => setFormData({ ...formData, time: e.target.value })}
+                onChange={(e) => setFormData((current) => ({ ...current, time: e.target.value }))}
                 required
               />
             </div>
@@ -845,7 +866,7 @@ export function SchedulingFormDialog({
               <Label>Tipo de Duração</Label>
               <Select
                 value={formData.durationType}
-                onValueChange={(value) => setFormData({ ...formData, durationType: value as ScheduleDurationType })}
+                onValueChange={(value) => setFormData((current) => ({ ...current, durationType: value as ScheduleDurationType }))}
               >
                 <SelectTrigger className="w-full">
                   <SelectValue />
@@ -862,7 +883,7 @@ export function SchedulingFormDialog({
               <NumericInput
                 allowDecimal
                 value={formData.duration}
-                onValueChange={(duration) => setFormData({ ...formData, duration })}
+                onValueChange={(duration) => setFormData((current) => ({ ...current, duration }))}
                 min={1}
                 className="w-full"
               />
@@ -875,7 +896,7 @@ export function SchedulingFormDialog({
             <Label>Valor (R$)</Label>
             <CurrencyInput
               value={formData.createContract ? Math.round(formData.value * 100) : 0}
-              onChange={(cents) => setFormData({ ...formData, value: cents / 100 })}
+              onChange={(cents) => setFormData((current) => ({ ...current, value: cents / 100 }))}
               disabled={!formData.createContract}
               className={!formData.createContract ? "cursor-not-allowed opacity-60" : undefined}
             />
@@ -887,7 +908,7 @@ export function SchedulingFormDialog({
             <Label>Observações</Label>
             <Textarea
               value={formData.notes}
-              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+              onChange={(e) => setFormData((current) => ({ ...current, notes: e.target.value }))}
               placeholder="Observações sobre o agendamento"
             />
           </div>
@@ -900,11 +921,13 @@ export function SchedulingFormDialog({
                   id="createContract"
                   checked={formData.createContract}
                   onCheckedChange={(checked) => {
-                    const serviceType = serviceTypes.find((item) => item.id === formData.serviceTypeId)
-                    setFormData({
-                      ...formData,
-                      createContract: !!checked,
-                      value: checked ? formData.value || serviceType?.baseValue || 0 : 0,
+                    setFormData((current) => {
+                      const serviceType = serviceTypes.find((item) => item.id === current.serviceTypeId)
+                      return {
+                        ...current,
+                        createContract: !!checked,
+                        value: checked ? current.value || serviceType?.baseValue || 0 : 0,
+                      }
                     })
                   }}
                 />
@@ -922,7 +945,7 @@ export function SchedulingFormDialog({
                 <Checkbox
                   id="isEmergency"
                   checked={formData.isEmergency}
-                  onCheckedChange={(checked) => setFormData({ ...formData, isEmergency: !!checked })}
+                  onCheckedChange={(checked) => setFormData((current) => ({ ...current, isEmergency: !!checked }))}
                 />
                 <div className="flex flex-col">
                   <Label htmlFor="isEmergency" className="text-sm font-medium cursor-pointer">
@@ -1012,11 +1035,16 @@ export function SchedulingFormDialog({
 
         </form>
         <DialogFooter className="shrink-0 px-6 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-3">
-          <Button type="button" variant="outline" onClick={resetForm}>
+          <Button type="button" variant="outline" onClick={resetForm} disabled={isSubmitting}>
             Cancelar
           </Button>
-          <Button type="submit" form="schedule-form" className="bg-primary hover:bg-primary/90 text-primary-foreground">
-            {editingSchedule ? "Salvar" : "Agendar"}
+          <Button
+            type="submit"
+            form="schedule-form"
+            className="bg-primary hover:bg-primary/90 text-primary-foreground"
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? "Salvando..." : editingSchedule ? "Salvar" : "Agendar"}
           </Button>
         </DialogFooter>
       </DialogContent>

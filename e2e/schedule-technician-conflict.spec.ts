@@ -64,20 +64,26 @@ async function fulfill(route: Route, data: unknown) {
 
 async function installTechnicianConflictMock(page: Page) {
   let savedPayload: Record<string, unknown> | null = null
+  let savedLongSchedule: Omit<typeof longSchedule, "additionalEmployees"> & {
+    additionalEmployees: Array<{ id: string; name: string }>
+  } = longSchedule
+  let patchCount = 0
 
   await page.route("**/api/v1/schedules**", async (route) => {
     const request = route.request()
     const path = new URL(request.url()).pathname.replace("/api/v1", "")
     if (request.method() === "GET" && path === "/schedules") {
-      await fulfill(route, [longSchedule, eduardoSchedule])
+      await fulfill(route, [savedLongSchedule, eduardoSchedule])
       return
     }
     if (request.method() === "PATCH" && path === `/schedules/${longSchedule.id}`) {
+      patchCount += 1
       savedPayload = request.postDataJSON()
-      await fulfill(route, {
+      savedLongSchedule = {
         ...longSchedule,
         additionalEmployees: [{ id: eduardo.id, name: eduardo.name }],
-      })
+      }
+      await fulfill(route, savedLongSchedule)
       return
     }
     await route.fallback()
@@ -94,6 +100,7 @@ async function installTechnicianConflictMock(page: Page) {
 
   return {
     getSavedPayload: () => savedPayload,
+    getPatchCount: () => patchCount,
   }
 }
 
@@ -127,4 +134,11 @@ test("confirma em modal ao vincular técnico com sobreposição de horário", as
     additionalEmployeeIds: [eduardo.id],
     allowConflict: true,
   })
+  await expect(editDialog).toBeHidden()
+
+  await scheduleRow.getByRole("button", { name: `Abrir ações do agendamento de ${longSchedule.clientName}` }).click()
+  await page.getByRole("menuitem", { name: "Editar" }).click()
+
+  await expect(editDialog.getByText(eduardo.name, { exact: true })).toBeVisible()
+  expect(mock.getPatchCount()).toBe(1)
 })

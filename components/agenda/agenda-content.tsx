@@ -42,6 +42,7 @@ import {
   isScheduleConflictErrorMessage,
 } from "@/lib/schedule-availability"
 import { canStartSchedule } from "@/lib/schedule-permissions"
+import { cacheSavedSchedule } from "@/lib/schedule-query-cache"
 import type { RecurrenceType } from "@/lib/types"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -401,6 +402,10 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       scheduleId?: string
       allowConflict?: boolean
     }) => {
+      if (scheduleId && !canManageAgenda && canManageScheduleStatus) {
+        return updateScheduleStatus(scheduleId, formData.status)
+      }
+
       const client = clients.find((item) => item.id === formData.clientId)
       const primaryUnit =
         client?.units.find((unit) => unit.isPrimary) ??
@@ -411,10 +416,6 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       }
 
       const isRecurringScheduleUpdate = Boolean(scheduleId && editingService?.contractId && !editingService.isManual)
-      if (scheduleId && !canManageAgenda && canManageScheduleStatus) {
-        return updateScheduleStatus(scheduleId, formData.status)
-      }
-
       if (scheduleId && isRecurringScheduleUpdate) {
         const response = await updateSchedule(scheduleId, {
           serviceTypeId: formData.serviceTypeIds[0],
@@ -486,6 +487,8 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       return { toastId }
     },
     onSuccess: (response, variables, context) => {
+      cacheSavedSchedule(queryClient, response.data)
+      closeScheduleDialog()
       toast.success(variables.scheduleId ? "Agendamento atualizado." : "Agendamento criado.", {
         id: context?.toastId,
         description: `${response.data.clientName} • ${response.data.serviceTypeName}`,
@@ -691,11 +694,12 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   }
 
   const handleFormSubmit = (formData: SchedulingFormData, isEditing: boolean) => {
+    if (saveMutation.isPending) return
+
     const scheduleId = isEditing ? editingService?.id : undefined
     const statusOnlyChange = Boolean(isEditing && scheduleId && canManageScheduleStatus && editingService?.status !== formData.status)
     if (!canManageAgenda && !statusOnlyChange) return
     if (!canManageAgenda && statusOnlyChange) {
-      closeScheduleDialog()
       saveMutation.mutate({ formData, scheduleId })
       return
     }
@@ -739,7 +743,6 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       return
     }
 
-    closeScheduleDialog()
     saveMutation.mutate({ formData, scheduleId })
   }
 
@@ -906,6 +909,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
         employees={employees}
         canManageStatus={canManageScheduleStatus}
         canEditDetails={canManageAgenda}
+        isSubmitting={saveMutation.isPending}
       />
 
       <ScheduleDetailsDialog
@@ -1096,14 +1100,14 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
             </div>
           ) : null}
           <DialogFooter className="gap-2 sm:gap-2">
-            <Button type="button" variant="outline" onClick={() => setAvailabilitySuggestion(null)}>
+            <Button type="button" variant="outline" onClick={() => setAvailabilitySuggestion(null)} disabled={saveMutation.isPending}>
               Cancelar
             </Button>
             <Button
               type="button"
+              disabled={saveMutation.isPending}
               onClick={() => {
                 if (!availabilitySuggestion) return
-                closeScheduleDialog()
                 saveMutation.mutate({
                   formData: availabilitySuggestion.formData,
                   scheduleId: availabilitySuggestion.scheduleId,
@@ -1117,9 +1121,9 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
             {availabilitySuggestion?.suggested ? <Button
               type="button"
               variant="outline"
+              disabled={saveMutation.isPending}
               onClick={() => {
                 if (!availabilitySuggestion?.suggested) return
-                closeScheduleDialog()
                 saveMutation.mutate({
                   formData: {
                     ...availabilitySuggestion.formData,
