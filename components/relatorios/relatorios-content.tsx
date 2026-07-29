@@ -33,6 +33,7 @@ import { hasAnyPermission } from "@/lib/auth/permissions"
 import { getStoredUser } from "@/lib/auth/session"
 import { isOperationallyActiveContract } from "@/lib/contract-status"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
+import { useUrlDateRangeState } from "@/lib/hooks/use-url-date-range-state"
 import { addCivilDaysKey, addCivilMonthsKey, parseCivilDate, toCivilDateKey } from "@/lib/date-utils"
 import { formatScheduleDurationValue } from "@/lib/schedule-duration"
 import { cn, formatContractNumber } from "@/lib/utils"
@@ -206,6 +207,7 @@ function reportStatusLabel(status: ReportsAnalyticsRecord["scheduleDetails"][num
   if (status === "completed") return "Concluído"
   if (status === "cancelled") return "Cancelado"
   if (status === "in_progress") return "Em andamento"
+  if (status === "rescheduled") return "Reagendado"
   return "Agendado"
 }
 
@@ -1130,7 +1132,11 @@ export function RelatoriosContent() {
   const selectedTeamIds = parseUrlIds(selectedTeamIdsQuery)
   const selectedEmployeeIds = parseUrlIds(selectedEmployeeIdsQuery)
   const [financialViewMode, setFinancialViewMode] = useState<"table" | "cards">("table")
-  const [dateRange, setDateRange] = useState<DateRange | undefined>(() => getCurrentMonthRange())
+  const initialReportRange = useMemo(() => getCurrentMonthRange(), [])
+  const [dateRange, setDateRange] = useUrlDateRangeState({
+    initialRange: initialReportRange,
+    emptyRangeKey: "range",
+  })
   const [isExporting, setIsExporting] = useState(false)
 
   useEffect(() => {

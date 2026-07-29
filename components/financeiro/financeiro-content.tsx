@@ -98,7 +98,10 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
   const searchParams = useSearchParams()
   const currentHref = buildPathWithSearchParams(pathname, searchParams)
   const [searchTerm, setSearchTerm] = useUrlQueryState("q")
-  const [tabFilter, setTabFilter] = useState("all")
+  const [tabFilterParam, setTabFilter] = useUrlQueryState("paymentStatus", "all", { debounceMs: 0 })
+  const tabFilter = ["pending", "late", "overdue", "paid", "cancelled"].includes(tabFilterParam)
+    ? tabFilterParam
+    : "all"
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [currentUser, setCurrentUser] = useState<ReturnType<typeof getStoredUser>>(null)
@@ -397,6 +400,7 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
                   { value: "late", label: "Atrasadas" },
                   { value: "overdue", label: "Vencidas" },
                   { value: "paid", label: "Pagas" },
+                  { value: "cancelled", label: "Canceladas" },
                 ]}
                 placeholder="Status"
                 searchPlaceholder="Buscar status..."

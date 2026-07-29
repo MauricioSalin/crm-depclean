@@ -1,6 +1,6 @@
 "use client"
 
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useRouter, useSearchParams } from "next/navigation"
 import { toast } from "sonner"
@@ -32,6 +32,7 @@ import { getStoredUser } from "@/lib/auth/session"
 import { addCivilDaysKey, addCivilMonthsKey, parseCivilDate, toBrasiliaTimeKey, toCivilDateKey } from "@/lib/date-utils"
 import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
+import { normalizeScheduleStatusFilter, SCHEDULE_STATUS_FILTER_OPTIONS } from "@/lib/schedule-status"
 import { cn } from "@/lib/utils"
 import {
   checkScheduleAvailability,
@@ -220,12 +221,21 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   const searchParams = useSearchParams()
   const queryClient = useQueryClient()
   const mobileFiltersOpen = useMobileFiltersOpen()
-  const [currentDate, setCurrentDate] = useState(new Date())
-  const [selectedDate, setSelectedDate] = useState<Date | null>(new Date())
+  const initialAgendaDateKey = useMemo(() => toCivilDateKey(new Date()), [])
+  const [agendaDateParam, setAgendaDateParam] = useUrlQueryState("date", initialAgendaDateKey, { debounceMs: 0 })
+  const initialAgendaDate = useMemo(
+    () => parseCivilDate(agendaDateParam) ?? parseCivilDate(initialAgendaDateKey) ?? new Date(),
+    [agendaDateParam, initialAgendaDateKey],
+  )
+  const [currentDate, setCurrentDateState] = useState(initialAgendaDate)
+  const [selectedDate, setSelectedDateState] = useState<Date | null>(initialAgendaDate)
+  const currentDateKeyRef = useRef(toCivilDateKey(initialAgendaDate))
   const [searchTerm, setSearchTerm] = useUrlQueryState("q")
   const deferredSearchTerm = useDeferredValue(searchTerm)
-  const [statusFilter, setStatusFilter] = useState<string>("all")
-  const [viewMode, setViewMode] = useState<"month" | "week">("week")
+  const [statusFilterParam, setStatusFilter] = useUrlQueryState("status", "all", { debounceMs: 0 })
+  const statusFilter = normalizeScheduleStatusFilter(statusFilterParam)
+  const [viewModeParam, setViewModeParam] = useUrlQueryState("view", "week", { debounceMs: 0 })
+  const viewMode = viewModeParam === "month" ? "month" : "week"
   const [dayPanelOpen, setDayPanelOpen] = useState(true)
   const [dayPanelContentVisible, setDayPanelContentVisible] = useState(true)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -253,6 +263,28 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   const canManageLockedSchedules = hasAnyPermission(currentUser, ["agenda_manage_locked"])
   const canManageScheduleStatus = hasAnyPermission(currentUser, ["agenda_manage_status"])
   const canOpenScheduleEditor = canManageAgenda || canManageScheduleStatus
+
+  const setCurrentDate = useCallback((date: Date) => {
+    const dateKey = toCivilDateKey(date)
+    currentDateKeyRef.current = dateKey
+    setCurrentDateState(date)
+    setAgendaDateParam(dateKey)
+  }, [setAgendaDateParam])
+
+  const setSelectedDate = useCallback((date: Date | null) => {
+    setSelectedDateState(date)
+    if (date) setCurrentDate(date)
+  }, [setCurrentDate])
+
+  useEffect(() => {
+    const parsedDate = parseCivilDate(agendaDateParam) ?? parseCivilDate(initialAgendaDateKey) ?? new Date()
+    const parsedDateKey = toCivilDateKey(parsedDate)
+    if (currentDateKeyRef.current === parsedDateKey) return
+
+    currentDateKeyRef.current = parsedDateKey
+    setCurrentDateState(parsedDate)
+    setSelectedDateState(parsedDate)
+  }, [agendaDateParam, initialAgendaDateKey])
 
   useEffect(() => {
     const sync = () => setCurrentUser(getStoredUser())
@@ -891,7 +923,6 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
 
     const selectedScheduleDate = parseCivilDate(schedule.date) ?? new Date()
     setSelectedDate(selectedScheduleDate)
-    setCurrentDate(selectedScheduleDate)
     setSelectedSchedule(schedule)
   }, [schedules, searchParams])
 
@@ -918,7 +949,10 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
           if (!open) {
             setSelectedSchedule(null)
             if (searchParams.get("scheduleId")) {
-              router.replace("/agenda", { scroll: false })
+              const params = new URLSearchParams(searchParams.toString())
+              params.delete("scheduleId")
+              const query = params.toString()
+              router.replace(query ? `/agenda?${query}` : "/agenda", { scroll: false })
             }
           }
         }}
@@ -1154,13 +1188,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
           <SearchableSelect
             value={statusFilter}
             onValueChange={setStatusFilter}
-            options={[
-              { value: "draft", label: "Rascunho" },
-              { value: "scheduled", label: "Agendado" },
-              { value: "in_progress", label: "Em andamento" },
-              { value: "completed", label: "Concluído" },
-              { value: "cancelled", label: "Cancelado" },
-            ]}
+            options={SCHEDULE_STATUS_FILTER_OPTIONS}
             placeholder="Status"
             searchPlaceholder="Buscar status..."
             allLabel="Todos os status"
@@ -1174,7 +1202,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
               if (mode === "week") {
                 setCurrentDate(selectedDate || new Date())
               }
-              setViewMode(mode)
+              setViewModeParam(mode)
             }}
             className="hidden shrink-0 sm:block"
           >

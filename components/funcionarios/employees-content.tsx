@@ -86,7 +86,8 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
   const [currentUser, setCurrentUser] = useState<ReturnType<typeof getStoredUser>>(() => getStoredUser())
   const [saving, setSaving] = useState(false)
   const [searchTerm, setSearchTerm] = useUrlQueryState("q")
-  const [statusFilter, setStatusFilter] = useState<string>("all")
+  const [statusFilterParam, setStatusFilter] = useUrlQueryState("status", "all", { debounceMs: 0 })
+  const statusFilter = ["active", "inactive"].includes(statusFilterParam) ? statusFilterParam : "all"
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingEmployee, setEditingEmployee] = useState<EmployeeRecord | null>(null)
   const [systemUserEmployee, setSystemUserEmployee] = useState<EmployeeRecord | null>(null)

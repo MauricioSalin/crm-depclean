@@ -16,39 +16,32 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { DateRangePicker } from "@/components/ui/date-range-picker"
 import type { DashboardAnalyticsParams } from "@/lib/api/analytics"
 import { getStoredUser } from "@/lib/auth/session"
-import { addCivilDaysKey, parseCivilDate, toCivilDateKey } from "@/lib/date-utils"
+import { toCivilDateKey } from "@/lib/date-utils"
+import { useUrlDateRangeState } from "@/lib/hooks/use-url-date-range-state"
+import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 
 const PERIOD_OPTIONS = [30, 60, 90] as const
 type DashboardPeriod = (typeof PERIOD_OPTIONS)[number]
 type DashboardPeriodTab = DashboardPeriod | "custom"
-
-function getRangeForDays(days: DashboardPeriod): DateRange {
-  const today = new Date()
-  const todayKey = toCivilDateKey(today)
-  const fromKey = addCivilDaysKey(todayKey, -(days - 1))
-
-  return {
-    from: parseCivilDate(fromKey) ?? today,
-    to: parseCivilDate(todayKey) ?? today,
-  }
-}
 
 function formatDateParam(date?: Date) {
   return date ? toCivilDateKey(date) : undefined
 }
 
 export function DashboardContent() {
-  const [periodTab, setPeriodTab] = useState<DashboardPeriodTab>(30)
-  const [dateRange, setDateRange] = useState<DateRange | undefined>(() => getRangeForDays(30))
+  const [periodParam, setPeriodParam] = useUrlQueryState("period", "30", { debounceMs: 0 })
+  const periodTab: DashboardPeriodTab = periodParam === "custom"
+    ? "custom"
+    : PERIOD_OPTIONS.find((period) => String(period) === periodParam) ?? 30
+  const [dateRange, setDateRange] = useUrlDateRangeState()
   const [isCustomDatePickerOpen, setIsCustomDatePickerOpen] = useState(false)
-  const [appliedDashboardParams, setAppliedDashboardParams] = useState<DashboardAnalyticsParams>({ days: 30 })
   const dashboardStorageKey = useMemo(() => {
     const user = getStoredUser()
     return `depclean:dashboard-widgets:${user?.id ?? user?.email ?? "default"}`
   }, [])
 
   const openCustomDatePicker = () => {
-    setPeriodTab("custom")
+    setPeriodParam("custom")
     setDateRange(undefined)
     setIsCustomDatePickerOpen(true)
   }
@@ -63,21 +56,16 @@ export function DashboardContent() {
 
     if (!nextPeriod) return
 
-    setPeriodTab(nextPeriod)
-    setDateRange(getRangeForDays(nextPeriod))
+    setPeriodParam(String(nextPeriod))
+    setDateRange(undefined)
     setIsCustomDatePickerOpen(false)
-    setAppliedDashboardParams({ days: nextPeriod })
   }
 
   const handleDateRangeChange = (range: DateRange | undefined) => {
     setDateRange(range)
-    setPeriodTab("custom")
+    setPeriodParam("custom")
 
     if (range?.from && range?.to) {
-      setAppliedDashboardParams({
-        dateFrom: formatDateParam(range.from),
-        dateTo: formatDateParam(range.to),
-      })
       setIsCustomDatePickerOpen(false)
       return
     }
@@ -85,7 +73,13 @@ export function DashboardContent() {
     setIsCustomDatePickerOpen(true)
   }
 
-  const dashboardParams = appliedDashboardParams
+  const dashboardParams: DashboardAnalyticsParams =
+    periodTab === "custom" && dateRange?.from && dateRange?.to
+      ? {
+          dateFrom: formatDateParam(dateRange.from),
+          dateTo: formatDateParam(dateRange.to),
+        }
+      : { days: periodTab === "custom" ? 30 : periodTab }
 
   const periodControls = (
     <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">

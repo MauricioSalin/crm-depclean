@@ -14,6 +14,7 @@ import { getApiErrorMessage } from "@/lib/api/errors"
 import { getStoredUser } from "@/lib/auth/session"
 import { formatCivilDate } from "@/lib/date-utils"
 import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
+import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 import { AssignmentBadges } from "@/components/ui/assignment-badges"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -87,8 +88,9 @@ export function CertificatesContent({ viewMode, viewToggle, createOpen = false, 
   const mobileFiltersOpen = useMobileFiltersOpen()
   const [currentUser, setCurrentUser] = useState<ReturnType<typeof getStoredUser>>(null)
   const [mounted, setMounted] = useState(false)
-  const [searchTerm, setSearchTerm] = useState("")
-  const [statusFilter, setStatusFilter] = useState("all")
+  const [searchTerm, setSearchTerm] = useUrlQueryState("q")
+  const [statusFilterParam, setStatusFilter] = useUrlQueryState("status", "all", { debounceMs: 0 })
+  const statusFilter = ["pending", "sent"].includes(statusFilterParam) ? statusFilterParam : "all"
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(10)
   const [certificateToDelete, setCertificateToDelete] = useState<CertificateQueueRecord | null>(null)

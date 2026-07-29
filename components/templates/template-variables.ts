@@ -151,7 +151,7 @@ export function getTemplateVariableGroups(kind: TemplateKind) {
 export function getTemplateVariableLabelMap(kind: TemplateKind) {
   return Object.fromEntries(
     getTemplateVariableGroups(kind).flatMap((group) =>
-      group.variables.map((variable) => [variable.path, `${group.label}: ${variable.label}`]),
+      group.variables.map((variable) => [variable.path, variable.label]),
     ),
   )
 }

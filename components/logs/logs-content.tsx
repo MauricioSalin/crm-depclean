@@ -39,6 +39,7 @@ import { listEmployees } from "@/lib/api/employees"
 import { listAuditLogs, type AuditLogRecord } from "@/lib/api/logs"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
+import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 import { cn } from "@/lib/utils"
 
 const LOG_TYPE_OPTIONS = [
@@ -467,14 +468,17 @@ export function LogsContent() {
   const [selectedLog, setSelectedLog] = useState<AuditLogRecord | null>(null)
   const [logDetailsOpen, setLogDetailsOpen] = useState(false)
   const logDetailsCloseTimeoutRef = useRef<number | null>(null)
-  const [search, setSearch] = useState("")
-  const [from, setFrom] = useState("")
-  const [to, setTo] = useState("")
-  const [clientId, setClientId] = useState("all")
-  const [employeeId, setEmployeeId] = useState("all")
-  const [type, setType] = useState("all")
-  const [module, setModule] = useState("all")
-  const [status, setStatus] = useState<"all" | "success" | "error" | "pending">("all")
+  const [search, setSearch] = useUrlQueryState("q")
+  const [from, setFrom] = useUrlQueryState("from", "", { debounceMs: 0 })
+  const [to, setTo] = useUrlQueryState("to", "", { debounceMs: 0 })
+  const [clientId, setClientId] = useUrlQueryState("client", "all", { debounceMs: 0 })
+  const [employeeId, setEmployeeId] = useUrlQueryState("employee", "all", { debounceMs: 0 })
+  const [type, setType] = useUrlQueryState("type", "all", { debounceMs: 0 })
+  const [module, setModule] = useUrlQueryState("module", "all", { debounceMs: 0 })
+  const [statusParam, setStatus] = useUrlQueryState("status", "all", { debounceMs: 0 })
+  const status = ["success", "error", "pending"].includes(statusParam)
+    ? statusParam as "success" | "error" | "pending"
+    : "all"
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
   const [tableSort, setTableSort] = useState<TableSortState>(null)

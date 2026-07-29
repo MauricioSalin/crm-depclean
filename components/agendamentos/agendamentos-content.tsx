@@ -4,7 +4,6 @@ import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useRouter } from "next/navigation"
 import { format } from "date-fns"
-import type { DateRange } from "react-day-picker"
 import { toast } from "sonner"
 import {
   Calendar,
@@ -45,8 +44,10 @@ import { hasAnyPermission } from "@/lib/auth/permissions"
 import { getStoredUser } from "@/lib/auth/session"
 import { formatCivilDate, parseCivilDate, toBrasiliaTimeKey, toCivilDateKey } from "@/lib/date-utils"
 import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
+import { useUrlDateRangeState } from "@/lib/hooks/use-url-date-range-state"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 import { formatConfiguredScheduleDuration, minutesToScheduleDuration, scheduleDurationToMinutes } from "@/lib/schedule-duration"
+import { normalizeScheduleStatusFilter, SCHEDULE_STATUS_FILTER_OPTIONS } from "@/lib/schedule-status"
 import {
   checkScheduleAvailability,
   formatAvailabilitySlot,
@@ -464,8 +465,9 @@ export function AgendamentosContent({
   const mobileFiltersOpen = useMobileFiltersOpen()
   const [searchTerm, setSearchTerm] = useUrlQueryState("q")
   const deferredSearchTerm = useDeferredValue(searchTerm)
-  const [statusFilter, setStatusFilter] = useState<string>("all")
-  const [dateRange, setDateRange] = useState<DateRange | undefined>()
+  const [statusFilterParam, setStatusFilter] = useUrlQueryState("status", "all", { debounceMs: 0 })
+  const statusFilter = normalizeScheduleStatusFilter(statusFilterParam)
+  const [dateRange, setDateRange] = useUrlDateRangeState()
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(10)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -1317,13 +1319,7 @@ export function AgendamentosContent({
               setStatusFilter(value)
               setCurrentPage(1)
             }}
-            options={[
-              { value: "draft", label: "Rascunho" },
-              { value: "scheduled", label: "Agendado" },
-              { value: "in_progress", label: "Em andamento" },
-              { value: "completed", label: "Concluído" },
-              { value: "cancelled", label: "Cancelado" },
-            ]}
+            options={SCHEDULE_STATUS_FILTER_OPTIONS}
             placeholder="Status"
             searchPlaceholder="Buscar status..."
             allLabel="Todos os status"

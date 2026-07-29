@@ -1,14 +1,13 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { usePathname, useRouter, useSearchParams } from "next/navigation"
+import { usePathname, useSearchParams } from "next/navigation"
 
 type UseUrlQueryStateOptions = {
   debounceMs?: number
 }
 
 export function useUrlQueryState(key: string, initialValue = "", options: UseUrlQueryStateOptions = {}) {
-  const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const debounceMs = options.debounceMs ?? 250
@@ -44,9 +43,10 @@ export function useUrlQueryState(key: string, initialValue = "", options: UseUrl
 
       const queryString = params.toString()
       const currentPathname = latestPathnameRef.current
-      router.replace(queryString ? `${currentPathname}?${queryString}` : currentPathname, { scroll: false })
+      const href = queryString ? `${currentPathname}?${queryString}` : currentPathname
+      window.history.replaceState(window.history.state, "", href)
     },
-    [key, router],
+    [key],
   )
 
   const updateValue = useCallback(

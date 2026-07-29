@@ -19,7 +19,10 @@ import {
   type TemplateFormat,
   type TemplateKind,
 } from "@/lib/api/templates"
+import type { EditorPlugin } from "@eigenpal/docx-js-editor"
 import { Skeleton } from "@/components/ui/skeleton"
+import { createTemplateVariableBadgePlugin } from "@/components/templates/docx-template-variable-badges"
+import { getTemplateVariableLabelMap } from "@/components/templates/template-variables"
 import { DOCX_EDITOR_PT_BR } from "@/lib/docx-editor-pt-br"
 
 type DocxEditorHandleLike = {
@@ -33,6 +36,7 @@ type DocxEditorHandleLike = {
 }
 
 type DocxEditorOptions = Record<string, unknown> & {
+  plugins?: EditorPlugin[]
   onChange?: (document: unknown) => void
   onEditorViewReady?: (view: unknown) => void
   onFontsLoaded?: () => void
@@ -62,6 +66,7 @@ type ProseMirrorTransactionLike = {
   addMark?: (from: number, to: number, mark: unknown) => ProseMirrorTransactionLike
   delete?: (from: number, to: number) => ProseMirrorTransactionLike
   deleteRange?: (from: number, to: number) => ProseMirrorTransactionLike
+  insertText?: (text: string, from?: number, to?: number) => ProseMirrorTransactionLike
   mapping?: {
     map?: (pos: number) => number
   }
@@ -939,9 +944,13 @@ async function renderDocxEditor(
   container: HTMLElement,
   options: DocxEditorOptions = {}
 ) {
-  const editorModule = (await import("@eigenpal/docx-js-editor")) as { DocxEditor: unknown }
+  const editorModule = (await import("@eigenpal/docx-js-editor")) as {
+    DocxEditor: unknown
+    PluginHost: unknown
+  }
   const root = createRoot(container)
   const editorRef = createRef<DocxEditorHandleLike>()
+  const { plugins = [], ...editorOptions } = options
 
   return new Promise<DocxEditorHandleLike>((resolve, reject) => {
     let settled = false
@@ -976,9 +985,8 @@ async function renderDocxEditor(
       }
     }
 
-    root.render(
-        createElement(editorModule.DocxEditor as never, {
-        ...options,
+    const editorElement = createElement(editorModule.DocxEditor as never, {
+        ...editorOptions,
         documentBuffer: input,
         onChange: (document: unknown) => {
           options.onChange?.(document)
@@ -997,6 +1005,11 @@ async function renderDocxEditor(
         },
         ref: editorRef,
       })
+
+    root.render(
+      plugins.length > 0
+        ? createElement(editorModule.PluginHost as never, { plugins } as never, editorElement)
+        : editorElement
     )
 
     window.setTimeout(resolveHandle, 50)
@@ -1740,6 +1753,10 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
       [watermarkImageUrl],
     )
     const shouldUsePageWatermark = Boolean(watermarkImageUrl)
+    const variableBadgePlugin = useMemo(
+      () => createTemplateVariableBadgePlugin(getTemplateVariableLabelMap(kind)),
+      [kind],
+    )
 
     useEffect(() => {
       const originalError = console.error
@@ -2465,6 +2482,7 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
             initialZoom: calculateDocxFitZoom(host),
             i18n: DOCX_EDITOR_PT_BR,
             mode: "editing",
+            plugins: [variableBadgePlugin],
             onChange: (document: unknown) => {
               latestDocumentRef.current = document
               if (dirtyTrackingReadyRef.current) {
@@ -2548,7 +2566,7 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
           mount.remove()
         }
       }
-    }, [editorRenderKey, rememberProseMirrorSelection, sourceBuffer])
+    }, [editorRenderKey, rememberProseMirrorSelection, sourceBuffer, variableBadgePlugin])
 
     useEffect(() => {
       const host = previewHostRef.current
@@ -2745,6 +2763,26 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
     const insertVariable = useCallback(
       (path: string) => {
         const token = formatVariableToken(path)
+        const view = editorViewRef.current
+        const proseMirrorSelection = lastProseMirrorSelectionRef.current ?? getSelectionSnapshot(view)
+
+        if (view?.state?.tr?.insertText && view.dispatch && proseMirrorSelection) {
+          const transaction = view.state.tr
+            .insertText(token, proseMirrorSelection.from, proseMirrorSelection.to)
+            .scrollIntoView?.()
+
+          if (transaction) {
+            view.dispatch(transaction)
+            view.focus?.()
+            onDirtyChangeRef.current?.(true)
+            window.setTimeout(() => {
+              rememberProseMirrorSelection(view)
+              captureEditorSelection()
+            }, 0)
+            return
+          }
+        }
+
         const selection = window.getSelection()
 
         editorHandleRef.current?.focus?.()
@@ -2765,7 +2803,7 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
           captureEditorSelection()
         }, 0)
       },
-      [captureEditorSelection],
+      [captureEditorSelection, rememberProseMirrorSelection],
     )
 
     const generatePreviewPdf = useCallback(async (options?: { download?: boolean; previewWatermark?: boolean }) => {
@@ -2858,6 +2896,7 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
           .docx-template-editor-shell [data-testid="editor-toolbar"] button[aria-label^="Visualizando"] {
             display: none !important;
           }
+
         `}</style>
 
         {isLoading ? (

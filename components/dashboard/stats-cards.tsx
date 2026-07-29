@@ -115,7 +115,7 @@ export function StatsCards(period: DashboardPeriodProps = {}) {
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="inline-flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-full bg-primary/10 px-2 text-[10px] font-semibold leading-none text-primary transition-colors hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+          className="inline-flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-full bg-primary/10 px-2 text-[10px] font-semibold leading-none text-primary transition-colors hover:bg-primary/15 data-[state=open]:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
           aria-label="Selecionar mês do faturamento"
         >
           <span>{revenueMonthLabel}</span>
@@ -127,12 +127,12 @@ export function StatsCards(period: DashboardPeriodProps = {}) {
           value={String(selectedRevenuePeriod.year)}
           onValueChange={(year) => setSelectedRevenuePeriod((current) => ({ ...current, year: Number(year) }))}
         >
-          <SelectTrigger className="mb-2 w-full">
+          <SelectTrigger aria-label="Ano do faturamento" className="mb-2 w-full cursor-pointer">
             <SelectValue placeholder="Ano" />
           </SelectTrigger>
           <SelectContent>
             {yearOptions.map((year) => (
-              <SelectItem key={year} value={String(year)}>{year}</SelectItem>
+              <SelectItem key={year} value={String(year)} className="cursor-pointer">{year}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -147,7 +147,7 @@ export function StatsCards(period: DashboardPeriodProps = {}) {
                   setSelectedRevenuePeriod((current) => ({ ...current, month }))
                   setIsRevenuePeriodOpen(false)
                 }}
-                className={`h-8 rounded-md px-2 text-xs font-medium transition-colors ${
+                className={`h-8 cursor-pointer rounded-md px-2 text-xs font-medium transition-colors ${
                   isSelected
                     ? "bg-primary text-primary-foreground"
                     : "text-muted-foreground hover:bg-muted hover:text-foreground"
