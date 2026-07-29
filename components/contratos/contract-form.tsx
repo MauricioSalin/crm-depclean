@@ -101,11 +101,13 @@ import {
   updateContract,
   updateContractFillingDraft,
   uploadContractDocument,
+  type ContractFillingDraftPayload,
   type ContractPayload,
   type ContractRecord,
   type ContractUpdatePayload,
 } from "@/lib/api/contracts"
 import { getApiErrorMessage } from "@/lib/api/errors"
+import { buildApiFileUrl } from "@/lib/api/client"
 import { isClosedClicksignContractStatus } from "@/lib/contract-status"
 import { formatCNPJ, formatCPF, formatPhone } from "@/lib/masks"
 import { listServices, type ServiceDurationType } from "@/lib/api/services"
@@ -140,7 +142,7 @@ const getFirstInstallmentDueDate = (installments?: Array<{ number: number; dueDa
 
 const createDefaultContractRecurrenceRules = (): RecurrenceRule[] => [
   { type: "range", minUnits: 1, maxUnits: 200, recurrence: "semiannual" },
-  { type: "range", minUnits: 200, maxUnits: 300, recurrence: "quarterly" },
+  { type: "range", minUnits: 201, maxUnits: 300, recurrence: "quarterly" },
   { type: "above", minUnits: 300, maxUnits: Infinity, recurrence: "monthly" },
 ]
 
@@ -296,6 +298,7 @@ const recurrenceOptions = [
 const NO_INFORMATIVE_TEMPLATE_VALUE = "__none__"
 const NO_CERTIFICATE_TEMPLATE_VALUE = "__none__"
 const DEFAULT_RECURRENCE_SERVICE_TYPE_ID = "srv-visita-de-rotina"
+const EMPTY_QUERY_ITEMS: never[] = []
 
 function findRecurrenceRuleForUnitCount(rules: RecurrenceRule[], unitCount: number) {
   if (unitCount <= 0) return undefined
@@ -395,14 +398,14 @@ export function ContractForm({
     enabled: Boolean(sourceContractId),
   })
 
-  const clients = clientsQuery.data?.data ?? []
-  const serviceTypes = servicesQuery.data?.data ?? []
-  const templates = templatesQuery.data?.data ?? []
-  const informativeTemplates = informativeTemplatesQuery.data?.data ?? []
-  const certificateTemplates = certificateTemplatesQuery.data?.data ?? []
-  const teams = teamsQuery.data?.data ?? []
-  const employees = employeesQuery.data?.data ?? []
-  const clientTypes = clientTypesQuery.data?.data ?? []
+  const clients = clientsQuery.data?.data ?? EMPTY_QUERY_ITEMS
+  const serviceTypes = servicesQuery.data?.data ?? EMPTY_QUERY_ITEMS
+  const templates = templatesQuery.data?.data ?? EMPTY_QUERY_ITEMS
+  const informativeTemplates = informativeTemplatesQuery.data?.data ?? EMPTY_QUERY_ITEMS
+  const certificateTemplates = certificateTemplatesQuery.data?.data ?? EMPTY_QUERY_ITEMS
+  const teams = teamsQuery.data?.data ?? EMPTY_QUERY_ITEMS
+  const employees = employeesQuery.data?.data ?? EMPTY_QUERY_ITEMS
+  const clientTypes = clientTypesQuery.data?.data ?? EMPTY_QUERY_ITEMS
   const organizationSettings = organizationSettingsQuery.data?.data ?? null
   const getClientTypeById = (id: string) => clientTypes.find((type) => type.id === id)
   const contract = contractQuery.data?.data
@@ -443,8 +446,13 @@ export function ContractForm({
   const allowNavigationRef = useRef(false)
   const restoringHistoryRef = useRef(false)
   const draftSnapshotRef = useRef("")
+  const fillingDraftBaseRef = useRef<{
+    clientId: string
+    formData: Record<string, unknown>
+  } | null>(null)
   const recurrenceAutomationTouchedRef = useRef(!isEditing && !isRenewal)
-  const renewalRecurrenceHydratedRef = useRef<string | null>(null)
+  const defaultRecurrenceServiceInitializedRef = useRef(false)
+  const fillingDraftIdRef = useRef(contractId)
 
   const initialUnitIds = useMemo(() => {
     const direct = (contract as unknown as { unitIds?: string[] })?.unitIds ?? []
@@ -490,7 +498,7 @@ export function ContractForm({
   const dueDay = Number(dueDayInput)
   const [selectedUnitIds, setSelectedUnitIds] = useState<string[]>(initialUnitIds)
   const [recurrenceServiceTypeId, setRecurrenceServiceTypeId] = useState(
-    contract?.recurrenceServiceTypeId || DEFAULT_RECURRENCE_SERVICE_TYPE_ID,
+    contract?.recurrenceServiceTypeId ?? "",
   )
   const [services, setServices] = useState<ContractService[]>(
     contract?.services.map((service) => normalizeContractServiceForForm(service, contract)) ?? [],
@@ -547,9 +555,12 @@ export function ContractForm({
     [certificateTemplates],
   )
   const activeServiceTypeOptions = useMemo(
-    () => serviceTypes
-      .filter((serviceType) => serviceType.isActive)
-      .map((serviceType) => ({ value: serviceType.id, label: serviceType.name })),
+    () => [
+      { value: "", label: "Nenhum" },
+      ...serviceTypes
+        .filter((serviceType) => serviceType.isActive)
+        .map((serviceType) => ({ value: serviceType.id, label: serviceType.name })),
+    ],
     [serviceTypes],
   )
   const serviceTypeOptions = useMemo(
@@ -670,6 +681,10 @@ export function ContractForm({
         downPaymentValue: number
         contractRecurrenceRules: RecurrenceRule[]
       }>
+      fillingDraftBaseRef.current = {
+        clientId: contract.clientId,
+        formData: contract.formDraft,
+      }
 
       setSelectedClientId(contract.clientId)
       setSelectedTemplateId(formDraft.selectedTemplateId ?? "")
@@ -682,7 +697,7 @@ export function ContractForm({
       setInstallmentsCountInput(formDraft.installmentsCountInput ?? "1")
       setDueDayInput(formDraft.dueDayInput ?? "10")
       setSelectedUnitIds(formDraft.selectedUnitIds ?? [])
-      setRecurrenceServiceTypeId(formDraft.recurrenceServiceTypeId ?? DEFAULT_RECURRENCE_SERVICE_TYPE_ID)
+      setRecurrenceServiceTypeId(formDraft.recurrenceServiceTypeId ?? "")
       setServices(
         (formDraft.services ?? []).map((service) =>
           normalizeContractServiceForForm(service, contract),
@@ -710,7 +725,6 @@ export function ContractForm({
     )
 
     if (isRenewal) {
-      renewalRecurrenceHydratedRef.current = null
       setSelectedClientId(contract.clientId ?? "")
       setSelectedTemplateId(contract.templateId ?? "")
       setCreateAutomatedSchedules(contract.automationCreateSchedules ?? true)
@@ -722,7 +736,11 @@ export function ContractForm({
       setInstallmentsCountInput("")
       setDueDayInput("")
       setSelectedUnitIds(Array.from(new Set([...directUnitIds, ...serviceUnitIds])))
-      setRecurrenceServiceTypeId(DEFAULT_RECURRENCE_SERVICE_TYPE_ID)
+      setRecurrenceServiceTypeId(
+        contract.recurrenceServiceTypeId
+          || initialServiceList.find((service) => service.isRecurrenceService)?.serviceTypeId
+          || "",
+      )
       setServices(initialServiceList)
       setContractValue(0)
       setDownPaymentValue(0)
@@ -760,7 +778,11 @@ export function ContractForm({
     setInstallmentsCountInput(String(contract.installmentsCount ?? 1))
     setDueDayInput(String(contract.paymentDay ?? 10))
     setSelectedUnitIds(Array.from(new Set([...directUnitIds, ...serviceUnitIds])))
-    setRecurrenceServiceTypeId(contract.recurrenceServiceTypeId || DEFAULT_RECURRENCE_SERVICE_TYPE_ID)
+    setRecurrenceServiceTypeId(
+      contract.recurrenceServiceTypeId
+        || initialServiceList.find((service) => service.isRecurrenceService)?.serviceTypeId
+        || "",
+    )
     setServices(initialServiceList)
     setContractValue(Math.round((contract.totalValue ?? 0) * 100))
     setDownPaymentValue(Math.round((contract.downPaymentValue ?? 0) * 100))
@@ -820,6 +842,25 @@ export function ContractForm({
   }, [isEditing, isRenewal, serviceTypes, teams])
 
   useEffect(() => {
+    if (
+      isEditing
+      || isRenewal
+      || defaultRecurrenceServiceInitializedRef.current
+      || !servicesQuery.isSuccess
+    ) return
+
+    defaultRecurrenceServiceInitializedRef.current = true
+    const defaultServiceExists = serviceTypes.some(
+      (serviceType) =>
+        serviceType.isActive
+        && serviceType.id === DEFAULT_RECURRENCE_SERVICE_TYPE_ID,
+    )
+    setRecurrenceServiceTypeId(
+      defaultServiceExists ? DEFAULT_RECURRENCE_SERVICE_TYPE_ID : "",
+    )
+  }, [isEditing, isRenewal, serviceTypes, servicesQuery.isSuccess])
+
+  useEffect(() => {
     if (!isEditing && !isRenewal && createAutomatedSchedules && startDate && !firstVisitDate) {
       setFirstVisitDate(startDate)
     }
@@ -861,78 +902,14 @@ export function ContractForm({
   }, [isEditing, isRenewal, selectedClient, selectedClientId])
 
   useEffect(() => {
-    if (!isRenewal || !contract || selectedClientId !== contract.clientId) return
-    if (renewalRecurrenceHydratedRef.current === contract.id) return
-    if (!selectedClient || serviceTypes.length === 0) return
-
-    const recurrenceServiceType = serviceTypes.find(
-      (serviceType) => serviceType.id === DEFAULT_RECURRENCE_SERVICE_TYPE_ID,
-    )
-    if (!recurrenceServiceType) return
-
-    setServices((currentServices) => {
-      const recurrenceServiceIndex = currentServices.findIndex(
-        (service) => service.serviceTypeId === DEFAULT_RECURRENCE_SERVICE_TYPE_ID,
-      )
-      const preservedServices = currentServices.map((service) =>
-        service.isRecurrenceService ? { ...service, isRecurrenceService: false } : service,
-      )
-
-      if (recurrenceServiceIndex >= 0) {
-        return preservedServices.map((service, index) =>
-          index === recurrenceServiceIndex
-            ? {
-                ...service,
-                recurrence: recurrenceForSelectedUnits,
-                isRecurrenceService: true,
-              }
-            : service,
-        )
-      }
-
-      const defaultSelection = normalizeTeamEmployeeSelection({
-        teamIds: [...(recurrenceServiceType.teamIds ?? [])],
-        employeeIds: [...(recurrenceServiceType.employeeIds ?? [])],
-        teams,
-      })
-
-      return [
-        ...preservedServices,
-        {
-          id: `temp-${crypto.randomUUID()}`,
-          serviceTypeId: DEFAULT_RECURRENCE_SERVICE_TYPE_ID,
-          informativeTemplateId: recurrenceServiceType.defaultInformativeTemplateId || "",
-          certificateTemplateId: recurrenceServiceType.defaultCertificateTemplateId || "",
-          autoSendInformative: Boolean(recurrenceServiceType.autoSendInformative),
-          generateCertificateRequest: Boolean(
-            recurrenceServiceType.generateCertificateRequest,
-          ),
-          teamIds: defaultSelection.teamIds,
-          employeeIds: defaultSelection.employeeIds,
-          recurrence: recurrenceForSelectedUnits,
-          duration: Number(recurrenceServiceType.defaultDuration ?? 1),
-          durationType: recurrenceServiceType.durationType || "hours",
-          clauses: recurrenceServiceType.clauses ?? [],
-          isRecurrenceService: true,
-        },
-      ]
-    })
-
-    renewalRecurrenceHydratedRef.current = contract.id
-    recurrenceAutomationTouchedRef.current = true
-  }, [
-    contract,
-    isRenewal,
-    recurrenceForSelectedUnits,
-    selectedClient,
-    selectedClientId,
-    serviceTypes,
-    teams,
-  ])
-
-  useEffect(() => {
     if ((isEditing || isRenewal) && !recurrenceAutomationTouchedRef.current) return
-    if (!recurrenceServiceTypeId || serviceTypes.length === 0) return
+    if (!recurrenceServiceTypeId) {
+      setServices((current) => current.some((service) => service.isRecurrenceService)
+        ? current.filter((service) => !service.isRecurrenceService)
+        : current)
+      return
+    }
+    if (serviceTypes.length === 0) return
     const serviceType = serviceTypes.find((item) => item.id === recurrenceServiceTypeId)
     if (!serviceType) return
 
@@ -1019,7 +996,6 @@ export function ContractForm({
   const buildRecurrenceConditionLabel = (
     clientTypeName: string,
     rule: { type: "range" | "above"; minUnits: number; maxUnits: number },
-    previousMaxUnits?: number,
   ) => {
     if (rule.type === "above") {
       return `${clientTypeName} acima de ${rule.minUnits} unidades`
@@ -1029,8 +1005,7 @@ export function ContractForm({
       return `${clientTypeName} com até ${rule.maxUnits} unidades`
     }
 
-    const startUnits = previousMaxUnits && previousMaxUnits > 0 ? previousMaxUnits : rule.minUnits
-    return `${clientTypeName} de ${startUnits} a ${rule.maxUnits} unidades`
+    return `${clientTypeName} de ${rule.minUnits} a ${rule.maxUnits} unidades`
   }
 
   const buildRecurrenceTableHtml = () => {
@@ -1039,16 +1014,13 @@ export function ContractForm({
       if (current.minUnits !== next.minUnits) return current.minUnits - next.minUnits
       return current.maxUnits - next.maxUnits
     })
-    let previousRangeMax = 0
-
     const rows = sortedRules.map((rule) => {
       const normalizedRule = {
         type: rule.type,
         minUnits: Number(rule.minUnits),
         maxUnits: Number.isFinite(rule.maxUnits) ? Number(rule.maxUnits) : Number.MAX_SAFE_INTEGER,
       }
-      const condition = buildRecurrenceConditionLabel(clientTypeName, normalizedRule, previousRangeMax)
-      if (rule.type === "range") previousRangeMax = normalizedRule.maxUnits
+      const condition = buildRecurrenceConditionLabel(clientTypeName, normalizedRule)
       const visitLabel = `Visita ${getRecurrenceLabel(rule.recurrence).toLocaleLowerCase("pt-BR")}`
 
       return `<tr><td style="border:1px solid #000;padding:4px 8px;font-weight:700;">${escapeHtml(condition)}</td><td style="border:1px solid #000;padding:4px 8px;font-weight:700;">${escapeHtml(visitLabel)}</td></tr>`
@@ -1064,6 +1036,11 @@ export function ContractForm({
       rules[ruleIndex] = { ...rules[ruleIndex], [field]: value }
       return rules
     })
+  }
+
+  const updateRecurrenceServiceType = (serviceTypeId: string) => {
+    recurrenceAutomationTouchedRef.current = true
+    setRecurrenceServiceTypeId(serviceTypeId)
   }
 
   const addContractRule = (ruleType: RecurrenceRuleType) => {
@@ -1312,13 +1289,9 @@ export function ContractForm({
   })
 
   const fillingDraftMutation = useMutation({
-    mutationFn: ({ id, clientId, formData }: {
-      id?: string
-      clientId: string
-      formData: Record<string, unknown>
-    }) => id
-      ? updateContractFillingDraft(id, { clientId, formData })
-      : createContractFillingDraft({ clientId, formData }),
+    mutationFn: ({ id, ...payload }: ContractFillingDraftPayload & { id?: string }) => id
+      ? updateContractFillingDraft(id, payload)
+      : createContractFillingDraft(payload),
     onSuccess: async (response) => {
       await queryClient.invalidateQueries({ queryKey: ["contract", response.data.id] })
       await queryClient.invalidateQueries({ queryKey: ["contracts"] })
@@ -1326,7 +1299,7 @@ export function ContractForm({
     },
   })
 
-  const saveFillingDraft = async (navigateAfterSave = true) => {
+  const saveFillingDraft = async (navigateAfterSave = true, documentFile?: File) => {
     if (!selectedClientId) {
       toast.error("Selecione um cliente antes de salvar como Em preenchimento.")
       return false
@@ -1334,11 +1307,25 @@ export function ContractForm({
 
     const toastId = toast.loading("Salvando contrato em preenchimento...")
     try {
-      await fillingDraftMutation.mutateAsync({
-        id: contractId,
+      const submittedDraft = {
         clientId: selectedClientId,
         formData: fillingDraftFormData,
+      }
+      const response = await fillingDraftMutation.mutateAsync({
+        id: fillingDraftIdRef.current,
+        ...submittedDraft,
+        baseClientId: fillingDraftBaseRef.current?.clientId,
+        baseFormData: fillingDraftBaseRef.current?.formData,
       })
+      fillingDraftIdRef.current = response.data.id
+      fillingDraftBaseRef.current = submittedDraft
+      if (documentFile) {
+        await uploadContractDocument(
+          response.data.id,
+          documentFile,
+          draftMeta?.contractNumber,
+        )
+      }
       setDraftBaseline(draftSnapshotRef.current)
       setEditorDirty(false)
       allowNavigationRef.current = true
@@ -1352,6 +1339,37 @@ export function ContractForm({
       toast.error(getApiErrorMessage(error, "Não foi possível salvar o contrato em preenchimento."), { id: toastId })
       return false
     }
+  }
+
+  const saveEditorFillingDraft = async (navigateAfterSave = true) => {
+    try {
+      const editedDocxFile = await docxEditorRef.current?.saveToFile()
+      if (!editedDocxFile) {
+        throw new Error("O editor DOCX ainda não carregou o documento para salvar.")
+      }
+      return await saveFillingDraft(navigateAfterSave, editedDocxFile)
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Não foi possível preparar o documento para salvar como rascunho."))
+      return false
+    }
+  }
+
+  const loadFillingDraftDocument = async () => {
+    if (
+      contract?.internalStatus !== "filling"
+      || !contract.documentUrl
+    ) return null
+
+    const response = await fetch(buildApiFileUrl(contract.documentUrl))
+    if (!response.ok) {
+      throw new Error("Não foi possível carregar o documento salvo no rascunho.")
+    }
+    const blob = await response.blob()
+    return new File(
+      [blob],
+      contract.documentFileName || `${contract.contractNumber}.docx`,
+      { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" },
+    )
   }
 
   const navigateWithoutGuard = (destination: { href?: string; back?: boolean } | null) => {
@@ -1824,7 +1842,7 @@ export function ContractForm({
           createdAt: contract?.createdAt ? new Date(contract.createdAt) : new Date(),
         })
         setDraftPreview({ ...preview.data, contractNumber })
-        setImportedDocxFile(null)
+        setImportedDocxFile(await loadFillingDraftDocument())
         setEditorView("editor")
         setStep("editor")
         toast.success("Prévia do contrato pronta para edição.", { id: toastId })
@@ -1836,9 +1854,30 @@ export function ContractForm({
 
     const toastId = toast.loading("Gerando prévia do contrato...")
     try {
-      const preview = await previewMutation.mutateAsync(payload)
+      const submittedDraft = {
+        clientId: selectedClientId,
+        formData: fillingDraftFormData,
+      }
+      const reservation = await fillingDraftMutation.mutateAsync({
+        id: fillingDraftIdRef.current,
+        ...submittedDraft,
+        baseClientId: fillingDraftBaseRef.current?.clientId,
+        baseFormData: fillingDraftBaseRef.current?.formData,
+      })
+      fillingDraftIdRef.current = reservation.data.id
+      fillingDraftBaseRef.current = submittedDraft
+      const preview = await previewUpdateMutation.mutateAsync({
+        id: reservation.data.id,
+        payload: {
+          ...payload,
+          contractNumber: reservation.data.contractNumber,
+        },
+      })
       const createdAt = new Date()
-      setDraftMeta({ contractNumber: preview.data.contractNumber, createdAt })
+      setDraftMeta({
+        contractNumber: reservation.data.contractNumber,
+        createdAt: new Date(reservation.data.createdAt || createdAt),
+      })
       setDraftPreview(preview.data)
       setImportedDocxFile(null)
       setEditorView("editor")
@@ -1875,19 +1914,26 @@ export function ContractForm({
         draftPreview?.renderedHtml || "",
         { contractNumber: draftMeta?.contractNumber },
       )
-      const response = isEditing && contractId
+      const targetContractId = contractId ?? fillingDraftIdRef.current
+      const response = targetContractId
         ? await updateMutation.mutateAsync({
-            id: contractId,
-            payload: {
-              ...basePayload,
-              deferClicksignReplacement: isReplacingClicksignDocument,
-            },
+            id: targetContractId,
+            payload: isEditing
+              ? {
+                  ...basePayload,
+                  deferClicksignReplacement: isReplacingClicksignDocument,
+                }
+              : basePayload,
           })
         : await createMutation.mutateAsync({
             ...basePayload,
             status: "draft",
           })
-      await uploadContractDocument(response.data.id, editedDocxFile)
+      await uploadContractDocument(
+        response.data.id,
+        editedDocxFile,
+        draftMeta?.contractNumber,
+      )
       if (isReplacingClicksignDocument) {
         await replaceContractInClicksign(response.data.id)
       }
@@ -1958,7 +2004,10 @@ export function ContractForm({
             onClick={async (event) => {
               event.preventDefault()
               const destination = pendingNavigation
-              if (await saveFillingDraft(false)) {
+              const saved = step === "editor"
+                ? await saveEditorFillingDraft(false)
+                : await saveFillingDraft(false)
+              if (saved) {
                 navigateWithoutGuard(destination)
               }
             }}
@@ -2000,6 +2049,22 @@ export function ContractForm({
                 <ArrowLeft className="w-4 h-4 mr-2" />
                 Voltar ao formulário
               </Button>
+              {(!isEditing || contract?.internalStatus === "filling") ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => saveEditorFillingDraft()}
+                  disabled={
+                    fillingDraftMutation.isPending
+                    || isFinalizingCreate
+                    || createMutation.isPending
+                    || updateMutation.isPending
+                  }
+                >
+                  <Save className="w-4 h-4 mr-2" />
+                  {fillingDraftMutation.isPending ? "Salvando..." : "Salvar Rascunho"}
+                </Button>
+              ) : null}
               <Button
                 type="button"
                 className="bg-primary hover:bg-primary/90"
@@ -2786,15 +2851,16 @@ export function ContractForm({
           <Label>Serviço automático da recorrência</Label>
           <SearchableSelect
             value={recurrenceServiceTypeId}
-            onValueChange={setRecurrenceServiceTypeId}
+            onValueChange={updateRecurrenceServiceType}
             options={activeServiceTypeOptions}
-            placeholder="Selecione o serviço"
+            placeholder="Nenhum"
             searchPlaceholder="Buscar serviço..."
             emptyMessage="Nenhum serviço encontrado."
             includeAll={false}
+            ariaLabel="Serviço automático da recorrência"
           />
           <p className="text-xs text-muted-foreground">
-            O serviço selecionado entra automaticamente na lista abaixo com a recorrência correspondente às unidades do cliente.
+            O serviço selecionado entra automaticamente na lista abaixo com a recorrência correspondente às unidades do cliente. Selecione Nenhum para não adicionar um serviço automático.
           </p>
         </div>
       </Card>
@@ -2838,8 +2904,7 @@ export function ContractForm({
                           value={service.serviceTypeId}
                           onValueChange={(v) => {
                             if (service.isRecurrenceService) {
-                              recurrenceAutomationTouchedRef.current = true
-                              setRecurrenceServiceTypeId(v)
+                              updateRecurrenceServiceType(v)
                               return
                             }
                             updateService(service.id, "serviceTypeId", v)

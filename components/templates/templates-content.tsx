@@ -353,7 +353,6 @@ function capitalizeFirst(value?: string | null) {
 function buildRecurrenceConditionLabel(
   clientTypeName: string,
   rule: ContractRecord["recurrenceRules"][number],
-  previousMaxUnits?: number,
 ) {
   const typeName = capitalizeFirst(clientTypeName)
 
@@ -365,8 +364,7 @@ function buildRecurrenceConditionLabel(
     return `${typeName} com até ${rule.maxUnits} unidades`
   }
 
-  const startUnits = previousMaxUnits && previousMaxUnits > 0 ? previousMaxUnits : rule.minUnits
-  return `${typeName} de ${startUnits} a ${rule.maxUnits} unidades`
+  return `${typeName} de ${rule.minUnits} a ${rule.maxUnits} unidades`
 }
 
 function buildRecurrenceTableHtml(clientTypeName: string, rules: ContractRecord["recurrenceRules"] = []) {
@@ -379,15 +377,13 @@ function buildRecurrenceTableHtml(clientTypeName: string, rules: ContractRecord[
     ? sortedRules
     : [
         { type: "range" as const, minUnits: 1, maxUnits: 200, recurrence: "semiannual" },
-        { type: "range" as const, minUnits: 200, maxUnits: 300, recurrence: "quarterly" },
+        { type: "range" as const, minUnits: 201, maxUnits: 300, recurrence: "quarterly" },
         { type: "above" as const, minUnits: 300, maxUnits: 999999, recurrence: "monthly" },
       ]
 
-  let previousRangeMax = 0
   const tableRows = rows
     .map((rule) => {
-      const condition = buildRecurrenceConditionLabel(clientTypeName, rule, previousRangeMax)
-      if (rule.type === "range") previousRangeMax = rule.maxUnits
+      const condition = buildRecurrenceConditionLabel(clientTypeName, rule)
       const visitLabel = `Visita ${recurrenceLabel(rule.recurrence).toLocaleLowerCase("pt-BR")}`
 
       return `<tr><td style="border:1px solid #000;padding:4px 8px;font-weight:700;">${escapeHtml(condition)}</td><td style="border:1px solid #000;padding:4px 8px;font-weight:700;">${escapeHtml(visitLabel)}</td></tr>`

@@ -230,6 +230,8 @@ export type ContractUpdatePayload = Partial<ContractPayload> & {
 export type ContractFillingDraftPayload = {
   clientId: string
   formData: Record<string, unknown>
+  baseClientId?: string
+  baseFormData?: Record<string, unknown>
 }
 
 export type ContractImportResult = {
@@ -298,14 +300,21 @@ export async function updateContract(id: string, payload: ContractUpdatePayload)
   return response.data
 }
 
-export async function uploadContractDocument(id: string, file: File) {
+export async function uploadContractDocument(
+  id: string,
+  file: File,
+  sourceContractNumber?: string,
+) {
   const formData = new FormData()
   formData.append("file", file)
 
   const response = await api.post<{ success: true; data: ContractRecord }>(
     `/contracts/${resolveContractId(id)}/document`,
     formData,
-    { headers: { "Content-Type": "multipart/form-data" } },
+    {
+      headers: { "Content-Type": "multipart/form-data" },
+      params: sourceContractNumber ? { sourceContractNumber } : undefined,
+    },
   )
   return response.data
 }

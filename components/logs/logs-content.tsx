@@ -12,7 +12,6 @@ import {
   Download,
   ExternalLink,
   FileText,
-  MessageSquare,
   Paperclip,
   Phone,
   Search,
@@ -865,12 +864,7 @@ export function LogsContent() {
               ) : null}
 
               {selectedWhatsAppDetails ? (
-                <div className="space-y-4 rounded-xl border bg-muted/20 p-4">
-                  <div className="flex items-center gap-2">
-                    <MessageSquare className="h-4 w-4 text-green-700" />
-                    <h3 className="font-semibold">Envio pelo WhatsApp</h3>
-                  </div>
-
+                <div className="space-y-5">
                   <div className="grid gap-3 text-sm sm:grid-cols-2">
                     <div>
                       <p className="text-xs font-medium text-muted-foreground">Destinatário</p>

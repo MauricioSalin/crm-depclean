@@ -208,6 +208,7 @@ test("simula o template exato e informa quando a mensagem não possui anexos", a
   await page.getByText("Mensagem enviada pelo WhatsApp", { exact: true }).first().click()
 
   const dialog = page.getByRole("dialog", { name: "Detalhes do log" })
+  await expect(dialog.getByText("Envio pelo WhatsApp", { exact: true })).toHaveCount(0)
   await expect(dialog.getByText("Cadastro Depclean", { exact: true })).toBeVisible()
   await expect(dialog).toContainText("Olá, Vitor Costa da Silva.")
   await expect(dialog.getByText("Abrir plataforma", { exact: true })).toBeVisible()

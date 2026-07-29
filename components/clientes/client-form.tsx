@@ -510,20 +510,9 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
 
     issues.push(...validateUnit(units[0], 0))
 
-    const hasAssessor = Boolean(
-      formData.assessorName.trim() ||
-      formData.assessorCpf.trim() ||
-      formData.assessorEmail.trim() ||
-      formData.assessorPhone.trim() ||
-      formData.assessorReceivesNotifications,
-    )
-
     if (assessorSignsContract) {
       if (!hasText(formData.assessorName)) {
         issues.push({ message: "Informe o nome do assessor que assina o contrato.", label: "Nome do assessor" })
-      }
-      if (!hasText(formData.assessorCpf)) {
-        issues.push({ message: "Informe o CPF do assessor que assina o contrato.", label: "CPF do assessor" })
       }
       if (!hasText(formData.assessorEmail)) {
         issues.push({ message: "Informe o e-mail do assessor que assina o contrato.", label: "E-mail do assessor" })
@@ -538,6 +527,8 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
       if (!hasText(formData.assessorPhone)) {
         issues.push({ message: "Informe o telefone do assessor para receber notificações.", label: "Telefone do assessor" })
       }
+    } else if (hasText(formData.assessorName) && !hasText(formData.assessorPhone)) {
+      issues.push({ message: "Informe o telefone do assessor.", label: "Telefone do assessor" })
     }
 
     if (hasText(formData.assessorEmail) && !isValidEmail(formData.assessorEmail)) {
@@ -548,9 +539,7 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
       issues.push({ message: "Informe um telefone válido para o assessor.", label: "Telefone do assessor" })
     }
 
-    if (hasAssessor && !assessorSignsContract && !hasText(formData.assessorCpf)) {
-      issues.push({ message: "Informe o CPF do assessor.", label: "CPF do assessor" })
-    } else if (hasText(formData.assessorCpf) && !isValidCPF(formData.assessorCpf)) {
+    if (hasText(formData.assessorCpf) && !isValidCPF(formData.assessorCpf)) {
       issues.push({ message: "Informe um CPF válido para o assessor.", label: "CPF do assessor" })
     }
 
@@ -998,13 +987,12 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
               />
             </div>
             <div className="space-y-2 md:w-[320px]">
-              <Label htmlFor="assessorCpf">CPF{assessorSignsContract ? " *" : ""}</Label>
+              <Label htmlFor="assessorCpf">CPF (opcional)</Label>
               <Input
                 id="assessorCpf"
                 value={formData.assessorCpf}
                 onChange={(e) => handleInputChange("assessorCpf", formatCPF(e.target.value))}
                 placeholder="000.000.000-00"
-                required={assessorSignsContract}
               />
             </div>
           </div>

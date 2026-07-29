@@ -52,9 +52,11 @@ function contractCivilDateKey(value?: string | Date | null) {
   return date ? toCivilDateKey(date) : ""
 }
 
-function subtractOneCivilMonth(dateKey: string) {
+const CONTRACT_RENEWAL_LEAD_MONTHS = 2
+
+function subtractCivilMonths(dateKey: string, months: number) {
   const [year = 0, month = 1, day = 1] = dateKey.split("-").map((value) => Number(value))
-  const targetMonthIndex = year * 12 + month - 2
+  const targetMonthIndex = year * 12 + month - 1 - months
   const targetYear = Math.floor(targetMonthIndex / 12)
   const targetMonthIndexInYear = ((targetMonthIndex % 12) + 12) % 12
   const lastDayOfTargetMonth = new Date(Date.UTC(targetYear, targetMonthIndexInYear + 1, 0)).getUTCDate()
@@ -95,5 +97,8 @@ export function isContractEligibleForRenewal(contract: {
 }, now = new Date()) {
   if (!isClosedClicksignContractStatus(contract.status) || !contract.endDate) return false
   const endDateKey = contractCivilDateKey(contract.endDate)
-  return Boolean(endDateKey) && toCivilDateKey(now) >= subtractOneCivilMonth(endDateKey)
+  return Boolean(endDateKey) && toCivilDateKey(now) >= subtractCivilMonths(
+    endDateKey,
+    CONTRACT_RENEWAL_LEAD_MONTHS,
+  )
 }
