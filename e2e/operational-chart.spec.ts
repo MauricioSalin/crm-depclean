@@ -92,7 +92,7 @@ test("explica e identifica os modos do valor global", async ({ page }) => {
 
   await globalValuePicker.hover()
   const tooltip = page.getByRole("tooltip")
-  await expect(tooltip).toContainText("Geral: contratos assinados, serviços e extras.")
+  await expect(tooltip).toContainText("Geral: contratos assinados, inclusive inativos, serviços e extras.")
   await expect(tooltip).toContainText("Contratos Ativos: somente contratos vigentes.")
 
   await globalValuePicker.click()

@@ -196,7 +196,7 @@ export function StatsCards(period: DashboardPeriodProps = {}) {
         </span>
       </TooltipTrigger>
       <TooltipContent side="top" sideOffset={6} className="max-w-64 text-left">
-        <p><span className="font-semibold">Geral:</span> contratos assinados, serviços e extras.</p>
+        <p><span className="font-semibold">Geral:</span> contratos assinados, inclusive inativos, serviços e extras.</p>
         <p><span className="font-semibold">Contratos Ativos:</span> somente contratos vigentes.</p>
       </TooltipContent>
     </Tooltip>
