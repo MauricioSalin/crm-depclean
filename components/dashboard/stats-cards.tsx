@@ -22,6 +22,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { getDashboardAnalytics, type DashboardAnalyticsParams, type DashboardStatsRecord } from "@/lib/api/analytics"
@@ -161,34 +162,44 @@ export function StatsCards(period: DashboardPeriodProps = {}) {
     </DropdownMenu>
   )
   const globalValuePicker = (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          className="inline-flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-full bg-primary/10 px-2 text-[10px] font-semibold leading-none text-primary transition-colors hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-          aria-label="Selecionar composição do valor global"
-        >
-          <span>{globalValueMode === "general" ? "Geral" : "Contratual"}</span>
-          <ChevronDown className="h-3 w-3" />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="min-w-36">
-        <DropdownMenuRadioGroup value={globalValueMode} onValueChange={(value) => setGlobalValueMode(value as "general" | "contractual") }>
-          <DropdownMenuRadioItem
-            value="general"
-            className="pl-2 data-[state=checked]:bg-accent data-[state=checked]:text-accent-foreground [&>span]:hidden"
-          >
-            Geral
-          </DropdownMenuRadioItem>
-          <DropdownMenuRadioItem
-            value="contractual"
-            className="pl-2 data-[state=checked]:bg-accent data-[state=checked]:text-accent-foreground [&>span]:hidden"
-          >
-            Contratual
-          </DropdownMenuRadioItem>
-        </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <Tooltip delayDuration={1000}>
+      <TooltipTrigger asChild>
+        <span className="inline-flex">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="inline-flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-full bg-primary/10 px-2 text-[10px] font-semibold leading-none text-primary transition-colors hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                aria-label="Selecionar composição do valor global"
+              >
+                <span>{globalValueMode === "general" ? "Geral" : "Contratos Ativos"}</span>
+                <ChevronDown className="h-3 w-3" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="min-w-40">
+              <DropdownMenuRadioGroup value={globalValueMode} onValueChange={(value) => setGlobalValueMode(value as "general" | "contractual") }>
+                <DropdownMenuRadioItem
+                  value="general"
+                  className="pl-2 data-[state=checked]:bg-accent data-[state=checked]:text-accent-foreground [&>span]:hidden"
+                >
+                  Geral
+                </DropdownMenuRadioItem>
+                <DropdownMenuRadioItem
+                  value="contractual"
+                  className="pl-2 data-[state=checked]:bg-accent data-[state=checked]:text-accent-foreground [&>span]:hidden"
+                >
+                  Contratos Ativos
+                </DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top" sideOffset={6} className="max-w-64 text-left">
+        <p><span className="font-semibold">Geral:</span> contratos assinados, serviços e extras.</p>
+        <p><span className="font-semibold">Contratos Ativos:</span> somente contratos vigentes.</p>
+      </TooltipContent>
+    </Tooltip>
   )
 
   const stats = [

@@ -83,3 +83,21 @@ test("mantém o último período visível dentro do gráfico operacional", async
   expect(periodBox).not.toBeNull()
   expect(periodBox!.x + periodBox!.width).toBeLessThanOrEqual(chartBox!.x + chartBox!.width)
 })
+
+test("explica e identifica os modos do valor global", async ({ page }) => {
+  await page.goto("/")
+
+  const globalValuePicker = page.getByRole("button", { name: "Selecionar composição do valor global" })
+  await expect(globalValuePicker).toHaveText("Geral")
+
+  await globalValuePicker.hover()
+  const tooltip = page.getByRole("tooltip")
+  await expect(tooltip).toContainText("Geral: contratos assinados, serviços e extras.")
+  await expect(tooltip).toContainText("Contratos Ativos: somente contratos vigentes.")
+
+  await globalValuePicker.click()
+  const activeContractsOption = page.getByRole("menuitemradio", { name: "Contratos Ativos", exact: true })
+  await expect(activeContractsOption).toBeVisible()
+  await activeContractsOption.click()
+  await expect(globalValuePicker).toHaveText("Contratos Ativos")
+})
