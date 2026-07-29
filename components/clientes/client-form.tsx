@@ -151,7 +151,7 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
     syndicEmail: "",
     syndicPhone: "",
     syndicReceivesNotifications: false,
-    responsibleReceivesNotifications: true,
+    responsibleReceivesNotifications: false,
     copyNotificationsToOwner: false,
     preferredServiceWeekday: "",
     preferredServiceShift: "",

@@ -67,6 +67,14 @@ test.describe("integridade das rotas autenticadas", () => {
       expect(pageErrors, `erros JavaScript em ${routeCase.path}`).toEqual([])
     })
   }
+
+  test("novo cliente inicia com notificações do responsável desativadas", async ({ page }) => {
+    await page.goto("/clientes/novo")
+
+    await expect(
+      page.getByRole("checkbox", { name: /receber notificações do sistema/i }).first(),
+    ).not.toBeChecked()
+  })
 })
 
 test.describe("rotas públicas", () => {

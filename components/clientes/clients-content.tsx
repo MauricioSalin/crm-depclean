@@ -200,7 +200,7 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
           syndicEmail: row.syndicEmail,
           syndicPhone: row.syndicPhone,
           syndicReceivesNotifications: parseCsvBoolean(row.syndicReceivesNotifications),
-          responsibleReceivesNotifications: true,
+          responsibleReceivesNotifications: false,
           copyNotificationsToOwner: false,
           units: [{
             name: row.unitName || "Matriz",
