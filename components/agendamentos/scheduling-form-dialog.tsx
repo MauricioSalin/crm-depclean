@@ -481,6 +481,10 @@ export function SchedulingFormDialog({
       toast.error("Informe uma duração maior que zero para o agendamento.")
       return
     }
+    if (formData.teamIds.length === 0 && formData.employeeIds.length === 0) {
+      toast.error("Selecione ao menos uma equipe ou funcionário para o agendamento.")
+      return
+    }
     if (formData.createContract && (!Number.isFinite(formData.value) || formData.value <= 0)) {
       toast.error("Informe um valor maior que zero para gerar a cobrança no financeiro.")
       return
