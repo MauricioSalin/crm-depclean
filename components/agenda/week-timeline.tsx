@@ -338,19 +338,19 @@ export function WeekTimeline({
               <button
                 type="button"
                 aria-label={`Selecionar mês e ano: ${headerLabel}`}
-                className="ml-2 cursor-pointer rounded-md px-2 py-2 text-base font-semibold capitalize leading-none transition-colors hover:bg-muted/70 data-[state=open]:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                className="ml-2 rounded-md px-2 py-2 text-base font-semibold capitalize leading-none transition-colors hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               >
                 {headerLabel}
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-[252px] p-2">
               <Select value={String(periodYear)} onValueChange={(year) => setPeriodYear(Number(year))}>
-                <SelectTrigger aria-label="Ano" className="mb-2 w-full cursor-pointer">
+                <SelectTrigger aria-label="Ano" className="mb-2 w-full">
                   <SelectValue placeholder="Ano" />
                 </SelectTrigger>
                 <SelectContent>
                   {periodYearOptions.map((year) => (
-                    <SelectItem key={year} value={String(year)} className="cursor-pointer">
+                    <SelectItem key={year} value={String(year)}>
                       {year}
                     </SelectItem>
                   ))}
@@ -364,7 +364,7 @@ export function WeekTimeline({
                       key={month}
                       type="button"
                       onClick={() => goToSelectedPeriod(index)}
-                      className={`h-8 cursor-pointer rounded-md px-2 text-xs font-medium transition-colors ${
+                      className={`h-8 rounded-md px-2 text-xs font-medium transition-colors ${
                         isSelected
                           ? "bg-primary text-primary-foreground"
                           : "text-muted-foreground hover:bg-muted hover:text-foreground"

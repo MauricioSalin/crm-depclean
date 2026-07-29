@@ -1654,6 +1654,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
                             onClick={() => handleSelectVariable(variable.path)}
                           >
                             <span className="block text-sm font-medium">{variable.label}</span>
+                            <span className="mt-1 block truncate font-mono text-[11px] text-muted-foreground">{`{{${variable.path}}}`}</span>
                           </button>
                         ))}
                       </AccordionContent>

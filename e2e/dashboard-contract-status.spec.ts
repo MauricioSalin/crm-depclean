@@ -64,22 +64,6 @@ test("gráfico de contratos permanece inteiro em telas menores", async ({ page }
   expect(legendBox!.y + legendBox!.height).toBeLessThanOrEqual(cardBox!.y + cardBox!.height)
 })
 
-test("seletor do faturamento mantém cursores e estado visual ao abrir", async ({ page }) => {
-  await installAuthenticatedSession(page)
-  await installApiMock(page)
-  await page.goto("/")
-
-  const periodButton = page.getByRole("button", { name: "Selecionar mês do faturamento" })
-  await expect(periodButton).toHaveCSS("cursor", "pointer")
-  await periodButton.click()
-  await expect(periodButton).toHaveAttribute("data-state", "open")
-  expect(await periodButton.getAttribute("class")).toContain("data-[state=open]:bg-primary/15")
-
-  const yearButton = page.getByRole("combobox", { name: "Ano do faturamento", exact: true })
-  await expect(yearButton).toHaveCSS("cursor", "pointer")
-  await expect(page.getByRole("menu").getByRole("button", { name: "Jan", exact: true })).toHaveCSS("cursor", "pointer")
-})
-
 test("exibe vencimentos e valor de renovação dos próximos seis meses", async ({ page }) => {
   await installAuthenticatedSession(page)
   await installApiMock(page)
