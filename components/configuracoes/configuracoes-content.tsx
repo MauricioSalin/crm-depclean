@@ -1945,7 +1945,7 @@ export function ConfiguracoesContent() {
                             />
                             <Button variant="ghost" size="icon" onClick={() => openRuleDialog(item)}><Edit className="h-4 w-4" /></Button>
                             {!item.isDefault ? (
-                              <Button variant="ghost" size="icon" onClick={() => setPendingDelete({ kind: "rule", id: item.id, label: item.name })}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                              <Button variant="ghost" size="icon" onClick={() => setPendingDelete({ kind: "rule", id: item.id, label: item.name })}><Trash2 className="h-4 w-4" /></Button>
                             ) : null}
                           </>
                         ) : null}

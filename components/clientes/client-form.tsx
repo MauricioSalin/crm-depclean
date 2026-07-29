@@ -1214,7 +1214,6 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
                       variant="ghost"
                       size="icon"
                       onClick={() => removeUnit(index)}
-                      className="text-destructive hover:text-destructive"
                     >
                       <Trash2 className="w-4 h-4" />
                     </Button>
@@ -1340,7 +1339,7 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
           <Button
             type="button"
             variant="outline"
-            className="max-sm:col-span-2 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+            className="max-sm:col-span-2"
             onClick={() => setRemoveDialogOpen(true)}
             disabled={deleteMutation.isPending || saveMutation.isPending}
           >

@@ -1732,7 +1732,6 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                               size="icon"
                               onClick={() => deleteAttachmentMutation.mutate(attachment.id)}
                               disabled={deleteAttachmentMutation.isPending}
-                              className="text-destructive hover:text-destructive"
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>

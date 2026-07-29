@@ -88,10 +88,16 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
     queryFn: () => listTemplates("", "certificate"),
   })
 
-  const teams = teamsQuery.data?.data ?? []
-  const employees = employeesQuery.data?.data ?? []
-  const informativeTemplates = informativeTemplatesQuery.data?.data ?? []
-  const certificateTemplates = certificateTemplatesQuery.data?.data ?? []
+  const teams = useMemo(() => teamsQuery.data?.data ?? [], [teamsQuery.data])
+  const employees = useMemo(() => employeesQuery.data?.data ?? [], [employeesQuery.data])
+  const informativeTemplates = useMemo(
+    () => informativeTemplatesQuery.data?.data ?? [],
+    [informativeTemplatesQuery.data],
+  )
+  const certificateTemplates = useMemo(
+    () => certificateTemplatesQuery.data?.data ?? [],
+    [certificateTemplatesQuery.data],
+  )
 
   useEffect(() => {
     if (!serviceQuery.error) return
@@ -119,7 +125,7 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
       description: service.description,
       defaultDuration: service.defaultDuration,
       durationType: service.durationType,
-      defaultRecurrence: service.defaultRecurrence,
+      defaultRecurrence: service.defaultRecurrence || "monthly",
       dailyScheduleLimit: service.dailyScheduleLimit ? String(service.dailyScheduleLimit) : "unlimited",
       defaultInformativeTemplateId,
       defaultCertificateTemplateId,
@@ -155,21 +161,36 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
   )
 
   const saveMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (clauses: string[]) => {
+      const defaultDuration = Number(formData.defaultDuration)
+      const dailyScheduleLimit = formData.dailyScheduleLimit === "unlimited"
+        ? null
+        : Number(formData.dailyScheduleLimit)
+      const defaultInformativeTemplateId = formData.autoSendInformative
+        ? formData.defaultInformativeTemplateId
+        : ""
+      const defaultCertificateTemplateId = formData.generateCertificateRequest
+        ? formData.defaultCertificateTemplateId
+        : ""
       const payload = {
         name: formData.name.trim(),
         description: formData.description.trim(),
-        defaultDuration: Number(formData.defaultDuration),
+        defaultDuration: Number.isInteger(defaultDuration) && defaultDuration >= 1 ? defaultDuration : 1,
         durationType: formData.durationType,
-        defaultRecurrence: formData.defaultRecurrence,
-        dailyScheduleLimit: formData.dailyScheduleLimit === "unlimited" ? null : Number(formData.dailyScheduleLimit),
-        defaultInformativeTemplateId: formData.autoSendInformative ? formData.defaultInformativeTemplateId : "",
-        defaultCertificateTemplateId: formData.generateCertificateRequest ? formData.defaultCertificateTemplateId : "",
-        autoSendInformative: formData.autoSendInformative,
-        generateCertificateRequest: formData.generateCertificateRequest,
+        defaultRecurrence: formData.defaultRecurrence || "monthly",
+        dailyScheduleLimit: dailyScheduleLimit !== null
+          && Number.isInteger(dailyScheduleLimit)
+          && dailyScheduleLimit >= 1
+          && dailyScheduleLimit <= 5
+          ? dailyScheduleLimit
+          : null,
+        defaultInformativeTemplateId,
+        defaultCertificateTemplateId,
+        autoSendInformative: Boolean(defaultInformativeTemplateId),
+        generateCertificateRequest: Boolean(defaultCertificateTemplateId),
         teamIds: formData.teamIds,
         employeeIds: formData.employeeIds,
-        clauses: formData.clauses,
+        clauses,
       }
 
       if (serviceId) {
@@ -177,12 +198,14 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
       }
       return createService(payload)
     },
-    onSuccess: () => {
+    onSuccess: async (response) => {
+      queryClient.setQueryData(["service", response.data.id], response)
+      await queryClient.invalidateQueries({ queryKey: ["services"] })
+
       toast({
         title: serviceId ? "Serviço atualizado" : "Serviço criado",
         description: "Os dados foram salvos com sucesso.",
       })
-      queryClient.invalidateQueries({ queryKey: ["services"] })
       router.push("/servicos")
     },
     onError: (error) => {
@@ -272,50 +295,12 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
       })
       return
     }
-    if (!Number.isInteger(formData.defaultDuration) || formData.defaultDuration < 1) {
-      toast({
-        title: "Duração inválida",
-        description: "Informe uma duração padrão inteira e maior que zero.",
-        variant: "destructive",
-      })
-      return
-    }
-    if (!formData.defaultRecurrence) {
-      toast({
-        title: "Recorrência obrigatória",
-        description: "Selecione a recorrência padrão do serviço.",
-        variant: "destructive",
-      })
-      return
-    }
-    const dailyScheduleLimit = formData.dailyScheduleLimit === "unlimited"
-      ? null
-      : Number(formData.dailyScheduleLimit)
-    if (dailyScheduleLimit !== null && (!Number.isInteger(dailyScheduleLimit) || dailyScheduleLimit < 1 || dailyScheduleLimit > 5)) {
-      toast({
-        title: "Limite diário inválido",
-        description: "Escolha um limite entre 1 e 5 serviços por dia ou selecione ilimitado.",
-        variant: "destructive",
-      })
-      return
-    }
-    if (formData.autoSendInformative && !formData.defaultInformativeTemplateId) {
-      toast({
-        title: "Informativo não selecionado",
-        description: "Selecione o template padrão ou desative o envio automático de informativo.",
-        variant: "destructive",
-      })
-      return
-    }
-    if (formData.generateCertificateRequest && !formData.defaultCertificateTemplateId) {
-      toast({
-        title: "Certificado não selecionado",
-        description: "Selecione o template padrão ou desative a geração de certificado.",
-        variant: "destructive",
-      })
-      return
-    }
-    saveMutation.mutate()
+    const editingClause = editingClauseDraft.trim()
+    const clauses = editingClauseIndex === null || !editingClause
+      ? formData.clauses
+      : formData.clauses.map((clause, index) => (index === editingClauseIndex ? editingClause : clause))
+
+    saveMutation.mutate(clauses)
   }
 
   return (
@@ -688,7 +673,11 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
             const isEditingClause = editingClauseIndex === index
 
             return (
-              <div key={index} className="flex items-start gap-2 rounded-lg bg-muted/50 p-3">
+              <div
+                key={index}
+                data-testid={`service-clause-${index}`}
+                className="flex items-start gap-2 rounded-lg bg-muted/50 p-3"
+              >
                 {isEditingClause ? (
                   <Textarea
                     value={editingClauseDraft}
@@ -713,7 +702,20 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
                   >
                     <Pencil className="h-3 w-3" />
                   </Button>
-                ) : null}
+                ) : (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 shrink-0"
+                    disabled={!editingClauseDraft.trim()}
+                    onClick={confirmClauseEdit}
+                    aria-label="Salvar edição da cláusula"
+                    title="Salvar edição da cláusula"
+                  >
+                    <Check className="h-3 w-3" />
+                  </Button>
+                )}
 
                 <Button
                   type="button"
@@ -744,12 +746,8 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
               variant="outline"
               size="icon"
               className="self-end shrink-0"
-              disabled={editingClauseIndex === null ? !formData.newClause.trim() : !editingClauseDraft.trim()}
+              disabled={editingClauseIndex !== null || !formData.newClause.trim()}
               onClick={() => {
-                if (editingClauseIndex !== null) {
-                  confirmClauseEdit()
-                  return
-                }
                 if (!formData.newClause.trim()) return
                 setFormData((current) => ({
                   ...current,
@@ -757,10 +755,10 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
                   newClause: "",
                 }))
               }}
-              aria-label={editingClauseIndex === null ? "Adicionar cláusula" : "Concluir edição da cláusula"}
-              title={editingClauseIndex === null ? "Adicionar cláusula" : "Concluir edição da cláusula"}
+              aria-label="Adicionar cláusula"
+              title="Adicionar cláusula"
             >
-              {editingClauseIndex === null ? <Plus className="h-4 w-4" /> : <Check className="h-4 w-4" />}
+              <Plus className="h-4 w-4" />
             </Button>
           </div>
         </div>

@@ -378,7 +378,7 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
                       type="button"
                       variant="outline"
                       size="sm"
-                      className="h-8 rounded-full text-destructive hover:text-destructive"
+                      className="h-8 rounded-full"
                       onClick={() => handleDeleteType(type.id)}
                     >
                       <Trash2 className="mr-2 h-4 w-4" />

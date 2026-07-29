@@ -451,7 +451,7 @@ export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle 
                         type="button"
                         variant="outline"
                         size="sm"
-                        className="h-8 rounded-full text-destructive hover:text-destructive"
+                        className="h-8 rounded-full"
                         onClick={() => setPendingDelete({ id: team.id, label: team.name })}
                       >
                         <Trash2 className="mr-2 h-4 w-4" />

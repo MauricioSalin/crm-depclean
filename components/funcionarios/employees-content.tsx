@@ -933,7 +933,7 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
                             ) : null}
                             {canShowDeleteEmployee ? (
                               <DropdownMenuItem
-                                className="cursor-pointer text-destructive focus:text-destructive"
+                                className="cursor-pointer"
                                 onClick={(event) => {
                                   event.stopPropagation()
                                   setPendingAction({ kind: "delete", id: employee.id, label: employee.name })
@@ -1059,7 +1059,7 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
                           type="button"
                           variant="outline"
                           size="sm"
-                          className="col-span-2 h-8 rounded-full text-destructive hover:text-destructive"
+                          className="col-span-2 h-8 rounded-full"
                           onClick={() => setPendingAction({ kind: "delete", id: employee.id, label: employee.name })}
                         >
                           <Trash2 className="mr-2 h-4 w-4" />

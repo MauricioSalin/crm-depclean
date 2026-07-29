@@ -484,7 +484,6 @@ export function ContractSchedulePlanDialog({
                             type="button"
                             variant="ghost"
                             size="icon"
-                            className="text-destructive hover:text-destructive"
                             disabled={editingDisabled || items.length <= 1}
                             aria-label={`Excluir ${item.serviceTypeName} do plano`}
                             title={items.length <= 1

@@ -2500,7 +2500,7 @@ export function DepAIChat({ compact = false }: { compact?: boolean }) {
                   {canDelete && (
                     <button
                       type="button"
-                      className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground opacity-0 transition-all hover:bg-destructive/10 hover:text-destructive focus:opacity-100 group-hover:opacity-100"
+                      className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground opacity-0 transition-all hover:bg-muted hover:text-foreground focus:opacity-100 group-hover:opacity-100"
                       onClick={(event) => {
                         event.stopPropagation()
                         setConversationToDelete(conversation)

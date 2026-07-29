@@ -39,9 +39,9 @@ export type ServicePayload = {
   serviceKind?: "standard" | "grouped" | "component"
   componentServiceIds?: string[]
   baseValue?: number
-  defaultDuration: number
-  durationType: ServiceDurationType
-  defaultRecurrence: string
+  defaultDuration?: number
+  durationType?: ServiceDurationType
+  defaultRecurrence?: string
   dailyScheduleLimit?: number | null
   defaultInformativeTemplateId?: string
   defaultCertificateTemplateId?: string

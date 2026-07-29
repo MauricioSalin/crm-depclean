@@ -1507,7 +1507,7 @@ export function AgendamentosContent({
                             )}
                             {canDeleteSchedule(schedule) && (
                               <DropdownMenuItem
-                                className="cursor-pointer text-destructive focus:text-destructive"
+                                className="cursor-pointer"
                                 onClick={(event) => {
                                   event.stopPropagation()
                                   setPendingDelete(schedule)
@@ -1628,7 +1628,7 @@ export function AgendamentosContent({
                           type="button"
                           variant="outline"
                           size="sm"
-                          className="h-8 rounded-full text-destructive hover:text-destructive"
+                          className="h-8 rounded-full"
                           onClick={() => setPendingDelete(schedule)}
                         >
                           <Trash2 className="mr-2 h-4 w-4" />

@@ -2838,7 +2838,7 @@ export function ContractForm({
                         onClick={() => removeContractRule(ruleIndex)}
                         disabled={contractRecurrenceRules.length === 1}
                       >
-                        <Trash2 className="h-4 w-4 text-destructive" />
+                        <Trash2 className="h-4 w-4" />
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -3055,7 +3055,7 @@ export function ContractForm({
                               ? "Altere o serviço automático na seção de recorrência"
                               : "Remover serviço"}
                           >
-                            <Trash2 className="w-4 h-4 text-destructive" />
+                            <Trash2 className="w-4 h-4" />
                           </Button>
                         </div>
                       </TableCell>
@@ -3153,7 +3153,7 @@ export function ContractForm({
             <Button
               type="button"
               variant="outline"
-              className="max-sm:col-span-2 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+              className="max-sm:col-span-2"
               onClick={() => setRemoveDialogOpen(true)}
               disabled={deleteMutation.isPending || updateMutation.isPending}
             >
@@ -3288,7 +3288,7 @@ export function ContractForm({
                         onClick={() => removeServiceClause(clausesEditingService.id, index)}
                         title="Remover cláusula"
                       >
-                        <Trash2 className="w-4 h-4 text-destructive" />
+                        <Trash2 className="w-4 h-4" />
                       </Button>
                     </div>
                   ))
