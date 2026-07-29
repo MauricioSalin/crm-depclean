@@ -162,44 +162,48 @@ export function StatsCards(period: DashboardPeriodProps = {}) {
     </DropdownMenu>
   )
   const globalValuePicker = (
-    <Tooltip delayDuration={1000}>
-      <TooltipTrigger asChild>
-        <span className="inline-flex">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                className="inline-flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-full bg-primary/10 px-2 text-[10px] font-semibold leading-none text-primary transition-colors hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-                aria-label="Selecionar composição do valor global"
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className="inline-flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-full bg-primary/10 px-2 text-[10px] font-semibold leading-none text-primary transition-colors hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+          aria-label="Selecionar composição do valor global"
+        >
+          <span>{globalValueMode === "general" ? "Geral" : "Contratos Ativos"}</span>
+          <ChevronDown className="h-3 w-3" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="min-w-40">
+        <DropdownMenuRadioGroup value={globalValueMode} onValueChange={(value) => setGlobalValueMode(value as "general" | "contractual") }>
+          <Tooltip delayDuration={1000}>
+            <TooltipTrigger asChild>
+              <DropdownMenuRadioItem
+                value="general"
+                className="pl-2 data-[state=checked]:bg-accent data-[state=checked]:text-accent-foreground [&>span]:hidden"
               >
-                <span>{globalValueMode === "general" ? "Geral" : "Contratos Ativos"}</span>
-                <ChevronDown className="h-3 w-3" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="min-w-40">
-              <DropdownMenuRadioGroup value={globalValueMode} onValueChange={(value) => setGlobalValueMode(value as "general" | "contractual") }>
-                <DropdownMenuRadioItem
-                  value="general"
-                  className="pl-2 data-[state=checked]:bg-accent data-[state=checked]:text-accent-foreground [&>span]:hidden"
-                >
-                  Geral
-                </DropdownMenuRadioItem>
-                <DropdownMenuRadioItem
-                  value="contractual"
-                  className="pl-2 data-[state=checked]:bg-accent data-[state=checked]:text-accent-foreground [&>span]:hidden"
-                >
-                  Contratos Ativos
-                </DropdownMenuRadioItem>
-              </DropdownMenuRadioGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </span>
-      </TooltipTrigger>
-      <TooltipContent side="top" sideOffset={6} className="max-w-64 text-left">
-        <p><span className="font-semibold">Geral:</span> contratos ativos e inativos, serviços e extras.</p>
-        <p><span className="font-semibold">Contratos Ativos:</span> somente contratos vigentes.</p>
-      </TooltipContent>
-    </Tooltip>
+                Geral
+              </DropdownMenuRadioItem>
+            </TooltipTrigger>
+            <TooltipContent side="right" sideOffset={8} className="z-[230] max-w-52">
+              Contratos ativos e inativos, serviços e extras.
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip delayDuration={1000}>
+            <TooltipTrigger asChild>
+              <DropdownMenuRadioItem
+                value="contractual"
+                className="pl-2 data-[state=checked]:bg-accent data-[state=checked]:text-accent-foreground [&>span]:hidden"
+              >
+                Contratos Ativos
+              </DropdownMenuRadioItem>
+            </TooltipTrigger>
+            <TooltipContent side="right" sideOffset={8} className="z-[230] max-w-52">
+              Somente contratos vigentes.
+            </TooltipContent>
+          </Tooltip>
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 
   const stats = [
