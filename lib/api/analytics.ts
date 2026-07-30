@@ -98,6 +98,7 @@ export type DashboardStatsRecord = {
     signed: number
     current: number
     expired: number
+    renewed?: number
     canceled: number
   }
   currentContractsGlobalValue: number

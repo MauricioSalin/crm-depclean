@@ -291,15 +291,17 @@ test("exibe Renovado e oculta novas ações mesmo quando marcado antes do vencim
   expect(isContractEligibleForRenewal(contract, FIXED_NOW)).toBe(false)
 })
 
-test("trata Renovado como ativo mesmo depois do fim da vigência anterior", () => {
-  const contract = {
-    status: "closed",
-    renewalStatus: "renewed",
-    startDate: "2025-07-20",
-    endDate: "2026-07-20",
-  }
+test("não trata Renovado como ativo mesmo antes ou depois do fim da vigência anterior", () => {
+  for (const endDate of ["2026-07-20", "2026-09-20"]) {
+    const contract = {
+      status: "closed",
+      renewalStatus: "renewed",
+      startDate: "2025-07-20",
+      endDate,
+    }
 
-  expect(isOperationallyActiveContract(contract, FIXED_NOW)).toBe(true)
+    expect(isOperationallyActiveContract(contract, FIXED_NOW)).toBe(false)
+  }
 })
 
 test("deixa Renovar e Marcar como renovado por último no menu e confirma a ação manual", async ({ page }) => {

@@ -336,6 +336,7 @@ export interface DashboardStats {
     signed: number
     current: number
     expired: number
+    renewed?: number
     canceled: number
   }
   monthlyRevenue: number

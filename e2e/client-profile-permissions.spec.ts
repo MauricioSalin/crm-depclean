@@ -261,7 +261,7 @@ test("o perfil do cliente respeita as permissões do menu e lista os serviços",
   await expect(page.getByRole("tab", { name: /Parcelas/ })).toHaveCount(0)
   await expect(page.getByRole("tab", { name: /Extras/ })).toHaveCount(0)
   await expect(page.getByRole("tab", { name: /Anexos/ })).toHaveCount(0)
-  await expect(page.getByText("Contratos ativos")).toHaveCount(0)
+  await expect(page.getByText("Contratos vigentes")).toHaveCount(0)
   await expect(page.getByText("Total pago")).toHaveCount(0)
   await expect(page.getByText(clientTypeFixture.name, { exact: true }).first()).toBeVisible()
   await expect(page.getByRole("link", { name: "Ajuda" })).toHaveCount(0)

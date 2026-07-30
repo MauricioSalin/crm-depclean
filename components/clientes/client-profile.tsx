@@ -1037,7 +1037,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
               <FileText className="h-5 w-5 text-primary/80" />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Contratos ativos</p>
+              <p className="text-sm text-muted-foreground">Contratos vigentes</p>
               <p className="text-xl font-semibold text-primary/80">{currentContracts}</p>
             </div>
           </div>

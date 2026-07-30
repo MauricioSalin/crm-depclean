@@ -92,18 +92,18 @@ test("explica e identifica os modos do valor global", async ({ page }) => {
 
   await globalValuePicker.click()
   const generalOption = page.getByRole("menuitemradio", { name: "Geral", exact: true })
-  const activeContractsOption = page.getByRole("menuitemradio", { name: "Contratos Ativos", exact: true })
+  const activeContractsOption = page.getByRole("menuitemradio", { name: "Contratos Vigentes", exact: true })
   await generalOption.hover()
-  const generalTooltip = page.locator('[data-slot="tooltip-content"]').filter({ hasText: "Contratos ativos e inativos, serviços e extras." })
+  const generalTooltip = page.locator('[data-slot="tooltip-content"]').filter({ hasText: "Contratos vigentes, vencidos e renovados, serviços e extras." })
   await expect(generalTooltip).toBeVisible()
   await expect(generalTooltip).toHaveAttribute("data-side", "right")
 
   await activeContractsOption.hover()
-  const activeContractsTooltip = page.locator('[data-slot="tooltip-content"]').filter({ hasText: "Contratos assinados vigentes e contratos renovados." })
+  const activeContractsTooltip = page.locator('[data-slot="tooltip-content"]').filter({ hasText: "Somente contratos vigentes." })
   await expect(activeContractsTooltip).toBeVisible()
   await expect(activeContractsTooltip).toHaveAttribute("data-side", "right")
 
   await expect(activeContractsOption).toBeVisible()
   await activeContractsOption.click()
-  await expect(globalValuePicker).toHaveText("Contratos Ativos")
+  await expect(globalValuePicker).toHaveText("Contratos Vigentes")
 })

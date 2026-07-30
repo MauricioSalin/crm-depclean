@@ -42,8 +42,9 @@ export function ContractStatusChart() {
     { name: "Aguardando envio", value: statusCounts.awaitingSend, color: "#F59E0B" },
     { name: "Aguardando assinatura", value: statusCounts.awaitingSignature, color: "#3B82F6" },
     { name: "Assinados", value: statusCounts.signed, color: "#14B8A6" },
-    { name: "Ativos", value: statusCounts.current, color: "var(--primary)" },
+    { name: "Vigentes", value: statusCounts.current, color: "var(--primary)" },
     { name: "Vencidos", value: statusCounts.expired, color: "#EF4444" },
+    { name: "Renovados", value: statusCounts.renewed ?? 0, color: "#6366F1" },
     { name: "Cancelados", value: statusCounts.canceled, color: "#94A3B8" },
   ]
   const totalContracts = legendData.reduce((total, item) => total + item.value, 0)

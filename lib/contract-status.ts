@@ -76,7 +76,7 @@ export function isOperationallyActiveContract(contract: {
   endDate?: string | Date | null
 }, now = new Date()) {
   if (!isClosedClicksignContractStatus(contract.status)) return false
-  if (isContractRenewed(contract)) return true
+  if (isContractRenewed(contract)) return false
   if (!contract.startDate || !contract.endDate) return false
   const startDateKey = contractCivilDateKey(contract.startDate)
   const endDateKey = contractCivilDateKey(contract.endDate)

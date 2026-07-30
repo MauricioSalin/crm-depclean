@@ -9,7 +9,7 @@ test("gráfico de contratos usa os mesmos totais dos indicadores", async ({ page
   await page.goto("/")
 
   const activeCard = page
-    .getByRole("heading", { name: "Contratos Ativos", exact: true })
+    .getByRole("heading", { name: "Contratos Vigentes", exact: true })
     .locator("xpath=ancestor::div[contains(@class,'rounded-xl')][1]")
   const inactiveCard = page
     .getByRole("heading", { name: "Contratos Vencidos", exact: true })
@@ -20,15 +20,16 @@ test("gráfico de contratos usa os mesmos totais dos indicadores", async ({ page
   await expect(activeCard.getByText("90", { exact: true })).toBeVisible()
   await expect(inactiveCard.getByText("3", { exact: true })).toBeVisible()
   await expect(chartHeading).toBeVisible()
-  await expect(chart.getByText("98", { exact: true })).toBeVisible()
+  await expect(chart.getByText("99", { exact: true })).toBeVisible()
   await expect(chart.getByText("contratos", { exact: true })).toBeVisible()
   await expect(chart.getByText("90", { exact: true })).toBeVisible()
   await expect(chart.getByText("3", { exact: true })).toBeVisible()
   await expect(chart.getByText("Aguardando envio", { exact: true })).toBeVisible()
   await expect(chart.getByText("Aguardando assinatura", { exact: true })).toBeVisible()
   await expect(chart.getByText("Assinados", { exact: true })).toBeVisible()
-  await expect(chart.getByText("Ativos", { exact: true })).toBeVisible()
+  await expect(chart.getByText("Vigentes", { exact: true })).toBeVisible()
   await expect(chart.getByText("Vencidos", { exact: true })).toBeVisible()
+  await expect(chart.getByText("Renovados", { exact: true })).toBeVisible()
   await expect(chart.getByText("Cancelados", { exact: true })).toBeVisible()
   await expect(chart.getByRole("link", { name: /ver todos/i })).toHaveAttribute("href", "/contratos")
   await expect(page.getByRole("heading", { name: "Clientes por status", exact: true })).toHaveCount(0)

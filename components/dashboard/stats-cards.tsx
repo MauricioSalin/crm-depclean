@@ -169,7 +169,7 @@ export function StatsCards(period: DashboardPeriodProps = {}) {
           className="inline-flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-full bg-primary/10 px-2 text-[10px] font-semibold leading-none text-primary transition-colors hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
           aria-label="Selecionar composição do valor global"
         >
-          <span>{globalValueMode === "general" ? "Geral" : "Contratos Ativos"}</span>
+          <span>{globalValueMode === "general" ? "Geral" : "Contratos Vigentes"}</span>
           <ChevronDown className="h-3 w-3" />
         </button>
       </DropdownMenuTrigger>
@@ -185,7 +185,7 @@ export function StatsCards(period: DashboardPeriodProps = {}) {
               </DropdownMenuRadioItem>
             </TooltipTrigger>
             <TooltipContent side="right" sideOffset={8} className="z-[230] max-w-52">
-              Contratos ativos e inativos, serviços e extras.
+              Contratos vigentes, vencidos e renovados, serviços e extras.
             </TooltipContent>
           </Tooltip>
           <Tooltip delayDuration={1000}>
@@ -194,11 +194,11 @@ export function StatsCards(period: DashboardPeriodProps = {}) {
                 value="contractual"
                 className="pl-2 data-[state=checked]:bg-accent data-[state=checked]:text-accent-foreground [&>span]:hidden"
               >
-                Contratos Ativos
+                Contratos Vigentes
               </DropdownMenuRadioItem>
             </TooltipTrigger>
             <TooltipContent side="right" sideOffset={8} className="z-[230] max-w-52">
-              Contratos assinados vigentes e contratos renovados.
+              Somente contratos vigentes.
             </TooltipContent>
           </Tooltip>
         </DropdownMenuRadioGroup>
@@ -228,7 +228,7 @@ export function StatsCards(period: DashboardPeriodProps = {}) {
       delay: "120ms",
     },
     {
-      title: "Contratos Ativos",
+      title: "Contratos Vigentes",
       value: dashboardStats.currentContracts.toString(),
       icon: FileCheck2,
       href: "/contratos?validity=current",

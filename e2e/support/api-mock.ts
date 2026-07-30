@@ -245,6 +245,7 @@ const emptyStats = {
     signed: 1,
     current: 90,
     expired: 3,
+    renewed: 1,
     canceled: 1,
   },
   currentContractsGlobalValue: 4_200,
