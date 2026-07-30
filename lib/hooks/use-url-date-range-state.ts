@@ -21,6 +21,11 @@ function rangesMatch(left?: DateRange, right?: DateRange) {
   )
 }
 
+function normalizeRange(range?: DateRange) {
+  if (!range?.from || !range.to || range.to >= range.from) return range
+  return { from: range.to, to: range.from }
+}
+
 export function useUrlDateRangeState({
   fromKey = "dateFrom",
   toKey = "dateTo",
@@ -40,7 +45,7 @@ export function useUrlDateRangeState({
 
     const from = parseCivilDate(searchParams.get(fromKey)) ?? undefined
     const to = parseCivilDate(searchParams.get(toKey)) ?? undefined
-    return from || to ? { from, to } : undefined
+    return normalizeRange(from || to ? { from, to } : undefined)
   }, [emptyRangeKey, emptyRangeValue, fromKey, initialRange, searchParams, toKey])
 
   const [range, setRange] = useState<DateRange | undefined>(readRange)
@@ -56,11 +61,12 @@ export function useUrlDateRangeState({
 
   const updateRange = useCallback(
     (nextRange: DateRange | undefined) => {
-      setRange(nextRange)
+      const normalizedRange = normalizeRange(nextRange)
+      setRange(normalizedRange)
 
       const params = new URLSearchParams(window.location.search)
-      const from = nextRange?.from ? toCivilDateKey(nextRange.from) : ""
-      const to = nextRange?.to ? toCivilDateKey(nextRange.to) : ""
+      const from = normalizedRange?.from ? toCivilDateKey(normalizedRange.from) : ""
+      const to = normalizedRange?.to ? toCivilDateKey(normalizedRange.to) : ""
       const isEmpty = !from && !to
 
       if (from) params.set(fromKey, from)

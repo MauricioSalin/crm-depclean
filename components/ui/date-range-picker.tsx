@@ -53,6 +53,12 @@ function setRangeField(
   const from = field === "from" ? date : range?.from
   const to = field === "to" ? date : range?.to
 
+  if (from && to && isBefore(to, from)) {
+    return field === "from"
+      ? { from, to: undefined }
+      : range
+  }
+
   return from || to ? { from, to } : undefined
 }
 

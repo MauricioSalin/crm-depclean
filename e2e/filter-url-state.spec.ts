@@ -28,6 +28,65 @@ test("persiste período e status completo nos agendamentos", async ({ page }) =>
   await expect(page.getByRole("combobox", { name: "Status" })).toContainText("Reagendado")
 })
 
+test("aplica limites isolados e impede data final anterior à inicial", async ({ page }) => {
+  await page.goto("/agendamentos?dateFrom=2026-07-29")
+
+  const fromInput = page.getByRole("textbox", { name: "Data inicial" })
+  const toInput = page.getByRole("textbox", { name: "Data final" })
+  const scheduleClient = page.getByText("Condomínio E2E", { exact: true })
+
+  await expect(fromInput).toHaveValue("29/07/2026")
+  await expect(toInput).toHaveValue("")
+  await expect(page.getByText("Nenhum agendamento encontrado.", { exact: true })).toBeVisible()
+
+  await fromInput.fill("")
+  await toInput.fill("28/07/2026")
+  await expect(scheduleClient).toBeVisible()
+  await expect.poll(() => new URL(page.url()).searchParams.get("dateFrom")).toBeNull()
+  await expect.poll(() => new URL(page.url()).searchParams.get("dateTo")).toBe("2026-07-28")
+
+  await toInput.fill("27/07/2026")
+  await expect(page.getByText("Nenhum agendamento encontrado.", { exact: true })).toBeVisible()
+
+  await fromInput.fill("29/07/2026")
+  await expect(toInput).toHaveValue("")
+  await toInput.fill("27/07/2026")
+  await expect(fromInput).toHaveValue("29/07/2026")
+  await expect(toInput).toHaveValue("")
+  await expect.poll(() => new URL(page.url()).searchParams.get("dateFrom")).toBe("2026-07-29")
+  await expect.poll(() => new URL(page.url()).searchParams.get("dateTo")).toBeNull()
+})
+
+test("envia ao Dashboard e aos Relatórios somente o limite preenchido", async ({ page }) => {
+  const dashboardRequest = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return (
+      url.pathname.endsWith("/analytics/dashboard")
+      && url.searchParams.get("dateFrom") === "2026-07-29"
+      && !url.searchParams.has("dateTo")
+    )
+  })
+
+  await page.goto("/?period=custom&dateFrom=2026-07-29")
+  await dashboardRequest
+  await expect(page.getByRole("textbox", { name: "Data inicial" })).toHaveValue("29/07/2026")
+  await expect(page.getByRole("textbox", { name: "Data final" })).toHaveValue("")
+
+  const reportsRequest = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return (
+      url.pathname.endsWith("/analytics/reports")
+      && url.searchParams.get("dateTo") === "2026-07-27"
+      && !url.searchParams.has("dateFrom")
+    )
+  })
+
+  await page.goto("/relatorios?tab=services&dateTo=2026-07-27")
+  await reportsRequest
+  await expect(page.getByRole("textbox", { name: "Data inicial" })).toHaveValue("")
+  await expect(page.getByRole("textbox", { name: "Data final" })).toHaveValue("27/07/2026")
+})
+
 test("persiste data, visualização e status na Agenda", async ({ page }) => {
   await page.goto("/agenda?date=2027-09-01&status=rescheduled&view=month&q=Condom%C3%ADnio")
 

@@ -74,10 +74,10 @@ export function DashboardContent() {
   }
 
   const dashboardParams: DashboardAnalyticsParams =
-    periodTab === "custom" && dateRange?.from && dateRange?.to
+    periodTab === "custom" && (dateRange?.from || dateRange?.to)
       ? {
-          dateFrom: formatDateParam(dateRange.from),
-          dateTo: formatDateParam(dateRange.to),
+          dateFrom: formatDateParam(dateRange?.from),
+          dateTo: formatDateParam(dateRange?.to),
         }
       : { days: periodTab === "custom" ? 30 : periodTab }
 
