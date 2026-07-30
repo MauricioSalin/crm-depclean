@@ -9,6 +9,7 @@ import {
   Building2,
   Calendar,
   CalendarCheck,
+  CheckCircle2,
   Edit,
   ExternalLink,
   Eye,
@@ -29,6 +30,7 @@ import {
 } from "@/components/ui/business-status-badges"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
 import { Input } from "@/components/ui/input"
 import { FilterSearchInput } from "@/components/ui/filter-search-input"
 import {
@@ -40,13 +42,20 @@ import {
 import { CsvImportDialog, type CsvImportField } from "@/components/ui/csv-import-dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { getApiErrorMessage } from "@/lib/api/errors"
-import { importSignedContracts, listContracts, type ContractImportRow, type ContractRecord } from "@/lib/api/contracts"
+import {
+  importSignedContracts,
+  listContracts,
+  markContractAsRenewed,
+  type ContractImportRow,
+  type ContractRecord,
+} from "@/lib/api/contracts"
 import { getContractClicksignUrl } from "@/lib/clicksign"
 import {
   getClicksignContractStatusLabel,
   isClosedClicksignContractStatus,
   isContractEligibleForRenewal,
   isContractExpiredByValidity,
+  isContractRenewed,
   isOperationallyActiveContract,
   normalizeClicksignContractStatus,
 } from "@/lib/contract-status"
@@ -109,6 +118,8 @@ const CONTRACT_STATUS_FILTER_VALUES = new Set([
   "running",
   "closed",
   "canceled",
+  "expired",
+  "renewed",
 ])
 
 function normalizeContractStatusFilter(value: string) {
@@ -144,6 +155,7 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
   const validityFilter = searchParams.get("validity")
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
+  const [contractToMarkRenewed, setContractToMarkRenewed] = useState<ContractRecord | null>(null)
   const deferredSearchTerm = useDeferredValue(searchTerm)
 
   const contractsQuery = useQuery({
@@ -169,6 +181,21 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
     },
   })
 
+  const markAsRenewedMutation = useMutation({
+    mutationFn: (contractId: string) => markContractAsRenewed(contractId),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["contracts"] }),
+        queryClient.invalidateQueries({ queryKey: ["analytics"] }),
+      ])
+      setContractToMarkRenewed(null)
+      toast.success("Contrato marcado como renovado.")
+    },
+    onError: (error: unknown) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível marcar o contrato como renovado."))
+    },
+  })
+
   const contracts = contractsQuery.data?.data ?? []
   const currentHref = buildPathWithSearchParams(pathname, searchParams)
   const getContractProfileHref = (contractId: string) => withReturnTo(`/contratos/${contractId}`, currentHref)
@@ -186,7 +213,9 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
       if (statusFilter === "all") return true
       if (statusFilter === "filling") return contract.internalStatus === "filling"
       if (contract.internalStatus === "filling") return false
+      if (statusFilter === "renewed") return isContractRenewed(contract)
       if (statusFilter === "expired") return isContractExpiredByValidity(contract)
+      if (isContractRenewed(contract)) return false
       return normalizeClicksignContractStatus(contract.status) === statusFilter
     }).filter((contract) => {
       if (validityFilter === "active" || validityFilter === "current") return isOperationallyActiveContract(contract)
@@ -208,6 +237,9 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
   const getStatusBadge = (contract: ContractRecord) => {
     if (contract.internalStatus === "filling") {
       return <Badge className="shrink-0 bg-amber-100 text-amber-700 hover:bg-amber-100">Em preenchimento</Badge>
+    }
+    if (isContractRenewed(contract)) {
+      return <Badge className="shrink-0 bg-blue-100 text-blue-700 hover:bg-blue-100">Renovado</Badge>
     }
     if (isContractExpiredByValidity(contract)) {
       return <Badge className="shrink-0 bg-red-100 text-red-700 hover:bg-red-100">Vencido</Badge>
@@ -266,6 +298,23 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
 
   return (
     <>
+      <ConfirmActionDialog
+        open={Boolean(contractToMarkRenewed)}
+        title="Marcar contrato como renovado?"
+        description="Use esta opção quando a renovação foi criada fora deste fluxo. O contrato deixará de aparecer como vencido e as ações de renovação serão ocultadas."
+        confirmLabel="Marcar como renovado"
+        confirmVariant="default"
+        confirmClassName="bg-primary hover:bg-primary/90"
+        busy={markAsRenewedMutation.isPending}
+        onOpenChange={(open) => {
+          if (!open && !markAsRenewedMutation.isPending) setContractToMarkRenewed(null)
+        }}
+        onConfirm={() => {
+          if (contractToMarkRenewed) {
+            markAsRenewedMutation.mutate(contractToMarkRenewed.id)
+          }
+        }}
+      />
       <CsvImportDialog
         open={openImport}
         onOpenChange={(open) => onImportChange?.(open)}
@@ -299,6 +348,8 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
             { value: "draft", label: "Aguardando envio" },
             { value: "running", label: "Aguardando assinatura" },
             { value: "closed", label: "Assinado" },
+            { value: "expired", label: "Vencido" },
+            { value: "renewed", label: "Renovado" },
             { value: "canceled", label: "Cancelado" },
           ]}
           placeholder="Status"
@@ -449,14 +500,6 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
                                 </Link>
                               </DropdownMenuItem>
                             ) : null}
-                            {canCreateContracts && isContractEligibleForRenewal(contract) ? (
-                              <DropdownMenuItem asChild>
-                                <Link href={getContractRenewHref(contract.id)}>
-                                  <RefreshCw className="mr-2 h-4 w-4" />
-                                  Renovar
-                                </Link>
-                              </DropdownMenuItem>
-                            ) : null}
                             {canEditContracts && !isContractSigned(contract) ? (
                               <DropdownMenuItem asChild>
                                 <Link href={contract.internalStatus === "filling"
@@ -475,6 +518,20 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
                                   Ver no ClickSign
                                 </a>
                               </DropdownMenuItem>
+                            ) : null}
+                            {canCreateContracts && isContractEligibleForRenewal(contract) ? (
+                              <>
+                                <DropdownMenuItem asChild>
+                                  <Link href={getContractRenewHref(contract.id)}>
+                                    <RefreshCw className="mr-2 h-4 w-4" />
+                                    Renovar
+                                  </Link>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onSelect={() => setContractToMarkRenewed(contract)}>
+                                  <CheckCircle2 className="mr-2 h-4 w-4" />
+                                  Marcar como renovado
+                                </DropdownMenuItem>
+                              </>
                             ) : null}
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -567,7 +624,7 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
                         </div>
                       ) : null}
                       <div
-                        className="flex gap-2"
+                        className="flex flex-wrap gap-2"
                         onClick={(event) => event.stopPropagation()}
                         onKeyDown={(event) => event.stopPropagation()}
                       >
@@ -583,12 +640,24 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
                           </Button>
                         ) : null}
                         {canCreateContracts && isContractEligibleForRenewal(contract) ? (
-                          <Button variant="outline" size="sm" className="flex-1" asChild>
-                            <Link href={getContractRenewHref(contract.id)}>
-                              <RefreshCw className="mr-1 h-4 w-4" />
-                              Renovar
-                            </Link>
-                          </Button>
+                          <>
+                            <Button variant="outline" size="sm" className="min-w-[110px] flex-1" asChild>
+                              <Link href={getContractRenewHref(contract.id)}>
+                                <RefreshCw className="mr-1 h-4 w-4" />
+                                Renovar
+                              </Link>
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="min-w-[180px] flex-1"
+                              onClick={() => setContractToMarkRenewed(contract)}
+                            >
+                              <CheckCircle2 className="mr-1 h-4 w-4" />
+                              Marcar como renovado
+                            </Button>
+                          </>
                         ) : null}
                         {contract.internalStatus !== "filling" ? (
                           <Button size="sm" className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90" asChild>

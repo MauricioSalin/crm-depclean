@@ -1317,7 +1317,7 @@ export function RelatoriosContent() {
         ["Resumo financeiro", "Vencidas", data.financialSummary.totalOverdue, "", "", "", ""],
         ["Indicadores", "Taxa de adimplência", `${data.financialSummary.adherenceRate}%`, "", "", "", ""],
         ["Indicadores", "Ticket médio", data.dashboardStats.totalClients > 0 ? data.dashboardStats.monthlyRevenue / data.dashboardStats.totalClients : 0, "", "", "", ""],
-        ["Indicadores", "Contratos vigentes", data.contracts.filter((contract) => isOperationallyActiveContract(contract)).length, "", "", "", ""],
+        ["Indicadores", "Contratos ativos", data.contracts.filter((contract) => isOperationallyActiveContract(contract)).length, "", "", "", ""],
         [null],
         ["Período", "Total", "Pagas", "A receber", "Em atraso", "Vencidas"],
         ...data.monthlyRevenueData.map((item) => [

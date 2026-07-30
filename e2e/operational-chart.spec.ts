@@ -99,7 +99,7 @@ test("explica e identifica os modos do valor global", async ({ page }) => {
   await expect(generalTooltip).toHaveAttribute("data-side", "right")
 
   await activeContractsOption.hover()
-  const activeContractsTooltip = page.locator('[data-slot="tooltip-content"]').filter({ hasText: "Somente contratos vigentes." })
+  const activeContractsTooltip = page.locator('[data-slot="tooltip-content"]').filter({ hasText: "Contratos assinados vigentes e contratos renovados." })
   await expect(activeContractsTooltip).toBeVisible()
   await expect(activeContractsTooltip).toHaveAttribute("data-side", "right")
 

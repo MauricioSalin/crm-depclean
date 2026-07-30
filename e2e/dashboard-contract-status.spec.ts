@@ -9,7 +9,7 @@ test("gráfico de contratos usa os mesmos totais dos indicadores", async ({ page
   await page.goto("/")
 
   const activeCard = page
-    .getByRole("heading", { name: "Contratos Vigentes", exact: true })
+    .getByRole("heading", { name: "Contratos Ativos", exact: true })
     .locator("xpath=ancestor::div[contains(@class,'rounded-xl')][1]")
   const inactiveCard = page
     .getByRole("heading", { name: "Contratos Vencidos", exact: true })
@@ -27,7 +27,7 @@ test("gráfico de contratos usa os mesmos totais dos indicadores", async ({ page
   await expect(chart.getByText("Aguardando envio", { exact: true })).toBeVisible()
   await expect(chart.getByText("Aguardando assinatura", { exact: true })).toBeVisible()
   await expect(chart.getByText("Assinados", { exact: true })).toBeVisible()
-  await expect(chart.getByText("Vigentes", { exact: true })).toBeVisible()
+  await expect(chart.getByText("Ativos", { exact: true })).toBeVisible()
   await expect(chart.getByText("Vencidos", { exact: true })).toBeVisible()
   await expect(chart.getByText("Cancelados", { exact: true })).toBeVisible()
   await expect(chart.getByRole("link", { name: /ver todos/i })).toHaveAttribute("href", "/contratos")

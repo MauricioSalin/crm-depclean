@@ -2,7 +2,10 @@ import { expect, test, type Page } from "@playwright/test"
 
 import { contractFixture, installApiMock, serviceFixture } from "./support/api-mock"
 import { installAuthenticatedSession } from "./support/session"
-import { isContractEligibleForRenewal } from "../lib/contract-status"
+import {
+  isContractEligibleForRenewal,
+  isOperationallyActiveContract,
+} from "../lib/contract-status"
 
 const FIXED_NOW = new Date("2026-07-28T12:00:00.000Z")
 
@@ -226,6 +229,7 @@ test("exibe Renovar a partir de dois meses antes do fim da vigência", async ({ 
   const renewLink = page.getByRole("link", { name: "Renovar", exact: true })
   await expect(renewLink).toBeVisible()
   await expect(renewLink).toHaveAttribute("href", /\/contratos\/novo\?renewFrom=contract-e2e/)
+  await expect(page.getByRole("button", { name: "Marcar como renovado", exact: true })).toBeVisible()
 })
 
 test("não exibe Renovar antes da janela de dois meses", async ({ page }) => {
@@ -238,6 +242,7 @@ test("não exibe Renovar antes da janela de dois meses", async ({ page }) => {
   await page.goto(`/contratos/${contractFixture.id}`)
 
   await expect(page.getByRole("link", { name: "Renovar", exact: true })).toHaveCount(0)
+  await expect(page.getByRole("button", { name: "Marcar como renovado", exact: true })).toHaveCount(0)
 })
 
 test("ajusta a janela de dois meses para o último dia do mês de destino", () => {
@@ -266,6 +271,75 @@ test("mantém Renovar disponível após o vencimento", async ({ page }) => {
   await page.goto(`/contratos/${contractFixture.id}`)
 
   await expect(page.getByRole("link", { name: "Renovar", exact: true })).toBeVisible()
+  await expect(page.getByRole("button", { name: "Marcar como renovado", exact: true })).toBeVisible()
+})
+
+test("exibe Renovado e oculta novas ações mesmo quando marcado antes do vencimento", async ({ page }) => {
+  const contract = {
+    status: "closed",
+    renewalStatus: "renewed",
+    startDate: "2025-09-28",
+    endDate: "2026-09-28",
+  }
+  await installContractMock(page, contract)
+
+  await page.goto(`/contratos/${contractFixture.id}`)
+
+  await expect(page.getByText("Renovado", { exact: true })).toBeVisible()
+  await expect(page.getByRole("link", { name: "Renovar", exact: true })).toHaveCount(0)
+  await expect(page.getByRole("button", { name: "Marcar como renovado", exact: true })).toHaveCount(0)
+  expect(isContractEligibleForRenewal(contract, FIXED_NOW)).toBe(false)
+})
+
+test("trata Renovado como ativo mesmo depois do fim da vigência anterior", () => {
+  const contract = {
+    status: "closed",
+    renewalStatus: "renewed",
+    startDate: "2025-07-20",
+    endDate: "2026-07-20",
+  }
+
+  expect(isOperationallyActiveContract(contract, FIXED_NOW)).toBe(true)
+})
+
+test("deixa Renovar e Marcar como renovado por último no menu e confirma a ação manual", async ({ page }) => {
+  let markRenewedRequests = 0
+  await installContractMock(page, {
+    status: "closed",
+    startDate: "2025-08-28",
+    endDate: "2026-07-27",
+  })
+  await page.route(`**/api/v1/contracts/${contractFixture.id}/mark-renewed`, async (route) => {
+    markRenewedRequests += 1
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        success: true,
+        message: "Contrato marcado como renovado.",
+        data: {
+          ...contractFixture,
+          status: "closed",
+          renewalStatus: "renewed",
+        },
+      }),
+    })
+  })
+
+  await page.goto("/contratos")
+  await page.getByRole("button", {
+    name: `Abrir ações do contrato ${contractFixture.contractNumber}`,
+  }).click()
+
+  const menuItems = page.getByRole("menuitem")
+  const itemLabels = await menuItems.allTextContents()
+  expect(itemLabels.slice(-2)).toEqual(["Renovar", "Marcar como renovado"])
+
+  await page.getByRole("menuitem", { name: "Marcar como renovado" }).click()
+  await expect(page.getByRole("dialog")).toContainText("Marcar contrato como renovado?")
+  await page.getByRole("dialog").getByRole("button", { name: "Marcar como renovado" }).click()
+
+  await expect.poll(() => markRenewedRequests).toBe(1)
 })
 
 test("abre o documento correto no ClickSign em vez do envelope", async ({ page }) => {
@@ -281,6 +355,15 @@ test("abre o documento correto no ClickSign em vez do envelope", async ({ page }
       signers: [],
     },
   })
+  let syncRequests = 0
+  await page.route(`**/api/v1/clicksign/contracts/${contractFixture.id}/sync`, async (route) => {
+    syncRequests += 1
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ success: true, data: null }),
+    })
+  })
 
   await page.goto(`/contratos/${contractFixture.id}`)
 
@@ -288,6 +371,8 @@ test("abre o documento correto no ClickSign em vez do envelope", async ({ page }
     "href",
     "https://app.clicksign.com/accounts/379383/folders/49449970/documents/cd01f2bf-7030-446f-9c02-b3c96c80245d",
   )
+  await page.waitForTimeout(250)
+  expect(syncRequests).toBe(0)
 })
 
 test("mostra sucesso imediato no envio ClickSign e restaura a acao quando falha", async ({ page }) => {

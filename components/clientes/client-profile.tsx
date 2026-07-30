@@ -80,6 +80,7 @@ import { listTemplates, type TemplateRecord } from "@/lib/api/templates"
 import {
   getClicksignContractStatusLabel,
   isClosedClicksignContractStatus,
+  isContractRenewed,
   isOperationallyActiveContract,
   normalizeClicksignContractStatus,
 } from "@/lib/contract-status"
@@ -270,8 +271,14 @@ const getClientExtraStatusBadge = (status: ClientExtraStatus) => {
   }
 }
 
-const getClientContractStatusBadge = (status: string) => {
-  const normalized = normalizeClicksignContractStatus(status)
+const getClientContractStatusBadge = (contract: {
+  status: string
+  renewalStatus?: "renewed"
+}) => {
+  if (isContractRenewed(contract)) {
+    return <Badge className="shrink-0 bg-blue-100 text-blue-700 hover:bg-blue-100">Renovado</Badge>
+  }
+  const normalized = normalizeClicksignContractStatus(contract.status)
   const className =
     normalized === "closed"
       ? "bg-green-100 text-green-700 hover:bg-green-100"
@@ -1030,7 +1037,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
               <FileText className="h-5 w-5 text-primary/80" />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Contratos vigentes</p>
+              <p className="text-sm text-muted-foreground">Contratos ativos</p>
               <p className="text-xl font-semibold text-primary/80">{currentContracts}</p>
             </div>
           </div>
@@ -1319,7 +1326,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                           </div>
                         ) : null}
                       </TableCell>
-                      <TableCell>{getClientContractStatusBadge(contract.status)}</TableCell>
+                      <TableCell>{getClientContractStatusBadge(contract)}</TableCell>
                       <TableCell className="text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>

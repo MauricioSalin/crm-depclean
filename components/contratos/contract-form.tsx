@@ -1117,6 +1117,7 @@ export function ContractForm({
         }
       }),
     renderedHtml,
+    renewedFromContractId: isRenewal ? renewFromContractId : undefined,
   })
 
   const docxPreviewVariables = useMemo(() => {

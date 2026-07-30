@@ -12,7 +12,7 @@ import { listContracts, type ContractRecord } from "@/lib/api/contracts"
 import { listServices, type ServiceRecord } from "@/lib/api/services"
 import { hasAnyPermission } from "@/lib/auth/permissions"
 import { getStoredUser } from "@/lib/auth/session"
-import { getClicksignContractStatusLabel } from "@/lib/contract-status"
+import { getClicksignContractStatusLabel, isContractRenewed } from "@/lib/contract-status"
 import { buildPathWithSearchParams, withReturnTo } from "@/lib/navigation"
 import { formatScheduleDurationValue } from "@/lib/schedule-duration"
 import { cn, formatContractNumber } from "@/lib/utils"
@@ -51,7 +51,9 @@ function getClientDescription(client: ClientRecord) {
 }
 
 function getContractDescription(contract: ContractRecord) {
-  const status = getClicksignContractStatusLabel(contract.status)
+  const status = isContractRenewed(contract)
+    ? "Renovado"
+    : getClicksignContractStatusLabel(contract.status)
   return [contract.clientCompanyName, status, formatCurrency(contract.totalValue)].filter(Boolean).join(" • ")
 }
 

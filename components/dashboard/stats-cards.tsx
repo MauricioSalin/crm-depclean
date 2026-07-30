@@ -198,7 +198,7 @@ export function StatsCards(period: DashboardPeriodProps = {}) {
               </DropdownMenuRadioItem>
             </TooltipTrigger>
             <TooltipContent side="right" sideOffset={8} className="z-[230] max-w-52">
-              Somente contratos vigentes.
+              Contratos assinados vigentes e contratos renovados.
             </TooltipContent>
           </Tooltip>
         </DropdownMenuRadioGroup>
@@ -228,7 +228,7 @@ export function StatsCards(period: DashboardPeriodProps = {}) {
       delay: "120ms",
     },
     {
-      title: "Contratos Vigentes",
+      title: "Contratos Ativos",
       value: dashboardStats.currentContracts.toString(),
       icon: FileCheck2,
       href: "/contratos?validity=current",

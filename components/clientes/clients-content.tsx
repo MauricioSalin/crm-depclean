@@ -291,7 +291,7 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
             <TableHeader>
               <TableRow>
                 <TableHead>Cliente</TableHead>
-                <TableHead className="hidden md:table-cell">CNPJ</TableHead>
+                <TableHead>CNPJ</TableHead>
                 <TableHead className="hidden lg:table-cell">Responsável</TableHead>
                 <TableHead className="hidden sm:table-cell">Tipo</TableHead>
                 <TableHead className="hidden lg:table-cell">Contratos</TableHead>
@@ -304,7 +304,7 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
                   rows={5}
                   columns={[
                     { withIcon: true, width: "w-40" },
-                    { className: "hidden md:table-cell", width: "w-32" },
+                    { width: "w-32" },
                     { className: "hidden lg:table-cell", width: "w-36" },
                     { className: "hidden sm:table-cell", width: "w-24" },
                     { className: "hidden lg:table-cell", width: "w-20" },
@@ -330,16 +330,15 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
                           >
                             <Building2 className="w-5 h-5" style={{ color: clientTypeColor }} />
                           </div>
-                          <div className="min-w-0">
-                            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                              <p className="min-w-0 truncate font-semibold text-foreground">{client.companyName}</p>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex min-w-0 flex-nowrap items-center gap-1.5">
+                              <p className="min-w-0 flex-1 truncate font-semibold text-foreground">{client.companyName}</p>
                               {client.isDelinquent ? <BusinessStatusBadge status="delinquent" /> : null}
                             </div>
-                            <p className="text-xs text-muted-foreground md:hidden">{formatCNPJ(client.cnpj)}</p>
                           </div>
                         </Link>
                       </TableCell>
-                      <TableCell className="hidden md:table-cell text-muted-foreground font-mono">
+                      <TableCell className="whitespace-nowrap text-muted-foreground font-mono">
                         {formatCNPJ(client.cnpj)}
                       </TableCell>
                       <TableCell className="hidden lg:table-cell">
@@ -447,7 +446,7 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
                               {clientType?.name ?? "Cliente"}
                             </Badge>
                           </div>
-                          <p className="text-xs text-muted-foreground font-mono">{formatCNPJ(client.cnpj)}</p>
+                          <p className="mt-2 text-xs text-muted-foreground font-mono">{formatCNPJ(client.cnpj)}</p>
                         </div>
                       </div>
                       <div className="space-y-2 text-sm">

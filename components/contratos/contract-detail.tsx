@@ -76,6 +76,7 @@ import {
   getClicksignContractStatusLabel,
   isClosedClicksignContractStatus,
   isContractExpiredByValidity,
+  isContractRenewed,
   normalizeClicksignContractStatus,
 } from "@/lib/contract-status"
 import { BRASILIA_TIME_ZONE, formatCivilDate } from "@/lib/date-utils"
@@ -164,9 +165,13 @@ const getRecurrenceLabel = (value: string) =>
 
 const getStatusBadge = (contract: {
   status?: string
+  renewalStatus?: "renewed"
   endDate?: string | null
   isAwaitingSchedules: boolean
 }) => {
+  if (isContractRenewed(contract)) {
+    return <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">Renovado</Badge>
+  }
   if (isContractExpiredByValidity(contract)) {
     return <Badge className="bg-red-100 text-red-700 hover:bg-red-100">Vencido</Badge>
   }
@@ -777,6 +782,10 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
 
   useEffect(() => {
     if (!clicksignReference || !canSyncClicksign) return
+    const clicksignStatus = normalizeClicksignContractStatus(
+      contract?.clicksign?.status || contract?.status,
+    )
+    if (clicksignStatus !== "running") return
     if (autoSyncedClicksignReferenceRef.current === clicksignReference) return
 
     autoSyncedClicksignReferenceRef.current = clicksignReference
@@ -794,7 +803,15 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
     return () => {
       cancelled = true
     }
-  }, [canSyncClicksign, clicksignReference, contractId, queryClient, resolvedContractId])
+  }, [
+    canSyncClicksign,
+    clicksignReference,
+    contract?.clicksign?.status,
+    contract?.status,
+    contractId,
+    queryClient,
+    resolvedContractId,
+  ])
 
   const remindSignerMutation = useMutation({
     mutationFn: (signerId: string) => {

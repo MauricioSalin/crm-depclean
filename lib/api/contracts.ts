@@ -49,6 +49,7 @@ export type ContractPayload = {
   renderedHtml?: string
   signatureUrl?: string
   notes?: string
+  renewedFromContractId?: string
 }
 
 export type ContractInstallmentRecord = {
@@ -121,6 +122,10 @@ export type ContractRecord = {
   status: string
   signatureUrl?: string
   signedAt?: string
+  renewalStatus?: "renewed"
+  renewedAt?: string
+  renewedContractId?: string
+  renewedFromContractId?: string
   documentUrl?: string
   documentFileName?: string
   clicksign?: {
@@ -297,6 +302,13 @@ export async function importSignedContracts(contracts: ContractImportRow[]) {
 
 export async function updateContract(id: string, payload: ContractUpdatePayload) {
   const response = await api.patch<{ success: true; data: ContractRecord }>(`/contracts/${resolveContractId(id)}`, payload)
+  return response.data
+}
+
+export async function markContractAsRenewed(id: string) {
+  const response = await api.patch<{ success: true; data: ContractRecord }>(
+    `/contracts/${resolveContractId(id)}/mark-renewed`,
+  )
   return response.data
 }
 

@@ -71,10 +71,13 @@ function subtractCivilMonths(dateKey: string, months: number) {
 
 export function isOperationallyActiveContract(contract: {
   status?: unknown
+  renewalStatus?: unknown
   startDate?: string | Date | null
   endDate?: string | Date | null
 }, now = new Date()) {
-  if (!isClosedClicksignContractStatus(contract.status) || !contract.startDate || !contract.endDate) return false
+  if (!isClosedClicksignContractStatus(contract.status)) return false
+  if (isContractRenewed(contract)) return true
+  if (!contract.startDate || !contract.endDate) return false
   const startDateKey = contractCivilDateKey(contract.startDate)
   const endDateKey = contractCivilDateKey(contract.endDate)
   if (!startDateKey || !endDateKey) return false
@@ -82,20 +85,34 @@ export function isOperationallyActiveContract(contract: {
   return startDateKey <= today && endDateKey >= today
 }
 
+export function isContractRenewed(contract: { renewalStatus?: unknown }) {
+  return contract.renewalStatus === "renewed"
+}
+
 export function isContractExpiredByValidity(contract: {
   status?: unknown
+  renewalStatus?: unknown
   endDate?: string | Date | null
 }, now = new Date()) {
-  if (!isClosedClicksignContractStatus(contract.status) || !contract.endDate) return false
+  if (
+    !isClosedClicksignContractStatus(contract.status) ||
+    isContractRenewed(contract) ||
+    !contract.endDate
+  ) return false
   const endDateKey = contractCivilDateKey(contract.endDate)
   return Boolean(endDateKey) && endDateKey < toCivilDateKey(now)
 }
 
 export function isContractEligibleForRenewal(contract: {
   status?: unknown
+  renewalStatus?: unknown
   endDate?: string | Date | null
 }, now = new Date()) {
-  if (!isClosedClicksignContractStatus(contract.status) || !contract.endDate) return false
+  if (
+    !isClosedClicksignContractStatus(contract.status) ||
+    isContractRenewed(contract) ||
+    !contract.endDate
+  ) return false
   const endDateKey = contractCivilDateKey(contract.endDate)
   return Boolean(endDateKey) && toCivilDateKey(now) >= subtractCivilMonths(
     endDateKey,

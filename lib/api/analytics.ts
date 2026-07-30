@@ -233,6 +233,9 @@ export type ReportsAnalyticsRecord = {
     clientCompanyName: string
     totalValue: number
     status: string
+    renewalStatus?: "renewed"
+    startDate?: string
+    endDate?: string
   }>
   teams: Array<{ id: string; name: string; color: string }>
   employees: Array<{ id: string; name: string; role: string; status: "active" | "inactive" }>
