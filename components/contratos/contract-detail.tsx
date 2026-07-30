@@ -298,6 +298,7 @@ const isSignedStatus = (status?: string) => {
 const getClicksignSignerDisplayStatus = (
   signer: ClicksignSignerRecord,
   signers: ClicksignSignerRecord[],
+  signatureFlow?: string,
 ) => {
   const normalizedStatus = signer.status?.toLowerCase() || "pending"
   const finalStatuses = ["signed", "closed", "finished", "completed", "done", "cancelled", "canceled", "refused", "expired", "deadline_expired"]
@@ -307,6 +308,12 @@ const getClicksignSignerDisplayStatus = (
   const witnessSigners = signers.filter((item) => isClicksignWitnessRole(item.role))
   const clientPhaseComplete = clientSigners.length === 0 || clientSigners.every((item) => isSignedStatus(item.status))
   const witnessPhaseComplete = witnessSigners.length === 0 || witnessSigners.every((item) => isSignedStatus(item.status))
+
+  if (signatureFlow === "witness_client_internal") {
+    if (isClicksignClientRole(signer.role) && !witnessPhaseComplete) return "waiting_witness"
+    if (isClicksignInternalRole(signer.role) && !clientPhaseComplete) return "waiting_client"
+    return normalizedStatus
+  }
 
   if (isClicksignWitnessRole(signer.role) && !clientPhaseComplete) return "waiting_client"
   if (isClicksignInternalRole(signer.role) && witnessSigners.length > 0 && !witnessPhaseComplete) return "waiting_witness"
@@ -1125,7 +1132,11 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                 </TableHeader>
                 <TableBody>
                   {contract.clicksign.signers.map((signer) => {
-                    const displayStatus = getClicksignSignerDisplayStatus(signer, contract.clicksign?.signers ?? [])
+                    const displayStatus = getClicksignSignerDisplayStatus(
+                      signer,
+                      contract.clicksign?.signers ?? [],
+                      contract.clicksign?.signatureFlow,
+                    )
                     const isSendingReminder = remindingSignerIds.includes(signer.signerId)
 
                     return (

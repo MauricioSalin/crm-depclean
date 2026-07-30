@@ -135,6 +135,7 @@ export type ContractRecord = {
     folderId?: string
     webhookId: string
     status: string
+    signatureFlow?: string
     managementUrl?: string
     signers: Array<{
       signerId: string
