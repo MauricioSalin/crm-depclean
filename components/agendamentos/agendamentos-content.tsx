@@ -1536,14 +1536,14 @@ export function AgendamentosContent({
               ) : paginatedSchedules.map((schedule) => (
                 <Card key={schedule.id} className="h-full cursor-pointer" onClick={() => openSchedule(schedule)}>
                   <CardContent className="flex flex-1 flex-col">
-                    <div className="mb-2 flex items-start justify-between">
-                      <div className="flex items-center gap-2">
+                    <div className="mb-2 flex min-w-0 items-start justify-between gap-2">
+                      <div className="flex min-w-0 flex-1 items-center gap-2">
                         <div className={`hidden h-10 w-10 shrink-0 items-center justify-center rounded-lg sm:flex ${getScheduleIconTone(schedule).wrapper}`}>
                           <Calendar className={`h-5 w-5 ${getScheduleIconTone(schedule).icon}`} />
                         </div>
-                        <div className="min-w-0">
+                        <div className="min-w-0 flex-1">
                           <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                            <h4 className="min-w-0 truncate text-sm font-semibold text-foreground">{schedule.clientName}</h4>
+                            <h4 className="min-w-0 break-words text-sm font-semibold text-foreground">{schedule.clientName}</h4>
                             {schedule.isClientDelinquent ? <BusinessStatusBadge status="delinquent" /> : null}
                           </div>
                           <p className="text-xs text-muted-foreground">{schedule.serviceTypeName}</p>
