@@ -160,6 +160,9 @@ export const clientServiceFixture = {
   teams: scheduleFixture.teams,
   additionalEmployees: scheduleFixture.additionalEmployees,
   date: scheduleFixture.date,
+  duration: scheduleFixture.duration,
+  durationValue: scheduleFixture.durationValue,
+  durationType: scheduleFixture.durationType,
   status: scheduleFixture.status,
 }
 

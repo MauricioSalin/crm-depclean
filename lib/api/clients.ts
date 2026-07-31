@@ -134,6 +134,9 @@ export type ClientServiceRecord = {
   teams: Array<{ id: string; name: string; color: string }>
   additionalEmployees: Array<{ id: string; name: string }>
   date: string
+  duration: number
+  durationValue?: number
+  durationType?: "minutes" | "hours" | "shift" | "days"
   status: "scheduled" | "in_progress" | "completed" | "cancelled" | "rescheduled"
 }
 

@@ -89,6 +89,7 @@ import { useHasAnyPermission } from "@/hooks/use-permissions"
 import { formatCPF } from "@/lib/masks"
 import { buildPathWithSearchParams, getSafeReturnTo, withReturnTo } from "@/lib/navigation"
 import { invalidateInstallmentRelatedQueries } from "@/lib/query-invalidation"
+import { formatConfiguredScheduleDuration } from "@/lib/schedule-duration"
 import { formatContractNumber } from "@/lib/utils"
 
 interface ClientProfileProps {
@@ -1568,6 +1569,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                     <TableHead>Tipo</TableHead>
                     <TableHead className="hidden md:table-cell">Equipe / Funcionários</TableHead>
                     <TableHead>Data</TableHead>
+                    <TableHead>Duração</TableHead>
                     <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -1589,12 +1591,13 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                         />
                       </TableCell>
                       <TableCell className="text-sm">{formatDate(service.date)}</TableCell>
+                      <TableCell className="text-sm">{formatConfiguredScheduleDuration(service)}</TableCell>
                       <TableCell>{getScheduleStatusBadge(service.status)}</TableCell>
                     </TableRow>
                   ))}
 
                   {clientServices.length === 0 ? (
-                    <TableEmptyState colSpan={5} icon={CheckCircle} title="Nenhum serviço encontrado." />
+                    <TableEmptyState colSpan={6} icon={CheckCircle} title="Nenhum serviço encontrado." />
                   ) : null}
                 </TableBody>
               </Table>
@@ -1627,6 +1630,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                     <TableHead className="hidden md:table-cell">Equipe / Funcionários</TableHead>
                     <TableHead>Data</TableHead>
                     <TableHead>Horário</TableHead>
+                    <TableHead>Duração</TableHead>
                     <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -1648,13 +1652,14 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                           </TableCell>
                           <TableCell className="text-sm">{formatDate(service.date)}</TableCell>
                           <TableCell className="text-sm">{service.time || "08:00"}</TableCell>
+                          <TableCell className="text-sm">{formatConfiguredScheduleDuration(service)}</TableCell>
                           <TableCell>{getScheduleStatusBadge(service.status)}</TableCell>
                         </TableRow>
                       )
                     })}
 
                   {scheduledServices.length === 0 ? (
-                    <TableEmptyState colSpan={6} icon={Calendar} title="Nenhum serviço agendado." />
+                    <TableEmptyState colSpan={7} icon={Calendar} title="Nenhum serviço agendado." />
                   ) : null}
                 </TableBody>
               </Table>

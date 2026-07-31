@@ -57,6 +57,29 @@ test("exibe hífen sem ícone para equipe não definida na aba Serviços", async
   await expect(emptyAssignment.locator("xpath=ancestor::td[1]").locator("svg")).toHaveCount(0)
 })
 
+test("exibe a duração nas agendas do contrato e do cliente e nos serviços do cliente", async ({ page }) => {
+  await installAuthenticatedSession(page)
+  await installApiMock(page)
+
+  await page.goto(`/clientes/${clientFixture.id}?tab=servicos`)
+  await expect(page.getByRole("columnheader", { name: "Ordenar por Duração", exact: true })).toBeVisible()
+  await expect(
+    page.getByRole("row").filter({ hasText: serviceFixture.name }).getByText("120 minutos", { exact: true }),
+  ).toBeVisible()
+
+  await page.getByRole("tab", { name: "Agenda (1)", exact: true }).click()
+  await expect(page.getByRole("columnheader", { name: "Ordenar por Duração", exact: true })).toBeVisible()
+  await expect(
+    page.getByRole("row").filter({ hasText: serviceFixture.name }).getByText("120 minutos", { exact: true }),
+  ).toBeVisible()
+
+  await page.goto(`/contratos/${contractFixture.id}?tab=agenda`)
+  await expect(page.getByRole("columnheader", { name: "Ordenar por Duração", exact: true })).toBeVisible()
+  await expect(
+    page.getByRole("row").filter({ hasText: serviceFixture.name }).getByText("120 minutos", { exact: true }),
+  ).toBeVisible()
+})
+
 test("persiste o pagamento da parcela e sincroniza cliente, contrato e inadimplência", async ({ page }) => {
   await installAuthenticatedSession(page)
   await installApiMock(page)
