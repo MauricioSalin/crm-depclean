@@ -48,6 +48,7 @@ import {
 } from "@/lib/team-member-selection"
 import type { ClientRecord } from "@/lib/api/clients"
 import type { EmployeeRecord } from "@/lib/api/employees"
+import { shouldRequireScheduleAssignee } from "@/lib/schedule-assignee-requirement"
 import type { ServiceRecord } from "@/lib/api/services"
 import type { TeamRecord } from "@/lib/api/teams"
 import type { ScheduleDocumentSetting } from "@/lib/api/schedules"
@@ -260,6 +261,14 @@ export function SchedulingFormDialog({
   )
   const selectedClient = clientById.get(formData.clientId)
   const isEditing = Boolean(editingSchedule)
+  const editingScheduleHadAssignee = Boolean(
+    editingSchedule && (
+      (editingSchedule.teamIds?.length ?? 0) > 0 ||
+      (editingSchedule.teams?.length ?? 0) > 0 ||
+      Boolean(editingSchedule.teamId) ||
+      (editingSchedule.additionalEmployees?.length ?? 0) > 0
+    ),
+  )
   const isRecurringSchedule = Boolean(editingSchedule?.contractId && !editingSchedule?.isManual)
   const scheduleTypeLabel = isRecurringSchedule ? "Atendimento recorrente" : "Atendimento avulso"
   const dialogTitle = isEditing
@@ -502,7 +511,12 @@ export function SchedulingFormDialog({
       toast.error("Informe uma duração maior que zero para o agendamento.")
       return
     }
-    if (formData.teamIds.length === 0 && formData.employeeIds.length === 0) {
+    if (shouldRequireScheduleAssignee({
+      isEditing,
+      previouslyHadAssignee: editingScheduleHadAssignee,
+      teamIds: formData.teamIds,
+      employeeIds: formData.employeeIds,
+    })) {
       toast.error("Selecione ao menos uma equipe ou funcionário para o agendamento.")
       return
     }
