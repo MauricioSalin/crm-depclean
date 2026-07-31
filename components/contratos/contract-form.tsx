@@ -108,7 +108,7 @@ import {
 } from "@/lib/api/contracts"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { buildApiFileUrl } from "@/lib/api/client"
-import { isClosedClicksignContractStatus } from "@/lib/contract-status"
+import { isClosedClicksignContractStatus, normalizeClicksignContractStatus } from "@/lib/contract-status"
 import { formatCNPJ, formatCPF, formatPhone } from "@/lib/masks"
 import { listServices, type ServiceDurationType } from "@/lib/api/services"
 import { formatScheduleDurationValue } from "@/lib/schedule-duration"
@@ -410,10 +410,14 @@ export function ContractForm({
   const getClientTypeById = (id: string) => clientTypes.find((type) => type.id === id)
   const contract = contractQuery.data?.data
   const client = contract ? clients.find((c) => c.id === contract.clientId) : undefined
+  const isCanceledClicksignContract =
+    normalizeClicksignContractStatus(contract?.status) === "canceled" ||
+    normalizeClicksignContractStatus(contract?.clicksign?.status) === "canceled"
   const isReplacingClicksignDocument = Boolean(
     isEditing &&
     contract?.clicksign?.envelopeId &&
-    !isContractSigned(contract),
+    !isContractSigned(contract) &&
+    !isCanceledClicksignContract,
   )
 
   type CreateStep = "form" | "editor"
@@ -1902,6 +1906,8 @@ export function ContractForm({
     const loadingToast = toast.loading(
       isReplacingClicksignDocument
         ? "Salvando e reenviando contrato..."
+        : isCanceledClicksignContract
+          ? "Salvando alterações no contrato cancelado..."
         : "Salvando contrato com status Aguardando envio...",
     )
 
@@ -1922,7 +1928,7 @@ export function ContractForm({
             payload: isEditing
               ? {
                   ...basePayload,
-                  deferClicksignReplacement: isReplacingClicksignDocument,
+                  deferClicksignReplacement: isReplacingClicksignDocument || isCanceledClicksignContract,
                 }
               : basePayload,
           })
@@ -1950,6 +1956,8 @@ export function ContractForm({
       toast.success(
         isReplacingClicksignDocument
           ? "Contrato atualizado. O envio anterior foi cancelado e todas as assinaturas foram solicitadas novamente."
+          : isCanceledClicksignContract
+            ? "Contrato cancelado atualizado. Use Reenviar ClickSign no perfil quando estiver pronto."
           : isEditing
             ? "Contrato atualizado com status Aguardando envio."
           : "Contrato salvo com status Aguardando envio. Revise os agendamentos antes de enviar ao ClickSign.",
@@ -2135,11 +2143,15 @@ export function ContractForm({
               <AlertDialogTitle>
                 {isReplacingClicksignDocument
                   ? "Substituir o documento enviado para assinatura?"
+                  : isCanceledClicksignContract
+                    ? "Salvar alterações no contrato cancelado?"
                   : "Concluir e salvar o contrato?"}
               </AlertDialogTitle>
               <AlertDialogDescription>
                 {isReplacingClicksignDocument
                   ? "O documento anterior será cancelado no ClickSign. Um novo documento será enviado e todas as pessoas deverão assinar novamente, mesmo quem já assinou a versão anterior."
+                  : isCanceledClicksignContract
+                    ? "As alterações serão salvas mantendo o status Cancelado, sem criar um novo envio. Quando estiver pronto, use Reenviar ClickSign no perfil do contrato."
                   : "O documento será salvo com status Aguardando envio e ainda não será enviado ao ClickSign. Quando estiver pronto, o envio para assinatura poderá ser feito pelo perfil do contrato."}
               </AlertDialogDescription>
             </AlertDialogHeader>
@@ -2159,6 +2171,8 @@ export function ContractForm({
                   ? "Salvando..."
                   : isReplacingClicksignDocument
                     ? "Salvar e reenviar"
+                    : isCanceledClicksignContract
+                      ? "Salvar alterações"
                     : "Salvar"}
               </AlertDialogAction>
             </AlertDialogFooter>

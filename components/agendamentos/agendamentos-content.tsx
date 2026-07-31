@@ -50,8 +50,6 @@ import { formatConfiguredScheduleDuration, minutesToScheduleDuration, scheduleDu
 import { normalizeScheduleStatusFilter, SCHEDULE_STATUS_FILTER_OPTIONS } from "@/lib/schedule-status"
 import {
   checkScheduleAvailability,
-  formatAvailabilitySlot,
-  formatScheduleConflictConfirmation,
   getScheduleConflictResourceNames,
   hasDailyServiceCapacity,
   isScheduleConflictErrorMessage,
@@ -94,6 +92,7 @@ import { SearchableSelect } from "@/components/ui/searchable-select"
 import { SchedulingFormDialog, type SchedulingFormData } from "./scheduling-form-dialog"
 import { ScheduleDetailsDialog } from "./schedule-details-dialog"
 import { CancelScheduleDialog } from "./cancel-schedule-dialog"
+import { ScheduleConflictDialog } from "./schedule-conflict-dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
 interface AgendamentosContentProps {
@@ -1117,6 +1116,7 @@ export function AgendamentosContent({
         isStartingAttendance={startMutation.isPending}
         canManage={canManageAgenda}
         canStart={selectedSchedule ? canStartSchedule(selectedSchedule, currentUser, teams) : false}
+        canStartOutsideScheduledDate={canManageAgenda}
         canReschedule={canManageAgenda}
         canEdit={Boolean(
           selectedSchedule &&
@@ -1689,78 +1689,35 @@ export function AgendamentosContent({
         busy={deleteMutation.isPending}
       />
 
-      <Dialog
-        open={!!availabilitySuggestion}
-        onOpenChange={(open) => {
-          if (!open) setAvailabilitySuggestion(null)
+      <ScheduleConflictDialog
+        open={Boolean(availabilitySuggestion)}
+        requested={availabilitySuggestion?.requested}
+        suggested={availabilitySuggestion?.suggested}
+        conflictingResources={availabilitySuggestion?.conflictingResources}
+        busy={saveMutation.isPending}
+        onCancel={() => setAvailabilitySuggestion(null)}
+        onContinue={() => {
+          if (!availabilitySuggestion) return
+          saveMutation.mutate({
+            formData: availabilitySuggestion.formData,
+            scheduleId: availabilitySuggestion.scheduleId,
+            allowConflict: true,
+          })
+          setAvailabilitySuggestion(null)
         }}
-      >
-        <DialogContent className="max-sm:left-0 max-sm:top-3 max-sm:h-[calc(100dvh-1.5rem)] max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:overflow-y-auto max-sm:rounded-none max-sm:border-0 sm:max-w-md">
-          <DialogHeader className="min-w-0 pr-6">
-            <DialogTitle>Conflito de horário</DialogTitle>
-            <DialogDescription>
-              {availabilitySuggestion
-                ? formatScheduleConflictConfirmation(availabilitySuggestion.conflictingResources)
-                : "O técnico ou a equipe selecionada terá um conflito de horário. Deseja continuar?"}
-            </DialogDescription>
-          </DialogHeader>
-          {availabilitySuggestion ? (
-            <div className="space-y-3 rounded-2xl border bg-muted/40 p-4 text-sm">
-              <div>
-                <p className="font-medium">Horário solicitado</p>
-                <p className="text-muted-foreground">
-                  {formatAvailabilitySlot(availabilitySuggestion.requested.date, availabilitySuggestion.requested.time)}
-                </p>
-              </div>
-              {availabilitySuggestion.suggested ? <div>
-                <p className="font-medium">Horário mais próximo disponível</p>
-                <p className="text-muted-foreground">
-                  {formatAvailabilitySlot(availabilitySuggestion.suggested.date, availabilitySuggestion.suggested.time)}
-                </p>
-              </div> : null}
-            </div>
-          ) : null}
-          <DialogFooter className="gap-2 sm:gap-2">
-            <Button type="button" variant="outline" onClick={() => setAvailabilitySuggestion(null)} disabled={saveMutation.isPending}>
-              Cancelar
-            </Button>
-            <Button
-              type="button"
-              disabled={saveMutation.isPending}
-              onClick={() => {
-                if (!availabilitySuggestion) return
-                saveMutation.mutate({
-                  formData: availabilitySuggestion.formData,
-                  scheduleId: availabilitySuggestion.scheduleId,
-                  allowConflict: true,
-                })
-                setAvailabilitySuggestion(null)
-              }}
-            >
-              Continuar
-            </Button>
-            {availabilitySuggestion?.suggested ? <Button
-              type="button"
-              variant="outline"
-              disabled={saveMutation.isPending}
-              onClick={() => {
-                if (!availabilitySuggestion) return
-                saveMutation.mutate({
-                  formData: {
-                    ...availabilitySuggestion.formData,
-                    date: availabilitySuggestion.suggested!.date,
-                    time: availabilitySuggestion.suggested!.time,
-                  },
-                  scheduleId: availabilitySuggestion.scheduleId,
-                })
-                setAvailabilitySuggestion(null)
-              }}
-            >
-              Usar horário sugerido
-            </Button> : null}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        onUseSuggested={() => {
+          if (!availabilitySuggestion?.suggested) return
+          saveMutation.mutate({
+            formData: {
+              ...availabilitySuggestion.formData,
+              date: availabilitySuggestion.suggested.date,
+              time: availabilitySuggestion.suggested.time,
+            },
+            scheduleId: availabilitySuggestion.scheduleId,
+          })
+          setAvailabilitySuggestion(null)
+        }}
+      />
     </>
   )
 }

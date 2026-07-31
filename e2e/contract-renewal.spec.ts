@@ -418,6 +418,50 @@ test("mostra sucesso imediato no envio ClickSign e restaura a acao quando falha"
   await expect(page.getByRole("button", { name: "Enviar ClickSign" })).toBeEnabled()
 })
 
+test("permite editar e reenviar um contrato cancelado em um novo envelope", async ({ page }) => {
+  await installContractMock(page, {
+    status: "canceled",
+    clicksign: {
+      envelopeId: "envelope-canceled",
+      documentKey: "document-canceled",
+      documentId: "document-canceled",
+      folderId: "49449970",
+      webhookId: "webhook-1",
+      status: "canceled",
+      signers: [],
+    },
+  })
+
+  let replaceRequests = 0
+  let sendRequests = 0
+  await page.route(`**/api/v1/clicksign/contracts/${contractFixture.id}/replace`, async (route) => {
+    replaceRequests += 1
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({ success: true, data: { status: "running" } }),
+    })
+  })
+  await page.route(`**/api/v1/clicksign/contracts/${contractFixture.id}/send`, async (route) => {
+    sendRequests += 1
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({ success: true, data: { status: "running" } }),
+    })
+  })
+
+  await page.goto(`/contratos/${contractFixture.id}`)
+
+  await expect(page.getByText("Cancelado", { exact: true }).first()).toBeVisible()
+  await expect(page.getByRole("link", { name: "Editar Contrato" })).toBeVisible()
+  await page.getByRole("button", { name: "Reenviar ClickSign" }).click()
+
+  await expect(page.getByText("O novo envio para assinatura no ClickSign foi iniciado em segundo plano.")).toBeVisible()
+  await expect.poll(() => replaceRequests).toBe(1)
+  expect(sendRequests).toBe(0)
+})
+
 test("mostra sucesso imediato ao enviar agendamentos e preserva o plano quando falha", async ({ page }) => {
   await installContractMock(page, {
     status: "closed",

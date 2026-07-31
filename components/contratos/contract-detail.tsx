@@ -59,6 +59,7 @@ import {
   getContractById,
   publishContractSchedulePlan,
   remindContractSigner,
+  replaceContractInClicksign,
   sendContractToClicksign,
   syncContractClicksign,
   updateInstallment,
@@ -500,6 +501,9 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
 
   const contract = contractQuery.data?.data
   const resolvedContractId = contract?.id ?? contractId
+  const isCanceledClicksignContract =
+    normalizeClicksignContractStatus(contract?.status) === "canceled" ||
+    normalizeClicksignContractStatus(contract?.clicksign?.status) === "canceled"
 
   useEffect(() => {
     if (contract?.internalStatus !== "filling") return
@@ -727,12 +731,16 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
         throw new Error("Sem permissao para enviar contrato ao ClickSign.")
       }
 
-      return sendContractToClicksign(resolvedContractId)
+      return isCanceledClicksignContract
+        ? replaceContractInClicksign(resolvedContractId)
+        : sendContractToClicksign(resolvedContractId)
     },
     onMutate: () => {
       const optimisticToast = toast({
-        title: "Contrato enviado",
-        description: "O envio para assinatura no ClickSign foi iniciado em segundo plano.",
+        title: isCanceledClicksignContract ? "Contrato reenviado" : "Contrato enviado",
+        description: isCanceledClicksignContract
+          ? "O novo envio para assinatura no ClickSign foi iniciado em segundo plano."
+          : "O envio para assinatura no ClickSign foi iniciado em segundo plano.",
       })
       return { optimisticToast }
     },
@@ -997,7 +1005,9 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                   </Button>
                 )
               ) : null}
-              {!isClosedClicksignContractStatus(contract.status) && !contract.clicksign?.envelopeId && canEditContracts ? (
+              {!isClosedClicksignContractStatus(contract.status) &&
+              (!contract.clicksign?.envelopeId || isCanceledClicksignContract) &&
+              canEditContracts ? (
                 <Button
                   variant="outline"
                   size="sm"
@@ -1005,8 +1015,14 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                   onClick={() => sendClicksignMutation.mutate()}
                   disabled={sendClicksignMutation.isPending}
                 >
-                  <ExternalLink className="mr-2 h-4 w-4" />
-                  {sendClicksignMutation.isPending ? "Enviando..." : "Enviar ClickSign"}
+                  {isCanceledClicksignContract ? (
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                  ) : (
+                    <ExternalLink className="mr-2 h-4 w-4" />
+                  )}
+                  {sendClicksignMutation.isPending
+                    ? isCanceledClicksignContract ? "Reenviando..." : "Enviando..."
+                    : isCanceledClicksignContract ? "Reenviar ClickSign" : "Enviar ClickSign"}
                 </Button>
               ) : null}
             </div>
@@ -1298,6 +1314,12 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                   const serviceEmployees = employees.filter((employee) =>
                     (service.additionalEmployeeIds ?? []).includes(employee.id),
                   )
+                  const savedDuration = Number(service.duration)
+                  const durationLabel = Number.isFinite(savedDuration) && savedDuration > 0 && service.durationType
+                    ? formatDuration(savedDuration, service.durationType)
+                    : serviceType
+                      ? formatDuration(serviceType.defaultDuration, serviceType.durationType)
+                      : "-"
 
                   return (
                     <TableRow
@@ -1332,11 +1354,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                       <TableCell>
                         <div className="flex items-center gap-2 text-foreground">
                           <Clock className="h-4 w-4 text-muted-foreground" />
-                          <span>
-                            {serviceType
-                              ? formatDuration(serviceType.defaultDuration, serviceType.durationType)
-                              : "-"}
-                          </span>
+                          <span>{durationLabel}</span>
                         </div>
                       </TableCell>
                       <TableCell className="text-right">

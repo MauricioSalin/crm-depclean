@@ -57,7 +57,7 @@ test("exibe hífen sem ícone para equipe não definida na aba Serviços", async
   await expect(emptyAssignment.locator("xpath=ancestor::td[1]").locator("svg")).toHaveCount(0)
 })
 
-test("exibe a duração nas agendas do contrato e do cliente e nos serviços do cliente", async ({ page }) => {
+test("exibe as durações salvas nas agendas e nos serviços dos perfis", async ({ page }) => {
   await installAuthenticatedSession(page)
   await installApiMock(page)
 
@@ -78,6 +78,29 @@ test("exibe a duração nas agendas do contrato e do cliente e nos serviços do 
   await expect(
     page.getByRole("row").filter({ hasText: serviceFixture.name }).getByText("120 minutos", { exact: true }),
   ).toBeVisible()
+
+  await page.route(`**/api/v1/contracts/${contractFixture.id}`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json; charset=utf-8",
+      body: JSON.stringify({
+        success: true,
+        data: {
+          ...contractFixture,
+          services: contractFixture.services.map((service) => ({
+            ...service,
+            duration: 3,
+            durationType: "hours",
+          })),
+        },
+      }),
+    })
+  })
+
+  await page.goto(`/contratos/${contractFixture.id}?tab=servicos`)
+  const contractServiceRow = page.getByRole("row").filter({ hasText: serviceFixture.name })
+  await expect(contractServiceRow.getByText("3 horas", { exact: true })).toBeVisible()
+  await expect(contractServiceRow.getByText("120 minutos", { exact: true })).toHaveCount(0)
 })
 
 test("persiste o pagamento da parcela e sincroniza cliente, contrato e inadimplência", async ({ page }) => {

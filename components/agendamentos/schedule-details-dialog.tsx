@@ -41,6 +41,7 @@ interface ScheduleDetailsDialogProps {
   isStartingAttendance?: boolean
   canManage?: boolean
   canStart?: boolean
+  canStartOutsideScheduledDate?: boolean
   canReschedule?: boolean
   canEdit?: boolean
   onEdit?: () => void
@@ -80,6 +81,7 @@ export function ScheduleDetailsDialog({
   isStartingAttendance = false,
   canManage = true,
   canStart,
+  canStartOutsideScheduledDate = false,
   canReschedule,
   canEdit = false,
   onEdit,
@@ -220,8 +222,10 @@ export function ScheduleDetailsDialog({
   const isScheduledForToday = Boolean(
     scheduledDate && toCivilDateKey(scheduledDate) === toCivilDateKey(new Date()),
   )
-  const canStartAttendance = canStartAction && hasStartableStatus && isScheduledForToday
-  const isBlockedByScheduleDate = canStartAction && hasStartableStatus && !isScheduledForToday
+  const canStartAttendance =
+    canStartAction && hasStartableStatus && (isScheduledForToday || canStartOutsideScheduledDate)
+  const isBlockedByScheduleDate =
+    canStartAction && hasStartableStatus && !isScheduledForToday && !canStartOutsideScheduledDate
   const isBlockedByDelinquency = Boolean(schedule.isClientDelinquent && !canStartAction && hasStartableStatus)
   const canRescheduleSchedule = canRescheduleAction && ["draft", "scheduled", "rescheduled"].includes(schedule.status)
   const showAttendanceAction = canStartAttendance || isBlockedByScheduleDate || isBlockedByDelinquency || canRescheduleSchedule || (canManage && schedule.status === "draft")

@@ -125,9 +125,26 @@ test("confirma em modal ao vincular técnico com sobreposição de horário", as
 
   const conflictDialog = page.getByRole("dialog", { name: "Conflito de horário" })
   await expect(conflictDialog).toContainText("Eduardo terá um conflito de horário. Deseja continuar?")
+  await page.setViewportSize({ width: 360, height: 640 })
+
+  const dialogBox = await conflictDialog.boundingBox()
+  expect(dialogBox).not.toBeNull()
+  expect(dialogBox!.width).toBeLessThan(360)
+
   await expect(conflictDialog.getByRole("button", { name: "Cancelar" })).toBeVisible()
+  const suggestedButton = conflictDialog.getByRole("button", { name: "Usar horário sugerido" })
+  await expect(suggestedButton).toBeVisible()
   const continueButton = conflictDialog.getByRole("button", { name: "Continuar", exact: true })
   await expect(continueButton).toHaveClass(/bg-primary/)
+
+  for (const button of [suggestedButton, continueButton]) {
+    const buttonBox = await button.boundingBox()
+    expect(buttonBox).not.toBeNull()
+    expect(buttonBox!.x).toBeGreaterThanOrEqual(dialogBox!.x)
+    expect(buttonBox!.x + buttonBox!.width).toBeLessThanOrEqual(dialogBox!.x + dialogBox!.width)
+    expect(buttonBox!.y + buttonBox!.height).toBeLessThanOrEqual(640)
+  }
+
   await continueButton.click()
 
   await expect.poll(() => mock.getSavedPayload()).toMatchObject({
@@ -135,6 +152,7 @@ test("confirma em modal ao vincular técnico com sobreposição de horário", as
     allowConflict: true,
   })
   await expect(editDialog).toBeHidden()
+  await page.setViewportSize({ width: 1280, height: 720 })
 
   await scheduleRow.getByRole("button", { name: `Abrir ações do agendamento de ${longSchedule.clientName}` }).click()
   await page.getByRole("menuitem", { name: "Editar" }).click()

@@ -9,6 +9,11 @@ function canManageScheduleStatus(user: SchedulePermissionUser) {
   return permissions.includes("agenda_manage_status") || permissions.includes("settings_manage")
 }
 
+function canEditSchedules(user: SchedulePermissionUser) {
+  const permissions = user?.permissions ?? []
+  return permissions.includes("agenda_manage") || permissions.includes("settings_manage")
+}
+
 export function isScheduleResponsible(
   schedule: Pick<ScheduleRecord, "teams" | "additionalEmployees">,
   user: SchedulePermissionUser,
@@ -28,8 +33,10 @@ export function canStartSchedule(
   user: SchedulePermissionUser,
   teams: TeamRecord[],
 ) {
-  if (schedule.isClientDelinquent && !canManageScheduleStatus(user)) return false
-  if (["scheduled", "rescheduled"].includes(schedule.status) && canManageScheduleStatus(user)) return true
+  const canManageStatus = canManageScheduleStatus(user)
+  const hasGlobalStartPermission = canManageStatus || canEditSchedules(user)
+  if (schedule.isClientDelinquent && !canManageStatus) return false
+  if (["scheduled", "rescheduled"].includes(schedule.status) && hasGlobalStartPermission) return true
   if (schedule.canStartAttendance !== undefined) return schedule.canStartAttendance
 
   return ["scheduled", "rescheduled"].includes(schedule.status) && isScheduleResponsible(schedule, user, teams)
