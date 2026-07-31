@@ -57,7 +57,7 @@ test("exibe hífen sem ícone para equipe não definida na aba Serviços", async
   await expect(emptyAssignment.locator("xpath=ancestor::td[1]").locator("svg")).toHaveCount(0)
 })
 
-test("exibe as durações salvas nas agendas e nos serviços dos perfis", async ({ page }) => {
+test("exibe as durações e cláusulas salvas nos perfis", async ({ page }) => {
   await installAuthenticatedSession(page)
   await installApiMock(page)
 
@@ -91,6 +91,7 @@ test("exibe as durações salvas nas agendas e nos serviços dos perfis", async 
             ...service,
             duration: 3,
             durationType: "hours",
+            clauses: ["Cláusula exclusiva salva no contrato."],
           })),
         },
       }),
@@ -98,9 +99,14 @@ test("exibe as durações salvas nas agendas e nos serviços dos perfis", async 
   })
 
   await page.goto(`/contratos/${contractFixture.id}?tab=servicos`)
+  await expect(page.getByRole("columnheader", { name: "Descrição", exact: true })).toHaveCount(0)
   const contractServiceRow = page.getByRole("row").filter({ hasText: serviceFixture.name })
   await expect(contractServiceRow.getByText("3 horas", { exact: true })).toBeVisible()
   await expect(contractServiceRow.getByText("120 minutos", { exact: true })).toHaveCount(0)
+
+  await contractServiceRow.click()
+  await expect(page.getByRole("dialog").getByText("Cláusula exclusiva salva no contrato.", { exact: true })).toBeVisible()
+  await expect(page.getByRole("dialog").getByText(serviceFixture.clauses[0], { exact: true })).toHaveCount(0)
 })
 
 test("persiste o pagamento da parcela e sincroniza cliente, contrato e inadimplência", async ({ page }) => {

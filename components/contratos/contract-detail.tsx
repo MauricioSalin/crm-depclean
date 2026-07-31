@@ -1296,14 +1296,13 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
 
         <TabsContent value="services" className="mt-4">
           <div className="overflow-x-auto">
-            <Table className="min-w-[980px] table-fixed">
+            <Table className="min-w-[760px] table-fixed">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[15%]">Serviço</TableHead>
-                  <TableHead className="w-[28%]">Descrição</TableHead>
-                  <TableHead className="w-[14%]">Recorrência</TableHead>
-                  <TableHead className="w-[23%]">Equipe / Funcionários</TableHead>
-                  <TableHead className="w-[12%]">Duração</TableHead>
+                  <TableHead className="w-[22%]">Serviço</TableHead>
+                  <TableHead className="w-[18%]">Recorrência</TableHead>
+                  <TableHead className="w-[34%]">Equipe / Funcionários</TableHead>
+                  <TableHead className="w-[18%]">Duração</TableHead>
                   <TableHead className="w-[8%] text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
@@ -1331,11 +1330,6 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                         <div className="space-y-1">
                           <p className="font-medium">{serviceType?.name ?? service.serviceTypeId}</p>
                         </div>
-                      </TableCell>
-                      <TableCell className="max-w-0 text-muted-foreground">
-                        <span className="block truncate">
-                          {serviceType?.description || "Sem descrição cadastrada."}
-                        </span>
                       </TableCell>
                       <TableCell>
                         <Badge variant="secondary">
@@ -1577,7 +1571,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
         }
         clauses={
           selectedService
-            ? serviceTypeMap.get(selectedService.serviceTypeId)?.clauses ?? selectedService.clauses ?? []
+            ? selectedService.clauses ?? serviceTypeMap.get(selectedService.serviceTypeId)?.clauses ?? []
             : []
         }
         clausePrefix={selectedService ? String(contract.services.findIndex((service) => service.id === selectedService.id) + 1) : undefined}

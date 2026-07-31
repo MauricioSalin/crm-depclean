@@ -36,6 +36,8 @@ export function ContractStatusChart() {
     signed: 0,
     current: 0,
     expired: 0,
+    renewed: 0,
+    canceled: 0,
   }
   const legendData: ContractStatusPoint[] = [
     { name: "Aguardando envio", value: statusCounts.awaitingSend, color: "#F59E0B" },
