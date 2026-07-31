@@ -13,11 +13,20 @@ test("seleciona mês e ano e abre a primeira semana do período", async ({ page 
   await expect(page.locator("main")).toBeVisible()
 
   const periodButton = page.getByRole("button", { name: /Selecionar mês e ano:/ })
+  await expect(periodButton).toHaveCSS("cursor", "pointer")
+  await expect(periodButton).toHaveClass(/data-\[state=open\]:bg-muted\/70/)
   await periodButton.click()
+  await expect(periodButton).toHaveAttribute("data-state", "open")
 
-  await page.getByRole("combobox", { name: "Ano", exact: true }).click()
-  await page.getByRole("option", { name: "2027", exact: true }).click()
-  await page.getByRole("menu").getByRole("button", { name: "Set", exact: true }).click()
+  const yearPicker = page.getByRole("combobox", { name: "Ano", exact: true })
+  await expect(yearPicker).toHaveCSS("cursor", "pointer")
+  await yearPicker.click()
+  const yearOption = page.getByRole("option", { name: "2027", exact: true })
+  await expect(yearOption).toHaveCSS("cursor", "pointer")
+  await yearOption.click()
+  const monthOption = page.getByRole("menu").getByRole("button", { name: "Set", exact: true })
+  await expect(monthOption).toHaveCSS("cursor", "pointer")
+  await monthOption.click()
 
   await expect(periodButton).toHaveText("Ago. - Set. 2027")
   await expect(page.getByRole("button", { name: "QUA. 1", exact: true })).toBeVisible()

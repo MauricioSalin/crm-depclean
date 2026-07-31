@@ -64,37 +64,43 @@ export function ServiceDistribution({
           </>
         ) : (
           <>
-            <ResponsiveContainer width="100%" height={200}>
-              <PieChart>
-                <Pie
-                  data={chartEntries}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={55}
-                  outerRadius={90}
-                  dataKey="services"
-                  nameKey="label"
-                  startAngle={90}
-                  endAngle={450}
-                  isAnimationActive
-                  animationBegin={120}
-                  animationDuration={950}
-                  animationEasing="ease-out"
-                >
-                  {chartEntries.map((entry) => (
-                    <Cell key={entry.label} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "var(--card)",
-                    border: "1px solid var(--border)",
-                    borderRadius: "8px",
-                  }}
-                  formatter={(value: number, _name, item) => [`${item.payload.isEmpty ? 0 : value} serviços`, ""]}
-                />
-              </PieChart>
-            </ResponsiveContainer>
+            <div className="relative h-[200px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={chartEntries}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={55}
+                    outerRadius={90}
+                    dataKey="services"
+                    nameKey="label"
+                    startAngle={90}
+                    endAngle={450}
+                    isAnimationActive
+                    animationBegin={120}
+                    animationDuration={950}
+                    animationEasing="ease-out"
+                  >
+                    {chartEntries.map((entry) => (
+                      <Cell key={entry.label} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "var(--card)",
+                      border: "1px solid var(--border)",
+                      borderRadius: "8px",
+                    }}
+                    formatter={(value: number, _name, item) => [`${item.payload.isEmpty ? 0 : value} serviços`, ""]}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
+                <span className="text-3xl font-bold text-foreground">{total}</span>
+                <span className="mt-1 text-xs text-muted-foreground">serviços</span>
+              </div>
+            </div>
             <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 w-full">
               {chartEntries.map((entry) => (
                 <div key={entry.label} className="flex items-center gap-1.5 text-xs">

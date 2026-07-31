@@ -100,3 +100,38 @@ test("ações de excluir usam a mesma cor das demais ações nos menus", async (
     referenceName: "Editar",
   })
 })
+
+test("ações de excluir nos formulários são ghost, vermelhas e sem borda", async ({ page }) => {
+  for (const form of [
+    { path: "/clientes/client-e2e/editar", dialogTitle: "Excluir cliente" },
+    { path: "/contratos/contract-e2e/editar", dialogTitle: "Excluir contrato" },
+  ]) {
+    await page.goto(form.path)
+
+    const deleteButton = page.getByRole("button", { name: "Excluir", exact: true })
+    await expect(deleteButton).toBeVisible()
+    await expect(deleteButton).toHaveClass(/text-destructive/)
+    await expect(deleteButton).toHaveClass(/hover:bg-destructive\/10/)
+
+    const styles = await deleteButton.evaluate((element) => {
+      const computed = getComputedStyle(element)
+      return {
+        borderTopWidth: computed.borderTopWidth,
+        borderRightWidth: computed.borderRightWidth,
+        borderBottomWidth: computed.borderBottomWidth,
+        borderLeftWidth: computed.borderLeftWidth,
+      }
+    })
+
+    expect(styles).toEqual({
+      borderTopWidth: "0px",
+      borderRightWidth: "0px",
+      borderBottomWidth: "0px",
+      borderLeftWidth: "0px",
+    })
+
+    await deleteButton.click()
+    await expect(page.getByRole("heading", { name: form.dialogTitle, exact: true })).toBeVisible()
+    await page.keyboard.press("Escape")
+  }
+})

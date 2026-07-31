@@ -3153,13 +3153,13 @@ export function ContractForm({
           {isEditing && contractId && canDeleteContracts ? (
             <Button
               type="button"
-              variant="outline"
-              className="max-sm:col-span-2"
+              variant="ghost"
+              className="max-sm:col-span-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
               onClick={() => setRemoveDialogOpen(true)}
               disabled={deleteMutation.isPending || updateMutation.isPending}
             >
               <Trash2 className="w-4 h-4 mr-2" />
-              Remover
+              Excluir
             </Button>
           ) : null}
           <Button
@@ -3237,11 +3237,11 @@ export function ContractForm({
 
       <ConfirmActionDialog
         open={canDeleteContracts && removeDialogOpen}
-        title="Remover contrato"
-        description={`Tem certeza que deseja remover ${
+        title="Excluir contrato"
+        description={`Tem certeza que deseja excluir ${
           contract?.contractNumber ? `o contrato ${formatContractNumber(contract.contractNumber)}` : "este contrato"
         }? Esta ação não pode ser desfeita.`}
-        confirmLabel="Remover"
+        confirmLabel="Excluir contrato"
         busy={deleteMutation.isPending}
         onOpenChange={setRemoveDialogOpen}
         onConfirm={() => {

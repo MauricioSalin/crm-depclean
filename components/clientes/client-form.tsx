@@ -1338,8 +1338,8 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
         {isEditing && clientId && canDeleteClients ? (
           <Button
             type="button"
-            variant="outline"
-            className="max-sm:col-span-2"
+            variant="ghost"
+            className="max-sm:col-span-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
             onClick={() => setRemoveDialogOpen(true)}
             disabled={deleteMutation.isPending || saveMutation.isPending}
           >

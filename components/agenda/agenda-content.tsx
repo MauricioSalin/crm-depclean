@@ -216,6 +216,16 @@ function canEditSchedule(schedule: Pick<ScheduleRecord, "status">, canManageLock
   return true
 }
 
+function canShowScheduleEditAction(
+  schedule: Pick<ScheduleRecord, "status">,
+  canManageAgenda: boolean,
+  canManageScheduleStatus: boolean,
+  canManageLockedSchedules: boolean,
+) {
+  if (schedule.status === "cancelled") return false
+  return canManageScheduleStatus || (canManageAgenda && canEditSchedule(schedule, canManageLockedSchedules))
+}
+
 export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -784,6 +794,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
 
   const handleEditService = (service: AgendaScheduledServiceRow) => {
     if (!canOpenScheduleEditor) return
+    if (service.status === "cancelled") return
     if (canManageAgenda && !canEditSchedule(service, canManageLockedSchedules)) return
 
     clearScheduleDialogResetTimeout()
@@ -966,8 +977,12 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
         canReschedule={canManageAgenda}
         canEdit={Boolean(
           selectedSchedule &&
-            (canManageScheduleStatus ||
-              (canManageAgenda && canEditSchedule(selectedSchedule, canManageLockedSchedules))),
+            canShowScheduleEditAction(
+              selectedSchedule,
+              canManageAgenda,
+              canManageScheduleStatus,
+              canManageLockedSchedules,
+            ),
         )}
         onEdit={() => {
           if (selectedSchedule) handleEditService(selectedSchedule)
@@ -1394,7 +1409,12 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
 
                             {canOpenScheduleEditor ? (
                             <div className="mt-2 flex gap-1" onClick={(event) => event.stopPropagation()}>
-                              {(canManageScheduleStatus || (canManageAgenda && canEditSchedule(service, canManageLockedSchedules))) && (
+                              {canShowScheduleEditAction(
+                                service,
+                                canManageAgenda,
+                                canManageScheduleStatus,
+                                canManageLockedSchedules,
+                              ) && (
                                 <Button
                                   variant="outline"
                                   size="sm"
@@ -1584,7 +1604,12 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
 
                             {canOpenScheduleEditor ? (
                             <div className="mt-2 flex gap-1" onClick={(event) => event.stopPropagation()}>
-                              {(canManageScheduleStatus || (canManageAgenda && canEditSchedule(service, canManageLockedSchedules))) && (
+                              {canShowScheduleEditAction(
+                                service,
+                                canManageAgenda,
+                                canManageScheduleStatus,
+                                canManageLockedSchedules,
+                              ) && (
                                 <Button
                                   variant="outline"
                                   size="sm"

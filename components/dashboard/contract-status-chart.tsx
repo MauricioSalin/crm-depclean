@@ -36,7 +36,6 @@ export function ContractStatusChart() {
     signed: 0,
     current: 0,
     expired: 0,
-    canceled: 0,
   }
   const legendData: ContractStatusPoint[] = [
     { name: "Aguardando envio", value: statusCounts.awaitingSend, color: "#F59E0B" },
@@ -45,7 +44,6 @@ export function ContractStatusChart() {
     { name: "Vigentes", value: statusCounts.current, color: "var(--primary)" },
     { name: "Vencidos", value: statusCounts.expired, color: "#EF4444" },
     { name: "Renovados", value: statusCounts.renewed ?? 0, color: "#6366F1" },
-    { name: "Cancelados", value: statusCounts.canceled, color: "#94A3B8" },
   ]
   const totalContracts = legendData.reduce((total, item) => total + item.value, 0)
   const hasContractData = totalContracts > 0
@@ -67,32 +65,29 @@ export function ContractStatusChart() {
         </Link>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col items-center justify-center">
+      <div className="min-h-0 flex-1">
         {isLoading ? (
-          <>
-            <div className="relative my-2 aspect-square w-full max-w-[190px] shrink-0 animate-pulse rounded-full bg-muted">
-              <div className="absolute inset-12 rounded-full bg-card" />
+          <div className="flex min-h-full w-full flex-col items-center justify-center gap-5 py-2">
+            <div className="relative aspect-square w-full max-w-[240px] animate-pulse rounded-full bg-muted">
+              <div className="absolute inset-[28%] rounded-full bg-card" />
             </div>
-            <div className="grid w-full grid-cols-1 gap-2 min-[420px]:grid-cols-2">
-              {Array.from({ length: 2 }, (_, index) => (
-                <div key={index} className="rounded-xl border bg-card p-3">
-                  <Skeleton className="mb-2 h-3 w-16" />
-                  <Skeleton className="h-5 w-10" />
-                </div>
+            <div className="flex w-full flex-wrap items-center justify-center gap-x-4 gap-y-2">
+              {Array.from({ length: 6 }, (_, index) => (
+                <Skeleton key={index} className="h-3 w-24" />
               ))}
             </div>
-          </>
+          </div>
         ) : (
-          <>
-            <div className="relative aspect-square w-full max-w-[220px] shrink-0">
+          <div className="flex min-h-full w-full flex-col items-center justify-center gap-5 py-2">
+            <div className="relative aspect-square w-full max-w-[250px]">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
                     data={chartData}
                     cx="50%"
                     cy="50%"
-                    innerRadius="58%"
-                    outerRadius="86%"
+                    innerRadius="54%"
+                    outerRadius="82%"
                     dataKey="value"
                     nameKey="name"
                     startAngle={90}
@@ -126,25 +121,23 @@ export function ContractStatusChart() {
               </div>
             </div>
 
-            <div className="grid w-full grid-cols-1 gap-2 min-[420px]:grid-cols-2">
-              {legendData.map((item) => {
-                const percentage = totalContracts > 0 ? Math.round((item.value / totalContracts) * 100) : 0
+            <div className="flex w-full flex-col items-center gap-2 px-2">
+              {[legendData.slice(0, 3), legendData.slice(3)].map((row, rowIndex) => (
+                <div key={rowIndex} className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
+                  {row.map((item) => {
+                    const percentage = totalContracts > 0 ? Math.round((item.value / totalContracts) * 100) : 0
 
-                return (
-                  <div key={item.name} className="rounded-xl border bg-card p-3">
-                    <div className="mb-2 flex min-w-0 items-start gap-2">
-                      <span className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: item.color }} />
-                      <span className="min-w-0 text-xs leading-tight text-muted-foreground">{item.name}</span>
-                    </div>
-                    <div className="flex items-end justify-between gap-2">
-                      <span className="text-xl font-semibold text-foreground">{item.value}</span>
-                      <span className="text-xs text-muted-foreground">{percentage}%</span>
-                    </div>
-                  </div>
-                )
-              })}
+                    return (
+                      <div key={item.name} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: item.color }} />
+                        <span>{item.name}: {percentage}%</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              ))}
             </div>
-          </>
+          </div>
         )}
       </div>
     </Card>

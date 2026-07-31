@@ -94,7 +94,7 @@ test("explica e identifica os modos do valor global", async ({ page }) => {
   const generalOption = page.getByRole("menuitemradio", { name: "Geral", exact: true })
   const activeContractsOption = page.getByRole("menuitemradio", { name: "Contratos Vigentes", exact: true })
   await generalOption.hover()
-  const generalTooltip = page.locator('[data-slot="tooltip-content"]').filter({ hasText: "Contratos vigentes, vencidos e renovados, serviços e extras." })
+  const generalTooltip = page.locator('[data-slot="tooltip-content"]').filter({ hasText: "Contratos vigentes, vencidos, renovados, serviços e extras." })
   await expect(generalTooltip).toBeVisible()
   await expect(generalTooltip).toHaveAttribute("data-side", "right")
 
@@ -106,4 +106,24 @@ test("explica e identifica os modos do valor global", async ({ page }) => {
   await expect(activeContractsOption).toBeVisible()
   await activeContractsOption.click()
   await expect(globalValuePicker).toHaveText("Contratos Vigentes")
+})
+
+test("mantém o seletor do faturamento ativo e com cursor de clique", async ({ page }) => {
+  await page.goto("/")
+
+  const revenuePeriodPicker = page.getByRole("button", { name: "Selecionar mês do faturamento" })
+  await expect(revenuePeriodPicker).toHaveCSS("cursor", "pointer")
+  await expect(revenuePeriodPicker).toHaveClass(/data-\[state=open\]:bg-primary\/15/)
+  await revenuePeriodPicker.click()
+  await expect(revenuePeriodPicker).toHaveAttribute("data-state", "open")
+
+  const yearPicker = page.getByRole("combobox").filter({ hasText: "2026" })
+  await expect(yearPicker).toHaveCSS("cursor", "pointer")
+  await yearPicker.click()
+  const yearOption = page.getByRole("option", { name: "2026", exact: true })
+  await expect(yearOption).toHaveCSS("cursor", "pointer")
+  await yearOption.click()
+
+  const monthOption = page.getByRole("menu").getByRole("button", { name: "Ago", exact: true })
+  await expect(monthOption).toHaveCSS("cursor", "pointer")
 })

@@ -2,8 +2,7 @@
 
 import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { ArrowRight, CalendarClock, ChevronDown } from "lucide-react"
-import Link from "next/link"
+import { CalendarClock, ChevronDown } from "lucide-react"
 import {
   Bar,
   BarChart,
@@ -14,7 +13,6 @@ import {
   YAxis,
 } from "recharts"
 
-import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import {
   DropdownMenu,
@@ -49,12 +47,6 @@ type RenewalPeriod = (typeof RENEWAL_PERIOD_OPTIONS)[number]
 
 function formatRenewalPeriod(months: RenewalPeriod) {
   return `${months} ${months === 1 ? "mês" : "meses"}`
-}
-
-function formatRenewalDescription(months: RenewalPeriod) {
-  return months === 1
-    ? "Vencimentos no próximo mês"
-    : `Vencimentos nos próximos ${months} meses`
 }
 
 function RenewalBarChart({
@@ -159,34 +151,29 @@ export function ContractRenewalChart() {
 
   return (
     <Card className="flex h-full min-w-0 flex-col p-4 transition-all duration-500 hover:shadow-xl lg:min-h-[360px]">
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <h2 className="text-lg font-semibold text-foreground">Renovações de Contratos</h2>
+      <Tabs defaultValue="contracts" className="@container flex min-h-0 flex-1 flex-col">
+        <div className="mb-3 flex flex-col gap-3 @min-[600px]:flex-row @min-[600px]:items-center @min-[600px]:justify-between">
+          <div className="flex min-w-0 items-center gap-2">
+            <h2 className="min-w-0 truncate text-lg font-semibold text-foreground">Renovações de Contratos</h2>
             {renewalPeriodPicker}
           </div>
-          <p className="text-xs text-muted-foreground">{formatRenewalDescription(renewalPeriod)}</p>
+          <TabsList className="grid w-full shrink-0 grid-cols-2 @min-[600px]:w-[190px]">
+            <TabsTrigger value="contracts" className="text-xs">Quantidade</TabsTrigger>
+            <TabsTrigger value="value" className="text-xs">Valor</TabsTrigger>
+          </TabsList>
         </div>
-        <Link href="/contratos">
-          <Button variant="ghost" size="sm" className="text-xs text-foreground hover:text-foreground/80">
-            Ver contratos
-            <ArrowRight className="ml-1 h-3 w-3" />
-          </Button>
-        </Link>
-      </div>
 
-      {isLoading ? (
-        <div className="flex min-h-0 flex-1 flex-col">
-          <div className="mb-3 grid grid-cols-2 gap-2">
-            <Skeleton className="h-14 rounded-xl" />
-            <Skeleton className="h-14 rounded-xl" />
+        {isLoading ? (
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div className="mb-3 grid w-full grid-cols-2 gap-2">
+              <Skeleton className="h-14 rounded-xl" />
+              <Skeleton className="h-14 rounded-xl" />
+            </div>
+            <Skeleton className="min-h-[220px] flex-1 rounded-xl" />
           </div>
-          <Skeleton className="min-h-[220px] flex-1 rounded-xl" />
-        </div>
-      ) : (
-        <Tabs defaultValue="contracts" className="flex min-h-0 flex-1 flex-col">
-          <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div className="grid flex-1 grid-cols-2 gap-2">
+        ) : (
+          <>
+            <div className="mb-3 grid w-full grid-cols-2 gap-2">
               <div className="rounded-xl border bg-card px-3 py-2">
                 <p className="text-[11px] text-muted-foreground">A vencer</p>
                 <p className="text-lg font-semibold">{totalContracts} contrato{totalContracts === 1 ? "" : "s"}</p>
@@ -196,32 +183,28 @@ export function ContractRenewalChart() {
                 <p className="text-lg font-semibold">{currencyFormatter.format(totalValue)}</p>
               </div>
             </div>
-            <TabsList className="grid grid-cols-2 sm:w-[190px]">
-              <TabsTrigger value="contracts" className="text-xs">Quantidade</TabsTrigger>
-              <TabsTrigger value="value" className="text-xs">Valor</TabsTrigger>
-            </TabsList>
-          </div>
 
-          {hasData ? (
-            <>
-              <TabsContent value="contracts" className="mt-0 min-h-[220px] flex-1">
-                <RenewalBarChart data={data} mode="contracts" />
-              </TabsContent>
-              <TabsContent value="value" className="mt-0 min-h-[220px] flex-1">
-                <RenewalBarChart data={data} mode="value" />
-              </TabsContent>
-            </>
-          ) : (
-            <div className="flex min-h-[220px] flex-1 flex-col items-center justify-center rounded-xl border border-dashed text-center">
-              <CalendarClock className="mb-2 h-8 w-8 text-primary/70" />
-              <p className="text-sm font-medium">Nenhum vencimento próximo</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Não há contratos assinados vencendo nesse período.
-              </p>
-            </div>
-          )}
-        </Tabs>
-      )}
+            {hasData ? (
+              <>
+                <TabsContent value="contracts" className="mt-0 min-h-[220px] flex-1">
+                  <RenewalBarChart data={data} mode="contracts" />
+                </TabsContent>
+                <TabsContent value="value" className="mt-0 min-h-[220px] flex-1">
+                  <RenewalBarChart data={data} mode="value" />
+                </TabsContent>
+              </>
+            ) : (
+              <div className="flex min-h-[220px] flex-1 flex-col items-center justify-center rounded-xl border border-dashed text-center">
+                <CalendarClock className="mb-2 h-8 w-8 text-primary/70" />
+                <p className="text-sm font-medium">Nenhum vencimento próximo</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Não há contratos assinados vencendo nesse período.
+                </p>
+              </div>
+            )}
+          </>
+        )}
+      </Tabs>
     </Card>
   )
 }
