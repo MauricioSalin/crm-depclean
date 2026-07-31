@@ -112,8 +112,9 @@ function CommandList({
   return (
     <CommandPrimitive.List
       data-slot="command-list"
+      data-pull-to-refresh="disabled"
       className={cn(
-        'max-h-[300px] scroll-py-1 overflow-x-hidden overflow-y-auto',
+        'max-h-[300px] touch-pan-y scroll-py-1 overflow-x-hidden overflow-y-auto overscroll-contain [-webkit-overflow-scrolling:touch]',
         className,
       )}
       onWheel={handleWheel}

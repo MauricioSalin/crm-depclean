@@ -5,6 +5,7 @@ import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { XIcon } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
+import { OverlayPortalContainerProvider } from '@/components/ui/overlay-portal-context'
 
 function Dialog({
   ...props
@@ -50,33 +51,47 @@ function DialogContent({
   className,
   children,
   showCloseButton = true,
+  ref,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
 }) {
+  const [portalContainer, setPortalContainer] = React.useState<HTMLElement | null>(null)
+  const setContentRef = React.useCallback((node: HTMLDivElement | null) => {
+    setPortalContainer(node)
+    if (typeof ref === 'function') {
+      ref(node)
+    } else if (ref) {
+      ref.current = node
+    }
+  }, [ref])
+
   return (
     <DialogPortal data-slot="dialog-portal">
       <DialogOverlay />
-      <DialogPrimitive.Content
-        data-slot="dialog-content"
-        className={cn(
-          'bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-[210] grid max-h-[calc(100dvh-2rem)] w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-6 overflow-y-auto overflow-x-hidden rounded-lg border p-6 shadow-lg duration-200 sm:max-w-lg',
-          showCloseButton && '[&_[data-slot=dialog-header]]:pr-14 sm:[&_[data-slot=dialog-header]]:pr-16',
-          className,
-        )}
-        {...props}
-      >
-        {showCloseButton && (
-          <DialogPrimitive.Close
-            data-slot="dialog-close"
-            className="ring-offset-background focus-visible:ring-ring absolute top-4 right-4 z-20 inline-flex size-8 cursor-pointer items-center justify-center rounded-full bg-transparent text-muted-foreground opacity-100 transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-hidden disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
-          >
-            <XIcon />
-            <span className="sr-only">Fechar</span>
-          </DialogPrimitive.Close>
-        )}
-        {children}
-      </DialogPrimitive.Content>
+      <OverlayPortalContainerProvider container={portalContainer}>
+        <DialogPrimitive.Content
+          ref={setContentRef}
+          data-slot="dialog-content"
+          className={cn(
+            'bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-[210] grid max-h-[calc(100dvh-2rem)] w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-6 overflow-y-auto overflow-x-hidden rounded-lg border p-6 shadow-lg duration-200 sm:max-w-lg',
+            showCloseButton && '[&_[data-slot=dialog-header]]:pr-14 sm:[&_[data-slot=dialog-header]]:pr-16',
+            className,
+          )}
+          {...props}
+        >
+          {showCloseButton && (
+            <DialogPrimitive.Close
+              data-slot="dialog-close"
+              className="ring-offset-background focus-visible:ring-ring absolute top-4 right-4 z-20 inline-flex size-8 cursor-pointer items-center justify-center rounded-full bg-transparent text-muted-foreground opacity-100 transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-hidden disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
+            >
+              <XIcon />
+              <span className="sr-only">Fechar</span>
+            </DialogPrimitive.Close>
+          )}
+          {children}
+        </DialogPrimitive.Content>
+      </OverlayPortalContainerProvider>
     </DialogPortal>
   )
 }

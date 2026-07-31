@@ -5,6 +5,7 @@ import * as SelectPrimitive from '@radix-ui/react-select'
 import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
+import { useOverlayPortalContainer } from '@/components/ui/overlay-portal-context'
 
 function updateBodySelectOpenAttribute(isOpen: boolean, registeredRef: React.MutableRefObject<boolean>) {
   if (typeof document === 'undefined' || registeredRef.current === isOpen) return
@@ -102,10 +103,13 @@ function SelectContent({
   updatePositionStrategy = 'always',
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Content>) {
+  const portalContainer = useOverlayPortalContainer()
+
   return (
-    <SelectPrimitive.Portal>
+    <SelectPrimitive.Portal container={portalContainer || undefined}>
       <SelectPrimitive.Content
         data-slot="select-content"
+        data-pull-to-refresh="disabled"
         className={cn(
           'bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 relative z-[220] max-h-(--radix-select-content-available-height) min-w-[8rem] origin-(--radix-select-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-md border shadow-md',
           position === 'popper' &&
@@ -118,8 +122,10 @@ function SelectContent({
       >
         <SelectScrollUpButton />
         <SelectPrimitive.Viewport
+          data-slot="select-viewport"
+          data-pull-to-refresh="disabled"
           className={cn(
-            'p-1',
+            'touch-pan-y overflow-y-auto overscroll-contain p-1 [-webkit-overflow-scrolling:touch]',
             position === 'popper' &&
               'h-[var(--radix-select-trigger-height)] w-full min-w-[var(--radix-select-trigger-width)] scroll-my-1',
           )}
