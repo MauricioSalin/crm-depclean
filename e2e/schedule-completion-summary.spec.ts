@@ -16,17 +16,21 @@ const completionEmployees = [
 
 test("conclui o atendimento com motorista opcional, ajudantes e observações", async ({ page }) => {
   const date = todayKey()
-  const inProgressSchedule = {
+  let inProgressSchedule = {
     ...scheduleFixture,
     date,
     status: "in_progress" as const,
     completionStartDate: date,
     completionStartTime: "08:00",
-    naAttachments: [{ fileName: "na-e2e.pdf", documentUrl: "/files/na-e2e.pdf" }],
+    naAttachments: [
+      { fileName: "na-remover.pdf", documentUrl: "/files/na-remover.pdf" },
+      { fileName: "na-manter.pdf", documentUrl: "/files/na-manter.pdf" },
+    ],
     attendanceDriver: null,
     attendanceHelpers: [],
   }
   let completionPayload: Record<string, unknown> | null = null
+  let deletedNaDocumentUrl = ""
 
   await installAuthenticatedSession(page)
   await installApiMock(page)
@@ -49,6 +53,22 @@ test("conclui o atendimento com motorista opcional, ajudantes e observações", 
         status: 200,
         contentType: "application/json; charset=utf-8",
         body: JSON.stringify({ success: true, data: [inProgressSchedule] }),
+      })
+      return
+    }
+
+    if (request.method() === "DELETE" && path.endsWith(`/schedules/${inProgressSchedule.id}/na`)) {
+      deletedNaDocumentUrl = url.searchParams.get("documentUrl") ?? ""
+      inProgressSchedule = {
+        ...inProgressSchedule,
+        naAttachments: inProgressSchedule.naAttachments.filter(
+          (attachment) => attachment.documentUrl !== deletedNaDocumentUrl,
+        ),
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json; charset=utf-8",
+        body: JSON.stringify({ success: true, data: inProgressSchedule }),
       })
       return
     }
@@ -82,8 +102,23 @@ test("conclui o atendimento com motorista opcional, ajudantes e observações", 
   await page.getByRole("button", { name: /Condomínio E2E/ }).click()
 
   await expect(page.getByRole("heading", { name: "NAs do atendimento" })).toBeVisible()
-  await page.getByRole("button", { name: "Continuar", exact: true }).click()
-  await expect(page.getByRole("heading", { name: "Dados do atendimento" })).toBeVisible()
+  await expect(page.getByRole("link", { name: "Visualizar na-remover.pdf" })).toBeVisible()
+  await expect(page.getByText("Abrir", { exact: true })).toHaveCount(0)
+  await page.getByRole("button", { name: "Remover na-remover.pdf" }).click()
+  const removeDialog = page.getByRole("alertdialog", { name: "Remover NA?" })
+  await expect(removeDialog).toBeVisible()
+  await removeDialog.getByRole("button", { name: "Remover NA", exact: true }).click()
+  await expect.poll(() => deletedNaDocumentUrl).toBe("/files/na-remover.pdf")
+  await expect(page.getByText("na-remover.pdf", { exact: true })).toHaveCount(0)
+  await expect(page.getByText("na-manter.pdf", { exact: true })).toBeVisible()
+  await expect(page.getByText("1 anexo", { exact: true })).toBeVisible()
+  await page.getByRole("button", { name: "Ver informações", exact: true }).click()
+  const detailsDialog = page.getByRole("dialog", { name: new RegExp(inProgressSchedule.clientName) })
+  await expect(detailsDialog.getByText(inProgressSchedule.serviceTypeName, { exact: true })).toBeVisible()
+  await page.getByRole("button", { name: "Voltar para NAs do atendimento" }).click()
+  await expect(page.getByRole("heading", { name: "NAs do atendimento" })).toBeVisible()
+  await page.getByRole("button", { name: "Encerrar atendimento", exact: true }).click()
+  await expect(page.getByRole("heading", { name: "Encerrar atendimento" })).toBeVisible()
 
   await page.getByLabel("Horário de início *").fill("08:00")
   await page.getByLabel("Horário de fim *").fill("10:30")
@@ -114,14 +149,15 @@ test("conclui o atendimento com motorista opcional, ajudantes e observações", 
 })
 
 test("mostra os dados concluídos e baixa o resumo pelo botão Exportar", async ({ page }) => {
-  const date = todayKey()
+  const date = "2026-08-04"
   const completedSchedule = {
     ...scheduleFixture,
     date,
+    time: "07:15",
     status: "completed" as const,
-    completionStartDate: date,
+    completionStartDate: "2026-08-03",
     completionStartTime: "08:00",
-    completionEndDate: date,
+    completionEndDate: "2026-08-03",
     completionEndTime: "10:30",
     serviceReport: "Atendimento concluído sem intercorrências.",
     attendanceDriver: { id: "employee-driver", name: "Motorista E2E" },
@@ -173,6 +209,15 @@ test("mostra os dados concluídos e baixa o resumo pelo botão Exportar", async 
 
   await page.goto(`/agenda?date=${date}&scheduleId=${completedSchedule.id}`)
 
+  const detailsDialog = page.getByRole("dialog", { name: new RegExp(completedSchedule.clientName) })
+  const detailCards = detailsDialog.locator("[data-schedule-detail-card]")
+  await expect(detailCards.nth(0)).toHaveAttribute("data-schedule-detail-card", "execution")
+  await expect(detailCards.nth(1)).toHaveAttribute("data-schedule-detail-card", "service")
+  await expect(detailsDialog.locator('[data-schedule-detail-card="execution"]')).toContainText(
+    "03/08/2026 às 08:00 até 03/08/2026 às 10:30",
+  )
+  await expect(detailsDialog.locator('[data-schedule-detail-card="scheduled-date"]')).toContainText("04/08/2026")
+  await expect(detailsDialog.locator('[data-schedule-detail-card="scheduled-time"]')).toContainText("07:15 • 120 minutos")
   await expect(page.getByText("Motorista E2E", { exact: true })).toBeVisible()
   await expect(page.getByText("Ajudante Um • Ajudante Dois", { exact: true })).toBeVisible()
   await expect(page.getByText("Atendimento concluído sem intercorrências.", { exact: true })).toBeVisible()

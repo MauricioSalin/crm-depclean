@@ -41,3 +41,16 @@ export function canStartSchedule(
 
   return ["scheduled", "rescheduled"].includes(schedule.status) && isScheduleResponsible(schedule, user, teams)
 }
+
+export function canAccessScheduleCompletion(
+  schedule: Pick<ScheduleRecord, "status" | "canAttachNa">,
+  user: SchedulePermissionUser,
+) {
+  if (schedule.status !== "in_progress") return false
+
+  return Boolean(
+    schedule.canAttachNa ||
+    canManageScheduleStatus(user) ||
+    canEditSchedules(user),
+  )
+}

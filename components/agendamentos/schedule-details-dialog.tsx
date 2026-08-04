@@ -46,6 +46,8 @@ interface ScheduleDetailsDialogProps {
   canReschedule?: boolean
   canEdit?: boolean
   onEdit?: () => void
+  onBack?: () => void
+  backLabel?: string
 }
 
 function getStatusLabel(status: ScheduleRecord["status"]) {
@@ -86,6 +88,8 @@ export function ScheduleDetailsDialog({
   canReschedule,
   canEdit = false,
   onEdit,
+  onBack,
+  backLabel = "Voltar",
 }: ScheduleDetailsDialogProps) {
   const isMobile = useIsMobile()
   const queryClient = useQueryClient()
@@ -232,14 +236,8 @@ export function ScheduleDetailsDialog({
 
   if (!schedule) return null
 
-  const displayedDate =
-    schedule.status === "completed" && schedule.completionStartDate
-      ? schedule.completionStartDate
-      : schedule.date
-  const displayedTime =
-    schedule.status === "completed" && schedule.completionStartTime
-      ? schedule.completionStartTime
-      : schedule.time
+  const displayedDate = schedule.date
+  const displayedTime = schedule.time
   const assignees = [
     ...schedule.teams.map((team) => team.name),
     ...schedule.additionalEmployees.map((employee) => employee.name),
@@ -336,6 +334,22 @@ export function ScheduleDetailsDialog({
             : "sm:max-w-xl lg:max-w-2xl",
         )}
       >
+        {onBack && mode === "details" ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            aria-label={backLabel}
+            className={cn(
+              "absolute left-3 z-20 gap-1.5 px-2 text-muted-foreground hover:text-foreground",
+              isMobile ? "top-[calc(env(safe-area-inset-top)+0.85rem)]" : "top-3",
+            )}
+            onClick={onBack}
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Voltar
+          </Button>
+        ) : null}
         {canEdit && onEdit && mode === "details" ? (
           <button
             type="button"
@@ -547,16 +561,8 @@ export function ScheduleDetailsDialog({
             </div>
 
             <div className="mt-3 grid gap-3 md:grid-cols-2">
-              <div className="rounded-2xl border p-4 md:col-span-2">
-                <div className="mb-2 flex items-center gap-2 text-sm font-medium">
-                  <Sparkles className="h-4 w-4 text-primary" />
-                  Serviço
-                </div>
-                <p className="text-sm text-foreground">{schedule.serviceTypeName}</p>
-              </div>
-
               {schedule.status === "completed" ? (
-                <div className="rounded-2xl border border-primary/20 bg-primary/[0.03] p-4 md:col-span-2">
+                <div data-schedule-detail-card="execution" className="rounded-2xl border border-primary/20 bg-primary/[0.03] p-4 md:col-span-2">
                   <div className="mb-3 flex items-center gap-2 text-sm font-medium">
                     <Clock3 className="h-4 w-4 text-primary" />
                     Execução do atendimento
@@ -586,7 +592,15 @@ export function ScheduleDetailsDialog({
                 </div>
               ) : null}
 
-              <div className="rounded-2xl border p-4">
+              <div data-schedule-detail-card="service" className="rounded-2xl border p-4 md:col-span-2">
+                <div className="mb-2 flex items-center gap-2 text-sm font-medium">
+                  <Sparkles className="h-4 w-4 text-primary" />
+                  Serviço
+                </div>
+                <p className="text-sm text-foreground">{schedule.serviceTypeName}</p>
+              </div>
+
+              <div data-schedule-detail-card="scheduled-date" className="rounded-2xl border p-4">
                 <div className="mb-2 flex items-center gap-2 text-sm font-medium">
                   <CalendarDays className="h-4 w-4 text-primary" />
                   Data
@@ -594,7 +608,7 @@ export function ScheduleDetailsDialog({
                 <p className="text-sm text-muted-foreground">{formatScheduleDate(displayedDate)}</p>
               </div>
 
-              <div className="rounded-2xl border p-4">
+              <div data-schedule-detail-card="scheduled-time" className="rounded-2xl border p-4">
                 <div className="mb-2 flex items-center gap-2 text-sm font-medium">
                   <Clock3 className="h-4 w-4 text-primary" />
                   Horário e duração

@@ -12,13 +12,17 @@ import { ContractStatusChart } from "@/components/dashboard/contract-status-char
 import { ContractRenewalChart } from "@/components/dashboard/contract-renewal-chart"
 import { ServiceDistribution } from "@/components/dashboard/project-progress"
 import { LiveServicesWidget } from "@/components/dashboard/custom-dashboard-widgets"
+import { ScheduleShortcutDialog } from "@/components/dashboard/schedule-shortcut-dialog"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { DateRangePicker } from "@/components/ui/date-range-picker"
 import type { DashboardAnalyticsParams } from "@/lib/api/analytics"
+import { hasAnyPermission } from "@/lib/auth/permissions"
 import { getStoredUser } from "@/lib/auth/session"
+import { useCurrentUser } from "@/hooks/use-permissions"
 import { toCivilDateKey } from "@/lib/date-utils"
 import { useUrlDateRangeState } from "@/lib/hooks/use-url-date-range-state"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
+import type { ScheduleRecord } from "@/lib/api/schedules"
 
 const PERIOD_OPTIONS = [30, 60, 90] as const
 type DashboardPeriod = (typeof PERIOD_OPTIONS)[number]
@@ -29,12 +33,16 @@ function formatDateParam(date?: Date) {
 }
 
 export function DashboardContent() {
+  const currentUser = useCurrentUser()
+  const canViewFullDashboard = hasAnyPermission(currentUser, ["dashboard_view"])
+  const canViewAgenda = hasAnyPermission(currentUser, ["agenda_own_view", "agenda_view"])
   const [periodParam, setPeriodParam] = useUrlQueryState("period", "30", { debounceMs: 0 })
   const periodTab: DashboardPeriodTab = periodParam === "custom"
     ? "custom"
     : PERIOD_OPTIONS.find((period) => String(period) === periodParam) ?? 30
   const [dateRange, setDateRange] = useUrlDateRangeState()
   const [isCustomDatePickerOpen, setIsCustomDatePickerOpen] = useState(false)
+  const [shortcutSchedule, setShortcutSchedule] = useState<ScheduleRecord | null>(null)
   const dashboardStorageKey = useMemo(() => {
     const user = getStoredUser()
     return `depclean:dashboard-widgets:${user?.id ?? user?.email ?? "default"}`
@@ -117,6 +125,20 @@ export function DashboardContent() {
       </AnimatePresence>
     </div>
   )
+  const scheduleWidgets = (
+    <div className="grid grid-cols-1 gap-3 md:gap-4 lg:grid-cols-2">
+      <div className="h-full">
+        <LiveServicesWidget
+          storageKey={`${dashboardStorageKey}:live-services-status`}
+          enabled={canViewAgenda}
+          onScheduleOpen={setShortcutSchedule}
+        />
+      </div>
+      <div className="h-full">
+        <UpcomingServices enabled={canViewAgenda} onScheduleOpen={setShortcutSchedule} />
+      </div>
+    </div>
+  )
 
   return (
     <>
@@ -125,42 +147,47 @@ export function DashboardContent() {
         description="Visão geral da operação da Depclean."
       />
 
-      <div className="mt-3">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-          {periodControls}
+      {canViewFullDashboard ? (
+        <div className="mt-3">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+            {periodControls}
+          </div>
         </div>
-      </div>
+      ) : null}
 
       <div className="mt-4 md:mt-5 space-y-3 md:space-y-4">
-        <StatsCards {...dashboardParams} />
+        {canViewFullDashboard ? (
+          <>
+            <StatsCards {...dashboardParams} />
 
-        <div className="grid grid-cols-1 gap-3 md:gap-4 lg:grid-cols-3">
-          <div className="h-full lg:col-span-2">
-            <ProjectAnalytics {...dashboardParams} />
-          </div>
-          <div className="h-full">
-            <ServiceDistribution showDescription={false} {...dashboardParams} />
-          </div>
-        </div>
+            <div className="grid grid-cols-1 gap-3 md:gap-4 lg:grid-cols-3">
+              <div className="h-full lg:col-span-2">
+                <ProjectAnalytics {...dashboardParams} />
+              </div>
+              <div className="h-full">
+                <ServiceDistribution showDescription={false} {...dashboardParams} />
+              </div>
+            </div>
 
-        <div className="grid grid-cols-1 gap-3 md:gap-4 lg:grid-cols-2">
-          <div className="h-full">
-            <LiveServicesWidget storageKey={`${dashboardStorageKey}:live-services-status`} />
-          </div>
-          <div className="h-full">
-            <UpcomingServices {...dashboardParams} />
-          </div>
-        </div>
+            {scheduleWidgets}
 
-        <div className="grid grid-cols-1 gap-3 md:gap-4 lg:grid-cols-2">
-          <div className="h-full">
-            <ContractStatusChart />
-          </div>
-          <div className="h-full">
-            <ContractRenewalChart />
-          </div>
-        </div>
+            <div className="grid grid-cols-1 gap-3 md:gap-4 lg:grid-cols-2">
+              <div className="h-full">
+                <ContractStatusChart />
+              </div>
+              <div className="h-full">
+                <ContractRenewalChart />
+              </div>
+            </div>
+          </>
+        ) : scheduleWidgets}
       </div>
+
+      <ScheduleShortcutDialog
+        schedule={shortcutSchedule}
+        onClose={() => setShortcutSchedule(null)}
+        onScheduleChange={setShortcutSchedule}
+      />
     </>
   )
 }

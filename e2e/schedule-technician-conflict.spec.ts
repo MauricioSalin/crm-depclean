@@ -64,13 +64,33 @@ const multiDaySchedule = {
   contractServiceId: "",
   contractServiceIds: [],
   isManual: true,
-  clientName: "Condomínio com atendimento de seis dias",
+  clientName: "Condomínio com atendimento de três dias",
   serviceTypeName: "Limpeza de rede",
   date: "2026-08-06",
   time: "12:00",
-  duration: 6 * 8 * 60,
-  durationValue: 6,
+  duration: 3 * 8 * 60,
+  durationValue: 3,
   durationType: "days" as const,
+}
+
+const saturdayLimitSchedule = {
+  ...scheduleFixture,
+  id: "schedule-saturday-limit",
+  contractId: "",
+  contractServiceId: "",
+  contractServiceIds: [],
+  isManual: true,
+  clientName: "Condomínio atendido no sábado",
+  serviceTypeId: multiDaySchedule.serviceTypeId,
+  serviceTypeIds: [multiDaySchedule.serviceTypeId],
+  serviceTypeName: "Limpeza de rede",
+  teams: [],
+  additionalEmployees: [],
+  date: "2026-08-08",
+  time: "08:00",
+  duration: 60,
+  durationValue: 1,
+  durationType: "hours" as const,
 }
 
 function success(data: unknown) {
@@ -176,7 +196,7 @@ async function installMultiDayLimitMock(page: Page) {
     const request = route.request()
     const path = new URL(request.url()).pathname.replace("/api/v1", "")
     if (request.method() === "GET" && path === "/schedules") {
-      await fulfill(route, [multiDaySchedule])
+      await fulfill(route, [multiDaySchedule, saturdayLimitSchedule])
       return
     }
     if (request.method() === "PATCH" && path === `/schedules/${multiDaySchedule.id}`) {
@@ -253,7 +273,7 @@ test("edita horas quebradas em minutos e mantém horas e minutos na lista", asyn
   await expect(scheduleRow.getByText("1 hora e 50 minutos", { exact: true })).toBeVisible()
 })
 
-test("edita atendimento de vários dias sem contar o próprio registro no limite", async ({ page }) => {
+test("edita três dias de quinta a segunda sem considerar o sábado no limite", async ({ page }) => {
   const mock = await installMultiDayLimitMock(page)
 
   await page.goto("/agendamentos")
@@ -267,11 +287,18 @@ test("edita atendimento de vários dias sem contar o próprio registro no limite
   await editDialog.getByRole("button", { name: "Salvar", exact: true }).click()
 
   await expect.poll(() => mock.getSavedPayload()).toMatchObject({
-    estimatedDuration: 6 * 8 * 60,
-    durationValue: 6,
+    estimatedDuration: 3 * 8 * 60,
+    durationValue: 3,
     durationType: "days",
   })
   await expect(page.getByText(/limite de .* horas.*ultrapassado/i)).toHaveCount(0)
+
+  await page.goto("/agenda?date=2026-08-06&view=month")
+  const calendarEventLabel = `${multiDaySchedule.clientName} - ${multiDaySchedule.serviceTypeName}`
+  await expect(page.getByRole("button", { name: `6 ${calendarEventLabel}`, exact: true })).toBeVisible()
+  await expect(page.getByRole("button", { name: `7 ${calendarEventLabel}`, exact: true })).toBeVisible()
+  await expect(page.getByRole("button", { name: `8 ${calendarEventLabel}`, exact: true })).toHaveCount(0)
+  await expect(page.getByRole("button", { name: `10 ${calendarEventLabel}`, exact: true })).toBeVisible()
 })
 
 test("bloqueia com toast ao vincular técnico com sobreposição de horário", async ({ page }) => {

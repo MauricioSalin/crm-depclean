@@ -31,7 +31,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useSidebarCollapse } from "./sidebar-collapse-context"
 
 const menuItems = [
-  { icon: LayoutDashboard, label: "Dashboard", href: "/", permissions: ["dashboard_view"] },
+  { icon: LayoutDashboard, label: "Dashboard", href: "/", permissions: [] },
   { icon: Users, label: "Clientes", href: "/clientes", permissions: ["clients_view", "clients_create", "clients_edit", "clients_delete"] },
   { icon: FileText, label: "Contratos", href: "/contratos", permissions: ["contracts_view", "contracts_create", "contracts_edit", "contracts_delete"] },
   { icon: Wrench, label: "Serviços", href: "/servicos", permissions: ["services_view", "services_manage"] },

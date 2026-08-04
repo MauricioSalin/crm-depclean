@@ -267,12 +267,12 @@ export function WeekTimeline({
     if (pointerTooltipEvent) positionPointerTooltip()
   }, [pointerTooltipEvent])
 
-  // Auto-scroll to 06:00 on mount
+  // Auto-scroll after the responsive timeline has real columns.
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = 6 * HOUR_HEIGHT
     }
-  }, [])
+  }, [mode, resources.length])
 
   useEffect(() => {
     return () => {

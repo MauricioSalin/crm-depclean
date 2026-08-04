@@ -1,6 +1,6 @@
 "use client"
 
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useRouter } from "next/navigation"
 import { format } from "date-fns"
@@ -26,6 +26,7 @@ import {
   cancelSchedule,
   completeSchedule,
   createSchedule,
+  deleteScheduleNa,
   deleteSchedule,
   exportSchedules,
   getScheduleById,
@@ -55,7 +56,7 @@ import {
   getScheduleConflictResourceNames,
   getDailyServiceCapacityViolation,
 } from "@/lib/schedule-availability"
-import { canStartSchedule } from "@/lib/schedule-permissions"
+import { canAccessScheduleCompletion, canStartSchedule } from "@/lib/schedule-permissions"
 import { cacheSavedSchedule } from "@/lib/schedule-query-cache"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -130,15 +131,11 @@ function currentCompletionDateTime() {
 }
 
 function getDisplayedScheduleDate(schedule: ScheduleRecord) {
-  return schedule.status === "completed" && schedule.completionStartDate
-    ? schedule.completionStartDate
-    : schedule.date
+  return schedule.date
 }
 
 function getDisplayedScheduleTime(schedule: ScheduleRecord) {
-  return schedule.status === "completed" && schedule.completionStartTime
-    ? schedule.completionStartTime
-    : schedule.time
+  return schedule.time
 }
 
 function getScheduleIconTone(_schedule: Pick<ScheduleRecord, "isEmergency">) {
@@ -150,7 +147,7 @@ function canCancelSchedule(schedule: Pick<ScheduleRecord, "status">) {
 }
 
 function canEditSchedule(schedule: Pick<ScheduleRecord, "status">, canManageLockedSchedules: boolean) {
-  if (["in_progress", "cancelled"].includes(schedule.status)) return false
+  if (schedule.status === "cancelled") return false
   if (schedule.status === "completed") return canManageLockedSchedules
   return true
 }
@@ -472,6 +469,7 @@ export function AgendamentosContent({
   const [selectedSchedule, setSelectedSchedule] = useState<ScheduleRecord | null>(null)
   const [cancelTarget, setCancelTarget] = useState<ScheduleRecord | null>(null)
   const [completionTarget, setCompletionTarget] = useState<ScheduleRecord | null>(null)
+  const [completionInfoOpen, setCompletionInfoOpen] = useState(false)
   const [completionStep, setCompletionStep] = useState<"attachments" | "checkout">("attachments")
   const [completionStartDate, setCompletionStartDate] = useState("")
   const [completionStartTime, setCompletionStartTime] = useState("")
@@ -488,6 +486,52 @@ export function AgendamentosContent({
   const canManageLockedSchedules = hasAnyPermission(currentUser, ["agenda_manage_locked"])
   const canManageScheduleStatus = hasAnyPermission(currentUser, ["agenda_manage_status"])
   const canOpenScheduleEditor = canManageAgenda || canManageScheduleStatus
+
+  const resetCompletionDialog = useCallback(() => {
+    setCompletionTarget(null)
+    setCompletionInfoOpen(false)
+    setCompletionStep("attachments")
+    setCompletionStartDate("")
+    setCompletionStartTime("")
+    setCompletionEndDate("")
+    setCompletionEndTime("")
+    setCompletionDriverEmployeeId("")
+    setCompletionHelperEmployeeIds([])
+    setCompletionServiceReport("")
+    setCompletionFiles([])
+  }, [])
+
+  const closeCompletionDialog = useCallback(() => {
+    resetCompletionDialog()
+    if (initialScheduleId) router.replace("/agendamentos")
+  }, [initialScheduleId, resetCompletionDialog, router])
+
+  const openCompletionDialog = useCallback((schedule: ScheduleRecord) => {
+    if (!canAccessScheduleCompletion(schedule, currentUser)) return
+
+    const now = currentCompletionDateTime()
+    const defaultDate = schedule.completionStartDate || now.date || schedule.date
+    setCompletionTarget(schedule)
+    setCompletionInfoOpen(false)
+    setCompletionStep("attachments")
+    setCompletionStartDate(defaultDate)
+    setCompletionStartTime(schedule.completionStartTime || schedule.time || "")
+    setCompletionEndDate(schedule.completionEndDate || now.date || defaultDate)
+    setCompletionEndTime(schedule.completionEndTime || now.time)
+    setCompletionDriverEmployeeId(schedule.attendanceDriver?.id || "")
+    setCompletionHelperEmployeeIds(schedule.attendanceHelpers?.map((employee) => employee.id) ?? [])
+    setCompletionServiceReport(schedule.serviceReport || "")
+    setCompletionFiles([])
+  }, [currentUser])
+
+  const openSchedule = useCallback((schedule: ScheduleRecord) => {
+    if (canAccessScheduleCompletion(schedule, currentUser)) {
+      openCompletionDialog(schedule)
+      return
+    }
+
+    setSelectedSchedule(schedule)
+  }, [currentUser, openCompletionDialog])
 
   useEffect(() => {
     const sync = () => setCurrentUser(getStoredUser())
@@ -548,9 +592,9 @@ export function AgendamentosContent({
   }, [initialScheduleId, routeScheduleQuery.data?.data, schedules])
 
   useEffect(() => {
-    if (!initialScheduleId || !routeSchedule) return
-    setSelectedSchedule((current) => (current?.id === routeSchedule.id ? current : routeSchedule))
-  }, [initialScheduleId, routeSchedule])
+    if (!initialScheduleId || !routeSchedule || !currentUser) return
+    openSchedule(routeSchedule)
+  }, [currentUser, initialScheduleId, openSchedule, routeSchedule])
 
   useEffect(() => {
     if (!initialScheduleId || !routeScheduleQuery.isError) return
@@ -721,9 +765,10 @@ export function AgendamentosContent({
       const toastId = toast.loading("Iniciando atendimento...")
       return { toastId }
     },
-    onSuccess: async (_data, _variables, context) => {
+    onSuccess: async ({ data }, _variables, context) => {
       await invalidateSchedules()
       setSelectedSchedule(null)
+      openCompletionDialog(data)
       toast.success("Atendimento iniciado.", {
         id: context?.toastId,
         description: "O agendamento foi movido para em andamento.",
@@ -884,16 +929,7 @@ export function AgendamentosContent({
       return { toastId }
     },
     onSuccess: (_response, _variables, context) => {
-      setCompletionTarget(null)
-      setCompletionStep("attachments")
-      setCompletionStartDate("")
-      setCompletionStartTime("")
-      setCompletionEndDate("")
-      setCompletionEndTime("")
-      setCompletionDriverEmployeeId("")
-      setCompletionHelperEmployeeIds([])
-      setCompletionServiceReport("")
-      setCompletionFiles([])
+      closeCompletionDialog()
       toast.success("Atendimento concluído.", {
         id: context?.toastId,
         description: "A agenda foi atualizada com o horário executado.",
@@ -925,6 +961,28 @@ export function AgendamentosContent({
       toast.error(getApiErrorMessage(error, "Não foi possível excluir o agendamento."), {
         id: context?.toastId,
       })
+    },
+  })
+
+  const deleteNaMutation = useMutation({
+    mutationFn: ({ schedule, documentUrl }: { schedule: ScheduleRecord; documentUrl: string }) => (
+      deleteScheduleNa(schedule.id, documentUrl)
+    ),
+    onMutate: () => ({ toastId: toast.loading("Removendo NA...") }),
+    onSuccess: async ({ data: updatedSchedule }, _variables, context) => {
+      setCompletionTarget((current) => current?.id === updatedSchedule.id ? updatedSchedule : current)
+      setSelectedSchedule((current) => current?.id === updatedSchedule.id ? updatedSchedule : current)
+      await invalidateSchedules()
+      toast.success("NA removida do agendamento.", { id: context?.toastId })
+    },
+    onError: async (error, variables, context) => {
+      const refreshed = await getScheduleById(variables.schedule.id).catch(() => null)
+      if (refreshed?.data) {
+        setCompletionTarget((current) => current?.id === refreshed.data.id ? refreshed.data : current)
+        setSelectedSchedule((current) => current?.id === refreshed.data.id ? refreshed.data : current)
+      }
+      await invalidateSchedules()
+      toast.error(getApiErrorMessage(error, "Não foi possível remover a NA."), { id: context?.toastId })
     },
   })
 
@@ -1044,41 +1102,17 @@ export function AgendamentosContent({
     clearScheduleDialogResetTimeout()
     setSelectedSchedule(null)
     setCancelTarget(null)
-    setCompletionTarget(null)
+    resetCompletionDialog()
     setEditingSchedule(schedule)
     window.setTimeout(() => setIsDialogOpen(true), 0)
-  }
-
-  const openCompletionDialog = (schedule: ScheduleRecord) => {
-    if (!(canManageAgenda || canManageScheduleStatus || schedule.canAttachNa)) return
-
-    const now = currentCompletionDateTime()
-    const defaultDate = schedule.completionStartDate || now.date || schedule.date
-    setCompletionTarget(schedule)
-    setCompletionStep("attachments")
-    setCompletionStartDate(defaultDate)
-    setCompletionStartTime(schedule.completionStartTime || schedule.time || "")
-    setCompletionEndDate(schedule.completionEndDate || now.date || defaultDate)
-    setCompletionEndTime(schedule.completionEndTime || now.time)
-    setCompletionDriverEmployeeId(schedule.attendanceDriver?.id || "")
-    setCompletionHelperEmployeeIds(schedule.attendanceHelpers?.map((employee) => employee.id) ?? [])
-    setCompletionServiceReport(schedule.serviceReport || "")
-    setCompletionFiles([])
-  }
-
-  const openSchedule = (schedule: ScheduleRecord) => {
-    if (schedule.status === "in_progress" && (canManageAgenda || canManageScheduleStatus || schedule.canAttachNa)) {
-      openCompletionDialog(schedule)
-      return
-    }
-
-    setSelectedSchedule(schedule)
   }
 
   const canDeleteSchedule = (schedule: ScheduleRecord) => {
     return canManageAgenda &&
       !isRecurringSchedule(schedule)
   }
+
+  const detailsSchedule = completionInfoOpen ? completionTarget : selectedSchedule
 
   return (
     <>
@@ -1106,30 +1140,36 @@ export function AgendamentosContent({
       />
 
       <ScheduleDetailsDialog
-        open={!!selectedSchedule}
+        open={!!detailsSchedule}
         onOpenChange={(open) => {
           if (!open) {
-            setSelectedSchedule(null)
-            if (initialScheduleId) router.replace("/agendamentos")
+            if (completionInfoOpen) {
+              closeCompletionDialog()
+            } else {
+              setSelectedSchedule(null)
+              if (initialScheduleId) router.replace("/agendamentos")
+            }
           }
         }}
-        schedule={selectedSchedule}
+        schedule={detailsSchedule}
         schedules={schedules}
         teams={teams}
         serviceTypes={services}
         isStartingAttendance={startMutation.isPending}
         canManage={canManageAgenda}
-        canStart={selectedSchedule ? canStartSchedule(selectedSchedule, currentUser, teams) : false}
+        canStart={detailsSchedule ? canStartSchedule(detailsSchedule, currentUser, teams) : false}
         canStartOutsideScheduledDate={canManageAgenda}
         canReschedule={canManageAgenda}
         canEdit={Boolean(
-          selectedSchedule &&
+          detailsSchedule &&
             (canManageScheduleStatus ||
-              (canManageAgenda && canEditSchedule(selectedSchedule, canManageLockedSchedules))),
+              (canManageAgenda && canEditSchedule(detailsSchedule, canManageLockedSchedules))),
         )}
         onEdit={() => {
-          if (selectedSchedule) openEditSchedule(selectedSchedule)
+          if (detailsSchedule) openEditSchedule(detailsSchedule)
         }}
+        onBack={completionInfoOpen ? () => setCompletionInfoOpen(false) : undefined}
+        backLabel="Voltar para NAs do atendimento"
         onStartAttendance={async (schedule) => {
           if (!canStartSchedule(schedule, currentUser, teams)) return
           await startMutation.mutateAsync(schedule)
@@ -1150,20 +1190,9 @@ export function AgendamentosContent({
       />
 
       <Dialog
-        open={!!completionTarget}
+        open={!!completionTarget && !completionInfoOpen}
         onOpenChange={(open) => {
-          if (!open) {
-            setCompletionTarget(null)
-            setCompletionStep("attachments")
-            setCompletionStartDate("")
-            setCompletionStartTime("")
-            setCompletionEndDate("")
-            setCompletionEndTime("")
-            setCompletionDriverEmployeeId("")
-            setCompletionHelperEmployeeIds([])
-            setCompletionServiceReport("")
-            setCompletionFiles([])
-          }
+          if (!open && !completionInfoOpen) closeCompletionDialog()
         }}
       >
         <DialogContent className="flex max-h-[calc(100dvh-1rem)] min-w-0 flex-col gap-0 overflow-hidden p-0 max-sm:left-0 max-sm:top-0 max-sm:h-[100dvh] max-sm:max-h-none max-sm:w-screen max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none max-sm:border-0 max-sm:[&_[data-slot=dialog-close]]:right-5 max-sm:[&_[data-slot=dialog-close]]:top-[calc(env(safe-area-inset-top)+1rem)] sm:max-w-lg">
@@ -1202,18 +1231,33 @@ export function AgendamentosContent({
               <CompletionNaAttachments
                 existingAttachments={completionTarget?.naAttachments ?? []}
                 files={completionFiles}
-                disabled={completeMutation.isPending || uploadNaMutation.isPending}
+                disabled={completeMutation.isPending || uploadNaMutation.isPending || deleteNaMutation.isPending}
                 uploading={uploadNaMutation.isPending}
+                removingDocumentUrl={deleteNaMutation.isPending ? deleteNaMutation.variables?.documentUrl : undefined}
                 onAddFiles={(files) => {
                   if (!completionTarget || uploadNaMutation.isPending) return
                   setCompletionFiles(files)
                   uploadNaMutation.mutate({ schedule: completionTarget, files })
                 }}
                 onRemoveFile={() => undefined}
+                onRemoveExistingAttachment={(attachment) => {
+                  if (!completionTarget || deleteNaMutation.isPending) return
+                  deleteNaMutation.mutate({ schedule: completionTarget, documentUrl: attachment.documentUrl })
+                }}
               />
             )}
           </div>
-          <div className="flex shrink-0 flex-col gap-2 bg-background px-6 pb-6 pt-3 max-sm:px-5 max-sm:pb-[calc(env(safe-area-inset-bottom)+1.25rem)] sm:flex-row sm:justify-end">
+          <div className="flex shrink-0 flex-col gap-2 bg-background px-6 pb-6 pt-3 max-sm:px-5 max-sm:pb-[calc(env(safe-area-inset-bottom)+1.25rem)] sm:flex-row sm:flex-wrap sm:justify-end">
+            {completionStep === "attachments" ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full min-w-0 sm:basis-full"
+                onClick={() => setCompletionInfoOpen(true)}
+              >
+                Ver informações
+              </Button>
+            ) : null}
             <Button
               type="button"
               variant="outline"
@@ -1223,7 +1267,7 @@ export function AgendamentosContent({
                   setCompletionStep("attachments")
                   return
                 }
-                setCompletionTarget(null)
+                closeCompletionDialog()
               }}
             >
               Voltar
@@ -1232,7 +1276,7 @@ export function AgendamentosContent({
               <AttendanceStartSlider
                 action="finish"
                 className="sm:hidden"
-                disabled={completeMutation.isPending || uploadNaMutation.isPending}
+                disabled={completeMutation.isPending || uploadNaMutation.isPending || deleteNaMutation.isPending}
                 onComplete={() => setCompletionStep("checkout")}
               />
             ) : null}
@@ -1247,6 +1291,7 @@ export function AgendamentosContent({
                 !completionTarget ||
                 (!completionTarget.naAttachments?.length && !completionTarget.naDocumentUrl) ||
                 uploadNaMutation.isPending ||
+                deleteNaMutation.isPending ||
                 completeMutation.isPending ||
                 (completionStep === "checkout" &&
                   (!completionStartDate ||
@@ -1440,7 +1485,7 @@ export function AgendamentosContent({
                               className="cursor-pointer"
                               onClick={(event) => {
                                 event.stopPropagation()
-                                setSelectedSchedule(schedule)
+                                openSchedule(schedule)
                               }}
                             >
                               <Eye className="mr-2 h-4 w-4" />
@@ -1458,7 +1503,7 @@ export function AgendamentosContent({
                                 Editar
                               </DropdownMenuItem>
                             )}
-                            {schedule.status === "in_progress" && (canManageAgenda || canManageScheduleStatus || schedule.canAttachNa) && (
+                            {canAccessScheduleCompletion(schedule, currentUser) && (
                               <DropdownMenuItem
                                 className="cursor-pointer"
                                 onClick={(event) => {
@@ -1467,7 +1512,7 @@ export function AgendamentosContent({
                                 }}
                               >
                                 <Check className="mr-2 h-4 w-4" />
-                                NAs e conclusão
+                                Concluir
                               </DropdownMenuItem>
                             )}
                             {canManageAgenda && schedule.status === "cancelled" && (

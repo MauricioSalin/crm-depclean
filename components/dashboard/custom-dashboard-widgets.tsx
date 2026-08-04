@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
 import {
@@ -62,13 +61,16 @@ function getStatusBadge(
 
 type LiveServicesWidgetProps = {
   storageKey?: string
+  enabled?: boolean
+  onScheduleOpen?: (schedule: ScheduleRecord) => void
 }
 
-export function LiveServicesWidget({ storageKey }: LiveServicesWidgetProps = {}) {
+export function LiveServicesWidget({ storageKey, enabled = true, onScheduleOpen }: LiveServicesWidgetProps = {}) {
   const [statusFilter, setStatusFilter] = useState<LiveServiceStatusFilter>("in_progress")
   const schedulesQuery = useQuery({
     queryKey: ["schedules", "dashboard-live-services"],
     queryFn: () => listSchedules(),
+    enabled,
   })
   useEffect(() => {
     if (!storageKey) return
@@ -91,7 +93,7 @@ export function LiveServicesWidget({ storageKey }: LiveServicesWidgetProps = {})
   }, [schedules, statusFilter])
 
   return (
-    <Card className="flex h-full max-h-[360px] flex-col p-4 transition-all duration-500 hover:shadow-xl sm:max-h-[380px] lg:min-h-[360px] lg:max-h-[460px]">
+    <Card data-dashboard-widget="live-services" className="flex h-full max-h-[360px] flex-col p-4 transition-all duration-500 hover:shadow-xl sm:max-h-[380px] lg:min-h-[360px] lg:max-h-[460px]">
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -113,7 +115,11 @@ export function LiveServicesWidget({ storageKey }: LiveServicesWidgetProps = {})
       </div>
 
       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain pr-1 [scrollbar-gutter:stable]">
-        {schedulesQuery.isLoading ? (
+        {!enabled ? (
+          <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
+            Sem permissão para visualizar agendamentos.
+          </div>
+        ) : schedulesQuery.isLoading ? (
           Array.from({ length: 3 }, (_, index) => (
             <div key={index} className="rounded-xl border p-3">
               <Skeleton className="h-4 w-40" />
@@ -122,7 +128,13 @@ export function LiveServicesWidget({ storageKey }: LiveServicesWidgetProps = {})
           ))
         ) : filtered.length > 0 ? (
           filtered.map((schedule) => (
-            <div key={schedule.id} className="rounded-xl border p-3">
+            <button
+              type="button"
+              key={schedule.id}
+              aria-label={`Abrir agendamento de ${schedule.clientName}`}
+              className="block w-full rounded-xl border p-3 text-left transition-colors hover:border-primary/40 hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              onClick={() => onScheduleOpen?.(schedule)}
+            >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-foreground">{schedule.clientName}</p>
@@ -133,7 +145,7 @@ export function LiveServicesWidget({ storageKey }: LiveServicesWidgetProps = {})
               <p className="mt-2 text-xs text-muted-foreground">
                 {formatCivilDate(schedule.date, schedule.date)} às {schedule.time || "08:00"}
               </p>
-            </div>
+            </button>
           ))
         ) : (
           <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">

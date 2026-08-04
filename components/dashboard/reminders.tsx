@@ -6,21 +6,30 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { MapPin, Clock, ArrowRight } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
-import { getDashboardAnalytics, type DashboardAnalyticsParams } from "@/lib/api/analytics"
+import { listSchedules, type ScheduleRecord } from "@/lib/api/schedules"
 import { addCivilDaysKey, formatCivilDate, toCivilDateKey } from "@/lib/date-utils"
 import Link from "next/link"
 
-export function UpcomingServices(period: DashboardAnalyticsParams = {}) {
-  const dashboardQuery = useQuery({
-    queryKey: ["analytics", "dashboard", period],
-    queryFn: () => getDashboardAnalytics(period),
-  })
-  const isLoading = dashboardQuery.isLoading || (dashboardQuery.isFetching && !dashboardQuery.data)
-  const upcomingServices = dashboardQuery.data?.data.upcomingServices ?? []
+type UpcomingServicesProps = {
+  enabled?: boolean
+  onScheduleOpen?: (schedule: ScheduleRecord) => void
+}
+
+export function UpcomingServices({ enabled = true, onScheduleOpen }: UpcomingServicesProps = {}) {
   const todayKey = toCivilDateKey(new Date())
+  const tomorrowKey = addCivilDaysKey(todayKey, 1)
+  const schedulesQuery = useQuery({
+    queryKey: ["schedules", "dashboard-upcoming-services", todayKey, tomorrowKey],
+    queryFn: () => listSchedules({ dateFrom: todayKey, dateTo: tomorrowKey }),
+    enabled,
+  })
+  const isLoading = schedulesQuery.isLoading || (schedulesQuery.isFetching && !schedulesQuery.data)
+  const upcomingServices = (schedulesQuery.data?.data ?? [])
+    .filter((schedule) => ["scheduled", "rescheduled", "in_progress"].includes(schedule.status))
+    .sort((left, right) => `${left.date} ${left.time}`.localeCompare(`${right.date} ${right.time}`))
   const dateGroups = [
     { date: todayKey, label: "Hoje" },
-    { date: addCivilDaysKey(todayKey, 1), label: "Amanhã" },
+    { date: tomorrowKey, label: "Amanhã" },
   ].map((group) => ({
     ...group,
     services: upcomingServices.filter((service) => service.date === group.date),
@@ -28,19 +37,26 @@ export function UpcomingServices(period: DashboardAnalyticsParams = {}) {
 
   return (
     <Card
+      data-dashboard-widget="upcoming-services"
       className="flex h-full flex-col p-4 transition-all duration-500 hover:shadow-xl lg:min-h-[360px] lg:max-h-[460px]"
     >
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold text-foreground">Próximos Serviços</h2>
-        <Link href="/agenda">
-          <Button variant="ghost" size="sm" className="text-xs text-foreground hover:text-foreground/80">
-            Ver todos
-            <ArrowRight className="w-3 h-3 ml-1" />
-          </Button>
-        </Link>
+        {enabled ? (
+          <Link href="/agenda">
+            <Button variant="ghost" size="sm" className="text-xs text-foreground hover:text-foreground/80">
+              Ver todos
+              <ArrowRight className="w-3 h-3 ml-1" />
+            </Button>
+          </Link>
+        ) : null}
       </div>
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
-        {isLoading ? (
+        {!enabled ? (
+          <div className="rounded-lg border border-dashed px-3 py-4 text-center text-xs text-muted-foreground">
+            Sem permissão para visualizar agendamentos.
+          </div>
+        ) : isLoading ? (
           Array.from({ length: 3 }, (_, index) => (
             <div key={index} className="rounded-lg border border-border p-3">
               <div className="mb-2 flex items-start justify-between gap-2">
@@ -72,9 +88,12 @@ export function UpcomingServices(period: DashboardAnalyticsParams = {}) {
             ) : (
               <div className="space-y-3">
                 {group.services.map((service) => (
-                  <div
+                  <button
+                    type="button"
                     key={service.id}
-                    className="rounded-lg border border-border p-3 transition-all duration-300 hover:border-primary/30 hover:shadow-md"
+                    aria-label={`Abrir agendamento de ${service.clientName}`}
+                    className="block w-full rounded-lg border border-border p-3 text-left transition-all duration-300 hover:border-primary/40 hover:bg-muted/30 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    onClick={() => onScheduleOpen?.(service)}
                   >
                     <div className="mb-2 flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
@@ -102,10 +121,10 @@ export function UpcomingServices(period: DashboardAnalyticsParams = {}) {
                       </div>
                       <div className="flex min-w-0 flex-1 items-center gap-1">
                         <MapPin className="h-3 w-3 flex-shrink-0" />
-                        <span className="truncate">{service.neighborhood}</span>
+                        <span className="truncate">{service.address || service.unitName || "Local não informado"}</span>
                       </div>
                     </div>
-                  </div>
+                  </button>
                 ))}
               </div>
             )}

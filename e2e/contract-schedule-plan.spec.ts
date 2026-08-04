@@ -92,6 +92,14 @@ const overflowLimitSchedule = {
   durationValue: 7,
 }
 
+const saturdayLimitSchedule = {
+  ...limitSchedule,
+  id: "schedule-service-limit-saturday",
+  date: "2026-08-08",
+  duration: 60,
+  durationValue: 1,
+}
+
 const resourceConflictSchedule = {
   ...scheduleFixture,
   id: "schedule-resource-conflict",
@@ -225,7 +233,13 @@ async function installSchedulePlanMock(page: Page, schedulePlanItems = planItems
       await route.fallback()
       return
     }
-    await fulfill(route, [occupiedSchedule, limitSchedule, overflowLimitSchedule, resourceConflictSchedule])
+    await fulfill(route, [
+      occupiedSchedule,
+      limitSchedule,
+      overflowLimitSchedule,
+      saturdayLimitSchedule,
+      resourceConflictSchedule,
+    ])
   })
 
   await page.route("**/api/v1/services**", async (route) => {
@@ -285,6 +299,36 @@ test("exibe dezesseis horas da automação futura como dois dias", async ({ page
     .locator('[data-schedule-id="schedule-plan-network"]')
   await expect(row.getByRole("textbox", { name: "Duração de Limpeza de rede" })).toHaveValue("2")
   await expect(row.locator('[data-slot="select-trigger"]').filter({ hasText: "Dias" })).toBeVisible()
+})
+
+test("salva três dias de quinta a segunda sem bloquear pelo limite do sábado", async ({ page }) => {
+  const mock = await installSchedulePlanMock(page, [{
+    ...planItems[0],
+    date: "2026-08-06",
+    duration: 3 * 8 * 60,
+    durationValue: 3,
+    durationType: "days",
+  }])
+
+  await page.goto(`/contratos/${contractFixture.id}`)
+  await page.getByRole("button", { name: "Agendamentos", exact: true }).click()
+  const dialog = page.getByRole("dialog", { name: "Agendamentos previstos" })
+  await dialog.getByRole("button", { name: "Salvar agendamentos" }).click()
+
+  await expect.poll(() => mock.getSavedPayload()).toEqual({
+    items: [{
+      id: "schedule-plan-network",
+      contractServiceId: "contract-service-e2e",
+      contractServiceIds: ["contract-service-e2e"],
+      date: "2026-08-06",
+      time: "08:00",
+      durationValue: 3,
+      durationType: "days",
+      teamIds: [],
+      additionalEmployeeIds: [],
+    }],
+  })
+  await expect(page.getByText(/limite de .* horas.*ultrapassado/i)).toHaveCount(0)
 })
 
 test("libera hoje para linha sem responsável e permite excluí-la do plano", async ({ page }) => {

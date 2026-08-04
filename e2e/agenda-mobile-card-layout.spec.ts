@@ -46,3 +46,18 @@ test("quebra o nome do cliente sem sobrepor o status no mosaico mobile", async (
   expect(clientNameBox!.height).toBeGreaterThan(20)
   expect(clientNameBox!.x + clientNameBox!.width).toBeLessThanOrEqual(statusBadgeBox!.x)
 })
+
+test("troca a lista para cartões quando a viewport passa a ser mobile", async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 844 })
+  await installAuthenticatedSession(page)
+  await installApiMock(page)
+
+  await page.goto("/agendamentos")
+  await expect(page.locator('[data-slot="table"]')).toBeVisible()
+
+  await page.setViewportSize({ width: 390, height: 844 })
+
+  const card = page.locator('[data-slot="card"]').filter({ hasText: scheduleFixture.clientName })
+  await expect(card).toBeVisible()
+  await expect(page.locator('[data-slot="table"]')).toHaveCount(0)
+})

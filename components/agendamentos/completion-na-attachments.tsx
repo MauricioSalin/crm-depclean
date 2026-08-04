@@ -1,10 +1,20 @@
 "use client"
 
-import { useRef } from "react"
-import { Camera, CheckCircle2, FileText, FileUp, ImageIcon, Loader2, Paperclip, X } from "lucide-react"
+import { useRef, useState } from "react"
+import { Camera, CheckCircle2, Eye, FileText, FileUp, ImageIcon, Loader2, Paperclip, Trash2, X } from "lucide-react"
 
 import { buildApiFileUrl } from "@/lib/api/client"
 import type { ScheduleNaAttachmentRecord } from "@/lib/api/schedules"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 
 interface CompletionNaAttachmentsProps {
@@ -12,8 +22,10 @@ interface CompletionNaAttachmentsProps {
   files: File[]
   disabled?: boolean
   uploading?: boolean
+  removingDocumentUrl?: string
   onAddFiles: (files: File[]) => void
   onRemoveFile: (index: number) => void
+  onRemoveExistingAttachment: (attachment: ScheduleNaAttachmentRecord, index: number) => void
 }
 
 function formatFileSize(size?: number) {
@@ -35,11 +47,17 @@ export function CompletionNaAttachments({
   files,
   disabled,
   uploading = false,
+  removingDocumentUrl,
   onAddFiles,
   onRemoveFile,
+  onRemoveExistingAttachment,
 }: CompletionNaAttachmentsProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
+  const [pendingRemoval, setPendingRemoval] = useState<{
+    attachment: ScheduleNaAttachmentRecord
+    index: number
+  } | null>(null)
   const totalItems = existingAttachments.length + files.length
 
   const addFilesFromInput = (fileList: FileList | null) => {
@@ -136,11 +154,35 @@ export function CompletionNaAttachments({
                 Salva no agendamento{formatFileSize(attachment.fileSize) ? ` • ${formatFileSize(attachment.fileSize)}` : ""}
               </p>
             </div>
-            <Button type="button" variant="ghost" size="sm" className="shrink-0 rounded-full" asChild>
-              <a href={buildApiFileUrl(attachment.documentUrl)} target="_blank" rel="noreferrer">
-                Abrir
-              </a>
-            </Button>
+            <div className="flex shrink-0 items-center gap-1">
+              <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-full" asChild>
+                <a
+                  href={buildApiFileUrl(attachment.documentUrl)}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label={`Visualizar ${attachment.fileName || `NA salva ${index + 1}`}`}
+                  title="Visualizar anexo"
+                >
+                  <Eye className="h-4 w-4" />
+                </a>
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 rounded-full text-destructive hover:bg-destructive/10 hover:text-destructive"
+                disabled={disabled || Boolean(removingDocumentUrl)}
+                aria-label={`Remover ${attachment.fileName || `NA salva ${index + 1}`}`}
+                title="Remover anexo"
+                onClick={() => setPendingRemoval({ attachment, index })}
+              >
+                {removingDocumentUrl === attachment.documentUrl ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
           </div>
         ))}
 
@@ -170,6 +212,36 @@ export function CompletionNaAttachments({
           </div>
         ))}
       </div>
+
+      <AlertDialog
+        open={Boolean(pendingRemoval)}
+        onOpenChange={(open) => {
+          if (!open) setPendingRemoval(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover NA?</AlertDialogTitle>
+            <AlertDialogDescription>
+              O arquivo {pendingRemoval?.attachment.fileName || "selecionado"} será removido do agendamento.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (pendingRemoval) {
+                  onRemoveExistingAttachment(pendingRemoval.attachment, pendingRemoval.index)
+                }
+                setPendingRemoval(null)
+              }}
+            >
+              Remover NA
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

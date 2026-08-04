@@ -255,3 +255,10 @@ export async function uploadScheduleNa(id: string, file: File) {
   })
   return response.data
 }
+
+export async function deleteScheduleNa(id: string, documentUrl: string) {
+  const response = await api.delete<{ success: true; data: ScheduleRecord }>(`/schedules/${id}/na`, {
+    params: { documentUrl },
+  })
+  return response.data
+}

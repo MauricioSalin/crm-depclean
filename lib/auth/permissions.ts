@@ -17,7 +17,7 @@ type RoutePermissionRule = {
 }
 
 const routePermissionRules: RoutePermissionRule[] = [
-  { pattern: /^\/$/, permissions: ["dashboard_view"] },
+  { pattern: /^\/$/, permissions: [] },
   { pattern: /^\/clientes\/novo$/, permissions: ["clients_create"] },
   { pattern: /^\/clientes\/[^/]+\/editar$/, permissions: ["clients_edit"] },
   { pattern: /^\/clientes(?:\/[^/]+)?$/, permissions: ["clients_view", "clients_create", "clients_edit", "clients_delete"] },

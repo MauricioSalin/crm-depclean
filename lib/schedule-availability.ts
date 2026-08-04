@@ -568,9 +568,7 @@ function buildScheduleBlocks(params: {
       const blockDuration = Math.min(DAY_DURATION_MINUTES, remainingMinutes)
       blocks.push(...splitBlockAcrossDates(currentDate, startMinutes, startMinutes + blockDuration))
       remainingMinutes -= blockDuration
-      currentDate = mode === "manual" || params.allowWeekends
-        ? addCivilDaysKey(currentDate, 1)
-        : nextBusinessDateKey(currentDate)
+      currentDate = nextBusinessDateKey(currentDate)
     }
 
     return blocks
