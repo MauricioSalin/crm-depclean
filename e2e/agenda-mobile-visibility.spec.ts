@@ -43,7 +43,16 @@ test("abre a Agenda mobile no dia e mantém somente os agendamentos permitidos",
   await page.goto(`/agenda?date=${DAY}`)
 
   await expect.poll(() => new URL(page.url()).searchParams.get("view")).toBe("day")
-  await expect(page.locator('[data-resource-column="employee"]')).toHaveCount(1)
+  const resourceColumn = page.locator('[data-resource-column="employee"]')
+  await expect(resourceColumn).toHaveCount(1)
+  const mobileResourceWidthRatio = await page.evaluate(() => {
+    const timeline = document.querySelector<HTMLElement>("[data-agenda-timeline-scroll]")
+    const resource = document.querySelector<HTMLElement>('[data-resource-column="employee"]')
+    if (!timeline || !resource) return 0
+    return resource.getBoundingClientRect().width / (timeline.clientWidth - 56)
+  })
+  expect(mobileResourceWidthRatio).toBeGreaterThan(0.39)
+  expect(mobileResourceWidthRatio).toBeLessThan(0.41)
   const dayDetails = page.locator("[data-agenda-day-details]")
   await expect(dayDetails).toBeVisible()
   await expect(dayDetails).not.toHaveAttribute("aria-hidden", "true")

@@ -439,6 +439,7 @@ export function WeekTimeline({
     ? Math.max(0, 3 - columns.length)
     : 0
   const wideDayFillerCount = mode === "day" && columns.length > 0 && columns.length < 4 ? 1 : 0
+  const hasSingleDayResource = mode === "day" && columns.length === 1
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -480,7 +481,9 @@ export function WeekTimeline({
                 <button
                   key={key}
                   onClick={() => onDaySelect(day)}
-                  className={`min-w-0 flex-1 cursor-pointer border-0 py-2 text-center transition-colors hover:bg-muted/50 ${
+                  className={`min-w-0 cursor-pointer border-0 py-2 text-center transition-colors hover:bg-muted/50 ${
+                    hasSingleDayResource ? "flex-[0_0_40%] sm:flex-1" : "flex-1"
+                  } ${
                     isSelected ? "bg-muted" : ""
                   }`}
                   data-resource-kind={resource?.kind}
@@ -595,7 +598,9 @@ export function WeekTimeline({
                     key={key}
                     onClick={() => onDaySelect(day)}
                     data-resource-column={resource?.kind}
-                    className={`flex-1 relative border-l border-border/50 cursor-pointer transition-colors ${
+                    className={`relative border-l border-border/50 cursor-pointer transition-colors ${
+                      hasSingleDayResource ? "flex-[0_0_40%] sm:flex-1" : "flex-1"
+                    } ${
                       isSelected ? "bg-primary/5" : "hover:bg-muted/30"
                     }`}
                     style={{ height: TOTAL_HOURS * HOUR_HEIGHT }}
