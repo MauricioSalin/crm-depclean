@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Check } from "lucide-react"
+import { ArrowLeft, Check, Pencil } from "lucide-react"
 import { toast } from "sonner"
 
 import { AttendanceCompletionFields } from "@/components/agendamentos/attendance-completion-fields"
 import { AttendanceStartSlider } from "@/components/agendamentos/attendance-start-slider"
 import { CompletionNaAttachments } from "@/components/agendamentos/completion-na-attachments"
 import { ScheduleDetailsDialog } from "@/components/agendamentos/schedule-details-dialog"
+import { SchedulingFormDialog, type SchedulingFormData } from "@/components/agendamentos/scheduling-form-dialog"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -23,14 +24,22 @@ import {
   getScheduleById,
   listScheduleCompletionEmployees,
   startSchedule,
+  updateSchedule,
+  updateScheduleStatus,
   uploadScheduleNa,
   type ScheduleRecord,
 } from "@/lib/api/schedules"
+import { listClients } from "@/lib/api/clients"
+import { listEmployees } from "@/lib/api/employees"
 import { getApiErrorMessage } from "@/lib/api/errors"
+import { listServices } from "@/lib/api/services"
+import { listTeams } from "@/lib/api/teams"
 import { hasAnyPermission } from "@/lib/auth/permissions"
 import { toBrasiliaTimeKey, toCivilDateKey } from "@/lib/date-utils"
 import { useCurrentUser } from "@/hooks/use-permissions"
+import { scheduleDurationToMinutes } from "@/lib/schedule-duration"
 import { canAccessScheduleCompletion, canStartSchedule } from "@/lib/schedule-permissions"
+import { cacheSavedSchedule } from "@/lib/schedule-query-cache"
 
 type CompletionStep = "attachments" | "checkout"
 
@@ -56,7 +65,10 @@ export function ScheduleShortcutDialog({
   const queryClient = useQueryClient()
   const currentUser = useCurrentUser()
   const canManageAgenda = hasAnyPermission(currentUser, ["agenda_manage", "settings_manage"])
+  const canManageScheduleStatus = hasAnyPermission(currentUser, ["agenda_manage_status", "settings_manage"])
+  const canManageLockedSchedules = hasAnyPermission(currentUser, ["agenda_manage_locked", "settings_manage"])
   const [showInformation, setShowInformation] = useState(false)
+  const [editorOpen, setEditorOpen] = useState(false)
   const [completionStep, setCompletionStep] = useState<CompletionStep>("attachments")
   const [completionStartDate, setCompletionStartDate] = useState("")
   const [completionStartTime, setCompletionStartTime] = useState("")
@@ -85,12 +97,47 @@ export function ScheduleShortcutDialog({
   useEffect(() => {
     if (!schedule) return
     setShowInformation(false)
+    setEditorOpen(false)
     if (schedule.status === "in_progress") prepareCompletion(schedule)
   }, [prepareCompletion, schedule?.id])
 
-  const invalidateSchedules = () => queryClient.invalidateQueries({ queryKey: ["schedules"] })
+  const invalidateSchedules = async () => {
+    await queryClient.invalidateQueries({ queryKey: ["schedules"] })
+    await queryClient.invalidateQueries({ queryKey: ["analytics"] })
+  }
   const canOpenCompletion = Boolean(schedule && canAccessScheduleCompletion(schedule, currentUser))
   const canStart = Boolean(schedule && canStartSchedule(schedule, currentUser, []))
+  const canEdit = Boolean(
+    schedule &&
+    schedule.status !== "cancelled" &&
+    (schedule.status !== "completed" || canManageLockedSchedules) &&
+    (canManageAgenda || canManageScheduleStatus),
+  )
+
+  const clientsQuery = useQuery({
+    queryKey: ["clients", "dashboard-schedule-editor"],
+    queryFn: () => listClients(),
+    enabled: canEdit,
+  })
+  const servicesQuery = useQuery({
+    queryKey: ["services", "dashboard-schedule-editor"],
+    queryFn: () => listServices(),
+    enabled: canEdit,
+  })
+  const teamsQuery = useQuery({
+    queryKey: ["teams", "catalog"],
+    queryFn: () => listTeams(),
+    enabled: canEdit,
+  })
+  const employeesQuery = useQuery({
+    queryKey: ["employees", "catalog"],
+    queryFn: () => listEmployees(),
+    enabled: canEdit,
+  })
+  const clients = clientsQuery.data?.data ?? []
+  const services = servicesQuery.data?.data ?? []
+  const teams = teamsQuery.data?.data ?? []
+  const employees = employeesQuery.data?.data ?? []
 
   const completionEmployeesQuery = useQuery({
     queryKey: ["schedules", "completion-employees"],
@@ -201,6 +248,62 @@ export function ScheduleShortcutDialog({
     },
   })
 
+  const saveMutation = useMutation({
+    mutationFn: async ({ target, formData }: { target: ScheduleRecord; formData: SchedulingFormData }) => {
+      if (!canManageAgenda && canManageScheduleStatus) {
+        return updateScheduleStatus(target.id, formData.status)
+      }
+      if (!canManageAgenda) throw new Error("Você não tem permissão para editar este agendamento.")
+
+      const commonPayload = {
+        serviceTypeId: formData.serviceTypeIds[0],
+        serviceTypeIds: formData.serviceTypeIds,
+        serviceDocumentSettings: formData.serviceDocumentSettings,
+        teamIds: formData.teamIds,
+        additionalEmployeeIds: formData.employeeIds,
+        scheduledDate: formData.date,
+        scheduledTime: formData.time,
+        estimatedDuration: scheduleDurationToMinutes(formData.duration, formData.durationType),
+        durationValue: formData.duration,
+        durationType: formData.durationType,
+        informativeTemplateId: formData.informativeTemplateId,
+        certificateTemplateId: formData.certificateTemplateId,
+        autoSendInformative: formData.autoSendInformative,
+        generateCertificateRequest: formData.generateCertificateRequest,
+        notes: formData.notes,
+      }
+      const response = await updateSchedule(
+        target.id,
+        target.contractId && !target.isManual
+          ? commonPayload
+          : {
+              ...commonPayload,
+              isEmergency: formData.isEmergency,
+              billable: formData.createContract,
+              value: formData.createContract ? formData.value : 0,
+            },
+      )
+
+      if (canManageScheduleStatus && target.status !== formData.status) {
+        return updateScheduleStatus(target.id, formData.status)
+      }
+      return response
+    },
+    onMutate: () => ({ toastId: toast.loading("Salvando agendamento...") }),
+    onSuccess: async ({ data }, _variables, context) => {
+      cacheSavedSchedule(queryClient, data)
+      onScheduleChange(data)
+      setEditorOpen(false)
+      await invalidateSchedules()
+      toast.success("Agendamento atualizado.", { id: context?.toastId })
+    },
+    onError: (error, _variables, context) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível atualizar o agendamento."), {
+        id: context?.toastId,
+      })
+    },
+  })
+
   const confirmCompletion = () => {
     if (!schedule) return
     if (completionStep === "attachments") {
@@ -220,8 +323,26 @@ export function ScheduleShortcutDialog({
 
   return (
     <>
+      <SchedulingFormDialog
+        open={Boolean(schedule) && editorOpen}
+        onOpenChange={(open) => {
+          if (!open) setEditorOpen(false)
+        }}
+        editingSchedule={schedule}
+        onSubmit={(formData) => {
+          if (schedule) saveMutation.mutate({ target: schedule, formData })
+        }}
+        clients={clients}
+        serviceTypes={services}
+        teams={teams}
+        employees={employees}
+        canManageStatus={canManageScheduleStatus}
+        canEditDetails={canManageAgenda}
+        isSubmitting={saveMutation.isPending}
+      />
+
       <ScheduleDetailsDialog
-        open={Boolean(schedule) && (!canOpenCompletion || showInformation)}
+        open={Boolean(schedule) && !editorOpen && (!canOpenCompletion || showInformation)}
         onOpenChange={(open) => {
           if (!open) onClose()
         }}
@@ -231,7 +352,8 @@ export function ScheduleShortcutDialog({
         canStart={canStart}
         canStartOutsideScheduledDate={canManageAgenda}
         canReschedule={false}
-        canEdit={false}
+        canEdit={canEdit}
+        onEdit={() => setEditorOpen(true)}
         onBack={showInformation ? () => setShowInformation(false) : undefined}
         backLabel="Voltar para NAs do atendimento"
         onStartAttendance={async (target) => {
@@ -241,13 +363,41 @@ export function ScheduleShortcutDialog({
       />
 
       <Dialog
-        open={Boolean(schedule) && canOpenCompletion && !showInformation}
+        open={Boolean(schedule) && canOpenCompletion && !showInformation && !editorOpen}
         onOpenChange={(open) => {
           if (!open && !showInformation) onClose()
         }}
       >
         <DialogContent className="flex max-h-[calc(100dvh-1rem)] min-w-0 flex-col gap-0 overflow-hidden p-0 max-sm:left-0 max-sm:top-0 max-sm:h-[100dvh] max-sm:max-h-none max-sm:w-screen max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none max-sm:border-0 max-sm:[&_[data-slot=dialog-close]]:right-5 max-sm:[&_[data-slot=dialog-close]]:top-[calc(env(safe-area-inset-top)+1rem)] sm:max-w-lg">
-          <DialogHeader className="min-w-0 px-6 pb-4 pt-6 max-sm:px-5 max-sm:pt-[calc(env(safe-area-inset-top)+1.75rem)]">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            aria-label={completionStep === "checkout" ? "Voltar para NAs do atendimento" : "Voltar"}
+            className="absolute left-3 top-3 z-20 gap-1.5 px-2 text-foreground hover:text-foreground max-sm:top-[calc(env(safe-area-inset-top)+0.85rem)]"
+            onClick={() => {
+              if (completionStep === "checkout") {
+                setCompletionStep("attachments")
+                return
+              }
+              onClose()
+            }}
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Voltar
+          </Button>
+          {completionStep === "attachments" && canEdit ? (
+            <button
+              type="button"
+              aria-label="Editar agendamento"
+              className="ring-offset-background focus-visible:ring-ring absolute right-14 top-4 z-20 inline-flex size-8 cursor-pointer items-center justify-center rounded-full bg-transparent text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 max-sm:top-[calc(env(safe-area-inset-top)+1rem)] [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
+              onClick={() => setEditorOpen(true)}
+            >
+              <Pencil />
+              <span className="sr-only">Editar agendamento</span>
+            </button>
+          ) : null}
+          <DialogHeader className="min-w-0 px-6 pb-4 pt-14 max-sm:px-5 max-sm:pt-[calc(env(safe-area-inset-top)+3.75rem)]">
             <DialogTitle>
               {completionStep === "checkout" ? "Encerrar atendimento" : "NAs do atendimento"}
             </DialogTitle>
@@ -300,34 +450,21 @@ export function ScheduleShortcutDialog({
             )}
           </div>
 
-          <div className="flex shrink-0 flex-col gap-2 bg-background px-6 pb-6 pt-3 max-sm:px-5 max-sm:pb-[calc(env(safe-area-inset-bottom)+1.25rem)] sm:flex-row sm:flex-wrap sm:justify-end">
+          <div className={`flex shrink-0 gap-2 bg-background px-6 pb-6 pt-3 max-sm:px-5 max-sm:pb-[calc(env(safe-area-inset-bottom)+1.25rem)] sm:flex-row sm:flex-wrap sm:justify-end ${completionStep === "attachments" ? "max-sm:grid max-sm:grid-cols-2" : "flex-col"}`}>
             {completionStep === "attachments" ? (
               <Button
                 type="button"
                 variant="outline"
-                className="w-full min-w-0 sm:basis-full"
+                className="w-full min-w-0 max-sm:h-12 max-sm:px-2 max-sm:text-xs sm:basis-full"
                 onClick={() => setShowInformation(true)}
               >
                 Ver informações
               </Button>
             ) : null}
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full min-w-0 sm:w-auto"
-              onClick={() => {
-                if (completionStep === "checkout") {
-                  setCompletionStep("attachments")
-                  return
-                }
-                onClose()
-              }}
-            >
-              Voltar
-            </Button>
             {completionStep === "attachments" ? (
               <AttendanceStartSlider
                 action="finish"
+                compact
                 className="sm:hidden"
                 disabled={completeMutation.isPending || uploadNaMutation.isPending || deleteNaMutation.isPending}
                 onComplete={() => setCompletionStep("checkout")}

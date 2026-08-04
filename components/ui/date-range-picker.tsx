@@ -210,7 +210,7 @@ export function DateRangePicker({
   }
 
   return (
-    <div className={cn("-m-1 overflow-visible p-1", className)}>
+    <div className={cn("-m-1 box-content overflow-visible p-1", className)}>
       <Popover open={isOpen} onOpenChange={setPopoverOpen}>
         <PopoverAnchor asChild>
           <div className="grid w-full min-w-0 grid-cols-2 gap-2">
@@ -227,7 +227,7 @@ export function DateRangePicker({
                 }}
                 placeholder={fromPlaceholder}
                 inputMode="numeric"
-                className="pl-9 pr-9 text-sm"
+                className="pl-9 pr-9 text-base md:text-base lg:text-sm"
                 aria-label={fromPlaceholder}
               />
               {fromText ? (
@@ -259,7 +259,7 @@ export function DateRangePicker({
                 }}
                 placeholder={toPlaceholder}
                 inputMode="numeric"
-                className="pl-9 pr-9 text-sm"
+                className="pl-9 pr-9 text-base md:text-base lg:text-sm"
                 aria-label={toPlaceholder}
               />
               {toText ? (

@@ -341,7 +341,7 @@ export function ScheduleDetailsDialog({
             size="sm"
             aria-label={backLabel}
             className={cn(
-              "absolute left-3 z-20 gap-1.5 px-2 text-muted-foreground hover:text-foreground",
+              "absolute left-3 z-20 gap-1.5 px-2 text-foreground hover:text-foreground",
               isMobile ? "top-[calc(env(safe-area-inset-top)+0.85rem)]" : "top-3",
             )}
             onClick={onBack}

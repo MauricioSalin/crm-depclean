@@ -35,7 +35,7 @@ export const FilterSearchInput = forwardRef<HTMLInputElement, FilterSearchInputP
           disabled={disabled}
           readOnly={readOnly}
           onChange={(event) => onValueChange(event.target.value)}
-          className={cn("pl-10 pr-9", className)}
+          className={cn("pl-10 pr-9 text-base md:text-base lg:text-sm", className)}
           {...props}
         />
 

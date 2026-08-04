@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils"
 
 interface AttendanceStartSliderProps {
   action?: "start" | "finish"
+  compact?: boolean
   disabled?: boolean
   isSubmitting?: boolean
   onComplete: () => Promise<void> | void
@@ -20,6 +21,7 @@ const DEFAULT_COMPLETE_OFFSET = 320 - HANDLE_WIDTH - 12
 
 export function AttendanceStartSlider({
   action = "start",
+  compact = false,
   disabled = false,
   isSubmitting: externalSubmitting = false,
   onComplete,
@@ -32,8 +34,10 @@ export function AttendanceStartSlider({
   const submitting = externalSubmitting || isSubmitting
   const idleLabel = action === "finish" ? "Encerrar atendimento" : "Iniciar atendimento"
   const submittingLabel = action === "finish" ? "Encerrando atendimento..." : "Iniciando atendimento..."
+  const handleWidth = compact ? 36 : HANDLE_WIDTH
+  const horizontalPadding = compact ? 12 : SLIDER_HORIZONTAL_PADDING
   const x = useMotionValue(0)
-  const fillWidth = useTransform(x, (value) => `${Math.max(HANDLE_WIDTH + 16 + value, HANDLE_WIDTH + 16)}px`)
+  const fillWidth = useTransform(x, (value) => `${Math.max(handleWidth + 16 + value, handleWidth + 16)}px`)
 
   useEffect(() => {
     const element = containerRef.current
@@ -41,7 +45,7 @@ export function AttendanceStartSlider({
 
     const updateOffset = () => {
       const width = element.getBoundingClientRect().width
-      setCompleteOffset(Math.max(0, width - HANDLE_WIDTH - SLIDER_HORIZONTAL_PADDING))
+      setCompleteOffset(Math.max(0, width - handleWidth - horizontalPadding))
     }
 
     updateOffset()
@@ -49,13 +53,15 @@ export function AttendanceStartSlider({
     observer.observe(element)
 
     return () => observer.disconnect()
-  }, [])
+  }, [handleWidth, horizontalPadding])
 
   return (
     <div
       ref={containerRef}
+      data-attendance-slider={action}
       className={cn(
-        "relative h-16 w-full overflow-hidden rounded-full border bg-white px-2 shadow-sm",
+        "relative w-full overflow-hidden rounded-full border bg-white shadow-sm",
+        compact ? "h-12 px-1.5" : "h-16 px-2",
         disabled
           ? "border-border opacity-60"
           : "border-primary/20",
@@ -68,10 +74,15 @@ export function AttendanceStartSlider({
           "absolute inset-y-0 left-0 rounded-full",
           disabled ? "bg-primary/5" : "bg-gradient-to-r from-primary/20 via-primary/12 to-primary/5",
         )}
-        style={{ width: disabled ? `${HANDLE_WIDTH + 16}px` : fillWidth }}
+        style={{ width: disabled ? `${handleWidth + 16}px` : fillWidth }}
       />
 
-      <div className="pointer-events-none absolute inset-y-0 left-0 right-0 z-10 flex items-center justify-center px-20 text-center text-sm font-medium text-foreground/85">
+      <div
+        className={cn(
+          "pointer-events-none absolute inset-y-0 left-0 right-0 z-10 flex items-center text-center font-medium text-foreground/85",
+          compact ? "justify-end pl-14 pr-2 text-xs" : "justify-center px-20 text-sm",
+        )}
+      >
         <span className="leading-5">
           {submitting ? submittingLabel : idleLabel}
         </span>
@@ -117,7 +128,8 @@ export function AttendanceStartSlider({
             })
         }}
         className={cn(
-          "absolute left-2 top-2 z-20 flex h-12 w-12 items-center justify-center rounded-full text-white",
+          "absolute z-20 flex items-center justify-center rounded-full text-white",
+          compact ? "left-1.5 top-1.5 h-9 w-9" : "left-2 top-2 h-12 w-12",
           disabled ? "bg-muted-foreground/40" : "bg-primary shadow-md shadow-primary/25",
         )}
       >

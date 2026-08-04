@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation"
 import { format } from "date-fns"
 import { toast } from "sonner"
 import {
+  ArrowLeft,
   Calendar,
   Check,
   Clock,
@@ -13,6 +14,7 @@ import {
   Eye,
   Loader2,
   MoreHorizontal,
+  Pencil,
   RotateCcw,
   Search,
   Trash2,
@@ -1196,7 +1198,38 @@ export function AgendamentosContent({
         }}
       >
         <DialogContent className="flex max-h-[calc(100dvh-1rem)] min-w-0 flex-col gap-0 overflow-hidden p-0 max-sm:left-0 max-sm:top-0 max-sm:h-[100dvh] max-sm:max-h-none max-sm:w-screen max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none max-sm:border-0 max-sm:[&_[data-slot=dialog-close]]:right-5 max-sm:[&_[data-slot=dialog-close]]:top-[calc(env(safe-area-inset-top)+1rem)] sm:max-w-lg">
-          <DialogHeader className="min-w-0 px-6 pb-4 pt-6 max-sm:px-5 max-sm:pt-[calc(env(safe-area-inset-top)+1.75rem)]">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            aria-label={completionStep === "checkout" ? "Voltar para NAs do atendimento" : "Voltar"}
+            className="absolute left-3 top-3 z-20 gap-1.5 px-2 text-foreground hover:text-foreground max-sm:top-[calc(env(safe-area-inset-top)+0.85rem)]"
+            onClick={() => {
+              if (completionStep === "checkout") {
+                setCompletionStep("attachments")
+                return
+              }
+              closeCompletionDialog()
+            }}
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Voltar
+          </Button>
+          {completionStep === "attachments" &&
+          completionTarget &&
+          (canManageScheduleStatus ||
+            (canManageAgenda && canEditSchedule(completionTarget, canManageLockedSchedules))) ? (
+            <button
+              type="button"
+              aria-label="Editar agendamento"
+              className="ring-offset-background focus-visible:ring-ring absolute right-14 top-4 z-20 inline-flex size-8 cursor-pointer items-center justify-center rounded-full bg-transparent text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 max-sm:top-[calc(env(safe-area-inset-top)+1rem)] [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
+              onClick={() => openEditSchedule(completionTarget)}
+            >
+              <Pencil />
+              <span className="sr-only">Editar agendamento</span>
+            </button>
+          ) : null}
+          <DialogHeader className="min-w-0 px-6 pb-4 pt-14 max-sm:px-5 max-sm:pt-[calc(env(safe-area-inset-top)+3.75rem)]">
             <DialogTitle>
               {completionStep === "checkout" ? "Encerrar atendimento" : "NAs do atendimento"}
             </DialogTitle>
@@ -1247,34 +1280,21 @@ export function AgendamentosContent({
               />
             )}
           </div>
-          <div className="flex shrink-0 flex-col gap-2 bg-background px-6 pb-6 pt-3 max-sm:px-5 max-sm:pb-[calc(env(safe-area-inset-bottom)+1.25rem)] sm:flex-row sm:flex-wrap sm:justify-end">
+          <div className={`flex shrink-0 gap-2 bg-background px-6 pb-6 pt-3 max-sm:px-5 max-sm:pb-[calc(env(safe-area-inset-bottom)+1.25rem)] sm:flex-row sm:flex-wrap sm:justify-end ${completionStep === "attachments" ? "max-sm:grid max-sm:grid-cols-2" : "flex-col"}`}>
             {completionStep === "attachments" ? (
               <Button
                 type="button"
                 variant="outline"
-                className="w-full min-w-0 sm:basis-full"
+                className="w-full min-w-0 max-sm:h-12 max-sm:px-2 max-sm:text-xs sm:basis-full"
                 onClick={() => setCompletionInfoOpen(true)}
               >
                 Ver informações
               </Button>
             ) : null}
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full min-w-0 sm:w-auto"
-              onClick={() => {
-                if (completionStep === "checkout") {
-                  setCompletionStep("attachments")
-                  return
-                }
-                closeCompletionDialog()
-              }}
-            >
-              Voltar
-            </Button>
             {completionStep === "attachments" ? (
               <AttendanceStartSlider
                 action="finish"
+                compact
                 className="sm:hidden"
                 disabled={completeMutation.isPending || uploadNaMutation.isPending || deleteNaMutation.isPending}
                 onComplete={() => setCompletionStep("checkout")}
