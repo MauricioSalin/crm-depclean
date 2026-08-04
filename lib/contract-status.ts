@@ -119,3 +119,10 @@ export function isContractEligibleForRenewal(contract: {
     CONTRACT_RENEWAL_LEAD_MONTHS,
   )
 }
+
+export function isContractEligibleToMarkAsRenewed(contract: {
+  status?: unknown
+  renewalStatus?: unknown
+}) {
+  return isClosedClicksignContractStatus(contract.status) && !isContractRenewed(contract)
+}

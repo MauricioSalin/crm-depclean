@@ -941,7 +941,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
             <div className="min-w-0 flex-1">
               <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-1">
                 <h2 className="min-w-0 break-words text-xl font-bold">{formatContractNumber(contract.contractNumber)}</h2>
-                <span className="inline-flex shrink-0">{getStatusBadge(contract)}</span>
+                {getStatusBadge(contract)}
                 {isContractAwaitingSchedules(contract) ? (
                   <BusinessStatusBadge status="awaiting-schedules" />
                 ) : null}
@@ -1602,6 +1602,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
           schedules={allSchedules}
           serviceTypes={serviceTypes}
           teams={teams}
+          employees={employees}
         />
       ) : null}
 

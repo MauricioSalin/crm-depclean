@@ -32,7 +32,9 @@ export function getApiErrorMessage(error: unknown, fallback: string) {
   const message = responseData?.message
 
   if (Array.isArray(message) && message.length > 0) {
-    return normalizeTechnicalErrorMessage(message.join(" "))
+    return message.length === 1
+      ? normalizeTechnicalErrorMessage(message[0]!)
+      : fallback
   }
 
   if (typeof message === "string" && message.trim().length > 0) {

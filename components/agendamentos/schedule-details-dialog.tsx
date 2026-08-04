@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { AlertTriangle, ArrowLeft, CalendarDays, Clock3, Loader2, MapPin, OctagonX, Pencil, Sparkles, Users } from "lucide-react"
+import { AlertTriangle, ArrowLeft, CalendarDays, Clock3, FileDown, Loader2, MapPin, OctagonX, Pencil, Sparkles, Users } from "lucide-react"
 import { toast } from "sonner"
 
 import { AttendanceStartSlider } from "@/components/agendamentos/attendance-start-slider"
@@ -14,17 +14,18 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { getApiErrorMessage } from "@/lib/api/errors"
-import { getScheduleRescheduleOptions, rescheduleSchedule, type ScheduleRecord } from "@/lib/api/schedules"
+import { exportScheduleSummaryPdf, getScheduleRescheduleOptions, rescheduleSchedule, type ScheduleRecord } from "@/lib/api/schedules"
 import type { ServiceRecord } from "@/lib/api/services"
 import type { TeamRecord } from "@/lib/api/teams"
 import { formatCivilDate, parseCivilDate, toCivilDateKey } from "@/lib/date-utils"
 import {
   checkScheduleAvailability,
+  formatDailyServiceCapacityViolation,
   formatAvailabilitySlot,
   formatScheduleConflictConfirmation,
   getAvailableRescheduleTimes,
   getScheduleConflictResourceNames,
-  hasScheduleDailyServiceCapacity,
+  getScheduleDailyServiceCapacityViolation,
   isScheduleConflictErrorMessage,
 } from "@/lib/schedule-availability"
 import { formatConfiguredScheduleDuration } from "@/lib/schedule-duration"
@@ -134,13 +135,14 @@ export function ScheduleDetailsDialog({
     const dateKey = toCivilDateKey(date)
     if (dateKey < toCivilDateKey(new Date())) return "Data anterior ao dia atual"
     if (!schedule) return undefined
-    if (!hasScheduleDailyServiceCapacity({
+    const capacityViolation = getScheduleDailyServiceCapacityViolation({
       schedules,
       schedule,
       serviceTypes,
       date: dateKey,
-    })) {
-      return "Limite atingido"
+    })
+    if (capacityViolation) {
+      return formatDailyServiceCapacityViolation(capacityViolation, serviceTypes)
     }
 
     return getAvailableRescheduleTimes({
@@ -201,6 +203,33 @@ export function ScheduleDetailsDialog({
     },
   })
 
+  const exportSummaryMutation = useMutation({
+    mutationFn: () => exportScheduleSummaryPdf(schedule!.id),
+    onMutate: () => {
+      const toastId = toast.loading("Gerando resumo do agendamento...")
+      return { toastId }
+    },
+    onSuccess: ({ blob, fileName }, _variables, context) => {
+      const objectUrl = URL.createObjectURL(blob)
+      const anchor = document.createElement("a")
+      anchor.href = objectUrl
+      anchor.download = fileName
+      document.body.appendChild(anchor)
+      anchor.click()
+      anchor.remove()
+      URL.revokeObjectURL(objectUrl)
+      toast.success("Resumo exportado.", {
+        id: context?.toastId,
+        description: "O PDF foi gerado para download sem ser salvo no R2.",
+      })
+    },
+    onError: (error, _variables, context) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível exportar o resumo do agendamento."), {
+        id: context?.toastId,
+      })
+    },
+  })
+
   if (!schedule) return null
 
   const displayedDate =
@@ -244,13 +273,15 @@ export function ScheduleDetailsDialog({
       return
     }
     const scheduledTime = time || schedule.time || "08:00"
-    if (!hasScheduleDailyServiceCapacity({
+    const capacityViolation = getScheduleDailyServiceCapacityViolation({
       schedules,
       schedule,
       serviceTypes,
       date,
-    })) {
-      toast.error("O limite diário deste serviço foi atingido na data selecionada.")
+      time: scheduledTime,
+    })
+    if (capacityViolation) {
+      toast.error(formatDailyServiceCapacityViolation(capacityViolation, serviceTypes))
       return
     }
 
@@ -524,6 +555,37 @@ export function ScheduleDetailsDialog({
                 <p className="text-sm text-foreground">{schedule.serviceTypeName}</p>
               </div>
 
+              {schedule.status === "completed" ? (
+                <div className="rounded-2xl border border-primary/20 bg-primary/[0.03] p-4 md:col-span-2">
+                  <div className="mb-3 flex items-center gap-2 text-sm font-medium">
+                    <Clock3 className="h-4 w-4 text-primary" />
+                    Execução do atendimento
+                  </div>
+                  <div className="grid gap-3 text-sm sm:grid-cols-2">
+                    <div>
+                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Período executado</p>
+                      <p className="mt-1 text-foreground">
+                        {formatScheduleDate(schedule.completionStartDate || schedule.date)} às {schedule.completionStartTime || "--:--"}
+                        {" até "}
+                        {formatScheduleDate(schedule.completionEndDate || schedule.completionStartDate || schedule.date)} às {schedule.completionEndTime || "--:--"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Motorista</p>
+                      <p className="mt-1 text-foreground">{schedule.attendanceDriver?.name || "Não informado"}</p>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Ajudantes</p>
+                      <p className="mt-1 text-foreground">
+                        {schedule.attendanceHelpers?.length
+                          ? schedule.attendanceHelpers.map((employee) => employee.name).join(" • ")
+                          : "Nenhum ajudante informado"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
               <div className="rounded-2xl border p-4">
                 <div className="mb-2 flex items-center gap-2 text-sm font-medium">
                   <CalendarDays className="h-4 w-4 text-primary" />
@@ -575,8 +637,33 @@ export function ScheduleDetailsDialog({
 
               {schedule.notes ? (
                 <div className="rounded-2xl border p-4 md:col-span-2">
-                  <div className="mb-2 text-sm font-medium">Observações</div>
+                  <div className="mb-2 text-sm font-medium">Observações do agendamento</div>
                   <p className="text-sm text-muted-foreground">{schedule.notes}</p>
+                </div>
+              ) : null}
+
+              {schedule.status === "completed" && schedule.serviceReport ? (
+                <div className="rounded-2xl border p-4 md:col-span-2">
+                  <div className="mb-2 text-sm font-medium">Observações do atendimento</div>
+                  <p className="whitespace-pre-wrap text-sm text-muted-foreground">{schedule.serviceReport}</p>
+                </div>
+              ) : null}
+
+              {schedule.status === "completed" ? (
+                <div className="flex justify-end pt-4 md:col-span-2">
+                  <Button
+                    type="button"
+                    className="w-full sm:w-auto"
+                    disabled={exportSummaryMutation.isPending}
+                    onClick={() => exportSummaryMutation.mutate()}
+                  >
+                    {exportSummaryMutation.isPending ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <FileDown className="mr-2 h-4 w-4" />
+                    )}
+                    Exportar
+                  </Button>
                 </div>
               ) : null}
 

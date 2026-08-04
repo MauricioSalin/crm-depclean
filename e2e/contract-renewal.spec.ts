@@ -2,6 +2,13 @@ import { expect, test, type Page } from "@playwright/test"
 
 import { contractFixture, installApiMock, serviceFixture } from "./support/api-mock"
 import { installAuthenticatedSession } from "./support/session"
+import { getTemplateVariableGroups } from "../components/templates/template-variables"
+import {
+  buildDownPaymentsText,
+  buildInstallmentDueDatesText,
+  buildRemainingInstallmentsText,
+  currencyToPortuguese,
+} from "../lib/contract-down-payments"
 import {
   isContractEligibleForRenewal,
   isOperationallyActiveContract,
@@ -66,10 +73,10 @@ async function installServicesMock(
   })
 }
 
-async function installContractTemplateMock(page: Page) {
+async function installContractTemplateMock(page: Page, name = "Contrato E2E") {
   const template = {
     id: "template-contract-e2e",
-    name: "Contrato E2E",
+    name,
     description: "Template usado no fluxo de contrato.",
     kind: "contract",
     format: "docx",
@@ -112,6 +119,37 @@ test.beforeEach(async ({ page }) => {
   await installApiMock(page)
 })
 
+test("mantém o nome longo do template dentro do seletor", async ({ page }) => {
+  const templateName = "Contrato padrão condomínio Depclean - 2 anos (múltiplas entradas)"
+  await installContractTemplateMock(page, templateName)
+  await page.goto("/contratos/novo")
+
+  const templateSelect = page.getByRole("combobox", { name: "Selecionar template do contrato" })
+  await templateSelect.click()
+  await page.getByRole("option", { name: templateName }).click()
+
+  const selectedName = templateSelect.locator("span").first()
+  await expect(selectedName).toHaveText(templateName)
+  await expect(selectedName).toHaveCSS("text-overflow", "ellipsis")
+
+  const geometry = await templateSelect.evaluate((element) => {
+    const trigger = element.getBoundingClientRect()
+    const icon = element.querySelector("svg")?.getBoundingClientRect()
+    return {
+      triggerRight: trigger.right,
+      iconRight: icon?.right ?? Number.POSITIVE_INFINITY,
+    }
+  })
+  expect(geometry.iconRight).toBeLessThanOrEqual(geometry.triggerRight)
+
+  const title = page.locator("p.font-medium").filter({ hasText: templateName })
+  const activeBadge = page.getByText("Ativo", { exact: true })
+  const [titleBox, badgeBox] = await Promise.all([title.boundingBox(), activeBadge.boundingBox()])
+  expect(titleBox).not.toBeNull()
+  expect(badgeBox).not.toBeNull()
+  expect(Math.abs(badgeBox!.y - titleBox!.y)).toBeLessThanOrEqual(2)
+})
+
 test("usa as novas faixas padrão ao iniciar um contrato", async ({ page }) => {
   await page.goto("/contratos/novo")
 
@@ -122,6 +160,205 @@ test("usa as novas faixas padrão ao iniciar um contrato", async ({ page }) => {
   await expect(rangeEnds.nth(0)).toHaveValue("200")
   await expect(rangeEnds.nth(1)).toHaveValue("300")
   await expect(page.getByLabel("Quantidade mínima de unidades")).toHaveValue("300")
+})
+
+test("permite N entradas e desconta cada uma das parcelas do saldo", async ({ page }) => {
+  const contractVariables = getTemplateVariableGroups("contract")
+    .flatMap((group) => group.variables.map((variable) => variable.path))
+  expect(contractVariables).toContain("contract.downPaymentsText")
+  expect(contractVariables).toContain("contract.installmentDueDatesText")
+  expect(contractVariables).toContain("contract.remainingInstallmentsText")
+  expect(buildDownPaymentsText([
+    { value: 5_000, dueDate: "2026-08-06" },
+    { value: 5_000, dueDate: "2026-09-06" },
+    { value: 5_000, dueDate: "2026-10-06" },
+  ])).toBe(
+    "03 (três) primeiras parcelas no valor de R$ 5.000,00 (cinco mil reais) cada",
+  )
+  expect(buildInstallmentDueDatesText("2026-08-06", 7)).toBe(
+    "A primeira parcela terá vencimento em 06/08/2026, vencendo as demais parcelas sempre no dia 07 (sete) dos meses subsequentes.",
+  )
+  expect(buildRemainingInstallmentsText(45, 1_762.67, true)).toBe(
+    "45 (quarenta e cinco) parcelas subsequentes no valor de R$ 1.762,67 (mil setecentos e sessenta e dois reais e sessenta e sete centavos) cada",
+  )
+  expect(currencyToPortuguese(1_762.67)).toBe(
+    "mil setecentos e sessenta e dois reais e sessenta e sete centavos",
+  )
+
+  await page.goto("/contratos/novo")
+
+  const installmentsInput = page.getByLabel("Nº de parcelas *")
+  await installmentsInput.fill("48")
+  const totalValue = page.getByLabel("Valor do Contrato *")
+  await totalValue.focus()
+  await totalValue.pressSequentially("4800000")
+
+  const firstDueDate = page.getByRole("button", { name: "Data da primeira parcela" })
+  await expect(firstDueDate).toBeEnabled()
+  const addEntryButton = page.getByRole("button", { name: "Inserir entrada" })
+  await expect(addEntryButton).toHaveText("Inserir entrada")
+  await installmentsInput.focus()
+  await expect.poll(
+    () => installmentsInput.evaluate((element) => getComputedStyle(element).boxShadow),
+  ).toContain("0px 0px 0px 3px")
+  const [activeInputBorder, activeInputShadow, buttonBackground] = await Promise.all([
+    installmentsInput.evaluate((element) => getComputedStyle(element).borderColor),
+    installmentsInput.evaluate((element) => getComputedStyle(element).boxShadow),
+    addEntryButton.evaluate((element) => getComputedStyle(element).backgroundColor),
+  ])
+  await addEntryButton.hover()
+  await expect.poll(
+    () => addEntryButton.evaluate((element) => getComputedStyle(element).borderColor),
+  ).toBe(activeInputBorder)
+  await expect.poll(
+    () => addEntryButton.evaluate((element) => getComputedStyle(element).backgroundColor),
+  ).toBe(buttonBackground)
+  await expect.poll(
+    () => addEntryButton.evaluate((element) => getComputedStyle(element).boxShadow),
+  ).toBe(activeInputShadow)
+  const entryHeading = page.getByText("Entradas", { exact: true }).locator("..")
+  const [headingBox, buttonBox] = await Promise.all([entryHeading.boundingBox(), addEntryButton.boundingBox()])
+  expect(headingBox).not.toBeNull()
+  expect(buttonBox).not.toBeNull()
+  expect(buttonBox!.y).toBeGreaterThanOrEqual(headingBox!.y + headingBox!.height)
+
+  await addEntryButton.click()
+  const firstEntryValue = page.getByLabel("Valor da entrada 1 *")
+  await firstEntryValue.focus()
+  await firstEntryValue.pressSequentially("100000")
+  await page.getByRole("button", { name: "Vencimento da entrada 1" }).click()
+  await page.getByRole("button", { name: /29 de julho de 2026/i }).click()
+
+  await addEntryButton.click()
+  await expect(page.getByLabel("Valor da entrada 2 *")).toHaveValue("R$ 1.000,00")
+  await expect(page.getByRole("button", { name: "Vencimento da entrada 2" })).toContainText("29/08/2026")
+
+  await addEntryButton.click()
+  await expect(page.getByLabel("Valor da entrada 3 *")).toHaveValue("R$ 1.000,00")
+  await expect(page.getByRole("button", { name: "Vencimento da entrada 3" })).toContainText("29/09/2026")
+
+  const lastEntryCard = page.getByRole("button", { name: "Remover entrada 3" }).locator("..")
+  const [lastEntryBox, movedButtonBox] = await Promise.all([lastEntryCard.boundingBox(), addEntryButton.boundingBox()])
+  expect(lastEntryBox).not.toBeNull()
+  expect(movedButtonBox).not.toBeNull()
+  expect(movedButtonBox!.y).toBeGreaterThanOrEqual(lastEntryBox!.y + lastEntryBox!.height)
+  const summary = page.getByText("Total do contrato", { exact: true }).locator("..").locator("..")
+  const [entryStyles, summaryBackground] = await Promise.all([
+    lastEntryCard.evaluate((element) => {
+      const styles = getComputedStyle(element)
+      return {
+        backgroundColor: styles.backgroundColor,
+        borderTopWidth: styles.borderTopWidth,
+        borderRightWidth: styles.borderRightWidth,
+        borderBottomWidth: styles.borderBottomWidth,
+        borderLeftWidth: styles.borderLeftWidth,
+      }
+    }),
+    summary.evaluate((element) => getComputedStyle(element).backgroundColor),
+  ])
+  expect(entryStyles.backgroundColor).toBe(summaryBackground)
+  expect([
+    entryStyles.borderTopWidth,
+    entryStyles.borderRightWidth,
+    entryStyles.borderBottomWidth,
+    entryStyles.borderLeftWidth,
+  ]).toEqual(["0px", "0px", "0px", "0px"])
+  const firstEntryDueDate = page.getByRole("button", { name: "Vencimento da entrada 1" })
+  const [valueBackground, dueDateBackground] = await Promise.all([
+    firstEntryValue.evaluate((element) => getComputedStyle(element).backgroundColor),
+    firstEntryDueDate.evaluate((element) => getComputedStyle(element).backgroundColor),
+  ])
+  expect(valueBackground).toBe(dueDateBackground)
+  expect(valueBackground).not.toBe("rgba(0, 0, 0, 0)")
+  await expect(page.getByText(/^Venc\. da entrada \d+ \*$/)).toHaveCount(3)
+  await expect(firstDueDate).toHaveCount(0)
+  await expect(page.getByText("Quantidade de entradas").locator("..")).toContainText("3")
+  await expect(page.getByText("Total das entradas").locator("..")).toContainText("R$ 3.000,00")
+  await expect(page.getByText("Saldo a parcelar").locator("..")).toContainText("R$ 45.000,00")
+  await expect(page.getByText("Parcelas do saldo").locator("..")).toContainText("45x")
+  await expect(page.getByText(
+    "03 (três) primeiras parcelas no valor de R$ 1.000,00 (mil reais) cada",
+    { exact: true },
+  )).toHaveCount(0)
+
+  for (let index = 0; index < 3; index += 1) {
+    await page.getByRole("button", { name: /Remover entrada/ }).first().click()
+  }
+  await expect(firstDueDate).toBeEnabled()
+  await expect(firstDueDate).toContainText("Selecionar data")
+})
+
+test("remove do estado da listagem o contrato excluído em preenchimento", async ({ page }) => {
+  const fillingContract = {
+    ...contractFixture,
+    internalStatus: "filling",
+    status: "draft",
+    formDraft: {
+      selectedTemplateId: "",
+      createAutomatedSchedules: false,
+      createAutomatedInformatives: false,
+      startDate: "2026-07-28",
+      firstDueDate: "2026-07-28",
+      firstVisitDate: "2026-07-28",
+      firstVisitTime: "08:00",
+      installmentsCountInput: "12",
+      dueDayInput: "10",
+      selectedUnitIds: ["unit-e2e"],
+      recurrenceServiceTypeId: serviceFixture.id,
+      services: contractFixture.services,
+      contractValue: 420_000,
+      downPaymentValue: 0,
+      contractRecurrenceRules: [],
+    },
+  }
+  let deleted = false
+
+  await page.route("**/api/v1/contracts**", async (route) => {
+    const request = route.request()
+    const path = new URL(request.url()).pathname.replace("/api/v1", "")
+
+    if (path === `/contracts/${fillingContract.id}` && request.method() === "DELETE") {
+      deleted = true
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ success: true, data: null }),
+      })
+      return
+    }
+
+    if (path === `/contracts/${fillingContract.id}` && request.method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ success: true, data: fillingContract }),
+      })
+      return
+    }
+
+    if (path === "/contracts" && request.method() === "GET") {
+      if (deleted) await new Promise((resolve) => setTimeout(resolve, 1_000))
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ success: true, data: deleted ? [] : [fillingContract] }),
+      })
+      return
+    }
+
+    await route.fallback()
+  })
+
+  await page.goto("/contratos")
+  await expect(page.getByText(fillingContract.contractNumber, { exact: true })).toBeVisible()
+  await page.getByRole("link", { name: `Abrir contrato ${fillingContract.contractNumber}` }).click()
+  await expect(page).toHaveURL(new RegExp(`/contratos/${fillingContract.id}/editar`))
+  await page.getByRole("button", { name: "Excluir", exact: true }).click()
+  await page.getByRole("button", { name: "Excluir contrato", exact: true }).click()
+
+  await expect(page).toHaveURL(/\/contratos$/)
+  await expect(page.getByRole("heading", { name: "Contratos", exact: true })).toBeVisible()
+  await expect(page.getByText(fillingContract.contractNumber, { exact: true })).toHaveCount(0, { timeout: 300 })
 })
 
 test("inicia com Nenhum quando Visita de rotina não existe", async ({ page }) => {
@@ -146,7 +383,12 @@ test("seleciona Visita de rotina por padrão e permite remover a automação", a
     name: "Serviço automático da recorrência",
   })
   await expect(recurrenceServiceSelect).toHaveText("Visita de rotina")
-  await expect(page.getByRole("row").filter({ hasText: "Visita de rotina" })).toBeVisible()
+  const routineServiceRow = page.getByRole("row").filter({ hasText: "Visita de rotina" })
+  await expect(routineServiceRow).toBeVisible()
+  const durationInput = routineServiceRow.locator('input[type="tel"]')
+  const initialDuration = await durationInput.inputValue()
+  await durationInput.pressSequentially(",")
+  await expect(durationInput).toHaveValue(initialDuration)
 
   await recurrenceServiceSelect.click()
   await page.getByRole("option", { name: "Nenhum", exact: true }).click()
@@ -229,15 +471,22 @@ test("exibe Renovar a partir de dois meses antes do fim da vigência", async ({ 
   const renewLink = page.getByRole("link", { name: "Renovar", exact: true })
   await expect(renewLink).toBeVisible()
   await expect(renewLink).toHaveAttribute("href", /\/contratos\/novo\?renewFrom=contract-e2e/)
-  await expect(page.getByRole("button", { name: "Marcar como renovado", exact: true })).toBeVisible()
+  await expect(page.getByRole("button", { name: "Marcar como renovado", exact: true })).toHaveCount(0)
 })
 
-test("não exibe Renovar antes da janela de dois meses", async ({ page }) => {
+test("permite marcar contrato assinado como renovado antes da janela de dois meses", async ({ page }) => {
   await installContractMock(page, {
     status: "closed",
     startDate: "2025-09-29",
     endDate: "2026-09-29",
   })
+
+  await page.goto("/contratos")
+  await page.getByRole("button", {
+    name: `Abrir ações do contrato ${contractFixture.contractNumber}`,
+  }).click()
+  await expect(page.getByRole("menuitem", { name: "Renovar", exact: true })).toHaveCount(0)
+  await expect(page.getByRole("menuitem", { name: "Marcar como renovado", exact: true })).toBeVisible()
 
   await page.goto(`/contratos/${contractFixture.id}`)
 
@@ -271,7 +520,7 @@ test("mantém Renovar disponível após o vencimento", async ({ page }) => {
   await page.goto(`/contratos/${contractFixture.id}`)
 
   await expect(page.getByRole("link", { name: "Renovar", exact: true })).toBeVisible()
-  await expect(page.getByRole("button", { name: "Marcar como renovado", exact: true })).toBeVisible()
+  await expect(page.getByRole("button", { name: "Marcar como renovado", exact: true })).toHaveCount(0)
 })
 
 test("exibe Renovado e oculta novas ações mesmo quando marcado antes do vencimento", async ({ page }) => {

@@ -5,7 +5,6 @@ import * as SelectPrimitive from '@radix-ui/react-select'
 import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
-import { useOverlayPortalContainer } from '@/components/ui/overlay-portal-context'
 
 function updateBodySelectOpenAttribute(isOpen: boolean, registeredRef: React.MutableRefObject<boolean>) {
   if (typeof document === 'undefined' || registeredRef.current === isOpen) return
@@ -103,10 +102,8 @@ function SelectContent({
   updatePositionStrategy = 'always',
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Content>) {
-  const portalContainer = useOverlayPortalContainer()
-
   return (
-    <SelectPrimitive.Portal container={portalContainer || undefined}>
+    <SelectPrimitive.Portal>
       <SelectPrimitive.Content
         data-slot="select-content"
         data-pull-to-refresh="disabled"

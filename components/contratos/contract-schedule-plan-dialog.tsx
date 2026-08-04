@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { CalendarClock, Clock3, Download, Loader2, Plus, RotateCcw, Save, Trash2, Users } from "lucide-react"
+import { CalendarClock, Clock3, Download, Loader2, Plus, RotateCcw, Save, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { DatePicker } from "@/components/ui/date-picker"
 import { NumericInput } from "@/components/ui/numeric-input"
@@ -16,6 +17,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { MultiSelect } from "@/components/ui/multi-select"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -26,12 +29,21 @@ import {
   type ContractRecord,
 } from "@/lib/api/contracts"
 import { getApiErrorMessage } from "@/lib/api/errors"
+import type { EmployeeRecord } from "@/lib/api/employees"
 import type { ScheduleRecord } from "@/lib/api/schedules"
 import type { ServiceRecord } from "@/lib/api/services"
 import type { TeamRecord } from "@/lib/api/teams"
-import { addCivilDaysKey, parseCivilDate, toCivilDateKey } from "@/lib/date-utils"
-import { getAvailableRescheduleTimes } from "@/lib/schedule-availability"
-import { formatContractNumber } from "@/lib/utils"
+import { parseCivilDate, toCivilDateKey } from "@/lib/date-utils"
+import {
+  checkScheduleAvailability,
+  formatDailyServiceCapacityViolation,
+  getAvailableRescheduleTimes,
+  getDailyServiceCapacityViolation,
+  getScheduleConflictResourceNames,
+} from "@/lib/schedule-availability"
+import { removeEmployeesCoveredByTeams } from "@/lib/team-member-selection"
+import { formatConfiguredScheduleDuration, normalizeAutomatedScheduleDuration } from "@/lib/schedule-duration"
+import { formatContractNumber, getColorFromClass } from "@/lib/utils"
 
 type ContractSchedulePlanDialogProps = {
   open: boolean
@@ -40,11 +52,13 @@ type ContractSchedulePlanDialogProps = {
   schedules: ScheduleRecord[]
   serviceTypes: ServiceRecord[]
   teams: TeamRecord[]
+  employees: EmployeeRecord[]
 }
 
-const WORKDAY_DURATION_MINUTES = 9 * 60
+const WORKDAY_DURATION_MINUTES = 8 * 60
 const SHIFT_DURATION_MINUTES = 4 * 60
 const ADDED_PLAN_ITEM_PREFIX = "sched-added-"
+const ROUTINE_VISIT_SERVICE_ID = "srv-visita-de-rotina"
 
 const durationToMinutes = (value: number, type: "minutes" | "hours" | "shift" | "days") => {
   if (type === "minutes") return value
@@ -53,13 +67,21 @@ const durationToMinutes = (value: number, type: "minutes" | "hours" | "shift" | 
   return value * 60
 }
 
-const cloneItems = (items: ScheduleRecord[]) => items.map((item) => ({
-  ...item,
-  teams: [...item.teams],
-  additionalEmployees: [...item.additionalEmployees],
-  serviceTypeIds: [...item.serviceTypeIds],
-  contractServiceIds: [...item.contractServiceIds],
-}))
+const cloneItems = (items: ScheduleRecord[]) => items.map((item) => {
+  const normalizedDuration = normalizeAutomatedScheduleDuration(item.duration)
+
+  return {
+    ...item,
+    duration: normalizedDuration.durationMinutes,
+    durationValue: normalizedDuration.durationValue,
+    durationType: normalizedDuration.durationType,
+    teams: [...item.teams],
+    additionalEmployees: [...item.additionalEmployees],
+    serviceTypeIds: [...item.serviceTypeIds],
+    contractServiceIds: [...item.contractServiceIds],
+    serviceItems: [...(item.serviceItems ?? [])],
+  }
+})
 
 const isWeekendDateKey = (dateKey: string) => {
   const [year, month, day] = dateKey.split("-").map(Number)
@@ -67,35 +89,17 @@ const isWeekendDateKey = (dateKey: string) => {
   return weekday === 0 || weekday === 6
 }
 
-const nextBusinessDateKey = (dateKey: string) => {
-  let nextDate = addCivilDaysKey(dateKey, 1)
-  while (isWeekendDateKey(nextDate)) nextDate = addCivilDaysKey(nextDate, 1)
-  return nextDate
-}
-
-const coveredDateKeys = (schedule: ScheduleRecord, dateKey = schedule.date) => {
-  const durationDays = schedule.durationType === "days"
-    ? Math.max(1, Number(schedule.durationValue ?? Math.ceil(Number(schedule.duration || 0) / WORKDAY_DURATION_MINUTES)))
-    : 1
-  const dates: string[] = []
-  let currentDate = dateKey
-
-  for (let index = 0; index < durationDays; index += 1) {
-    dates.push(currentDate)
-    currentDate = nextBusinessDateKey(currentDate)
-  }
-
-  return dates
-}
-
 const toPayload = (items: ScheduleRecord[]) => ({
   items: items.map((item) => ({
     id: item.id,
     contractServiceId: item.contractServiceId ?? "",
+    contractServiceIds: item.contractServiceIds,
     date: item.date,
     time: item.time,
     durationValue: Number(item.durationValue ?? 1),
     durationType: item.durationType ?? "hours",
+    teamIds: item.teams.map((team) => team.id),
+    additionalEmployeeIds: item.additionalEmployees.map((employee) => employee.id),
   })),
 })
 
@@ -117,10 +121,13 @@ export function ContractSchedulePlanDialog({
   schedules,
   serviceTypes,
   teams,
+  employees,
 }: ContractSchedulePlanDialogProps) {
   const queryClient = useQueryClient()
   const [items, setItems] = useState<ScheduleRecord[]>([])
   const [generatedItems, setGeneratedItems] = useState<ScheduleRecord[]>([])
+  const [editingAssigneeId, setEditingAssigneeId] = useState<string | null>(null)
+  const [editingServicesId, setEditingServicesId] = useState<string | null>(null)
 
   const planQuery = useQuery({
     queryKey: ["contract-schedule-plan", contract.id],
@@ -147,6 +154,8 @@ export function ContractSchedulePlanDialog({
     () => new Map(serviceTypes.map((service) => [service.id, service])),
     [serviceTypes],
   )
+  const teamMap = useMemo(() => new Map(teams.map((team) => [team.id, team])), [teams])
+  const employeeMap = useMemo(() => new Map(employees.map((employee) => [employee.id, employee])), [employees])
   const contractServiceOptions = useMemo(
     () => contract.services
       .filter((service) => service.isActive !== false)
@@ -158,13 +167,78 @@ export function ContractSchedulePlanDialog({
     [contract.services, serviceTypeMap],
   )
   const todayDateKey = toCivilDateKey(new Date())
+  const planEndDate = planQuery.data?.data.endDate ?? ""
+  const dateAvailabilityCache = useMemo(
+    () => new WeakMap<ScheduleRecord, Map<string, { blockReason?: string; availableTimes: string[] }>>(),
+    [availabilitySchedules, planEndDate, serviceTypes, teams, todayDateKey],
+  )
+  const editingAssignee = items.find((item) => item.id === editingAssigneeId) ?? null
+  const editingServices = items.find((item) => item.id === editingServicesId) ?? null
+  const editingTeamIds = editingAssignee?.teams.map((team) => team.id) ?? []
+  const editingEmployeeIds = editingAssignee?.additionalEmployees.map((employee) => employee.id) ?? []
+  const availableEmployeeOptions = employees
+    .filter((employee) => !teams
+      .filter((team) => editingTeamIds.includes(team.id))
+      .some((team) => team.memberIds.includes(employee.id)))
+    .map((employee) => ({ id: employee.id, name: employee.name, subtitle: employee.role }))
 
   const updateItem = (id: string, changes: Partial<ScheduleRecord>) => {
     setItems((current) => current.map((item) => item.id === id ? { ...item, ...changes } : item))
   }
 
+  const canApplyAssignment = (item: ScheduleRecord, teamIds: string[], employeeIds: string[]) => {
+    const availability = checkScheduleAvailability({
+      schedules: availabilitySchedules,
+      teams,
+      ignoreScheduleId: item.id,
+      formData: {
+        teamIds,
+        employeeIds,
+        date: item.date,
+        time: item.time,
+        duration: Number(item.durationValue ?? 1),
+        durationType: item.durationType ?? "hours",
+      },
+      mode: "automation",
+    })
+    if (availability.available || availability.conflict?.reason !== "resource") return true
+
+    const resources = getScheduleConflictResourceNames(availability.conflict, { teams, employees })
+    toast.error(
+      teamIds.length > 0
+        ? "A equipe ou algum funcionário da equipe não tem disponibilidade para este agendamento."
+        : "O funcionário selecionado não tem disponibilidade para este agendamento.",
+      { description: resources.length > 0 ? resources.join(", ") : undefined },
+    )
+    return false
+  }
+
   const removeItem = (id: string) => {
     setItems((current) => current.filter((item) => item.id !== id))
+  }
+
+  const updateItemTeams = (teamIds: string[]) => {
+    if (!editingAssignee) return
+    const additionalEmployeeIds = removeEmployeesCoveredByTeams(editingEmployeeIds, teamIds, teams)
+    if (!canApplyAssignment(editingAssignee, teamIds, additionalEmployeeIds)) return
+    updateItem(editingAssignee.id, {
+      teams: teamIds.map((teamId) => teamMap.get(teamId)).filter((team): team is TeamRecord => Boolean(team)),
+      additionalEmployees: additionalEmployeeIds
+        .map((employeeId) => employeeMap.get(employeeId))
+        .filter((employee): employee is EmployeeRecord => Boolean(employee))
+        .map((employee) => ({ id: employee.id, name: employee.name })),
+    })
+  }
+
+  const updateItemEmployees = (employeeIds: string[]) => {
+    if (!editingAssignee) return
+    if (!canApplyAssignment(editingAssignee, editingTeamIds, employeeIds)) return
+    updateItem(editingAssignee.id, {
+      additionalEmployees: employeeIds
+        .map((employeeId) => employeeMap.get(employeeId))
+        .filter((employee): employee is EmployeeRecord => Boolean(employee))
+        .map((employee) => ({ id: employee.id, name: employee.name })),
+    })
   }
 
   const getServiceTemplate = (contractServiceId: string, unitId?: string) => {
@@ -174,29 +248,26 @@ export function ContractSchedulePlanDialog({
     return candidates.find((item) => item.unitId === unitId) ?? candidates[0]
   }
 
-  const hasDailyServiceCapacity = (item: ScheduleRecord, date: string) => {
-    const dailyLimit = serviceTypeMap.get(item.serviceTypeId)?.dailyScheduleLimit
-    if (!dailyLimit) return true
-
-    return coveredDateKeys(item, date).every((coveredDate) => {
-      const usage = availabilitySchedules.filter((schedule) => (
-        schedule.id !== item.id &&
-        !["cancelled", "completed"].includes(schedule.status) &&
-        (schedule.serviceTypeId === item.serviceTypeId || schedule.serviceTypeIds.includes(item.serviceTypeId)) &&
-        coveredDateKeys(schedule).includes(coveredDate)
-      )).length
-
-      return usage < dailyLimit
+  const getDailyCapacityViolation = (item: ScheduleRecord, date: string) =>
+    getDailyServiceCapacityViolation({
+      schedules: availabilitySchedules,
+      ignoreScheduleId: item.id,
+      serviceTypeIds: item.serviceTypeIds?.length ? item.serviceTypeIds : [item.serviceTypeId],
+      serviceTypes,
+      date,
+      time: item.time || "08:00",
+      durationMinutes: durationToMinutes(Number(item.durationValue ?? 1), item.durationType ?? "hours"),
+      durationType: item.durationType,
+      serviceItems: item.serviceItems,
+      mode: "automation",
     })
-  }
 
   const getDateBlockReason = (item: ScheduleRecord, date: string) => {
-    const endDate = planQuery.data?.data.endDate ?? ""
     if (isWeekendDateKey(date)) return "Fim de semana"
-    const minimumDate = item.id.startsWith(ADDED_PLAN_ITEM_PREFIX) ? todayDateKey : anchorDate
-    if (minimumDate && date < minimumDate) return "Data anterior ao início permitido"
-    if (endDate && date >= endDate) return "Fora da vigência do contrato"
-    if (!hasDailyServiceCapacity(item, date)) return "Limite atingido"
+    if (date < todayDateKey) return "Data anterior a hoje"
+    if (planEndDate && date >= planEndDate) return "Fora da vigência do contrato"
+    const capacityViolation = getDailyCapacityViolation(item, date)
+    if (capacityViolation) return formatDailyServiceCapacityViolation(capacityViolation, serviceTypes)
     return undefined
   }
 
@@ -208,39 +279,94 @@ export function ContractSchedulePlanDialog({
       date,
     })
 
-  const availableTimes = (item: ScheduleRecord, date: string) => {
-    if (getDateBlockReason(item, date)) return []
-    return getDateAvailableTimes(item, date)
+  const getDateAvailability = (item: ScheduleRecord, date: string) => {
+    let itemCache = dateAvailabilityCache.get(item)
+    if (!itemCache) {
+      itemCache = new Map()
+      dateAvailabilityCache.set(item, itemCache)
+    }
+    const cached = itemCache.get(date)
+    if (cached) return cached
+
+    const blockReason = getDateBlockReason(item, date)
+    const evaluation = {
+      blockReason,
+      availableTimes: blockReason ? [] : getDateAvailableTimes(item, date),
+    }
+    itemCache.set(date, evaluation)
+    return evaluation
   }
 
+  const availableTimes = (item: ScheduleRecord, date: string) =>
+    getDateAvailability(item, date).availableTimes
+
   const getDateTooltip = (item: ScheduleRecord, date: string) => {
-    const blockReason = getDateBlockReason(item, date)
+    const { blockReason, availableTimes: dateTimes } = getDateAvailability(item, date)
     if (blockReason) return blockReason
-    return getDateAvailableTimes(item, date).length === 0
+    return dateTimes.length === 0
       ? "Horário indisponível"
       : undefined
   }
 
-  const changeItemService = (item: ScheduleRecord, contractServiceId: string) => {
-    const template = getServiceTemplate(contractServiceId, item.unitId)
-    if (!template) {
-      toast.error("Não foi possível carregar a configuração desse serviço no contrato.")
+  const updateItemServices = (contractServiceIds: string[]) => {
+    if (!editingServices) return
+    if (contractServiceIds.length === 0) {
+      toast.error("O agendamento deve manter ao menos um serviço.")
       return
     }
 
-    const inherited = cloneItems([template])[0]
+    const selectedOptions = contractServiceIds
+      .map((contractServiceId) => contractServiceOptions.find((option) => option.contractService.id === contractServiceId))
+      .filter((option): option is NonNullable<typeof option> => Boolean(option?.serviceType))
+    if (selectedOptions.length !== contractServiceIds.length) {
+      toast.error("Não foi possível carregar a configuração de um dos serviços do contrato.")
+      return
+    }
+
+    const serviceItems = selectedOptions.map(({ contractService, serviceType }) => {
+      const durationValue = Number(contractService.duration ?? serviceType?.defaultDuration ?? 1)
+      const durationType = contractService.durationType ?? serviceType?.durationType ?? "hours"
+      return {
+        contractServiceId: contractService.id,
+        serviceTypeId: contractService.serviceTypeId,
+        durationMinutes: durationToMinutes(durationValue, durationType),
+        durationValue,
+        durationType,
+        countsTowardPackageDuration: contractService.serviceTypeId !== ROUTINE_VISIT_SERVICE_ID,
+      }
+    })
+    const contributingItems = serviceItems.filter((serviceItem) => serviceItem.countsTowardPackageDuration)
+    const duration = contributingItems.length > 0
+      ? contributingItems.reduce((total, serviceItem) => total + serviceItem.durationMinutes, 0)
+      : Math.max(...serviceItems.map((serviceItem) => serviceItem.durationMinutes))
+    const packageDuration = normalizeAutomatedScheduleDuration(duration)
+    const primary = selectedOptions.find((option) => option.contractService.serviceTypeId !== ROUTINE_VISIT_SERVICE_ID)
+      ?? selectedOptions[0]!
     const changedItem: ScheduleRecord = {
-      ...inherited,
-      id: item.id,
-      date: item.date,
-      time: item.time,
-      status: item.status,
-      createdAt: item.createdAt,
-      updatedAt: item.updatedAt,
+      ...editingServices,
+      contractServiceId: primary.contractService.id,
+      contractServiceIds,
+      serviceTypeId: primary.contractService.serviceTypeId,
+      serviceTypeIds: serviceItems.map((serviceItem) => serviceItem.serviceTypeId),
+      serviceItems,
+      serviceTypeName: selectedOptions.map((option) => option.serviceType?.name).join(", "),
+      serviceDocumentSettings: selectedOptions.map(({ contractService }) => ({
+        serviceTypeId: contractService.serviceTypeId,
+        informativeTemplateId: contractService.informativeTemplateId ?? "",
+        certificateTemplateId: contractService.certificateTemplateId ?? "",
+      })),
+      informativeTemplateId: primary.contractService.informativeTemplateId ?? "",
+      certificateTemplateId: primary.contractService.certificateTemplateId ?? "",
+      autoSendInformative: selectedOptions.some((option) => option.contractService.autoSendInformative),
+      generateCertificateRequest: selectedOptions.some((option) => option.contractService.generateCertificateRequest),
+      duration: packageDuration.durationMinutes,
+      durationValue: packageDuration.durationValue,
+      durationType: packageDuration.durationType,
+      time: packageDuration.durationMinutes >= WORKDAY_DURATION_MINUTES ? "08:00" : editingServices.time,
     }
     const times = availableTimes(changedItem, changedItem.date)
     changedItem.time = times.includes(changedItem.time) ? changedItem.time : times[0] ?? changedItem.time
-    updateItem(item.id, changedItem)
+    updateItem(editingServices.id, changedItem)
   }
 
   const addItem = () => {
@@ -294,8 +420,6 @@ export function ContractSchedulePlanDialog({
   const isPublished = Boolean(planQuery.data?.data.isPublished)
   const editingDisabled = busy || isPublished
   const hasIncompleteItems = items.some((item) => !item.date || !item.time)
-  const anchorDate = planQuery.data?.data.anchorDate ?? ""
-
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !busy && onOpenChange(nextOpen)}>
       <DialogContent className="flex max-h-[92dvh] w-[min(96vw,1560px)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-[min(96vw,1560px)]">
@@ -356,20 +480,15 @@ export function ContractSchedulePlanDialog({
                       <TableHead className="min-w-[140px]">Horário</TableHead>
                       <TableHead className="min-w-[250px]">Duração</TableHead>
                       <TableHead className="min-w-[220px]">Serviço</TableHead>
-                      <TableHead className="min-w-[220px]">Técnico / equipe</TableHead>
+                      <TableHead className="min-w-[260px]">Equipes / Funcionários</TableHead>
                       <TableHead className="w-[72px] text-right">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                   {items.map((item) => {
                     const times = availableTimes(item, item.date)
-                    const responsible = [
-                      ...item.teams.map((team) => team.name),
-                      ...item.additionalEmployees.map((employee) => employee.name),
-                    ].join(", ")
-
                     return (
-                      <TableRow key={item.id} data-schedule-id={item.id}>
+                      <TableRow key={item.id} data-schedule-id={item.id} className="hover:bg-transparent">
                         <TableCell className="align-top">
                           <DatePicker
                             value={parseCivilDate(item.date)}
@@ -380,11 +499,11 @@ export function ContractSchedulePlanDialog({
                               updateItem(item.id, { date: dateKey, time: nextTimes.includes(item.time) ? item.time : nextTimes[0] ?? item.time })
                             }}
                             placeholder="Selecionar data"
-                            className="rounded-full"
+                            className="rounded-full bg-white hover:bg-white disabled:opacity-100 dark:bg-white"
                             disabled={editingDisabled}
                             disabledDates={(date) => {
                               const dateKey = toCivilDateKey(date)
-                              return Boolean(getDateBlockReason(item, dateKey)) || availableTimes(item, dateKey).length === 0
+                              return getDateAvailability(item, dateKey).availableTimes.length === 0
                             }}
                             dateTooltip={(date) => getDateTooltip(item, toCivilDateKey(date))}
                           />
@@ -395,7 +514,7 @@ export function ContractSchedulePlanDialog({
                             onValueChange={(time) => updateItem(item.id, { time })}
                             disabled={editingDisabled || times.length === 0}
                           >
-                            <SelectTrigger className="h-9 rounded-full">
+                            <SelectTrigger className="h-9 rounded-full bg-white disabled:opacity-100 dark:bg-white">
                               <Clock3 className="mr-2 h-4 w-4 text-muted-foreground" />
                               <SelectValue placeholder="Horário" />
                             </SelectTrigger>
@@ -407,19 +526,19 @@ export function ContractSchedulePlanDialog({
                         <TableCell className="align-top">
                           <div className="flex min-w-[230px] gap-2">
                             <NumericInput
-                              allowDecimal
-                              min="0.5"
-                              step="0.5"
+                              min={1}
+                              step={1}
                               value={item.durationValue ?? 1}
                               disabled={editingDisabled}
-                              className="h-9 w-24 rounded-full"
+                              className="h-9 w-24 rounded-full bg-white disabled:opacity-100 dark:bg-white"
                               aria-label={`Duração de ${item.serviceTypeName}`}
                               onValueChange={(durationValue) => {
                                 const durationType = item.durationType ?? "hours"
+                                const duration = normalizeAutomatedScheduleDuration(durationToMinutes(durationValue, durationType))
                                 updateItem(item.id, {
-                                  durationValue,
-                                  durationType,
-                                  duration: durationToMinutes(durationValue, durationType),
+                                  durationValue: duration.durationValue,
+                                  durationType: duration.durationType,
+                                  duration: duration.durationMinutes,
                                 })
                               }}
                             />
@@ -428,15 +547,16 @@ export function ContractSchedulePlanDialog({
                               disabled={editingDisabled}
                               onValueChange={(value: "minutes" | "hours" | "shift" | "days") => {
                                 const durationValue = Number(item.durationValue ?? 1)
+                                const duration = normalizeAutomatedScheduleDuration(durationToMinutes(durationValue, value))
                                 updateItem(item.id, {
-                                  durationType: value,
-                                  durationValue,
-                                  duration: durationToMinutes(durationValue, value),
-                                  time: value === "days" ? "08:00" : item.time,
+                                  durationType: duration.durationType,
+                                  durationValue: duration.durationValue,
+                                  duration: duration.durationMinutes,
+                                  time: duration.durationType === "days" ? "08:00" : item.time,
                                 })
                               }}
                             >
-                              <SelectTrigger className="h-9 min-w-[126px] rounded-full">
+                              <SelectTrigger className="h-9 min-w-[126px] rounded-full bg-white disabled:opacity-100 dark:bg-white">
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
@@ -449,35 +569,73 @@ export function ContractSchedulePlanDialog({
                           </div>
                         </TableCell>
                         <TableCell className="align-top">
-                          <Select
-                            value={item.contractServiceId ?? ""}
-                            disabled={editingDisabled || contractServiceOptions.length === 0}
-                            onValueChange={(contractServiceId) => changeItemService(item, contractServiceId)}
-                          >
-                            <SelectTrigger
-                              className="h-9 min-w-[220px] rounded-full"
-                              aria-label={`Serviço de ${item.serviceTypeName}`}
+                          <div className="flex min-h-9 min-w-[220px] flex-wrap items-center gap-1.5">
+                            {(item.contractServiceIds.length > 0 ? item.contractServiceIds : [item.contractServiceId ?? ""])
+                              .filter(Boolean)
+                              .map((contractServiceId) => {
+                                const option = contractServiceOptions.find((candidate) => candidate.contractService.id === contractServiceId)
+                                return (
+                                  <Badge
+                                    key={contractServiceId}
+                                    variant="secondary"
+                                    className="cursor-pointer px-3 py-1 text-xs"
+                                    onClick={() => !editingDisabled && setEditingServicesId(item.id)}
+                                  >
+                                    {option?.serviceType?.name ?? contractServiceId}
+                                  </Badge>
+                                )
+                              })}
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 shrink-0"
+                              disabled={editingDisabled || contractServiceOptions.length === 0}
+                              onClick={() => setEditingServicesId(item.id)}
+                              aria-label={`Editar serviços de ${item.serviceTypeName}`}
+                              title="Editar serviços"
                             >
-                              <SelectValue placeholder="Selecionar serviço" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {contractServiceOptions.map(({ contractService, serviceType }) => (
-                                <SelectItem key={contractService.id} value={contractService.id}>
-                                  {serviceType?.name ?? item.serviceTypeName}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                              <Plus className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </TableCell>
                         <TableCell className="align-top">
-                          {responsible ? (
-                            <div className="flex items-start gap-2 text-sm">
-                              <Users className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                              <span>{responsible}</span>
-                            </div>
-                          ) : (
-                            <span className="text-sm text-muted-foreground">-</span>
-                          )}
+                          <div className="flex min-h-9 flex-wrap items-center gap-1.5">
+                            {item.teams.map((team) => {
+                              const color = getColorFromClass(team.color)
+                              return (
+                                <Badge
+                                  key={team.id}
+                                  variant="secondary"
+                                  className="flex items-center gap-2 px-3 py-1 text-xs text-foreground/80"
+                                  style={{ backgroundColor: `${color}1A` }}
+                                >
+                                  <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
+                                  {team.name}
+                                </Badge>
+                              )
+                            })}
+                            {item.additionalEmployees.map((employee) => (
+                              <Badge key={employee.id} variant="outline" className="px-3 py-1 text-xs">
+                                {employee.name}
+                              </Badge>
+                            ))}
+                            {item.teams.length === 0 && item.additionalEmployees.length === 0 ? (
+                              <span className="text-sm text-muted-foreground">Nenhum</span>
+                            ) : null}
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 shrink-0"
+                              disabled={editingDisabled}
+                              onClick={() => setEditingAssigneeId(item.id)}
+                              aria-label={`Adicionar equipes e funcionários ao agendamento de ${item.serviceTypeName}`}
+                              title="Adicionar equipes e funcionários"
+                            >
+                              <Plus className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </TableCell>
                         <TableCell className="align-top text-right">
                           <Button
@@ -531,6 +689,100 @@ export function ContractSchedulePlanDialog({
           </div>
         </DialogFooter>
       </DialogContent>
+
+      <Dialog
+        open={Boolean(editingServices)}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setEditingServicesId(null)
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Editar serviços do agendamento</DialogTitle>
+            <DialogDescription>
+              A duração do pacote soma os serviços selecionados; visita de rotina é incluída sem acrescentar tempo.
+            </DialogDescription>
+          </DialogHeader>
+          {editingServices ? (
+            <div className="space-y-5">
+              <div className="space-y-2">
+                <Label>Serviços</Label>
+                <MultiSelect
+                  options={contractServiceOptions.map(({ contractService, serviceType }) => ({
+                    id: contractService.id,
+                    name: serviceType?.name ?? contractService.serviceTypeId,
+                  }))}
+                  selected={editingServices.contractServiceIds.length > 0
+                    ? editingServices.contractServiceIds
+                    : editingServices.contractServiceId ? [editingServices.contractServiceId] : []}
+                  onChange={updateItemServices}
+                  placeholder="Buscar e adicionar serviços..."
+                  searchPlaceholder="Buscar serviço..."
+                  emptyMessage="Nenhum serviço encontrado."
+                  ariaLabel="Serviços do agendamento"
+                  triggerClassName="bg-white hover:bg-white aria-expanded:bg-white data-[state=open]:bg-white dark:bg-white"
+                  selectedBadgeVariant="secondary"
+                  selectedBadgeClassName="text-secondary-foreground"
+                />
+              </div>
+              <div className="rounded-lg bg-muted/30 px-4 py-3 text-sm">
+                Duração total: <span className="font-medium">{formatConfiguredScheduleDuration(editingServices)}</span>
+              </div>
+              <div className="flex justify-end">
+                <Button type="button" onClick={() => setEditingServicesId(null)}>Concluir</Button>
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(editingAssignee)}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setEditingAssigneeId(null)
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Editar Equipes e Funcionários</DialogTitle>
+          </DialogHeader>
+          {editingAssignee ? (
+            <div className="space-y-6">
+              <div className="space-y-2">
+                <Label>Equipes</Label>
+                <MultiSelect
+                  options={teams.map((team) => ({ id: team.id, name: team.name, color: team.color }))}
+                  selected={editingTeamIds}
+                  onChange={updateItemTeams}
+                  placeholder="Buscar e adicionar equipes..."
+                  searchPlaceholder="Buscar equipe..."
+                  emptyMessage="Nenhuma equipe encontrada."
+                  ariaLabel="Equipes do agendamento"
+                  triggerClassName="bg-white hover:bg-white aria-expanded:bg-white data-[state=open]:bg-white dark:bg-white"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Funcionários Avulsos</Label>
+                <MultiSelect
+                  options={availableEmployeeOptions}
+                  selected={editingEmployeeIds}
+                  onChange={updateItemEmployees}
+                  placeholder="Buscar e adicionar funcionários..."
+                  searchPlaceholder="Buscar funcionário..."
+                  emptyMessage="Nenhum funcionário encontrado."
+                  ariaLabel="Funcionários avulsos do agendamento"
+                  triggerClassName="bg-white hover:bg-white aria-expanded:bg-white data-[state=open]:bg-white dark:bg-white"
+                />
+              </div>
+              <div className="flex justify-end">
+                <Button type="button" onClick={() => setEditingAssigneeId(null)}>
+                  Concluir
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </Dialog>
   )
 }

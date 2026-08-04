@@ -34,7 +34,10 @@ interface MultiSelectProps {
   searchPlaceholder?: string
   emptyMessage?: string
   className?: string
+  triggerClassName?: string
   showSelectedTags?: boolean
+  selectedBadgeVariant?: React.ComponentProps<typeof Badge>["variant"]
+  selectedBadgeClassName?: string
   ariaLabel?: string
 }
 
@@ -46,7 +49,10 @@ export function MultiSelect({
   searchPlaceholder = "Buscar...",
   emptyMessage = "Nenhum item encontrado.",
   className,
+  triggerClassName,
   showSelectedTags = true,
+  selectedBadgeVariant = "outline",
+  selectedBadgeClassName,
   ariaLabel,
 }: MultiSelectProps) {
   const [open, setOpen] = React.useState(false)
@@ -81,7 +87,7 @@ export function MultiSelect({
             role="combobox"
             aria-label={ariaLabel ?? placeholder}
             aria-expanded={open}
-            className="w-full justify-between font-normal"
+            className={cn("w-full justify-between font-normal", triggerClassName)}
           >
             <span className="text-muted-foreground">{placeholder}</span>
             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -142,8 +148,8 @@ export function MultiSelect({
             return (
               <Badge
                 key={option.id}
-                variant={hasColor ? "secondary" : "outline"}
-                className="flex items-center gap-2 px-3 py-1 text-foreground/80"
+                variant={hasColor ? "secondary" : selectedBadgeVariant}
+                className={cn("flex items-center gap-2 px-3 py-1 text-foreground/80", selectedBadgeClassName)}
                 style={hasColor ? { backgroundColor: `${resolvedColor}1A` } : undefined}
               >
                 {hasColor ? (

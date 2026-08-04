@@ -54,6 +54,7 @@ import {
   getClicksignContractStatusLabel,
   isClosedClicksignContractStatus,
   isContractEligibleForRenewal,
+  isContractEligibleToMarkAsRenewed,
   isContractExpiredByValidity,
   isContractRenewed,
   isOperationallyActiveContract,
@@ -301,7 +302,7 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
       <ConfirmActionDialog
         open={Boolean(contractToMarkRenewed)}
         title="Marcar contrato como renovado?"
-        description="Use esta opção quando a renovação foi criada fora deste fluxo. O contrato deixará de aparecer como vencido e as ações de renovação serão ocultadas."
+        description="Use esta opção quando a renovação foi criada fora deste fluxo. O contrato continuará assinado e manterá suas datas de vigência, mas deixará de receber alertas de vencimento."
         confirmLabel="Marcar como renovado"
         confirmVariant="default"
         confirmClassName="bg-primary hover:bg-primary/90"
@@ -520,18 +521,18 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
                               </DropdownMenuItem>
                             ) : null}
                             {canCreateContracts && isContractEligibleForRenewal(contract) ? (
-                              <>
-                                <DropdownMenuItem asChild>
-                                  <Link href={getContractRenewHref(contract.id)}>
-                                    <RefreshCw className="mr-2 h-4 w-4" />
-                                    Renovar
-                                  </Link>
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onSelect={() => setContractToMarkRenewed(contract)}>
-                                  <CheckCircle2 className="mr-2 h-4 w-4" />
-                                  Marcar como renovado
-                                </DropdownMenuItem>
-                              </>
+                              <DropdownMenuItem asChild>
+                                <Link href={getContractRenewHref(contract.id)}>
+                                  <RefreshCw className="mr-2 h-4 w-4" />
+                                  Renovar
+                                </Link>
+                              </DropdownMenuItem>
+                            ) : null}
+                            {canCreateContracts && isContractEligibleToMarkAsRenewed(contract) ? (
+                              <DropdownMenuItem onSelect={() => setContractToMarkRenewed(contract)}>
+                                <CheckCircle2 className="mr-2 h-4 w-4" />
+                                Marcar como renovado
+                              </DropdownMenuItem>
                             ) : null}
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -640,24 +641,24 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
                           </Button>
                         ) : null}
                         {canCreateContracts && isContractEligibleForRenewal(contract) ? (
-                          <>
-                            <Button variant="outline" size="sm" className="min-w-[110px] flex-1" asChild>
-                              <Link href={getContractRenewHref(contract.id)}>
-                                <RefreshCw className="mr-1 h-4 w-4" />
-                                Renovar
-                              </Link>
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className="min-w-[180px] flex-1"
-                              onClick={() => setContractToMarkRenewed(contract)}
-                            >
-                              <CheckCircle2 className="mr-1 h-4 w-4" />
-                              Marcar como renovado
-                            </Button>
-                          </>
+                          <Button variant="outline" size="sm" className="min-w-[110px] flex-1" asChild>
+                            <Link href={getContractRenewHref(contract.id)}>
+                              <RefreshCw className="mr-1 h-4 w-4" />
+                              Renovar
+                            </Link>
+                          </Button>
+                        ) : null}
+                        {canCreateContracts && isContractEligibleToMarkAsRenewed(contract) ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="min-w-[180px] flex-1"
+                            onClick={() => setContractToMarkRenewed(contract)}
+                          >
+                            <CheckCircle2 className="mr-1 h-4 w-4" />
+                            Marcar como renovado
+                          </Button>
                         ) : null}
                         {contract.internalStatus !== "filling" ? (
                           <Button size="sm" className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90" asChild>

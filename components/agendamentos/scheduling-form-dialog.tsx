@@ -37,8 +37,8 @@ import { Check, ChevronsUpDown, X } from "lucide-react"
 import { CurrencyInput } from "@/components/ui/currency-input"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import {
-  minutesToScheduleDuration,
   SCHEDULE_DURATION_TYPE_OPTIONS,
+  scheduleDurationForEditing,
   type ScheduleDurationType,
 } from "@/lib/schedule-duration"
 import {
@@ -293,15 +293,7 @@ export function SchedulingFormDialog({
           ?? (index === 0 ? schedule.certificateTemplateId ?? "" : ""),
       }
     })
-    let durationFields = minutesToScheduleDuration(schedule.duration, serviceType)
-    const configuredDuration = Number(schedule.durationValue)
-
-    if (schedule.durationType && Number.isFinite(configuredDuration) && configuredDuration >= 1) {
-      durationFields = {
-        durationType: schedule.durationType,
-        duration: configuredDuration,
-      }
-    }
+    const durationFields = scheduleDurationForEditing(schedule, serviceType)
 
     const selection = normalizeTeamEmployeeSelection({
       teamIds: schedule.teamIds ?? schedule.teams?.map((team) => team.id) ?? (schedule.teamId ? [schedule.teamId] : []),
@@ -895,10 +887,10 @@ export function SchedulingFormDialog({
             <div className="space-y-2">
               <Label>Duração</Label>
               <NumericInput
-                allowDecimal
                 value={formData.duration}
                 onValueChange={(duration) => setFormData((current) => ({ ...current, duration }))}
                 min={1}
+                step={1}
                 className="w-full"
               />
             </div>

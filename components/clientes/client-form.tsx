@@ -19,7 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
-import { Plus, Trash2, Building2, MapPin, Save, Loader2, Users, CalendarClock } from "lucide-react"
+import { Plus, Trash2, Building2, MapPin, Save, Loader2, Users, CalendarClock, Copy } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { formatCNPJ, formatCPF, formatPhone, isValidCNPJ, isValidCPF, onlyDigits } from "@/lib/masks"
 import { toast } from "sonner"
@@ -360,6 +360,17 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
 
   const handleInputChange = (field: string, value: string | boolean) => {
     setFormData(prev => ({ ...prev, [field]: value }))
+  }
+
+  const handleCopyResponsibleToSyndic = () => {
+    setFormData(prev => ({
+      ...prev,
+      syndicName: prev.responsibleName,
+      syndicEmail: prev.email,
+      syndicPhone: prev.phone,
+      syndicCpf: prev.responsibleCpf,
+    }))
+    toast.success("Dados do responsável copiados para o síndico.")
   }
 
   const handleUnitChange = (index: number, field: string, value: string | boolean | number) => {
@@ -1083,6 +1094,17 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
               </span>
             </span>
           </label>
+
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="w-fit"
+            onClick={handleCopyResponsibleToSyndic}
+          >
+            <Copy className="h-4 w-4" />
+            Copiar dados do responsável
+          </Button>
         </div>
       </Card>
 

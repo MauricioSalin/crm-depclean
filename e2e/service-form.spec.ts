@@ -7,14 +7,20 @@ type ServicePayload = {
   name?: string
   description?: string
   defaultRecurrence?: string
+  dailyScheduleLimit?: number | null
+  dailyScheduleLimitHours?: number | null
   clauses?: string[]
 }
 
-async function captureServiceMutation(page: Page, options: { legacyEmptyRecurrence?: boolean } = {}) {
+async function captureServiceMutation(page: Page, options: { legacyEmptyRecurrence?: boolean; legacyDailyLimit?: number } = {}) {
   let payload: ServicePayload | undefined
-  let currentService = options.legacyEmptyRecurrence
+  let currentService: Omit<typeof serviceFixture, "dailyScheduleLimit" | "dailyScheduleLimitHours"> & {
+    dailyScheduleLimit: number | null
+    dailyScheduleLimitHours: number | null
+  } = options.legacyEmptyRecurrence
     ? { ...serviceFixture, defaultRecurrence: "" }
     : { ...serviceFixture }
+  if (options.legacyDailyLimit) currentService.dailyScheduleLimit = options.legacyDailyLimit
 
   await page.route("**/api/v1/services/service-e2e", async (route) => {
     const request = route.request()
@@ -144,4 +150,22 @@ test("reabre a edição com os dados atualizados sem precisar recarregar a pági
 
   await expect(page).toHaveURL(/\/servicos\/service-e2e\/editar$/)
   await expect(page.getByLabel("Descrição")).toHaveValue(updatedDescription)
+})
+
+test("mantém a duração padrão inteira e permite fracionar somente o limite diário", async ({ page }) => {
+  const { getPayload } = await captureServiceMutation(page, { legacyDailyLimit: 1 })
+
+  await page.goto("/servicos/service-e2e/editar")
+  const durationInput = page.getByLabel("Duração Padrão")
+  await expect(durationInput).toHaveValue(String(serviceFixture.defaultDuration))
+  const initialDuration = await durationInput.inputValue()
+  await durationInput.pressSequentially(",")
+  await expect(durationInput).toHaveValue(initialDuration)
+
+  const limitInput = page.getByLabel("Limite do serviço por dia")
+  await expect(limitInput).toHaveValue("8")
+  await limitInput.fill("7,5")
+
+  await page.getByRole("button", { name: "Salvar Alterações" }).click()
+  await expect.poll(() => getPayload()?.dailyScheduleLimitHours).toBe(7.5)
 })

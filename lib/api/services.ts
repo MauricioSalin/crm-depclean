@@ -20,6 +20,7 @@ export type ServiceRecord = {
   durationType: ServiceDurationType
   defaultRecurrence: string
   dailyScheduleLimit: number | null
+  dailyScheduleLimitHours: number | null
   defaultInformativeTemplateId: string
   defaultCertificateTemplateId: string
   autoSendInformative: boolean
@@ -43,6 +44,7 @@ export type ServicePayload = {
   durationType?: ServiceDurationType
   defaultRecurrence?: string
   dailyScheduleLimit?: number | null
+  dailyScheduleLimitHours?: number | null
   defaultInformativeTemplateId?: string
   defaultCertificateTemplateId?: string
   autoSendInformative?: boolean

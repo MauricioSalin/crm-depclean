@@ -24,6 +24,7 @@ import { getApiErrorMessage } from "@/lib/api/errors"
 import { createService, getServiceById, updateService, type ServiceDurationType } from "@/lib/api/services"
 import { listTeams } from "@/lib/api/teams"
 import { listTemplates } from "@/lib/api/templates"
+import { resolveDailyScheduleLimitHours } from "@/lib/service-daily-capacity"
 import {
   isEmployeeCoveredBySelectedTeams,
   normalizeTeamEmployeeSelection,
@@ -49,7 +50,7 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
     defaultDuration: 1,
     durationType: "hours" as ServiceDurationType,
     defaultRecurrence: "monthly",
-    dailyScheduleLimit: "unlimited",
+    dailyScheduleLimitHours: null as number | null,
     defaultInformativeTemplateId: "",
     defaultCertificateTemplateId: "",
     autoSendInformative: false,
@@ -119,6 +120,10 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
     })
     const defaultInformativeTemplateId = service.defaultInformativeTemplateId ?? ""
     const defaultCertificateTemplateId = service.defaultCertificateTemplateId ?? ""
+    const dailyScheduleLimitHours = resolveDailyScheduleLimitHours(
+      service.dailyScheduleLimitHours,
+      service.dailyScheduleLimit,
+    )
 
     setFormData({
       name: service.name,
@@ -126,7 +131,7 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
       defaultDuration: service.defaultDuration,
       durationType: service.durationType,
       defaultRecurrence: service.defaultRecurrence || "monthly",
-      dailyScheduleLimit: service.dailyScheduleLimit ? String(service.dailyScheduleLimit) : "unlimited",
+      dailyScheduleLimitHours,
       defaultInformativeTemplateId,
       defaultCertificateTemplateId,
       autoSendInformative: Boolean(defaultInformativeTemplateId) || service.autoSendInformative === true,
@@ -163,9 +168,7 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
   const saveMutation = useMutation({
     mutationFn: async (clauses: string[]) => {
       const defaultDuration = Number(formData.defaultDuration)
-      const dailyScheduleLimit = formData.dailyScheduleLimit === "unlimited"
-        ? null
-        : Number(formData.dailyScheduleLimit)
+      const dailyScheduleLimitHours = Number(formData.dailyScheduleLimitHours)
       const defaultInformativeTemplateId = formData.autoSendInformative
         ? formData.defaultInformativeTemplateId
         : ""
@@ -178,11 +181,8 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
         defaultDuration: Number.isInteger(defaultDuration) && defaultDuration >= 1 ? defaultDuration : 1,
         durationType: formData.durationType,
         defaultRecurrence: formData.defaultRecurrence || "monthly",
-        dailyScheduleLimit: dailyScheduleLimit !== null
-          && Number.isInteger(dailyScheduleLimit)
-          && dailyScheduleLimit >= 1
-          && dailyScheduleLimit <= 5
-          ? dailyScheduleLimit
+        dailyScheduleLimitHours: Number.isFinite(dailyScheduleLimitHours) && dailyScheduleLimitHours > 0
+          ? dailyScheduleLimitHours
           : null,
         defaultInformativeTemplateId,
         defaultCertificateTemplateId,
@@ -368,6 +368,7 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
             <NumericInput
               id="duration"
               min={1}
+              step={1}
               value={formData.defaultDuration}
               onValueChange={(value) =>
                 setFormData((current) => ({ ...current, defaultDuration: value }))
@@ -399,21 +400,21 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="dailyScheduleLimit">Limite de serviços no dia</Label>
-            <Select
-              value={formData.dailyScheduleLimit}
-              onValueChange={(value) => setFormData((current) => ({ ...current, dailyScheduleLimit: value }))}
-            >
-              <SelectTrigger id="dailyScheduleLimit" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="unlimited">Ilimitado</SelectItem>
-                {[1, 2, 3, 4, 5].map((limit) => (
-                  <SelectItem key={limit} value={String(limit)}>{limit} por dia</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Label htmlFor="dailyScheduleLimitHours">Limite do serviço por dia</Label>
+            <div className="flex items-center gap-2">
+              <NumericInput
+                id="dailyScheduleLimitHours"
+                min={0.01}
+                allowDecimal
+                allowEmpty
+                value={formData.dailyScheduleLimitHours}
+                onEmpty={() => setFormData((current) => ({ ...current, dailyScheduleLimitHours: null }))}
+                onValueChange={(value) => setFormData((current) => ({ ...current, dailyScheduleLimitHours: value }))}
+                className="w-full"
+              />
+              <span className="shrink-0 text-sm text-muted-foreground">Horas</span>
+            </div>
+            <p className="text-xs text-muted-foreground">Deixe em branco para ilimitado.</p>
           </div>
         </div>
       </Card>

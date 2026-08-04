@@ -86,6 +86,11 @@ import { cn, formatContractNumber, getColorFromClass } from "@/lib/utils"
 import { useHasAnyPermission } from "@/hooks/use-permissions"
 import { withReturnTo } from "@/lib/navigation"
 import { addCivilMonthsKey, formatCivilDate, formatCivilLongDate, parseCivilDate, toCivilDateKey } from "@/lib/date-utils"
+import {
+  buildDownPaymentsText,
+  buildInstallmentDueDatesText,
+  buildRemainingInstallmentsText,
+} from "@/lib/contract-down-payments"
 import type { RecurrenceRule, RecurrenceRuleType, RecurrenceType } from "@/lib/types"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
@@ -111,7 +116,7 @@ import { buildApiFileUrl } from "@/lib/api/client"
 import { isClosedClicksignContractStatus, normalizeClicksignContractStatus } from "@/lib/contract-status"
 import { formatCNPJ, formatCPF, formatPhone } from "@/lib/masks"
 import { listServices, type ServiceDurationType } from "@/lib/api/services"
-import { formatScheduleDurationValue } from "@/lib/schedule-duration"
+import { formatScheduleDurationValue, normalizeScheduleDurationForIntegerInput } from "@/lib/schedule-duration"
 import { listTemplates } from "@/lib/api/templates"
 import { listTeams } from "@/lib/api/teams"
 import { listEmployees } from "@/lib/api/employees"
@@ -138,6 +143,34 @@ const formatDate = (value: Date | string) =>
 const getFirstInstallmentDueDate = (installments?: Array<{ number: number; dueDate: string }>) => {
   const firstInstallment = [...(installments ?? [])].sort((left, right) => left.number - right.number)[0]
   return firstInstallment?.dueDate ? String(firstInstallment.dueDate).split("T")[0] : ""
+}
+
+type ContractDownPaymentFormEntry = {
+  id: string
+  value: number
+  dueDate: string
+}
+
+const getContractDownPaymentsForForm = (contract?: ContractRecord | null): ContractDownPaymentFormEntry[] => {
+  if (contract?.downPayments?.length) {
+    return [...contract.downPayments]
+      .sort((left, right) => left.number - right.number)
+      .map((entry) => ({
+        id: entry.id,
+        value: Math.round(entry.value * 100),
+        dueDate: String(entry.dueDate).split("T")[0],
+      }))
+  }
+
+  if (contract?.downPaymentValue && contract.installments[0]?.dueDate) {
+    return [{
+      id: "down-payment-1",
+      value: Math.round(contract.downPaymentValue * 100),
+      dueDate: String(contract.installments[0].dueDate).split("T")[0],
+    }]
+  }
+
+  return []
 }
 
 const createDefaultContractRecurrenceRules = (): RecurrenceRule[] => [
@@ -260,6 +293,10 @@ const normalizeContractServiceForForm = (
     service.informativeTemplateId ?? contract?.automationInformativeTemplateId ?? ""
   const certificateTemplateId =
     service.certificateTemplateId ?? contract?.automationCertificateTemplateId ?? ""
+  const normalizedDuration = normalizeScheduleDurationForIntegerInput(
+    Number(service.duration ?? 1),
+    service.durationType ?? "hours",
+  )
 
   return {
     id: service.id ?? "",
@@ -271,8 +308,8 @@ const normalizeContractServiceForForm = (
     teamIds: service.teamIds ?? (service.teamId ? [service.teamId] : []),
     employeeIds: service.additionalEmployeeIds ?? service.employeeIds ?? [],
     recurrence: service.recurrence ?? "monthly",
-    duration: Number(service.duration ?? 1),
-    durationType: service.durationType ?? "hours",
+    duration: normalizedDuration.durationValue,
+    durationType: normalizedDuration.durationType,
     clauses: [...(service.clauses ?? [])],
     isRecurrenceService: Boolean(service.isRecurrenceService),
   }
@@ -508,7 +545,9 @@ export function ContractForm({
     contract?.services.map((service) => normalizeContractServiceForForm(service, contract)) ?? [],
   )
   const [contractValue, setContractValue] = useState(contract?.totalValue ? Math.round(contract.totalValue * 100) : 0)
-  const [downPaymentValue, setDownPaymentValue] = useState(contract?.downPaymentValue ? Math.round(contract.downPaymentValue * 100) : 0)
+  const [downPayments, setDownPayments] = useState<ContractDownPaymentFormEntry[]>(
+    getContractDownPaymentsForForm(contract),
+  )
 
   // Contract-level recurrence rules
   const [contractRecurrenceRules, setContractRecurrenceRules] = useState<RecurrenceRule[]>(
@@ -538,14 +577,35 @@ export function ContractForm({
   const selectedTemplate = templateById.get(selectedTemplateId)
   const selectedTemplateSigner = selectedTemplate?.signerId ? employeeById.get(selectedTemplate.signerId) : undefined
   const totalValue = contractValue / 100
+  const downPaymentValue = downPayments.reduce((sum, entry) => sum + entry.value, 0)
   const downPaymentAmount = downPaymentValue / 100
-  const hasDownPayment = downPaymentAmount > 0 && installmentsCount > 1
-  const remainingInstallmentsCount = hasDownPayment ? installmentsCount - 1 : installmentsCount
+  const hasDownPayment = downPayments.length > 0
+  const remainingInstallmentsCount = Math.max(installmentsCount - downPayments.length, 0)
   const remainingContractValue = Math.max(totalValue - downPaymentAmount, 0)
   const regularInstallmentValue = remainingInstallmentsCount > 0
     ? (hasDownPayment ? remainingContractValue : totalValue) / remainingInstallmentsCount
     : totalValue
-  const firstInstallmentValue = hasDownPayment ? downPaymentAmount : regularInstallmentValue
+  const firstInstallmentValue = downPayments[0]?.value
+    ? downPayments[0].value / 100
+    : regularInstallmentValue
+  const downPaymentsText = buildDownPaymentsText(
+    downPayments
+      .filter((entry) => entry.value > 0 && entry.dueDate)
+      .map((entry, index) => ({
+        number: index + 1,
+        value: entry.value / 100,
+        dueDate: entry.dueDate,
+      })),
+  )
+  const installmentDueDatesText = buildInstallmentDueDatesText(
+    downPayments[0]?.dueDate || firstDueDate,
+    dueDay,
+  )
+  const remainingInstallmentsText = buildRemainingInstallmentsText(
+    remainingInstallmentsCount,
+    regularInstallmentValue,
+    hasDownPayment,
+  )
   const activeContractTemplates = useMemo(
     () => templates.filter((template) => template.isActive),
     [templates],
@@ -600,6 +660,7 @@ export function ContractForm({
     services,
     contractValue,
     downPaymentValue,
+    downPayments,
     contractRecurrenceRules: contractRecurrenceRules.map((rule) => ({
       ...rule,
       maxUnits: Number.isFinite(rule.maxUnits) ? rule.maxUnits : Number.MAX_SAFE_INTEGER,
@@ -609,7 +670,7 @@ export function ContractForm({
     contractValue,
     createAutomatedInformatives,
     createAutomatedSchedules,
-    downPaymentValue,
+    downPayments,
     dueDayInput,
     firstDueDate,
     firstVisitDate,
@@ -683,8 +744,14 @@ export function ContractForm({
         services: ContractService[]
         contractValue: number
         downPaymentValue: number
+        downPayments: ContractDownPaymentFormEntry[]
         contractRecurrenceRules: RecurrenceRule[]
       }>
+      const draftDownPayments = formDraft.downPayments?.length
+        ? formDraft.downPayments
+        : formDraft.downPaymentValue && formDraft.firstDueDate
+          ? [{ id: "down-payment-1", value: formDraft.downPaymentValue, dueDate: formDraft.firstDueDate }]
+          : []
       fillingDraftBaseRef.current = {
         clientId: contract.clientId,
         formData: contract.formDraft,
@@ -695,7 +762,7 @@ export function ContractForm({
       setCreateAutomatedSchedules(Boolean(formDraft.createAutomatedSchedules))
       setCreateAutomatedInformatives(Boolean(formDraft.createAutomatedInformatives))
       setStartDate(formDraft.startDate ?? "")
-      setFirstDueDate(formDraft.firstDueDate ?? "")
+      setFirstDueDate(draftDownPayments.length > 0 ? "" : formDraft.firstDueDate ?? "")
       setFirstVisitDate(formDraft.firstVisitDate ?? "")
       setFirstVisitTime(formDraft.firstVisitTime ?? "08:00")
       setInstallmentsCountInput(formDraft.installmentsCountInput ?? "1")
@@ -708,7 +775,7 @@ export function ContractForm({
         ),
       )
       setContractValue(Number(formDraft.contractValue ?? 0))
-      setDownPaymentValue(Number(formDraft.downPaymentValue ?? 0))
+      setDownPayments(draftDownPayments)
       setContractRecurrenceRules(
         formDraft.contractRecurrenceRules?.map((rule) => ({
           ...rule,
@@ -747,7 +814,7 @@ export function ContractForm({
       )
       setServices(initialServiceList)
       setContractValue(0)
-      setDownPaymentValue(0)
+      setDownPayments([])
       setContractRecurrenceRules(
         contract.recurrenceRules?.length
           ? contract.recurrenceRules.map((rule) => ({
@@ -776,7 +843,8 @@ export function ContractForm({
           ? String(contract.startDate).split("T")[0]
           : "",
     )
-    setFirstDueDate(getFirstInstallmentDueDate(contract.installments))
+    const persistedDownPayments = getContractDownPaymentsForForm(contract)
+    setFirstDueDate(persistedDownPayments.length > 0 ? "" : getFirstInstallmentDueDate(contract.installments))
     setFirstVisitDate(contract.firstVisitDate ? String(contract.firstVisitDate).split("T")[0] : "")
     setFirstVisitTime(contract.firstVisitTime || "08:00")
     setInstallmentsCountInput(String(contract.installmentsCount ?? 1))
@@ -789,7 +857,7 @@ export function ContractForm({
     )
     setServices(initialServiceList)
     setContractValue(Math.round((contract.totalValue ?? 0) * 100))
-    setDownPaymentValue(Math.round((contract.downPaymentValue ?? 0) * 100))
+    setDownPayments(persistedDownPayments)
     setContractRecurrenceRules(
       contract.recurrenceRules?.length
         ? contract.recurrenceRules.map((rule) => ({
@@ -1082,9 +1150,13 @@ export function ContractForm({
     unitIds: selectedUnitIds,
     totalValue,
     downPaymentValue: downPaymentAmount,
+    downPayments: downPayments.map((entry) => ({
+      value: entry.value / 100,
+      dueDate: entry.dueDate,
+    })),
     duration: installmentsCount,
     startDate,
-    firstDueDate,
+    firstDueDate: firstDueDate || undefined,
     paymentDay: dueDay,
     installmentsCount,
     recurrence: services.find((service) => service.isRecurrenceService)?.recurrence
@@ -1199,6 +1271,9 @@ export function ContractForm({
         firstDueDate: formatMaybeDate(draftPreview.firstDueDate),
         firstDueDateLong: formatLongDate(draftPreview.firstDueDate),
         downPaymentValue: formatCurrency(downPaymentAmount),
+        downPaymentsText,
+        installmentDueDatesText,
+        remainingInstallmentsText,
         firstInstallmentValue: formatCurrency(firstInstallmentValue),
         installmentValue: formatCurrency(regularInstallmentValue),
         installmentsCount: String(installmentsCount),
@@ -1249,15 +1324,18 @@ export function ContractForm({
     draftPreview,
     dueDay,
     downPaymentAmount,
+    downPaymentsText,
     endDate,
     firstVisitDate,
     firstVisitTime,
     firstInstallmentValue,
     hasDownPayment,
     installmentsCount,
+    installmentDueDatesText,
     organizationSettings,
     regularInstallmentValue,
     remainingInstallmentsCount,
+    remainingInstallmentsText,
     selectedClient,
     selectedTemplateSigner,
     selectedUnitIds,
@@ -1445,14 +1523,21 @@ export function ContractForm({
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteContract(id),
-    onSuccess: async () => {
-      if (contractId) {
-        await queryClient.invalidateQueries({ queryKey: ["contract", contractId] })
-      }
-      await queryClient.invalidateQueries({ queryKey: ["contracts"] })
-      await queryClient.invalidateQueries({ queryKey: ["contracts", "list"] })
+    onSuccess: async (_response, deletedContractId) => {
+      await Promise.all([
+        queryClient.cancelQueries({ queryKey: ["contract", deletedContractId] }),
+        queryClient.cancelQueries({ queryKey: ["contracts"] }),
+      ])
+      queryClient.removeQueries({ queryKey: ["contract", deletedContractId], exact: true })
+      queryClient.setQueriesData<{ success: true; data: ContractRecord[] }>(
+        { queryKey: ["contracts"] },
+        (current) => current
+          ? { ...current, data: current.data.filter((item) => item.id !== deletedContractId) }
+          : current,
+      )
       toast.success("Contrato removido.")
-      router.push("/contratos")
+      router.replace("/contratos")
+      void queryClient.invalidateQueries({ queryKey: ["contracts"], refetchType: "all" })
     },
     onError: (error) => {
       toast.error(getApiErrorMessage(error, "Não foi possível remover o contrato."))
@@ -1510,6 +1595,43 @@ export function ContractForm({
 
     setImportNoticeText("Formato não suportado. Importe um arquivo DOCX.")
     setImportNoticeOpen(true)
+  }
+
+  const addDownPayment = () => {
+    if (!Number.isInteger(installmentsCount) || installmentsCount < 2) {
+      toast.error("Informe ao menos 2 parcelas antes de inserir uma entrada.")
+      return
+    }
+    if (downPayments.length >= installmentsCount - 1) {
+      toast.error("Mantenha ao menos uma parcela para o saldo restante.")
+      return
+    }
+
+    const firstEntry = downPayments[0]
+    const previousEntry = downPayments[downPayments.length - 1]
+    if (downPayments.length === 0) setFirstDueDate("")
+    setDownPayments((current) => [
+      ...current,
+      {
+        id: `down-payment-${crypto.randomUUID()}`,
+        value: firstEntry?.value ?? 0,
+        dueDate: previousEntry?.dueDate ? addCivilMonthsKey(previousEntry.dueDate, 1) : "",
+      },
+    ])
+  }
+
+  const updateDownPayment = (
+    id: string,
+    field: "value" | "dueDate",
+    value: number | string,
+  ) => {
+    setDownPayments((current) => current.map((entry) =>
+      entry.id === id ? { ...entry, [field]: value } : entry,
+    ))
+  }
+
+  const removeDownPayment = (id: string) => {
+    setDownPayments((current) => current.filter((entry) => entry.id !== id))
   }
 
   const addService = () => {
@@ -1737,13 +1859,18 @@ export function ContractForm({
       return
     }
 
-    if (!firstDueDate) {
+    if (!Number.isInteger(installmentsCount) || installmentsCount < 1) {
+      toast.error("Informe uma quantidade de parcelas inteira e maior que zero.")
+      return
+    }
+
+    if (downPayments.length === 0 && !firstDueDate) {
       toast.error("Preencha a data da primeira parcela.")
       return
     }
 
-    if (!Number.isInteger(installmentsCount) || installmentsCount < 1) {
-      toast.error("Informe uma quantidade de parcelas inteira e maior que zero.")
+    if (downPayments.length >= installmentsCount) {
+      toast.error("A quantidade de entradas deve ser menor que a quantidade de parcelas.")
       return
     }
 
@@ -1762,13 +1889,22 @@ export function ContractForm({
       return
     }
 
-    if (downPaymentValue > 0 && installmentsCount < 2) {
-      toast.error("Para usar valor de entrada, informe ao menos 2 parcelas.")
+    const incompleteDownPaymentIndex = downPayments.findIndex((entry) => entry.value <= 0 || !entry.dueDate)
+    if (incompleteDownPaymentIndex >= 0) {
+      toast.error(`Preencha o valor e o vencimento da entrada ${incompleteDownPaymentIndex + 1}.`)
       return
     }
 
     if (downPaymentValue > contractValue) {
-      toast.error("O valor de entrada não pode ser maior que o valor do contrato.")
+      toast.error("A soma das entradas não pode ser maior que o valor do contrato.")
+      return
+    }
+
+    const unorderedDownPaymentIndex = downPayments.findIndex(
+      (entry, index) => index > 0 && entry.dueDate <= downPayments[index - 1].dueDate,
+    )
+    if (unorderedDownPaymentIndex >= 0) {
+      toast.error("As datas das entradas devem estar em ordem crescente.")
       return
     }
 
@@ -1780,13 +1916,13 @@ export function ContractForm({
 
     const invalidService = selectedServices.find((service) => {
       const serviceTypeExists = serviceTypeById.has(service.serviceTypeId)
-      const durationIsValid = Number.isFinite(service.duration) && service.duration > 0
+      const durationIsValid = Number.isInteger(service.duration) && service.duration > 0
       return !serviceTypeExists || !durationIsValid || !service.recurrence
     })
     if (invalidService) {
       const serviceName = serviceTypeById.get(invalidService.serviceTypeId)?.name ?? "serviço selecionado"
-      if (!Number.isFinite(invalidService.duration) || invalidService.duration <= 0) {
-        toast.error(`Informe uma duração maior que zero para ${serviceName}.`)
+      if (!Number.isInteger(invalidService.duration) || invalidService.duration <= 0) {
+        toast.error(`Informe uma duração inteira maior que zero para ${serviceName}.`)
       } else if (!invalidService.recurrence) {
         toast.error(`Selecione a recorrência de ${serviceName}.`)
       } else {
@@ -2105,6 +2241,7 @@ export function ContractForm({
                 selectedUnitIds.join(","),
                 totalValue,
                 downPaymentValue,
+                downPayments.map((entry) => `${entry.value}:${entry.dueDate}`).join(","),
                 installmentsCount,
                 dueDay,
               ].join("|")}
@@ -2535,11 +2672,13 @@ export function ContractForm({
                   variant="outline"
                   role="combobox"
                   aria-label="Selecionar template do contrato"
-                  className="w-full justify-between font-normal"
+                  className="w-full min-w-0 justify-between overflow-hidden font-normal"
                 >
-                  {selectedTemplateId
-                    ? selectedTemplate?.name
-                    : "Selecione um template"}
+                  <span className="min-w-0 flex-1 truncate text-left">
+                    {selectedTemplateId
+                      ? selectedTemplate?.name
+                      : "Selecione um template"}
+                  </span>
                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
               </PopoverTrigger>
@@ -2560,7 +2699,7 @@ export function ContractForm({
                           className="cursor-pointer"
                         >
                           <Check className={cn("mr-2 h-4 w-4", selectedTemplateId === t.id ? "opacity-100" : "opacity-0")} />
-                          <span>{t.name}</span>
+                          <span className="min-w-0 flex-1 whitespace-normal break-words">{t.name}</span>
                         </CommandItem>
                       ))}
                     </CommandGroup>
@@ -2577,10 +2716,10 @@ export function ContractForm({
                 <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
                   <FileText className="w-5 h-5 text-primary" />
                 </div>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <p className="font-medium">{template.name}</p>
-                    <Badge className="bg-green-100 text-green-700 border-0 hover:bg-green-100">Ativo</Badge>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="min-w-0 flex-1 font-medium">{template.name}</p>
+                    <Badge className="shrink-0 border-0 bg-green-100 text-green-700 hover:bg-green-100">Ativo</Badge>
                   </div>
                   <p className="text-sm text-muted-foreground">{template.description}</p>
                   <p className="text-xs text-muted-foreground mt-1">
@@ -2643,7 +2782,7 @@ export function ContractForm({
           <FileText className="w-5 h-5 text-primary" />
           Dados do Contrato
         </h3>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-[176px_176px_160px_180px]">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-[176px_160px_180px]">
           <div className="min-w-0 space-y-2">
             <Label>Data de criação *</Label>
             <DatePicker
@@ -2653,18 +2792,10 @@ export function ContractForm({
               className="h-10 w-full"
             />
           </div>
-          <div className="min-w-0 space-y-2">
-            <Label>Data da primeira parcela *</Label>
-            <DatePicker
-              value={parseCivilDate(firstDueDate)}
-              onChange={(date) => setFirstDueDate(date ? toCivilDateKey(date) : "")}
-              placeholder="Selecionar data"
-              className="h-10 w-full"
-            />
-          </div>
           <div className="space-y-2">
-            <Label>Nº de parcelas *</Label>
+            <Label htmlFor="contract-installments-count">Nº de parcelas *</Label>
             <Input
+              id="contract-installments-count"
               type="tel"
               inputMode="numeric"
               maxLength={2}
@@ -2674,8 +2805,9 @@ export function ContractForm({
             />
           </div>
           <div className="space-y-2">
-            <Label>Dia de vencimento *</Label>
+            <Label htmlFor="contract-payment-day">Dia de vencimento *</Label>
             <Input
+              id="contract-payment-day"
               type="tel"
               inputMode="numeric"
               maxLength={2}
@@ -2686,12 +2818,11 @@ export function ContractForm({
           </div>
         </div>
         <p className="mt-3 max-w-xl text-xs text-muted-foreground">
-          A vigência começa quando o contrato é concluído no Clicksign. A data da primeira parcela é definida acima; as demais seguem o dia de vencimento informado.
+          A vigência começa quando o contrato é concluído no Clicksign. As datas financeiras são definidas na seção Valor do Contrato.
         </p>
-        {firstDueDate && installmentsCount > 0 && (
+        {installmentsCount > 0 && (
           <div className="mt-4 flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted-foreground">
             <span>Prazo contratual: <strong className="text-foreground">{installmentsCount} {installmentsCount === 1 ? "mês" : "meses"}</strong></span>
-            <span>1ª parcela: <strong className="text-foreground">{formatCivilDate(firstDueDate)}</strong></span>
           </div>
         )}
       </Card>
@@ -2987,8 +3118,8 @@ export function ContractForm({
                             </SelectContent>
                           </Select>
                           <NumericInput
-                            allowDecimal
                             min={1}
+                            step={1}
                             className="w-[72px]"
                             value={service.duration}
                             onValueChange={(value) => updateService(service.id, "duration", value)}
@@ -3099,31 +3230,93 @@ export function ContractForm({
           <DollarSign className="w-5 h-5 text-primary" />
           Valor do Contrato
         </h3>
-        <div className="w-full max-w-[380px] space-y-4">
-          <div className="space-y-2">
-            <Label>Valor do Contrato *</Label>
+        <div className="w-full max-w-3xl space-y-5">
+          <div className="max-w-[380px] space-y-2">
+            <Label htmlFor="contract-total-value">Valor do Contrato *</Label>
             <CurrencyInput
+              id="contract-total-value"
               value={contractValue}
-              onChange={(value) => {
-                setContractValue(value)
-                setDownPaymentValue((current) => Math.min(current, value))
-              }}
+              onChange={setContractValue}
             />
             <p className="text-xs text-muted-foreground">
               Informe o valor total contratado para geração das parcelas e relatórios financeiros.
             </p>
           </div>
 
-          <div className="space-y-2">
-            <Label>Valor de Entrada</Label>
-            <CurrencyInput
-              value={downPaymentValue}
-              onChange={(value) => setDownPaymentValue(Math.min(value, contractValue))}
-            />
-            <p className="text-xs text-muted-foreground">
-              A primeira parcela será a entrada; o saldo será dividido nas demais parcelas.
-            </p>
+          <div className="space-y-3">
+            <div>
+              <p className="text-sm font-medium">Entradas</p>
+              <p className="text-xs text-muted-foreground">
+                Cada entrada desconta uma parcela do saldo parcelado.
+              </p>
+            </div>
+            {downPayments.length > 0 ? (
+              <div className="space-y-3">
+                {downPayments.map((entry, index) => (
+                  <div
+                    key={entry.id}
+                    className="grid grid-cols-1 gap-3 rounded-lg bg-muted/30 p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end"
+                  >
+                    <div className="space-y-2">
+                      <Label htmlFor={`down-payment-value-${entry.id}`}>Valor da entrada {index + 1} *</Label>
+                      <CurrencyInput
+                        id={`down-payment-value-${entry.id}`}
+                        value={entry.value}
+                        onChange={(value) => updateDownPayment(entry.id, "value", value)}
+                        className="bg-background"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Venc. da entrada {index + 1} *</Label>
+                      <DatePicker
+                        ariaLabel={`Vencimento da entrada ${index + 1}`}
+                        value={parseCivilDate(entry.dueDate)}
+                        onChange={(date) => updateDownPayment(entry.id, "dueDate", date ? toCivilDateKey(date) : "")}
+                        placeholder="Selecionar data"
+                        className="h-10 w-full bg-background hover:bg-background dark:bg-background dark:hover:bg-background"
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`Remover entrada ${index + 1}`}
+                      onClick={() => removeDownPayment(entry.id)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            <Button
+              type="button"
+              variant="outline"
+              aria-label="Inserir entrada"
+              className="w-fit"
+              onClick={addDownPayment}
+              disabled={Number.isInteger(installmentsCount) && installmentsCount > 0 && downPayments.length >= installmentsCount - 1}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Inserir entrada
+            </Button>
           </div>
+
+          {!hasDownPayment ? (
+            <div className="max-w-[380px] space-y-2">
+              <Label>Data da primeira parcela *</Label>
+              <DatePicker
+                ariaLabel="Data da primeira parcela"
+                value={parseCivilDate(firstDueDate)}
+                onChange={(date) => setFirstDueDate(date ? toCivilDateKey(date) : "")}
+                placeholder="Selecionar data"
+                className="h-10 w-full"
+              />
+              <p className="text-xs text-muted-foreground">
+                As demais parcelas seguem o dia de vencimento informado no contrato.
+              </p>
+            </div>
+          ) : null}
 
           <div className="rounded-lg bg-muted/30 p-4">
             <div>
@@ -3132,22 +3325,30 @@ export function ContractForm({
             </div>
             <div className="mt-5 grid grid-cols-1 gap-2 text-sm text-muted-foreground sm:grid-cols-2">
               <div className="rounded-lg bg-background/70 p-3">
-                <span className="block text-xs">Parcelas</span>
+                <span className="block text-xs">Parcelas contratadas</span>
                 <strong className="text-foreground">{installmentsCount}x</strong>
               </div>
-              {downPaymentValue > 0 ? (
+              {hasDownPayment ? (
                 <>
                   <div className="rounded-lg bg-background/70 p-3">
-                    <span className="block text-xs">Entrada (1ª parcela)</span>
+                    <span className="block text-xs">Quantidade de entradas</span>
+                    <strong className="text-foreground">{downPayments.length}</strong>
+                  </div>
+                  <div className="rounded-lg bg-background/70 p-3">
+                    <span className="block text-xs">Total das entradas</span>
                     <strong className="text-foreground">{formatCurrency(downPaymentAmount)}</strong>
                   </div>
                   <div className="rounded-lg bg-background/70 p-3">
-                    <span className="block text-xs">Demais parcelas</span>
-                    <strong className="text-foreground">{Math.max(installmentsCount - 1, 0)}x</strong>
+                    <span className="block text-xs">Saldo a parcelar</span>
+                    <strong className="text-foreground">{formatCurrency(remainingContractValue)}</strong>
                   </div>
                   <div className="rounded-lg bg-background/70 p-3">
-                    <span className="block text-xs">Valor das demais</span>
-                    <strong className="text-foreground">{formatCurrency(hasDownPayment ? regularInstallmentValue : 0)}</strong>
+                    <span className="block text-xs">Parcelas do saldo</span>
+                    <strong className="text-foreground">{remainingInstallmentsCount}x</strong>
+                  </div>
+                  <div className="rounded-lg bg-background/70 p-3">
+                    <span className="block text-xs">Valor por parcela do saldo</span>
+                    <strong className="text-foreground">{formatCurrency(regularInstallmentValue)}</strong>
                   </div>
                 </>
               ) : (

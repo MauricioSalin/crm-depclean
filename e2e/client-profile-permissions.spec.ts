@@ -20,6 +20,16 @@ const operationalUser = {
   isSystemUser: false,
 }
 
+const contractViewerUser = {
+  ...E2E_USER,
+  id: "user-e2e-contract-viewer",
+  name: "Consulta de Contratos E2E",
+  permissionProfileId: "profile-e2e-contract-viewer",
+  permissionProfileName: "Consulta de contratos",
+  permissions: ["clients_view", "contracts_view"],
+  isSystemUser: false,
+}
+
 test("não exibe o atalho Acessar contrato no cabeçalho do perfil", async ({ page }) => {
   await installAuthenticatedSession(page)
   await installApiMock(page)
@@ -107,6 +117,82 @@ test("exibe as durações e cláusulas salvas nos perfis", async ({ page }) => {
   await contractServiceRow.click()
   await expect(page.getByRole("dialog").getByText("Cláusula exclusiva salva no contrato.", { exact: true })).toBeVisible()
   await expect(page.getByRole("dialog").getByText(serviceFixture.clauses[0], { exact: true })).toHaveCount(0)
+})
+
+test("permite marcar como renovado no perfil do cliente com a permissão adequada", async ({ page }) => {
+  await installAuthenticatedSession(page)
+  await installApiMock(page)
+
+  let markRenewedRequests = 0
+  let contractState = {
+    ...contractFixture,
+    status: "closed",
+    renewalStatus: undefined as "renewed" | undefined,
+  }
+
+  await page.route("**/api/v1/contracts**", async (route) => {
+    const request = route.request()
+    const pathname = new URL(request.url()).pathname
+
+    if (request.method() === "GET" && pathname === "/api/v1/contracts") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json; charset=utf-8",
+        body: JSON.stringify({ success: true, data: [contractState] }),
+      })
+      return
+    }
+
+    if (request.method() === "PATCH" && pathname === `/api/v1/contracts/${contractFixture.id}/mark-renewed`) {
+      markRenewedRequests += 1
+      contractState = { ...contractState, renewalStatus: "renewed" }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json; charset=utf-8",
+        body: JSON.stringify({
+          success: true,
+          message: "Contrato marcado como renovado.",
+          data: contractState,
+        }),
+      })
+      return
+    }
+
+    await route.fallback()
+  })
+
+  await page.goto(`/clientes/${clientFixture.id}?tab=contratos`)
+  const contractRow = page.getByRole("row").filter({ hasText: contractFixture.contractNumber })
+  await contractRow.getByRole("button", { name: /Abrir ações do contrato/ }).click()
+  await page.getByRole("menuitem", { name: "Marcar como renovado" }).click()
+
+  const confirmation = page.getByRole("dialog", { name: "Marcar contrato como renovado?" })
+  await expect(confirmation).toContainText("deixará de receber alertas de vencimento")
+  await confirmation.getByRole("button", { name: "Marcar como renovado" }).click()
+
+  await expect.poll(() => markRenewedRequests).toBe(1)
+  await expect(contractRow.getByText("Renovado", { exact: true })).toBeVisible()
+  await contractRow.getByRole("button", { name: /Abrir ações do contrato/ }).click()
+  await expect(page.getByRole("menuitem", { name: "Marcar como renovado" })).toHaveCount(0)
+})
+
+test("oculta marcar como renovado no perfil do cliente sem a permissão adequada", async ({ page }) => {
+  await installAuthenticatedSession(page, contractViewerUser)
+  await installApiMock(page, contractViewerUser)
+  await page.route("**/api/v1/contracts", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json; charset=utf-8",
+      body: JSON.stringify({ success: true, data: [{ ...contractFixture, status: "closed" }] }),
+    })
+  })
+
+  await page.goto(`/clientes/${clientFixture.id}?tab=contratos`)
+  const contractRow = page.getByRole("row").filter({ hasText: contractFixture.contractNumber })
+  await contractRow.getByRole("button", { name: /Abrir ações do contrato/ }).click()
+
+  await expect(page.getByRole("menuitem", { name: "Ver Detalhes" })).toBeVisible()
+  await expect(page.getByRole("menuitem", { name: "Marcar como renovado" })).toHaveCount(0)
 })
 
 test("persiste o pagamento da parcela e sincroniza cliente, contrato e inadimplência", async ({ page }) => {

@@ -103,6 +103,7 @@ export interface ServiceType {
   defaultInformativeTemplateId?: string
   defaultRecurrence: RecurrenceType
   dailyScheduleLimit?: number | null
+  dailyScheduleLimitHours?: number | null
   recurrenceRules: RecurrenceRule[] // Regras de recorrência por nº de unidades (ordenadas por maxUnits)
   defaultTeamIds: string[] // Equipes responsáveis
   description?: string
@@ -184,6 +185,12 @@ export interface Contract {
   contractNumber: string
   totalValue: number
   downPaymentValue: number
+  downPayments: Array<{
+    id: string
+    number: number
+    value: number
+    dueDate: Date
+  }>
   duration: number // Em meses
   startDate: Date
   endDate: Date

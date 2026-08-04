@@ -4,12 +4,15 @@ import * as React from 'react'
 import * as PopoverPrimitive from '@radix-ui/react-popover'
 
 import { cn } from '@/lib/utils'
-import { useOverlayPortalContainer } from '@/components/ui/overlay-portal-context'
+import { useOverlayPortalModal } from '@/components/ui/overlay-portal-context'
 
 function Popover({
+  modal,
   ...props
 }: React.ComponentProps<typeof PopoverPrimitive.Root>) {
-  return <PopoverPrimitive.Root data-slot="popover" {...props} />
+  const modalWithinDialog = useOverlayPortalModal()
+
+  return <PopoverPrimitive.Root data-slot="popover" modal={modal ?? modalWithinDialog} {...props} />
 }
 
 function PopoverTrigger({
@@ -25,10 +28,8 @@ function PopoverContent({
   updatePositionStrategy = 'always',
   ...props
 }: React.ComponentProps<typeof PopoverPrimitive.Content>) {
-  const portalContainer = useOverlayPortalContainer()
-
   return (
-    <PopoverPrimitive.Portal container={portalContainer || undefined}>
+    <PopoverPrimitive.Portal>
       <PopoverPrimitive.Content
         data-slot="popover-content"
         align={align}

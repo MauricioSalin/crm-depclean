@@ -29,6 +29,7 @@ import {
   deleteSchedule,
   exportSchedules,
   getScheduleById,
+  listScheduleCompletionEmployees,
   listSchedules,
   reactivateSchedule,
   startSchedule,
@@ -42,7 +43,7 @@ import { listServices, type ServiceRecord } from "@/lib/api/services"
 import { listTeams, type TeamRecord } from "@/lib/api/teams"
 import { hasAnyPermission } from "@/lib/auth/permissions"
 import { getStoredUser } from "@/lib/auth/session"
-import { formatCivilDate, parseCivilDate, toBrasiliaTimeKey, toCivilDateKey } from "@/lib/date-utils"
+import { formatCivilDate, toBrasiliaTimeKey, toCivilDateKey } from "@/lib/date-utils"
 import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 import { useUrlDateRangeState } from "@/lib/hooks/use-url-date-range-state"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
@@ -50,19 +51,19 @@ import { formatConfiguredScheduleDuration, minutesToScheduleDuration, scheduleDu
 import { normalizeScheduleStatusFilter, SCHEDULE_STATUS_FILTER_OPTIONS } from "@/lib/schedule-status"
 import {
   checkScheduleAvailability,
+  formatDailyServiceCapacityViolation,
   getScheduleConflictResourceNames,
-  hasDailyServiceCapacity,
-  isScheduleConflictErrorMessage,
+  getDailyServiceCapacityViolation,
 } from "@/lib/schedule-availability"
 import { canStartSchedule } from "@/lib/schedule-permissions"
 import { cacheSavedSchedule } from "@/lib/schedule-query-cache"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
+import { AttendanceCompletionFields } from "@/components/agendamentos/attendance-completion-fields"
 import { AttendanceStartSlider } from "@/components/agendamentos/attendance-start-slider"
 import { CompletionNaAttachments } from "@/components/agendamentos/completion-na-attachments"
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
-import { DatePicker } from "@/components/ui/date-picker"
 import { DateRangePicker } from "@/components/ui/date-range-picker"
 import {
   Dialog,
@@ -79,9 +80,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
-import { TimeInput } from "@/components/ui/time-input"
 import { FilterSearchInput } from "@/components/ui/filter-search-input"
-import { Label } from "@/components/ui/label"
 import { DataPagination } from "@/components/ui/data-pagination"
 import { CsvImportDialog, type CsvImportField } from "@/components/ui/csv-import-dialog"
 import { EmptyState, TableEmptyState } from "@/components/ui/empty-state"
@@ -92,7 +91,6 @@ import { SearchableSelect } from "@/components/ui/searchable-select"
 import { SchedulingFormDialog, type SchedulingFormData } from "./scheduling-form-dialog"
 import { ScheduleDetailsDialog } from "./schedule-details-dialog"
 import { CancelScheduleDialog } from "./cancel-schedule-dialog"
-import { ScheduleConflictDialog } from "./schedule-conflict-dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
 interface AgendamentosContentProps {
@@ -479,15 +477,11 @@ export function AgendamentosContent({
   const [completionStartTime, setCompletionStartTime] = useState("")
   const [completionEndDate, setCompletionEndDate] = useState("")
   const [completionEndTime, setCompletionEndTime] = useState("")
+  const [completionDriverEmployeeId, setCompletionDriverEmployeeId] = useState("")
+  const [completionHelperEmployeeIds, setCompletionHelperEmployeeIds] = useState<string[]>([])
+  const [completionServiceReport, setCompletionServiceReport] = useState("")
   const [completionFiles, setCompletionFiles] = useState<File[]>([])
   const [pendingDelete, setPendingDelete] = useState<ScheduleRecord | null>(null)
-  const [availabilitySuggestion, setAvailabilitySuggestion] = useState<{
-    formData: SchedulingFormData
-    scheduleId?: string
-    requested: { date: string; time: string }
-    suggested?: { date: string; time: string }
-    conflictingResources: string[]
-  } | null>(null)
   const scheduleDialogResetTimeoutRef = useRef<number | null>(null)
   const [currentUser, setCurrentUser] = useState<ReturnType<typeof getStoredUser>>(null)
   const canManageAgenda = hasAnyPermission(currentUser, ["agenda_manage"])
@@ -536,12 +530,18 @@ export function AgendamentosContent({
     queryFn: () => listEmployees(),
     enabled: canManageAgenda,
   })
+  const completionEmployeesQuery = useQuery({
+    queryKey: ["schedules", "completion-employees"],
+    queryFn: () => listScheduleCompletionEmployees(),
+    enabled: Boolean(completionTarget),
+  })
 
   const schedules = schedulesQuery.data?.data ?? []
   const clients = clientsQuery.data?.data ?? []
   const services = servicesQuery.data?.data ?? []
   const teams = teamsQuery.data?.data ?? []
   const employees = employeesQuery.data?.data ?? []
+  const completionEmployees = completionEmployeesQuery.data?.data ?? []
   const routeSchedule = useMemo(() => {
     if (!initialScheduleId) return null
     return schedules.find((item) => item.id === initialScheduleId) ?? routeScheduleQuery.data?.data ?? null
@@ -615,11 +615,9 @@ export function AgendamentosContent({
     mutationFn: async ({
       formData,
       scheduleId,
-      allowConflict = false,
     }: {
       formData: SchedulingFormData
       scheduleId?: string
-      allowConflict?: boolean
     }) => {
       if (scheduleId && !canManageAgenda && canManageScheduleStatus) {
         return updateScheduleStatus(scheduleId, formData.status)
@@ -649,7 +647,6 @@ export function AgendamentosContent({
           autoSendInformative: formData.autoSendInformative,
           generateCertificateRequest: formData.generateCertificateRequest,
           notes: formData.notes,
-          allowConflict,
         })
 
         if (canManageScheduleStatus && editingSchedule?.status !== formData.status) {
@@ -680,7 +677,6 @@ export function AgendamentosContent({
         billable: formData.createContract,
         value: formData.createContract ? formData.value : 0,
         notes: formData.notes,
-        allowConflict,
       }
 
       if (scheduleId) {
@@ -713,31 +709,6 @@ export function AgendamentosContent({
     },
     onError: (error: any, variables, context) => {
       const message = getApiErrorMessage(error, "Não foi possível salvar o agendamento.")
-      if (!variables.allowConflict && isScheduleConflictErrorMessage(message)) {
-        toast.dismiss(context?.toastId)
-        const availability = checkScheduleAvailability({
-          schedules,
-          teams,
-          formData: variables.formData,
-          ignoreScheduleId: variables.scheduleId,
-          mode: "manual",
-        })
-        setAvailabilitySuggestion({
-          formData: variables.formData,
-          scheduleId: variables.scheduleId,
-          requested: {
-            date: variables.formData.date,
-            time: variables.formData.time,
-          },
-          suggested: availability.suggested,
-          conflictingResources: getScheduleConflictResourceNames(availability.conflict, {
-            teams,
-            employees,
-          }),
-        })
-        return
-      }
-
       toast.error(message, {
         id: context?.toastId,
       })
@@ -874,13 +845,39 @@ export function AgendamentosContent({
   })
 
   const completeMutation = useMutation({
-    mutationFn: async ({ schedule, startDate, startTime, endDate, endTime }: { schedule: ScheduleRecord; startDate: string; startTime: string; endDate: string; endTime: string }) => {
+    mutationFn: async ({
+      schedule,
+      startDate,
+      startTime,
+      endDate,
+      endTime,
+      driverEmployeeId,
+      helperEmployeeIds,
+      serviceReport,
+    }: {
+      schedule: ScheduleRecord
+      startDate: string
+      startTime: string
+      endDate: string
+      endTime: string
+      driverEmployeeId: string
+      helperEmployeeIds: string[]
+      serviceReport: string
+    }) => {
       const hasExistingNa = Boolean(schedule.naAttachments?.length || schedule.naDocumentUrl)
       if (!hasExistingNa) {
         throw new Error("Anexe a NA da visita antes de concluir o atendimento.")
       }
 
-      return completeSchedule(schedule.id, { startDate, startTime, endDate, endTime })
+      return completeSchedule(schedule.id, {
+        startDate,
+        startTime,
+        endDate,
+        endTime,
+        driverEmployeeId,
+        helperEmployeeIds,
+        serviceReport,
+      })
     },
     onMutate: () => {
       const toastId = toast.loading("Concluindo atendimento...")
@@ -893,6 +890,9 @@ export function AgendamentosContent({
       setCompletionStartTime("")
       setCompletionEndDate("")
       setCompletionEndTime("")
+      setCompletionDriverEmployeeId("")
+      setCompletionHelperEmployeeIds([])
+      setCompletionServiceReport("")
       setCompletionFiles([])
       toast.success("Atendimento concluído.", {
         id: context?.toastId,
@@ -991,7 +991,7 @@ export function AgendamentosContent({
       return
     }
 
-    if (!hasDailyServiceCapacity({
+    const capacityViolation = getDailyServiceCapacityViolation({
       schedules,
       ignoreScheduleId: scheduleId,
       serviceTypeIds: formData.serviceTypeIds,
@@ -1000,8 +1000,9 @@ export function AgendamentosContent({
       time: formData.time,
       durationMinutes: scheduleDurationToMinutes(formData.duration, formData.durationType),
       durationType: formData.durationType,
-    })) {
-      toast.error("O limite diário deste serviço foi atingido na data selecionada.")
+    })
+    if (capacityViolation) {
+      toast.error(formatDailyServiceCapacityViolation(capacityViolation, services))
       return
     }
 
@@ -1014,18 +1015,18 @@ export function AgendamentosContent({
     })
 
     if (!availability.available) {
-      setAvailabilitySuggestion({
-        formData,
-        scheduleId,
-        requested: {
-          date: availability.requested.date,
-          time: availability.requested.time,
-        },
-        suggested: availability.suggested,
-        conflictingResources: getScheduleConflictResourceNames(availability.conflict, {
-          teams,
-          employees,
-        }),
+      const conflictingResources = getScheduleConflictResourceNames(availability.conflict, {
+        teams,
+        employees,
+      })
+      const isTeamConflict = availability.conflict?.reason === "resource" && formData.teamIds.length > 0
+      const message = availability.conflict?.reason === "resource"
+        ? isTeamConflict
+          ? "A equipe ou algum funcionário da equipe não tem disponibilidade para este agendamento."
+          : "O funcionário selecionado não tem disponibilidade para este agendamento."
+        : "O horário selecionado não está disponível para este agendamento."
+      toast.error(message, {
+        description: conflictingResources.length > 0 ? conflictingResources.join(", ") : undefined,
       })
       return
     }
@@ -1059,6 +1060,9 @@ export function AgendamentosContent({
     setCompletionStartTime(schedule.completionStartTime || schedule.time || "")
     setCompletionEndDate(schedule.completionEndDate || now.date || defaultDate)
     setCompletionEndTime(schedule.completionEndTime || now.time)
+    setCompletionDriverEmployeeId(schedule.attendanceDriver?.id || "")
+    setCompletionHelperEmployeeIds(schedule.attendanceHelpers?.map((employee) => employee.id) ?? [])
+    setCompletionServiceReport(schedule.serviceReport || "")
     setCompletionFiles([])
   }
 
@@ -1155,6 +1159,9 @@ export function AgendamentosContent({
             setCompletionStartTime("")
             setCompletionEndDate("")
             setCompletionEndTime("")
+            setCompletionDriverEmployeeId("")
+            setCompletionHelperEmployeeIds([])
+            setCompletionServiceReport("")
             setCompletionFiles([])
           }
         }}
@@ -1166,47 +1173,31 @@ export function AgendamentosContent({
             </DialogTitle>
             <DialogDescription>
               {completionStep === "checkout"
-                ? "Informe a data e o horário executados para confirmar o encerramento."
+                ? "Informe o período executado, a equipe de apoio e as observações para confirmar o encerramento."
                 : "A NA é salva assim que for adicionada. Você pode anexar uma por dia e concluir o atendimento somente no último dia."}
             </DialogDescription>
           </DialogHeader>
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 pb-5 max-sm:px-5">
             {completionStep === "checkout" ? (
-              <div className="grid min-w-0 gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Data de início *</Label>
-                  <DatePicker
-                    value={parseCivilDate(completionStartDate)}
-                    onChange={(date) => setCompletionStartDate(date ? toCivilDateKey(date) : "")}
-                    placeholder="Selecionar data"
-                    disabled
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="completion-start">Horário de início *</Label>
-                  <TimeInput
-                    id="completion-start"
-                    value={completionStartTime}
-                    onChange={(event) => setCompletionStartTime(event.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Data de fim *</Label>
-                  <DatePicker
-                    value={parseCivilDate(completionEndDate)}
-                    onChange={(date) => setCompletionEndDate(date ? toCivilDateKey(date) : "")}
-                    placeholder="Selecionar data"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="completion-end">Horário de fim *</Label>
-                  <TimeInput
-                    id="completion-end"
-                    value={completionEndTime}
-                    onChange={(event) => setCompletionEndTime(event.target.value)}
-                  />
-                </div>
-              </div>
+              <AttendanceCompletionFields
+                idPrefix="schedule-completion"
+                startDate={completionStartDate}
+                startTime={completionStartTime}
+                endDate={completionEndDate}
+                endTime={completionEndTime}
+                driverEmployeeId={completionDriverEmployeeId}
+                helperEmployeeIds={completionHelperEmployeeIds}
+                serviceReport={completionServiceReport}
+                employees={completionEmployees}
+                disabled={completeMutation.isPending || completionEmployeesQuery.isLoading}
+                onStartDateChange={setCompletionStartDate}
+                onStartTimeChange={setCompletionStartTime}
+                onEndDateChange={setCompletionEndDate}
+                onEndTimeChange={setCompletionEndTime}
+                onDriverEmployeeIdChange={setCompletionDriverEmployeeId}
+                onHelperEmployeeIdsChange={setCompletionHelperEmployeeIds}
+                onServiceReportChange={setCompletionServiceReport}
+              />
             ) : (
               <CompletionNaAttachments
                 existingAttachments={completionTarget?.naAttachments ?? []}
@@ -1283,6 +1274,9 @@ export function AgendamentosContent({
                   startTime: completionStartTime,
                   endDate: completionEndDate,
                   endTime: completionEndTime,
+                  driverEmployeeId: completionDriverEmployeeId,
+                  helperEmployeeIds: completionHelperEmployeeIds,
+                  serviceReport: completionServiceReport,
                 })
               }}
             >
@@ -1689,35 +1683,6 @@ export function AgendamentosContent({
         busy={deleteMutation.isPending}
       />
 
-      <ScheduleConflictDialog
-        open={Boolean(availabilitySuggestion)}
-        requested={availabilitySuggestion?.requested}
-        suggested={availabilitySuggestion?.suggested}
-        conflictingResources={availabilitySuggestion?.conflictingResources}
-        busy={saveMutation.isPending}
-        onCancel={() => setAvailabilitySuggestion(null)}
-        onContinue={() => {
-          if (!availabilitySuggestion) return
-          saveMutation.mutate({
-            formData: availabilitySuggestion.formData,
-            scheduleId: availabilitySuggestion.scheduleId,
-            allowConflict: true,
-          })
-          setAvailabilitySuggestion(null)
-        }}
-        onUseSuggested={() => {
-          if (!availabilitySuggestion?.suggested) return
-          saveMutation.mutate({
-            formData: {
-              ...availabilitySuggestion.formData,
-              date: availabilitySuggestion.suggested.date,
-              time: availabilitySuggestion.suggested.time,
-            },
-            scheduleId: availabilitySuggestion.scheduleId,
-          })
-          setAvailabilitySuggestion(null)
-        }}
-      />
     </>
   )
 }

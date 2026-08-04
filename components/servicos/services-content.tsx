@@ -36,6 +36,7 @@ import { listEmployees } from "@/lib/api/employees"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { deleteService, listServices, type ServiceRecord } from "@/lib/api/services"
 import { formatScheduleDurationValue } from "@/lib/schedule-duration"
+import { resolveDailyScheduleLimitHours } from "@/lib/service-daily-capacity"
 import { listTeams } from "@/lib/api/teams"
 import { useHasAnyPermission } from "@/hooks/use-permissions"
 
@@ -51,9 +52,10 @@ function formatDuration(type: ServiceTypeRow) {
   return formatScheduleDurationValue(dur, type.durationType || "hours")
 }
 
-function formatDailyScheduleLimit(limit: number | null | undefined) {
-  if (limit === null || limit === undefined) return "Ilimitado"
-  return `${limit} por dia`
+function formatDailyScheduleLimit(type: Pick<ServiceTypeRow, "dailyScheduleLimitHours" | "dailyScheduleLimit">) {
+  const hours = resolveDailyScheduleLimitHours(type.dailyScheduleLimitHours, type.dailyScheduleLimit)
+  if (hours === null) return "Ilimitado"
+  return `${hours.toLocaleString("pt-BR")} horas por dia`
 }
 
 export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) {
@@ -189,7 +191,7 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
                 <TableHead className="hidden w-[420px] max-w-[420px] sm:table-cell">Descrição</TableHead>
                 <TableHead className="hidden md:table-cell">Equipe / Funcionários</TableHead>
                 <TableHead className="min-w-[110px]">Duração</TableHead>
-                <TableHead className="hidden min-w-[180px] lg:table-cell">Limite de serviços no dia</TableHead>
+                <TableHead className="hidden min-w-[180px] lg:table-cell">Limite de horas por dia</TableHead>
                 {canManageServices ? <TableHead className="text-right">Ações</TableHead> : null}
               </TableRow>
             </TableHeader>
@@ -269,7 +271,7 @@ export function ServicesContent({ viewMode, viewToggle }: ServicesContentProps) 
                       </div>
                     </TableCell>
                     <TableCell className="hidden min-w-[180px] lg:table-cell">
-                      {formatDailyScheduleLimit(type.dailyScheduleLimit)}
+                      {formatDailyScheduleLimit(type)}
                     </TableCell>
                     {canManageServices ? (
                       <TableCell className="text-right">

@@ -88,12 +88,19 @@ test("envia ao Dashboard e aos Relatórios somente o limite preenchido", async (
 })
 
 test("persiste data, visualização e status na Agenda", async ({ page }) => {
-  await page.goto("/agenda?date=2027-09-01&status=rescheduled&view=month&q=Condom%C3%ADnio")
+  await page.goto(
+    "/agenda?date=2027-09-01&status=rescheduled&view=month&q=Condom%C3%ADnio&dateFrom=2027-09-01&dateTo=2027-09-30",
+  )
 
   await expect(page.getByPlaceholder("Buscar cliente, serviço, equipe...")).toHaveValue("Condomínio")
   await expect(page.getByRole("combobox", { name: "Status" })).toContainText("Reagendado")
+  await expect(page.getByRole("button", { name: "Filtrar mês e ano: Setembro 2027" })).toBeVisible()
+  await expect(page.getByRole("textbox", { name: "Data inicial" })).toHaveCount(0)
+  await expect(page.getByRole("textbox", { name: "Data final" })).toHaveCount(0)
+  await expect.poll(() => new URL(page.url()).searchParams.get("dateFrom")).toBeNull()
+  await expect.poll(() => new URL(page.url()).searchParams.get("dateTo")).toBeNull()
   await expect(page.getByRole("tab", { name: "Mês" })).toHaveAttribute("data-state", "active")
-  await expect(page.getByText("Setembro 2027", { exact: true })).toBeVisible()
+  await expect(page.getByRole("button", { name: "Selecionar mês e ano: Setembro 2027" })).toBeVisible()
 
   await page.getByRole("tab", { name: "Semana" }).click()
   await expect.poll(() => new URL(page.url()).searchParams.get("view")).toBe("week")
@@ -101,7 +108,36 @@ test("persiste data, visualização e status na Agenda", async ({ page }) => {
   await page.reload()
   await expect(page.getByRole("tab", { name: "Semana" })).toHaveAttribute("data-state", "active")
   await expect(page.getByRole("combobox", { name: "Status" })).toContainText("Reagendado")
+  await expect(page.getByRole("textbox", { name: "Data inicial" })).toHaveValue("")
+  await expect(page.getByRole("textbox", { name: "Data final" })).toHaveValue("")
   await expect.poll(() => new URL(page.url()).searchParams.get("date")).toBe("2027-09-01")
+})
+
+test("filtra a Agenda pelas mesmas regras de período e Hoje limpa o filtro", async ({ page }) => {
+  await page.goto("/agenda?date=2026-07-28&dateFrom=2026-07-28&dateTo=2026-07-28")
+
+  const fromInput = page.getByRole("textbox", { name: "Data inicial" })
+  const toInput = page.getByRole("textbox", { name: "Data final" })
+  const timelineEvent = page.locator("button").filter({ hasText: "Condomínio E2E" })
+
+  await expect(fromInput).toHaveValue("28/07/2026")
+  await expect(toInput).toHaveValue("28/07/2026")
+  await expect(timelineEvent).toBeVisible()
+
+  await fromInput.fill("29/07/2026")
+  await expect(toInput).toHaveValue("")
+  await expect(timelineEvent).toHaveCount(0)
+  await expect.poll(() => new URL(page.url()).searchParams.get("dateFrom")).toBe("2026-07-29")
+  await expect.poll(() => new URL(page.url()).searchParams.get("dateTo")).toBeNull()
+
+  await toInput.fill("27/07/2026")
+  await expect(toInput).toHaveValue("")
+
+  await page.getByRole("button", { name: "Hoje", exact: true }).click()
+  await expect(fromInput).toHaveValue("")
+  await expect(toInput).toHaveValue("")
+  await expect.poll(() => new URL(page.url()).searchParams.get("dateFrom")).toBeNull()
+  await expect.poll(() => new URL(page.url()).searchParams.get("dateTo")).toBeNull()
 })
 
 test("restaura os filtros das demais páginas do menu", async ({ page }) => {

@@ -33,9 +33,13 @@ export type ContractPayload = {
   unitIds?: string[]
   totalValue?: number
   downPaymentValue?: number
+  downPayments?: Array<{
+    value: number
+    dueDate: string
+  }>
   duration: number
   startDate: string
-  firstDueDate: string
+  firstDueDate?: string
   endDate?: string
   firstVisitDate?: string
   firstVisitTime?: string
@@ -67,6 +71,13 @@ export type ContractInstallmentRecord = {
   createdAt: string
 }
 
+export type ContractDownPaymentRecord = {
+  id: string
+  number: number
+  value: number
+  dueDate: string
+}
+
 export type ContractRecord = {
   id: string
   contractNumber: string
@@ -89,6 +100,7 @@ export type ContractRecord = {
   unitIds: string[]
   totalValue: number
   downPaymentValue: number
+  downPayments: ContractDownPaymentRecord[]
   duration: number
   creationDate: string
   startDate?: string
@@ -162,6 +174,7 @@ export type ContractPreviewRecord = {
   renderedHtml: string
   totalValue: number
   downPaymentValue: number
+  downPayments: ContractDownPaymentRecord[]
   recurrence: string
   endDate: string
   firstDueDate: string
@@ -188,10 +201,13 @@ export type ContractSchedulePlanPayload = {
   items: Array<{
     id: string
     contractServiceId: string
+    contractServiceIds: string[]
     date: string
     time: string
     durationValue: number
     durationType: "minutes" | "hours" | "shift" | "days"
+    teamIds: string[]
+    additionalEmployeeIds: string[]
   }>
 }
 

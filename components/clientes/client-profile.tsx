@@ -54,6 +54,7 @@ import { AssignmentBadges } from "@/components/ui/assignment-badges"
 import { ScheduleTypeBadge } from "@/components/ui/schedule-type-badge"
 import { DocxTemplateEditor, type DocxTemplateEditorRef } from "@/components/templates/docx-template-editor"
 import { InstallmentEditDialog } from "@/components/contratos/installment-edit-dialog"
+import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
 import { buildApiFileUrl } from "@/lib/api/client"
 import {
   deleteClientAttachment,
@@ -70,7 +71,9 @@ import {
 } from "@/lib/api/clients"
 import {
   listContracts,
+  markContractAsRenewed,
   updateInstallment,
+  type ContractRecord,
   type ContractInstallmentRecord,
   type UpdateContractInstallmentPayload,
 } from "@/lib/api/contracts"
@@ -80,6 +83,7 @@ import { listTemplates, type TemplateRecord } from "@/lib/api/templates"
 import {
   getClicksignContractStatusLabel,
   isClosedClicksignContractStatus,
+  isContractEligibleToMarkAsRenewed,
   isContractRenewed,
   isOperationallyActiveContract,
   normalizeClicksignContractStatus,
@@ -379,6 +383,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
   const canEditClients = useHasAnyPermission(["clients_edit"])
   const canDeleteClients = useHasAnyPermission(["clients_delete"])
   const canViewContracts = useHasAnyPermission(["contracts_view", "contracts_edit", "contracts_create", "contracts_delete"])
+  const canCreateContracts = useHasAnyPermission(["contracts_create"])
   const canEditContracts = useHasAnyPermission(["contracts_edit"])
   const canViewServices = useHasAnyPermission(["services_view", "services_manage"])
   const canViewAgenda = useHasAnyPermission(["agenda_own_view", "agenda_view"])
@@ -397,6 +402,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
   } | null>(null)
   const [isGeneratingInformativePdf, setIsGeneratingInformativePdf] = useState(false)
   const [editingInstallment, setEditingInstallment] = useState<ClientInstallmentRecord | null>(null)
+  const [contractToMarkRenewed, setContractToMarkRenewed] = useState<ContractRecord | null>(null)
   const clientQuery = useQuery({
     queryKey: ["client", clientId],
     queryFn: () => getClientById(clientId),
@@ -406,6 +412,27 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
     queryKey: ["contracts", "client-profile"],
     queryFn: () => listContracts(""),
     enabled: canViewContracts,
+  })
+
+  const markContractAsRenewedMutation = useMutation({
+    mutationFn: (contractId: string) => {
+      if (!canCreateContracts) {
+        throw new Error("Sem permissão para marcar contratos como renovados.")
+      }
+
+      return markContractAsRenewed(contractId)
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["contracts"] }),
+        queryClient.invalidateQueries({ queryKey: ["analytics"] }),
+      ])
+      setContractToMarkRenewed(null)
+      toast.success("Contrato marcado como renovado.")
+    },
+    onError: (error) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível marcar o contrato como renovado."))
+    },
   })
 
   const schedulesQuery = useQuery({
@@ -944,6 +971,21 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
 
   return (
     <div className="space-y-6">
+      <ConfirmActionDialog
+        open={Boolean(contractToMarkRenewed)}
+        title="Marcar contrato como renovado?"
+        description="Use esta opção quando a renovação foi criada fora deste fluxo. O contrato continuará assinado e manterá suas datas de vigência, mas deixará de receber alertas de vencimento."
+        confirmLabel="Marcar como renovado"
+        confirmVariant="default"
+        confirmClassName="bg-primary hover:bg-primary/90"
+        busy={markContractAsRenewedMutation.isPending}
+        onOpenChange={(open) => {
+          if (!open && !markContractAsRenewedMutation.isPending) setContractToMarkRenewed(null)
+        }}
+        onConfirm={() => {
+          if (contractToMarkRenewed) markContractAsRenewedMutation.mutate(contractToMarkRenewed.id)
+        }}
+      />
       {informativePdfJob ? (
         <div
           aria-hidden="true"
@@ -1331,7 +1373,11 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                       <TableCell className="text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              aria-label={`Abrir ações do contrato ${formatContractNumber(contract.contractNumber)}`}
+                            >
                               <MoreHorizontal className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>
@@ -1342,6 +1388,15 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                                 Ver Detalhes
                               </Link>
                             </DropdownMenuItem>
+                            {canCreateContracts && isContractEligibleToMarkAsRenewed(contract) ? (
+                              <DropdownMenuItem
+                                disabled={markContractAsRenewedMutation.isPending}
+                                onSelect={() => setContractToMarkRenewed(contract)}
+                              >
+                                <CheckCircle className="mr-2 h-4 w-4" />
+                                Marcar como renovado
+                              </DropdownMenuItem>
+                            ) : null}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>

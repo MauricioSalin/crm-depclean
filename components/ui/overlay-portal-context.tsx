@@ -2,24 +2,22 @@
 
 import * as React from 'react'
 
-const OverlayPortalContainerContext = React.createContext<HTMLElement | null>(null)
+const OverlayPortalModalContext = React.createContext(false)
 
-function OverlayPortalContainerProvider({
-  container,
+function OverlayPortalModalProvider({
   children,
 }: {
-  container: HTMLElement | null
   children: React.ReactNode
 }) {
   return (
-    <OverlayPortalContainerContext.Provider value={container}>
+    <OverlayPortalModalContext.Provider value>
       {children}
-    </OverlayPortalContainerContext.Provider>
+    </OverlayPortalModalContext.Provider>
   )
 }
 
-function useOverlayPortalContainer() {
-  return React.useContext(OverlayPortalContainerContext)
+function useOverlayPortalModal() {
+  return React.useContext(OverlayPortalModalContext)
 }
 
-export { OverlayPortalContainerProvider, useOverlayPortalContainer }
+export { OverlayPortalModalProvider, useOverlayPortalModal }

@@ -16,9 +16,26 @@ export type ScheduleDocumentSetting = {
   certificateTemplateId: string
 }
 
+export type ScheduleServiceItem = {
+  contractServiceId: string
+  serviceTypeId: string
+  durationMinutes: number
+  durationValue: number
+  durationType: "minutes" | "hours" | "shift" | "days"
+  countsTowardPackageDuration: boolean
+}
+
+export type ScheduleCompletionEmployee = {
+  id: string
+  name: string
+  role: string
+  status: "active" | "inactive"
+}
+
 export type ScheduleRecord = {
   id: string
   contractId: string | null
+  contractNumber?: string
   contractServiceId: string | null
   contractServiceIds: string[]
   isManual: boolean
@@ -30,6 +47,7 @@ export type ScheduleRecord = {
   address: string
   serviceTypeId: string
   serviceTypeIds: string[]
+  serviceItems?: ScheduleServiceItem[]
   serviceTypeName: string
   serviceDocumentSettings: ScheduleDocumentSetting[]
   informativeTemplateId: string
@@ -62,6 +80,8 @@ export type ScheduleRecord = {
   completionEndDate?: string
   completionEndTime?: string
   serviceReport?: string
+  attendanceDriver?: { id: string; name: string } | null
+  attendanceHelpers?: Array<{ id: string; name: string }>
   naFileName?: string
   naDocumentUrl?: string
   naAttachments: ScheduleNaAttachmentRecord[]
@@ -139,6 +159,20 @@ export async function getScheduleById(id: string) {
   return response.data
 }
 
+export async function listScheduleCompletionEmployees() {
+  const response = await api.get<{ success: true; data: ScheduleCompletionEmployee[] }>("/schedules/completion-employees")
+  return response.data
+}
+
+export async function exportScheduleSummaryPdf(id: string) {
+  const response = await api.get<Blob>(`/schedules/${id}/summary-pdf`, {
+    responseType: "blob",
+  })
+  const disposition = String(response.headers["content-disposition"] ?? "")
+  const fileName = disposition.match(/filename="?([^";]+)"?/i)?.[1] || `resumo-agendamento-${id}.pdf`
+  return { blob: response.data, fileName }
+}
+
 export async function createSchedule(payload: SchedulePayload) {
   const response = await api.post<{ success: true; data: ScheduleRecord }>("/schedules", payload)
   return response.data
@@ -182,7 +216,15 @@ export async function startSchedule(id: string, payload?: { startTime?: string }
 
 export async function completeSchedule(
   id: string,
-  payload: { startDate?: string; startTime: string; endDate?: string; endTime: string; serviceReport?: string },
+  payload: {
+    startDate?: string
+    startTime: string
+    endDate?: string
+    endTime: string
+    serviceReport?: string
+    driverEmployeeId?: string
+    helperEmployeeIds?: string[]
+  },
 ) {
   const response = await api.patch<{ success: true; data: ScheduleRecord }>(`/schedules/${id}/complete`, payload)
   return response.data

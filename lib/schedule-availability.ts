@@ -2,6 +2,7 @@ import type { ScheduleRecord } from "@/lib/api/schedules"
 import type { TeamRecord } from "@/lib/api/teams"
 import { addCivilDaysKey, minutesFromBrasiliaDate, toCivilDateKey } from "@/lib/date-utils"
 import { scheduleDurationToMinutes, type ScheduleDurationType } from "@/lib/schedule-duration"
+import { resolveDailyScheduleLimitHours } from "@/lib/service-daily-capacity"
 
 type AvailabilityFormData = {
   teamIds: string[]
@@ -58,6 +59,7 @@ export function checkScheduleAvailability(params: {
   ignoreScheduleId?: string
   allowWeekends?: boolean
   mode?: AvailabilityMode
+  suggestAlternative?: boolean
 }): AvailabilityResult {
   const mode = params.mode ?? "automation"
   const requested = {
@@ -131,16 +133,18 @@ export function checkScheduleAvailability(params: {
     return { available: true, requested }
   }
 
-  const suggested = findNextAvailableSlot({
-    date: requested.date,
-    startMinutes: requestedStart,
-    durationMinutes: requested.durationMinutes,
-    durationType: params.formData.durationType,
-    conflicts,
-    isEmergency: params.formData.isEmergency === true,
-    allowWeekends: params.allowWeekends,
-    mode,
-  })
+  const suggested = params.suggestAlternative === false
+    ? undefined
+    : findNextAvailableSlot({
+        date: requested.date,
+        startMinutes: requestedStart,
+        durationMinutes: requested.durationMinutes,
+        durationType: params.formData.durationType,
+        conflicts,
+        isEmergency: params.formData.isEmergency === true,
+        allowWeekends: params.allowWeekends,
+        mode,
+      })
 
   return {
     available: false,
@@ -200,10 +204,21 @@ export function formatScheduleConflictConfirmation(resources: string[]) {
 export function hasScheduleDailyServiceCapacity(params: {
   schedules: ScheduleRecord[]
   schedule: ScheduleRecord
-  serviceTypes: Array<{ id: string; dailyScheduleLimit?: number | null }>
+  serviceTypes: Array<{ id: string; dailyScheduleLimitHours?: number | null; dailyScheduleLimit?: number | null }>
   date: string
+  time?: string
 }) {
-  return hasDailyServiceCapacity({
+  return getScheduleDailyServiceCapacityViolation(params) === null
+}
+
+export function getScheduleDailyServiceCapacityViolation(params: {
+  schedules: ScheduleRecord[]
+  schedule: ScheduleRecord
+  serviceTypes: Array<{ id: string; dailyScheduleLimitHours?: number | null; dailyScheduleLimit?: number | null }>
+  date: string
+  time?: string
+}) {
+  return getDailyServiceCapacityViolation({
     schedules: params.schedules,
     ignoreScheduleId: params.schedule.id,
     serviceTypeIds: params.schedule.serviceTypeIds?.length
@@ -211,9 +226,10 @@ export function hasScheduleDailyServiceCapacity(params: {
       : [params.schedule.serviceTypeId],
     serviceTypes: params.serviceTypes,
     date: params.date,
-    time: params.schedule.time || "08:00",
+    time: params.time || params.schedule.time || "08:00",
     durationMinutes: getScheduleDurationMinutes(params.schedule),
     durationType: params.schedule.durationType,
+    serviceItems: params.schedule.serviceItems,
   })
 }
 
@@ -221,48 +237,96 @@ export function hasDailyServiceCapacity(params: {
   schedules: ScheduleRecord[]
   ignoreScheduleId?: string
   serviceTypeIds: string[]
-  serviceTypes: Array<{ id: string; dailyScheduleLimit?: number | null }>
+  serviceTypes: Array<{ id: string; dailyScheduleLimitHours?: number | null; dailyScheduleLimit?: number | null }>
   date: string
   time: string
   durationMinutes: number
   durationType?: ScheduleDurationType
+  serviceItems?: ScheduleRecord["serviceItems"]
+  mode?: AvailabilityMode
 }) {
+  return getDailyServiceCapacityViolation(params) === null
+}
+
+export type DailyServiceCapacityViolation = {
+  serviceTypeId: string
+  date: string
+  limitHours: number
+  usedMinutes: number
+  requestedMinutes: number
+}
+
+export function getDailyServiceCapacityViolation(params: {
+  schedules: ScheduleRecord[]
+  ignoreScheduleId?: string
+  serviceTypeIds: string[]
+  serviceTypes: Array<{ id: string; dailyScheduleLimitHours?: number | null; dailyScheduleLimit?: number | null }>
+  date: string
+  time: string
+  durationMinutes: number
+  durationType?: ScheduleDurationType
+  serviceItems?: ScheduleRecord["serviceItems"]
+  mode?: AvailabilityMode
+}): DailyServiceCapacityViolation | null {
   const serviceTypeIds = unique(params.serviceTypeIds)
-  if (serviceTypeIds.length === 0) return true
+  if (serviceTypeIds.length === 0) return null
 
-  const candidateDates = new Set(buildScheduleBlocks({
-    date: params.date,
-    time: params.time || "08:00",
-    durationMinutes: params.durationMinutes,
-    durationType: params.durationType,
-    mode: "manual",
-  }).map((block) => block.date))
+  for (const serviceTypeId of serviceTypeIds) {
+    const requestedServiceItem = params.serviceItems?.find((item) => item.serviceTypeId === serviceTypeId)
+    const requestedMinutesByDate = dailyMinutesByDate(buildScheduleBlocks({
+      date: params.date,
+      time: params.time || "08:00",
+      durationMinutes: requestedServiceItem?.durationMinutes ?? params.durationMinutes,
+      durationType: requestedServiceItem?.durationType ?? params.durationType,
+      mode: params.mode ?? "manual",
+    }))
+    const configuredService = params.serviceTypes.find((service) => service.id === serviceTypeId)
+    const limitHours = resolveDailyScheduleLimitHours(
+      configuredService?.dailyScheduleLimitHours,
+      configuredService?.dailyScheduleLimit,
+    )
+    if (limitHours === null) continue
+    const usedMinutesByDate = new Map<string, number>()
 
-  return serviceTypeIds.every((serviceTypeId) => {
-    const configuredLimit = params.serviceTypes.find((service) => service.id === serviceTypeId)?.dailyScheduleLimit
-    const dailyLimit = Number(configuredLimit)
-    if (!Number.isInteger(dailyLimit) || dailyLimit < 1) return true
+    for (const schedule of params.schedules) {
+      if (schedule.id === params.ignoreScheduleId || ["cancelled", "completed"].includes(schedule.status)) continue
+      const scheduleServiceIds = schedule.serviceTypeIds?.length
+        ? schedule.serviceTypeIds
+        : [schedule.serviceTypeId]
+      if (!scheduleServiceIds.includes(serviceTypeId)) continue
 
-    return [...candidateDates].every((candidateDate) => {
-      const usage = params.schedules.filter((schedule) => {
-        if (schedule.id === params.ignoreScheduleId || ["cancelled", "completed"].includes(schedule.status)) return false
-        const scheduleServiceIds = schedule.serviceTypeIds?.length
-          ? schedule.serviceTypeIds
-          : [schedule.serviceTypeId]
-        if (!scheduleServiceIds.includes(serviceTypeId)) return false
+      const scheduleServiceItem = schedule.serviceItems?.find((item) => item.serviceTypeId === serviceTypeId)
+      for (const [date, minutes] of dailyMinutesByDate(buildScheduleBlocks({
+        date: schedule.date,
+        time: schedule.time || "08:00",
+        durationMinutes: scheduleServiceItem?.durationMinutes ?? getScheduleDurationMinutes(schedule),
+        durationType: scheduleServiceItem?.durationType ?? schedule.durationType,
+        mode: params.mode ?? "manual",
+      }))) {
+        usedMinutesByDate.set(date, (usedMinutesByDate.get(date) ?? 0) + minutes)
+      }
+    }
 
-        return buildScheduleBlocks({
-          date: schedule.date,
-          time: schedule.time || "08:00",
-          durationMinutes: getScheduleDurationMinutes(schedule),
-          durationType: schedule.durationType,
-          mode: "manual",
-        }).some((block) => block.date === candidateDate)
-      }).length
+    for (const [date, requestedMinutes] of requestedMinutesByDate) {
+      const usedMinutes = usedMinutesByDate.get(date) ?? 0
+      if (usedMinutes + requestedMinutes > limitHours * 60) {
+        return { serviceTypeId, date, limitHours, usedMinutes, requestedMinutes }
+      }
+    }
+  }
 
-      return usage < dailyLimit
-    })
-  })
+  return null
+}
+
+export function formatDailyServiceCapacityViolation(
+  violation: DailyServiceCapacityViolation,
+  serviceTypes: Array<{ id: string; name?: string }>,
+) {
+  const [year, month, day] = violation.date.split("-")
+  const formattedDate = year && month && day ? `${day}/${month}/${year}` : violation.date
+  const serviceName = serviceTypes.find((service) => service.id === violation.serviceTypeId)?.name
+  const serviceLabel = serviceName ? ` do serviço ${serviceName}` : " deste serviço"
+  return `O limite de ${violation.limitHours} horas${serviceLabel} seria ultrapassado em ${formattedDate}.`
 }
 
 export function formatAvailabilitySlot(date: string, time: string) {
@@ -321,6 +385,7 @@ export function getAvailableRescheduleTimes(params: {
       ignoreScheduleId: schedule.id,
       allowWeekends: params.allowWeekends,
       mode,
+      suggestAlternative: false,
       formData: {
         ...baseFormData,
         time: "08:00",
@@ -342,6 +407,7 @@ export function getAvailableRescheduleTimes(params: {
       ignoreScheduleId: schedule.id,
       allowWeekends: params.allowWeekends,
       mode,
+      suggestAlternative: false,
       formData: {
         ...baseFormData,
         time,
@@ -496,10 +562,12 @@ function buildScheduleBlocks(params: {
     const startMinutes = mode === "manual"
       ? minutesFromTime(params.time || "08:00")
       : WORKDAY_START_MINUTES
-    const endMinutes = startMinutes + DAY_DURATION_MINUTES
+    let remainingMinutes = durationMinutes
 
     for (let index = 0; index < days; index += 1) {
-      blocks.push(...splitBlockAcrossDates(currentDate, startMinutes, endMinutes))
+      const blockDuration = Math.min(DAY_DURATION_MINUTES, remainingMinutes)
+      blocks.push(...splitBlockAcrossDates(currentDate, startMinutes, startMinutes + blockDuration))
+      remainingMinutes -= blockDuration
       currentDate = mode === "manual" || params.allowWeekends
         ? addCivilDaysKey(currentDate, 1)
         : nextBusinessDateKey(currentDate)
@@ -534,9 +602,18 @@ function splitBlockAcrossDates(date: string, startMinutes: number, endMinutes: n
   return blocks
 }
 
+function dailyMinutesByDate(blocks: Array<{ date: string; startMinutes: number; endMinutes: number }>) {
+  const minutesByDate = new Map<string, number>()
+  for (const block of blocks) {
+    const minutes = Math.max(0, block.endMinutes - block.startMinutes)
+    minutesByDate.set(block.date, (minutesByDate.get(block.date) ?? 0) + minutes)
+  }
+  return minutesByDate
+}
+
 function isFullDaySchedule(durationMinutes: number, durationType?: ScheduleDurationType) {
   const parsed = Number(durationMinutes || 0)
-  return durationType === "days" || (!durationType && parsed > DAY_DURATION_MINUTES)
+  return durationType === "days" || parsed > DAY_DURATION_MINUTES
 }
 
 function scheduleDaySpan(durationMinutes: number, durationType?: ScheduleDurationType) {

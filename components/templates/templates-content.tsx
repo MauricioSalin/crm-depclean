@@ -38,6 +38,11 @@ import { listContracts, type ContractRecord } from "@/lib/api/contracts"
 import { listEmployees } from "@/lib/api/employees"
 import { listSchedules, type ScheduleRecord } from "@/lib/api/schedules"
 import { listServices, type ServiceRecord } from "@/lib/api/services"
+import {
+  buildDownPaymentsText,
+  buildInstallmentDueDatesText,
+  buildRemainingInstallmentsText,
+} from "@/lib/contract-down-payments"
 import { getOrganizationSettings, listClientTypes, type ClientTypeRecord, type OrganizationSettingsRecord } from "@/lib/api/settings"
 import {
   createTemplate,
@@ -452,20 +457,30 @@ function buildPreviewVariables(params: {
   const unitValidityMonths = Math.max(1, Math.trunc(Number(unit?.reservoirProfile?.validityMonths ?? 6) || 6))
   const templateValidityMonths = Math.max(1, Math.trunc(Number(certificateValidityMonths ?? 6) || 6))
   const downPaymentValue = contract?.downPaymentValue ?? 0
-  const hasDownPayment = Boolean(contract && downPaymentValue > 0 && contract.installmentsCount > 1)
+  const downPayments = contract?.downPayments?.length
+    ? contract.downPayments
+    : contract && downPaymentValue > 0 && contract.installments[0]
+      ? [{
+          id: "down-payment-1",
+          number: 1,
+          value: downPaymentValue,
+          dueDate: contract.installments[0].dueDate,
+        }]
+      : []
+  const hasDownPayment = downPayments.length > 0
   const remainingInstallmentsCount = contract
     ? hasDownPayment
-      ? contract.installmentsCount - 1
+      ? contract.installmentsCount - downPayments.length
       : contract.installmentsCount
     : 0
   const installmentValue = contract
     ? hasDownPayment
-      ? contract.installments.find((item) => item.number === 2)?.value ?? (contract.totalValue - downPaymentValue) / remainingInstallmentsCount
+      ? contract.installments.find((item) => item.number === downPayments.length + 1)?.value ?? (contract.totalValue - downPaymentValue) / remainingInstallmentsCount
       : contract.installmentsCount > 0
         ? contract.totalValue / contract.installmentsCount
         : contract.totalValue
     : 0
-  const firstInstallmentValue = hasDownPayment ? downPaymentValue : installmentValue
+  const firstInstallmentValue = downPayments[0]?.value ?? installmentValue
   const contractServiceNames =
     contract?.services
       .map((item) => services.find((serviceItem) => serviceItem.id === item.serviceTypeId)?.name)
@@ -546,6 +561,16 @@ function buildPreviewVariables(params: {
         firstDueDate: formatDate(contract.installments[0]?.dueDate),
         firstDueDateLong: formatLongDate(contract.installments[0]?.dueDate),
         downPaymentValue: formatCurrency(downPaymentValue),
+        downPaymentsText: buildDownPaymentsText(downPayments),
+        installmentDueDatesText: buildInstallmentDueDatesText(
+          downPayments[0]?.dueDate ?? contract.installments[0]?.dueDate ?? "",
+          contract.paymentDay,
+        ),
+        remainingInstallmentsText: buildRemainingInstallmentsText(
+          remainingInstallmentsCount,
+          installmentValue,
+          hasDownPayment,
+        ),
         firstInstallmentValue: formatCurrency(firstInstallmentValue),
         installmentValue: formatCurrency(installmentValue),
         installmentsCount: String(contract.installmentsCount),

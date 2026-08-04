@@ -4,6 +4,7 @@ import {
   employeeFixture,
   installApiMock,
   scheduleFixture,
+  serviceFixture,
 } from "./support/api-mock"
 import { installAuthenticatedSession } from "./support/session"
 
@@ -43,6 +44,33 @@ const eduardoSchedule = {
   duration: 120,
   durationValue: 2,
   durationType: "hours",
+}
+
+const brokenHoursSchedule = {
+  ...scheduleFixture,
+  id: "schedule-broken-hours",
+  clientName: "Condomínio Nova Primavera II",
+  date: "2028-12-04",
+  time: "08:00",
+  duration: 110,
+  durationValue: 110 / 60,
+  durationType: "hours" as const,
+}
+
+const multiDaySchedule = {
+  ...scheduleFixture,
+  id: "schedule-multi-day-limit",
+  contractId: "",
+  contractServiceId: "",
+  contractServiceIds: [],
+  isManual: true,
+  clientName: "Condomínio com atendimento de seis dias",
+  serviceTypeName: "Limpeza de rede",
+  date: "2026-08-06",
+  time: "12:00",
+  duration: 6 * 8 * 60,
+  durationValue: 6,
+  durationType: "days" as const,
 }
 
 function success(data: unknown) {
@@ -104,13 +132,149 @@ async function installTechnicianConflictMock(page: Page) {
   }
 }
 
+async function installBrokenHoursMock(page: Page) {
+  let savedPayload: Record<string, unknown> | null = null
+  let persistedSchedule = {
+    ...brokenHoursSchedule,
+    durationType: brokenHoursSchedule.durationType as "minutes" | "hours" | "shift" | "days",
+  }
+
+  await page.route("**/api/v1/schedules**", async (route) => {
+    const request = route.request()
+    const path = new URL(request.url()).pathname.replace("/api/v1", "")
+
+    if (request.method() === "GET" && path === "/schedules") {
+      await fulfill(route, [persistedSchedule])
+      return
+    }
+
+    if (request.method() === "PATCH" && path === `/schedules/${brokenHoursSchedule.id}`) {
+      const payload = request.postDataJSON() as Record<string, unknown>
+      savedPayload = payload
+      persistedSchedule = {
+        ...persistedSchedule,
+        duration: Number(payload.estimatedDuration),
+        durationValue: Number(payload.durationValue),
+        durationType: String(payload.durationType) as typeof persistedSchedule.durationType,
+      }
+      await fulfill(route, persistedSchedule)
+      return
+    }
+
+    await route.fallback()
+  })
+
+  return {
+    getSavedPayload: () => savedPayload,
+  }
+}
+
+async function installMultiDayLimitMock(page: Page) {
+  let savedPayload: Record<string, unknown> | null = null
+
+  await page.route("**/api/v1/schedules**", async (route) => {
+    const request = route.request()
+    const path = new URL(request.url()).pathname.replace("/api/v1", "")
+    if (request.method() === "GET" && path === "/schedules") {
+      await fulfill(route, [multiDaySchedule])
+      return
+    }
+    if (request.method() === "PATCH" && path === `/schedules/${multiDaySchedule.id}`) {
+      savedPayload = request.postDataJSON() as Record<string, unknown>
+      await fulfill(route, multiDaySchedule)
+      return
+    }
+    await route.fallback()
+  })
+
+  await page.route("**/api/v1/services**", async (route) => {
+    const request = route.request()
+    const path = new URL(request.url()).pathname.replace("/api/v1", "")
+    if (request.method() === "GET" && path === "/services") {
+      await fulfill(route, [{
+        ...serviceFixture,
+        id: multiDaySchedule.serviceTypeId,
+        name: "Limpeza de rede",
+        dailyScheduleLimitHours: 8,
+      }])
+      return
+    }
+    await route.fallback()
+  })
+
+  return { getSavedPayload: () => savedPayload }
+}
+
 test.beforeEach(async ({ page }) => {
   await page.clock.setFixedTime(FIXED_NOW)
   await installAuthenticatedSession(page)
   await installApiMock(page)
 })
 
-test("confirma em modal ao vincular técnico com sobreposição de horário", async ({ page }) => {
+test("mantém o serviço como texto simples na listagem de agendamentos", async ({ page }) => {
+  await installTechnicianConflictMock(page)
+
+  await page.goto("/agendamentos")
+  const scheduleRow = page.getByRole("row").filter({ hasText: longSchedule.clientName })
+  await expect(scheduleRow.getByText(longSchedule.serviceTypeName, { exact: true })).toBeVisible()
+  await expect(scheduleRow.getByText("1 dia", { exact: true })).toBeVisible()
+  await expect(scheduleRow.locator('[data-slot="badge"]').filter({ hasText: longSchedule.serviceTypeName })).toHaveCount(0)
+  await expect(scheduleRow.getByRole("button", { name: `Ver serviços de ${longSchedule.clientName}` })).toHaveCount(0)
+})
+
+test("edita horas quebradas em minutos e mantém horas e minutos na lista", async ({ page }) => {
+  const mock = await installBrokenHoursMock(page)
+
+  await page.goto("/agendamentos")
+  const scheduleRow = page.getByRole("row").filter({ hasText: brokenHoursSchedule.clientName })
+  await expect(scheduleRow.getByText("1 hora e 50 minutos", { exact: true })).toBeVisible()
+
+  await scheduleRow.getByRole("button", {
+    name: `Abrir ações do agendamento de ${brokenHoursSchedule.clientName}`,
+  }).click()
+  await page.getByRole("menuitem", { name: "Editar" }).click()
+
+  const editDialog = page.getByRole("dialog", { name: "Editar atendimento recorrente" })
+  const durationType = editDialog.getByText("Tipo de Duração", { exact: true }).locator("..").getByRole("combobox")
+  const durationInput = editDialog.getByText("Duração", { exact: true }).locator("..").locator("input")
+  await expect(durationType).toContainText("Minutos")
+  await expect(durationInput).toHaveValue("110")
+  await durationInput.pressSequentially(",")
+  await expect(durationInput).toHaveValue("110")
+
+  await editDialog.getByRole("button", { name: "Salvar", exact: true }).click()
+
+  await expect.poll(() => mock.getSavedPayload()).toMatchObject({
+    estimatedDuration: 110,
+    durationValue: 110,
+    durationType: "minutes",
+  })
+  await expect(editDialog).toBeHidden()
+  await expect(scheduleRow.getByText("1 hora e 50 minutos", { exact: true })).toBeVisible()
+})
+
+test("edita atendimento de vários dias sem contar o próprio registro no limite", async ({ page }) => {
+  const mock = await installMultiDayLimitMock(page)
+
+  await page.goto("/agendamentos")
+  const scheduleRow = page.getByRole("row").filter({ hasText: multiDaySchedule.clientName })
+  await scheduleRow.getByRole("button", {
+    name: `Abrir ações do agendamento de ${multiDaySchedule.clientName}`,
+  }).click()
+  await page.getByRole("menuitem", { name: "Editar" }).click()
+
+  const editDialog = page.getByRole("dialog", { name: "Editar atendimento avulso" })
+  await editDialog.getByRole("button", { name: "Salvar", exact: true }).click()
+
+  await expect.poll(() => mock.getSavedPayload()).toMatchObject({
+    estimatedDuration: 6 * 8 * 60,
+    durationValue: 6,
+    durationType: "days",
+  })
+  await expect(page.getByText(/limite de .* horas.*ultrapassado/i)).toHaveCount(0)
+})
+
+test("bloqueia com toast ao vincular técnico com sobreposição de horário", async ({ page }) => {
   const mock = await installTechnicianConflictMock(page)
 
   await page.goto("/agendamentos")
@@ -121,42 +285,12 @@ test("confirma em modal ao vincular técnico com sobreposição de horário", as
   const editDialog = page.getByRole("dialog", { name: "Editar atendimento avulso" })
   await editDialog.getByRole("combobox", { name: "Buscar e adicionar funcionários" }).click()
   await page.getByRole("option", { name: /Eduardo/ }).click()
+  await page.keyboard.press("Escape")
   await editDialog.getByRole("button", { name: "Salvar", exact: true }).click()
 
-  const conflictDialog = page.getByRole("dialog", { name: "Conflito de horário" })
-  await expect(conflictDialog).toContainText("Eduardo terá um conflito de horário. Deseja continuar?")
-  await page.setViewportSize({ width: 360, height: 640 })
-
-  const dialogBox = await conflictDialog.boundingBox()
-  expect(dialogBox).not.toBeNull()
-  expect(dialogBox!.width).toBeLessThan(360)
-
-  await expect(conflictDialog.getByRole("button", { name: "Cancelar" })).toBeVisible()
-  const suggestedButton = conflictDialog.getByRole("button", { name: "Usar horário sugerido" })
-  await expect(suggestedButton).toBeVisible()
-  const continueButton = conflictDialog.getByRole("button", { name: "Continuar", exact: true })
-  await expect(continueButton).toHaveClass(/bg-primary/)
-
-  for (const button of [suggestedButton, continueButton]) {
-    const buttonBox = await button.boundingBox()
-    expect(buttonBox).not.toBeNull()
-    expect(buttonBox!.x).toBeGreaterThanOrEqual(dialogBox!.x)
-    expect(buttonBox!.x + buttonBox!.width).toBeLessThanOrEqual(dialogBox!.x + dialogBox!.width)
-    expect(buttonBox!.y + buttonBox!.height).toBeLessThanOrEqual(640)
-  }
-
-  await continueButton.click()
-
-  await expect.poll(() => mock.getSavedPayload()).toMatchObject({
-    additionalEmployeeIds: [eduardo.id],
-    allowConflict: true,
-  })
-  await expect(editDialog).toBeHidden()
-  await page.setViewportSize({ width: 1280, height: 720 })
-
-  await scheduleRow.getByRole("button", { name: `Abrir ações do agendamento de ${longSchedule.clientName}` }).click()
-  await page.getByRole("menuitem", { name: "Editar" }).click()
-
-  await expect(editDialog.getByText(eduardo.name, { exact: true })).toBeVisible()
-  expect(mock.getPatchCount()).toBe(1)
+  await expect(page.getByText("O funcionário selecionado não tem disponibilidade para este agendamento.")).toBeVisible()
+  await expect(page.getByRole("dialog", { name: "Conflito de horário" })).toHaveCount(0)
+  await expect(editDialog).toBeVisible()
+  expect(mock.getSavedPayload()).toBeNull()
+  expect(mock.getPatchCount()).toBe(0)
 })

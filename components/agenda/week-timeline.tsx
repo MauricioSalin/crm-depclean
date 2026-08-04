@@ -1,12 +1,19 @@
 "use client"
 
-import { useMemo, useEffect, useLayoutEffect, useRef, useState } from "react"
+import {
+  useMemo,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react"
 import { createPortal } from "react-dom"
-import { ChevronLeft, ChevronRight } from "lucide-react"
+import { CircleHelp, ChevronLeft, ChevronRight, UserRound, Users, UsersRound } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { addCivilDaysKey, BRASILIA_TIME_ZONE, minutesFromBrasiliaDate, parseCivilDate, toCivilDateKey } from "@/lib/date-utils"
+import { AgendaPeriodSelector } from "./agenda-period-selector"
 
 interface TimelineEvent {
   id: string
@@ -20,7 +27,17 @@ interface TimelineEvent {
   totalDays?: number
   teamColor: string | null
   teamNames?: string[]
+  resourceIds?: string[]
+  isEmergency?: boolean
   status: string
+}
+
+export type TimelineResource = {
+  id: string
+  kind: "employee" | "team" | "unassigned"
+  name: string
+  subtitle?: string
+  assignment?: { teamIds?: string[]; employeeIds?: string[] }
 }
 
 interface WeekTimelineProps {
@@ -28,9 +45,12 @@ interface WeekTimelineProps {
   currentDate: Date
   selectedDate: Date | null
   onDateChange: (date: Date) => void
+  onToday?: () => void
   onDaySelect: (date: Date) => void
   onEventClick?: (eventId: string) => void
-  onSlotClick?: (date: Date, time: string) => void
+  onSlotClick?: (date: Date, time: string, resource?: TimelineResource) => void
+  mode?: "week" | "day"
+  resources?: TimelineResource[]
 }
 
 const HOUR_HEIGHT = 60 // px per hour
@@ -46,9 +66,10 @@ const EVENT_OPEN_TRANSITION_MS = 450
 const EVENT_CLOSE_TRANSITION_MS = 500
 const POINTER_TOOLTIP_OFFSET = 14
 const POINTER_TOOLTIP_VIEWPORT_MARGIN = 8
+const DAY_RESOURCE_MIN_WIDTH = 220
+const HORIZONTAL_DRAG_THRESHOLD = 6
 
 const DAY_LABELS_SHORT = ["DOM.", "SEG.", "TER.", "QUA.", "QUI.", "SEX.", "SÁB."]
-const MONTH_LABELS_SHORT = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"] as const
 
 type PositionedTimelineEvent = TimelineEvent & {
   top: number
@@ -166,25 +187,28 @@ export function WeekTimeline({
   currentDate,
   selectedDate,
   onDateChange,
+  onToday,
   onDaySelect,
   onEventClick,
   onSlotClick,
+  mode = "week",
+  resources = [],
 }: WeekTimelineProps) {
   const currentDateKey = toCivilDateKey(currentDate)
-  const displayedYear = Number(currentDateKey.slice(0, 4))
-  const displayedMonth = Number(currentDateKey.slice(5, 7)) - 1
-  const [periodSelectorOpen, setPeriodSelectorOpen] = useState(false)
-  const [periodMonth, setPeriodMonth] = useState(displayedMonth)
-  const [periodYear, setPeriodYear] = useState(displayedYear)
   const weekDays = useMemo(() => getWeekDays(currentDate), [currentDate])
   const scrollRef = useRef<HTMLDivElement>(null)
+  const headerScrollRef = useRef<HTMLDivElement>(null)
   const pointerTooltipRef = useRef<HTMLDivElement>(null)
   const pointerTooltipTimerRef = useRef<number | null>(null)
   const pointerTooltipEventIdRef = useRef<string | null>(null)
   const pointerPositionRef = useRef({ x: 0, y: 0 })
+  const horizontalDragRef = useRef({ pointerId: -1, startX: 0, scrollLeft: 0, moved: false })
+  const suppressClickRef = useRef(false)
+  const suppressClickTimeoutRef = useRef<number | null>(null)
   const [activeEventGroupId, setActiveEventGroupId] = useState<string | null>(null)
   const [activeEventId, setActiveEventId] = useState<string | null>(null)
   const [pointerTooltipEvent, setPointerTooltipEvent] = useState<TimelineEvent | null>(null)
+  const [isHorizontalDragging, setIsHorizontalDragging] = useState(false)
 
   const positionPointerTooltip = () => {
     const tooltip = pointerTooltipRef.current
@@ -255,41 +279,105 @@ export function WeekTimeline({
       if (pointerTooltipTimerRef.current !== null) {
         window.clearTimeout(pointerTooltipTimerRef.current)
       }
+      if (suppressClickTimeoutRef.current !== null) {
+        window.clearTimeout(suppressClickTimeoutRef.current)
+      }
     }
   }, [])
 
-  const navigateWeek = (direction: number) => {
-    const newDate = parseCivilDate(addCivilDaysKey(toCivilDateKey(currentDate), direction * 7)) ?? new Date()
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollLeft = 0
+    if (headerScrollRef.current) headerScrollRef.current.scrollLeft = 0
+  }, [currentDateKey, mode])
+
+  useEffect(() => {
+    const moveHorizontalDrag = (event: PointerEvent) => {
+      const drag = horizontalDragRef.current
+      if (drag.pointerId !== event.pointerId || mode !== "day") return
+
+      const deltaX = event.clientX - drag.startX
+      if (!drag.moved && Math.abs(deltaX) < HORIZONTAL_DRAG_THRESHOLD) return
+
+      if (!drag.moved) {
+        drag.moved = true
+        setIsHorizontalDragging(true)
+        clearPointerTooltip()
+      }
+
+      event.preventDefault()
+      if (scrollRef.current) scrollRef.current.scrollLeft = drag.scrollLeft - deltaX
+    }
+
+    const endHorizontalDrag = (event: PointerEvent) => {
+      const drag = horizontalDragRef.current
+      if (drag.pointerId !== event.pointerId) return
+
+      if (drag.moved && event.type === "pointerup") {
+        suppressClickRef.current = true
+        if (suppressClickTimeoutRef.current !== null) window.clearTimeout(suppressClickTimeoutRef.current)
+        suppressClickTimeoutRef.current = window.setTimeout(() => {
+          suppressClickRef.current = false
+          suppressClickTimeoutRef.current = null
+        }, 0)
+      }
+
+      horizontalDragRef.current = { pointerId: -1, startX: 0, scrollLeft: 0, moved: false }
+      setIsHorizontalDragging(false)
+    }
+
+    window.addEventListener("pointermove", moveHorizontalDrag, { passive: false })
+    window.addEventListener("pointerup", endHorizontalDrag)
+    window.addEventListener("pointercancel", endHorizontalDrag)
+
+    return () => {
+      window.removeEventListener("pointermove", moveHorizontalDrag)
+      window.removeEventListener("pointerup", endHorizontalDrag)
+      window.removeEventListener("pointercancel", endHorizontalDrag)
+    }
+  }, [mode])
+
+  const handleTimelineScroll = () => {
+    clearPointerTooltip()
+    if (scrollRef.current && headerScrollRef.current) {
+      headerScrollRef.current.scrollLeft = scrollRef.current.scrollLeft
+    }
+  }
+
+  const beginHorizontalDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (mode !== "day" || event.pointerType !== "mouse" || event.button !== 0) return
+    if (event.currentTarget.scrollWidth <= event.currentTarget.clientWidth) return
+
+    horizontalDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      scrollLeft: event.currentTarget.scrollLeft,
+      moved: false,
+    }
+  }
+
+  const suppressDraggedClick = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (!suppressClickRef.current) return
+    suppressClickRef.current = false
+    if (suppressClickTimeoutRef.current !== null) {
+      window.clearTimeout(suppressClickTimeoutRef.current)
+      suppressClickTimeoutRef.current = null
+    }
+    event.preventDefault()
+    event.stopPropagation()
+  }
+
+  const navigatePeriod = (direction: number) => {
+    const days = mode === "day" ? direction : direction * 7
+    const newDate = parseCivilDate(addCivilDaysKey(toCivilDateKey(currentDate), days)) ?? new Date()
     onDateChange(newDate)
+    onDaySelect(newDate)
   }
 
   const goToToday = () => {
-    onDateChange(new Date())
-  }
-
-  const periodYearOptions = useMemo(
-    () => Array.from({ length: 51 }, (_, index) => displayedYear - 25 + index),
-    [displayedYear],
-  )
-
-  const handlePeriodSelectorOpenChange = (open: boolean) => {
-    if (open) {
-      setPeriodMonth(displayedMonth)
-      setPeriodYear(displayedYear)
-    }
-    setPeriodSelectorOpen(open)
-  }
-
-  const goToSelectedPeriod = (month: number) => {
-    const monthStart = parseCivilDate(
-      `${periodYear}-${String(month + 1).padStart(2, "0")}-01`,
-    )
-    if (!monthStart) return
-
-    setPeriodMonth(month)
-    onDateChange(monthStart)
-    onDaySelect(monthStart)
-    setPeriodSelectorOpen(false)
+    const today = new Date()
+    onDateChange(today)
+    onDaySelect(today)
+    onToday?.()
   }
 
   const positionedEventsByDate = useMemo(() => {
@@ -303,6 +391,21 @@ export function WeekTimeline({
       Object.entries(map).map(([date, dayEvents]) => [date, positionDayEvents(dayEvents)]),
     ) as Record<string, PositionedTimelineEvent[]>
   }, [events])
+
+  const positionedEventsByResource = useMemo(() => {
+    const map: Record<string, TimelineEvent[]> = {}
+    for (const event of events) {
+      if (event.date !== currentDateKey) continue
+      for (const resourceId of event.resourceIds ?? []) {
+        if (!map[resourceId]) map[resourceId] = []
+        map[resourceId].push(event)
+      }
+    }
+
+    return Object.fromEntries(
+      Object.entries(map).map(([resourceId, resourceEvents]) => [resourceId, positionDayEvents(resourceEvents)]),
+    ) as Record<string, PositionedTimelineEvent[]>
+  }, [currentDateKey, events])
 
   // Current time indicator
   const now = new Date()
@@ -319,113 +422,122 @@ export function WeekTimeline({
   const headerLabel = weekStartKey.slice(5, 7) === weekEndKey.slice(5, 7)
     ? `${cap(weekStart.toLocaleDateString("pt-BR", { month: "long", timeZone: BRASILIA_TIME_ZONE }))} ${weekStartKey.slice(0, 4)}`
     : `${cap(weekStart.toLocaleDateString("pt-BR", { month: "short", timeZone: BRASILIA_TIME_ZONE }))} - ${cap(weekEnd.toLocaleDateString("pt-BR", { month: "short", timeZone: BRASILIA_TIME_ZONE }))} ${weekEndKey.slice(0, 4)}`
+  const dayHeaderLabel = cap(currentDate.toLocaleDateString("pt-BR", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: BRASILIA_TIME_ZONE,
+  }))
+  const columns = mode === "day"
+    ? resources.map((resource) => ({ key: resource.id, date: currentDate, resource }))
+    : weekDays.map((date) => ({ key: toCivilDateKey(date), date, resource: undefined }))
+  const dayColumnsMinWidth = mode === "day" && columns.length > 0
+    ? columns.length * DAY_RESOURCE_MIN_WIDTH
+    : undefined
+  const compactDayFillerCount = mode === "day" && columns.length > 0
+    ? Math.max(0, 3 - columns.length)
+    : 0
+  const wideDayFillerCount = mode === "day" && columns.length > 0 && columns.length < 4 ? 1 : 0
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Week navigation */}
-      <div className="flex h-14 shrink-0 items-center justify-between border-b px-3">
-        <div className="flex h-full items-center gap-1">
-          <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => navigateWeek(-1)}>
-            <span className="sr-only">Semana anterior</span>
-            <ChevronLeft className="h-5 w-5" />
-          </Button>
-          <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => navigateWeek(1)}>
-            <span className="sr-only">Próxima semana</span>
+      <div data-agenda-period-navigation className="grid h-14 shrink-0 grid-cols-[1fr_auto_1fr] items-center px-3">
+        <Button variant="ghost" size="icon" className="h-9 w-9 justify-self-start" onClick={() => navigatePeriod(-1)}>
+          <span className="sr-only">{mode === "day" ? "Dia anterior" : "Semana anterior"}</span>
+          <ChevronLeft className="h-5 w-5" />
+        </Button>
+        <AgendaPeriodSelector
+          date={currentDate}
+          label={mode === "day" ? dayHeaderLabel : headerLabel}
+          mode={mode === "day" ? "day" : "month"}
+          onSelect={(date) => {
+            onDateChange(date)
+            onDaySelect(date)
+          }}
+        />
+        <div className="flex items-center justify-self-end gap-2">
+          <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => navigatePeriod(1)}>
+            <span className="sr-only">{mode === "day" ? "Próximo dia" : "Próxima semana"}</span>
             <ChevronRight className="h-5 w-5" />
           </Button>
-          <DropdownMenu open={periodSelectorOpen} onOpenChange={handlePeriodSelectorOpenChange}>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                aria-label={`Selecionar mês e ano: ${headerLabel}`}
-                className="ml-2 cursor-pointer rounded-md px-2 py-2 text-base font-semibold capitalize leading-none transition-colors hover:bg-muted/70 data-[state=open]:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              >
-                {headerLabel}
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-[252px] p-2">
-              <Select value={String(periodYear)} onValueChange={(year) => setPeriodYear(Number(year))}>
-                <SelectTrigger aria-label="Ano" className="mb-2 w-full cursor-pointer data-[state=open]:bg-muted/70">
-                  <SelectValue placeholder="Ano" />
-                </SelectTrigger>
-                <SelectContent>
-                  {periodYearOptions.map((year) => (
-                    <SelectItem key={year} value={String(year)} className="cursor-pointer">
-                      {year}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <div className="grid grid-cols-3 gap-1">
-                {MONTH_LABELS_SHORT.map((month, index) => {
-                  const isSelected = periodMonth === index
-                  return (
-                    <button
-                      key={month}
-                      type="button"
-                      onClick={() => goToSelectedPeriod(index)}
-                      className={`h-8 cursor-pointer rounded-md px-2 text-xs font-medium transition-colors ${
-                        isSelected
-                          ? "bg-primary text-primary-foreground"
-                          : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                      }`}
-                    >
-                      {month}
-                    </button>
-                  )
-                })}
-              </div>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <Button variant="outline" size="sm" className="hidden h-9 rounded-full px-4 text-sm sm:inline-flex" onClick={goToToday}>
+            Hoje
+          </Button>
         </div>
-        <Button variant="outline" size="sm" className="h-9 rounded-full px-4 text-sm" onClick={goToToday}>
-          Hoje
-        </Button>
       </div>
 
       {/* Day headers */}
       <div className="flex border-b shrink-0 overflow-y-scroll [&::-webkit-scrollbar]:invisible" style={{ scrollbarColor: 'transparent transparent' }}>
         {/* Time gutter spacer */}
         <div className="w-14 shrink-0" />
-        {weekDays.map((day, i) => {
-          const isSelected = selectedDate?.toDateString() === day.toDateString()
-          const today = isToday(day)
-          return (
-            <button
-              key={i}
-              onClick={() => onDaySelect(day)}
-              className={`flex-1 py-2 text-center cursor-pointer transition-colors hover:bg-muted/50 ${
-                isSelected ? "bg-muted" : ""
-              }`}
-            >
-              <div className="text-[10px] font-medium text-muted-foreground tracking-wider">
-                {DAY_LABELS_SHORT[i]}
-              </div>
-              <div
-                className={`text-base lg:text-xl font-medium mt-0.5 w-8 h-8 lg:w-10 lg:h-10 flex items-center justify-center mx-auto rounded-full ${
-                  today
-                    ? "bg-primary text-primary-foreground"
-                    : isSelected
-                    ? "bg-muted-foreground/20"
-                    : ""
-                }`}
-              >
-                {Number(toCivilDateKey(day).slice(8, 10))}
-              </div>
-            </button>
-          )
-        })}
+        <div ref={headerScrollRef} data-agenda-timeline-header-scroll className="min-w-0 flex-1 overflow-hidden">
+          <div className="flex w-full" style={{ minWidth: dayColumnsMinWidth }}>
+            {columns.map(({ key, date: day, resource }, i) => {
+              const isSelected = mode === "week" && selectedDate?.toDateString() === day.toDateString()
+              const today = isToday(day)
+              return (
+                <button
+                  key={key}
+                  onClick={() => onDaySelect(day)}
+                  className={`min-w-0 flex-1 cursor-pointer border-0 py-2 text-center transition-colors hover:bg-muted/50 ${
+                    isSelected ? "bg-muted" : ""
+                  }`}
+                  data-resource-kind={resource?.kind}
+                  aria-label={resource ? `${resource.kind === "employee" ? "Funcionário avulso" : resource.kind === "team" ? "Equipe" : "Sem responsável"}: ${resource.name}` : undefined}
+                >
+                  {resource ? (
+                    <div className="flex min-w-0 items-center justify-center gap-2 px-2">
+                      {resource.kind === "employee" ? (
+                        <UserRound className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                      ) : resource.kind === "team" ? (
+                        <UsersRound className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                      ) : (
+                        <CircleHelp className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                      )}
+                      <div className="min-w-0 text-left">
+                        <div className="truncate text-xs font-semibold text-foreground">{resource.name}</div>
+                        <div className="mt-0.5 truncate text-[10px] text-muted-foreground">{resource.subtitle || "Responsável"}</div>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="text-[10px] font-medium text-muted-foreground tracking-wider">{DAY_LABELS_SHORT[i]}</div>
+                      <div className={`text-base lg:text-xl font-medium mt-0.5 w-8 h-8 lg:w-10 lg:h-10 flex items-center justify-center mx-auto rounded-full ${today ? "bg-primary text-primary-foreground" : isSelected ? "bg-muted-foreground/20" : ""}`}>
+                        {Number(toCivilDateKey(day).slice(8, 10))}
+                      </div>
+                    </>
+                  )}
+                </button>
+              )
+            })}
+            {Array.from({ length: compactDayFillerCount }, (_, index) => (
+              <div key={`compact-header-filler-${index}`} aria-hidden="true" className="min-w-0 flex-1" />
+            ))}
+            {wideDayFillerCount > 0 ? (
+              <div aria-hidden="true" className="hidden min-w-0 flex-1 xl:block" />
+            ) : null}
+          </div>
+        </div>
       </div>
 
       {/* Timeline grid */}
       <div
         ref={scrollRef}
-        className="flex-1 min-h-0 overflow-y-scroll overflow-x-hidden"
-        onScroll={clearPointerTooltip}
+        data-agenda-timeline-scroll
+        className={`min-h-0 flex-1 overflow-auto ${mode === "day" ? "cursor-grab" : ""} ${
+          isHorizontalDragging ? "select-none cursor-grabbing [&_*]:cursor-grabbing" : ""
+        }`}
+        onScroll={handleTimelineScroll}
+        onPointerDown={beginHorizontalDrag}
+        onClickCapture={suppressDraggedClick}
       >
-        <div className="relative flex pt-2 pb-4">
+        <div
+          className="relative flex pt-2 pb-4"
+          style={{ minWidth: dayColumnsMinWidth ? dayColumnsMinWidth + 56 : undefined }}
+        >
           {/* Time labels */}
-          <div className="w-14 shrink-0">
+          <div className="sticky left-0 z-30 w-14 shrink-0 bg-card">
             {Array.from({ length: TOTAL_HOURS }, (_, i) => (
               <div
                 key={i}
@@ -440,45 +552,54 @@ export function WeekTimeline({
           </div>
 
           {/* Day columns */}
-          <div className="flex flex-1 relative">
-            {/* Horizontal hour lines */}
-            <div className="absolute inset-0 pointer-events-none">
-              {Array.from({ length: TOTAL_HOURS }, (_, i) => (
-                <div
-                  key={i}
-                  className="absolute left-0 right-0 border-t border-border/50"
-                  style={{ top: i * HOUR_HEIGHT }}
-                />
-              ))}
+          {columns.length === 0 ? (
+            <div className="flex min-h-[420px] flex-1 flex-col items-center justify-center gap-2 text-center text-muted-foreground">
+              <Users className="h-9 w-9 opacity-45" />
+              <p className="text-sm font-medium">Nenhum responsável com agendamento neste dia.</p>
             </div>
-
-            {/* Now indicator line */}
-            {showNowLine && (
-              <div
-                className="absolute left-0 right-0 z-20 pointer-events-none"
-                style={{ top: nowOffset }}
-              >
-                <div className="flex items-center">
-                  <div className="w-2 h-2 rounded-full bg-red-500 -ml-1" />
-                  <div className="flex-1 h-[2px] bg-red-500" />
-                </div>
+          ) : (
+            <div className="relative flex flex-1">
+              {/* Horizontal hour lines */}
+              <div className="pointer-events-none absolute inset-0">
+                {Array.from({ length: TOTAL_HOURS }, (_, i) => (
+                  <div
+                    key={i}
+                    className="absolute left-0 right-0 border-t border-border/50"
+                    style={{ top: i * HOUR_HEIGHT }}
+                  />
+                ))}
               </div>
-            )}
 
-            {weekDays.map((day, dayIndex) => {
-              const dateStr = toCivilDateKey(day)
-              const dayEvents = positionedEventsByDate[dateStr] || []
-              const isSelected = selectedDate?.toDateString() === day.toDateString()
-
-              return (
+              {/* Now indicator line */}
+              {showNowLine && (
                 <div
-                  key={dayIndex}
-                  onClick={() => onDaySelect(day)}
-                  className={`flex-1 relative border-l border-border/50 cursor-pointer transition-colors ${
-                    isSelected ? "bg-primary/5" : "hover:bg-muted/30"
-                  }`}
-                  style={{ height: TOTAL_HOURS * HOUR_HEIGHT }}
+                  className="absolute left-0 right-0 z-20 pointer-events-none"
+                  style={{ top: nowOffset }}
                 >
+                  <div className="flex items-center">
+                    <div className="w-2 h-2 rounded-full bg-red-500 -ml-1" />
+                    <div className="flex-1 h-[2px] bg-red-500" />
+                  </div>
+                </div>
+              )}
+
+              {columns.map(({ key, date: day, resource }) => {
+                const dateStr = toCivilDateKey(day)
+                const dayEvents = resource
+                  ? positionedEventsByResource[resource.id] || []
+                  : positionedEventsByDate[dateStr] || []
+                const isSelected = mode === "week" && selectedDate?.toDateString() === day.toDateString()
+
+                return (
+                  <div
+                    key={key}
+                    onClick={() => onDaySelect(day)}
+                    data-resource-column={resource?.kind}
+                    className={`flex-1 relative border-l border-border/50 cursor-pointer transition-colors ${
+                      isSelected ? "bg-primary/5" : "hover:bg-muted/30"
+                    }`}
+                    style={{ height: TOTAL_HOURS * HOUR_HEIGHT }}
+                  >
                   {Array.from({ length: TOTAL_HOURS }, (_, hourIndex) => {
                     const hour = START_HOUR + hourIndex
                     const time = `${String(hour).padStart(2, "0")}:00`
@@ -497,11 +618,16 @@ export function WeekTimeline({
                           height: HOUR_HEIGHT,
                         }}
                         title={hour === LUNCH_HOUR ? "Horário de almoço" : `Novo agendamento em ${time}`}
+                        aria-label={
+                          hour === LUNCH_HOUR
+                            ? "Horário de almoço"
+                            : `Novo agendamento em ${dateStr} às ${time}${resource ? ` para ${resource.name}` : ""}`
+                        }
                         onClick={(event) => {
                           event.stopPropagation()
                           if (hour === LUNCH_HOUR) return
                           onDaySelect(day)
-                          onSlotClick?.(day, time)
+                          onSlotClick?.(day, time, resource)
                         }}
                       />
                     )
@@ -509,6 +635,7 @@ export function WeekTimeline({
                   {dayEvents.map((ev) => {
                     const color = ev.teamColor || "#9CA3AF" // gray for no team
                     const isOverlapping = ev.columnCount > 1
+                    const isCompleted = ev.status === "completed"
                     const hoverGroupId = ev.hoverGroupId ?? ev.scheduleId ?? ev.id
                     const isActive = activeEventGroupId === hoverGroupId
                     const isDirectlyActive = activeEventId === ev.id
@@ -523,81 +650,84 @@ export function WeekTimeline({
                       <button
                         key={ev.id}
                         type="button"
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              setActiveEventGroupId(hoverGroupId)
-                              onEventClick?.(ev.scheduleId ?? ev.id)
-                              onDaySelect(day)
-                            }}
-                            onPointerDown={() => setActiveEventGroupId(hoverGroupId)}
-                            onMouseEnter={(event) => {
-                              setActiveEventGroupId(hoverGroupId)
-                              beginPointerTooltip(ev, event.clientX, event.clientY)
-                            }}
-                            onMouseMove={(event) => {
-                              movePointerTooltip(ev.id, event.clientX, event.clientY)
-                            }}
-                            onMouseLeave={() => {
-                              setActiveEventGroupId((current) => (current === hoverGroupId ? null : current))
-                              setActiveEventId((current) => (current === ev.id ? null : current))
-                              clearPointerTooltip()
-                            }}
-                            onFocus={(event) => {
-                              setActiveEventGroupId(hoverGroupId)
-                              if (event.currentTarget.matches(":focus-visible")) {
-                                const rect = event.currentTarget.getBoundingClientRect()
-                                beginPointerTooltip(ev, rect.left + Math.min(rect.width / 2, 40), rect.top + 16)
-                              }
-                            }}
-                            onBlur={() => {
-                              setActiveEventGroupId((current) => (current === hoverGroupId ? null : current))
-                              setActiveEventId((current) => (current === ev.id ? null : current))
-                              clearPointerTooltip()
-                            }}
-                            className={`group absolute flex min-w-0 cursor-pointer flex-col items-start justify-start gap-0.5 overflow-hidden rounded-md border border-transparent border-l-[3px] px-1.5 py-1 text-left transition-[left,width,box-shadow,background-color,transform] ease-[cubic-bezier(0.22,1,0.36,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 active:scale-[0.99] ${
-                              isActive ? "-translate-y-0.5 scale-[1.015]" : "hover:-translate-y-0.5 hover:scale-[1.015]"
-                            }`}
-                            style={{
-                              transitionDuration: `${
-                                isDirectlyActive ? EVENT_OPEN_TRANSITION_MS : EVENT_CLOSE_TRANSITION_MS
-                              }ms`,
-                              top: ev.top,
-                              left: isDirectlyActive ? EVENT_COLUMN_GUTTER : eventLeft,
-                              width: isDirectlyActive
-                                ? `calc(100% - ${EVENT_COLUMN_GUTTER * 2}px)`
-                                : eventWidth,
-                              height: ev.height,
-                              zIndex: isDirectlyActive ? 110 : isActive ? 100 : 10 + ev.columnIndex,
-                              backgroundColor: "#efefef",
-                              borderColor: color,
-                              borderLeftColor: color,
-                              boxShadow: isActive
-                                ? "0 16px 36px rgba(15, 23, 42, 0.22), 0 2px 6px rgba(15, 23, 42, 0.16)"
-                                : isOverlapping
-                                ? "0 6px 14px rgba(15, 23, 42, 0.10), 0 1px 2px rgba(15, 23, 42, 0.10)"
-                                : "0 1px 2px rgba(15, 23, 42, 0.08)",
-                            }}
-                          >
-                            <p className="w-full min-w-0 truncate text-[10px] font-semibold leading-tight text-foreground/90">
-                              {ev.title}
-                            </p>
-                            {ev.height > 30 && (
-                              <p className="w-full min-w-0 truncate text-[9px] leading-tight text-foreground/70">
-                                {ev.time} - {formatEndTime(ev.time, ev.duration)}
-                              </p>
-                            )}
-                            {ev.height > 45 && (
-                              <p className="w-full min-w-0 truncate text-[9px] leading-tight text-foreground/65">
-                                {ev.subtitle}
-                              </p>
-                            )}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          setActiveEventGroupId(hoverGroupId)
+                          onEventClick?.(ev.scheduleId ?? ev.id)
+                          onDaySelect(day)
+                        }}
+                        onPointerDown={() => setActiveEventGroupId(hoverGroupId)}
+                        onMouseEnter={(event) => {
+                          setActiveEventGroupId(hoverGroupId)
+                          beginPointerTooltip(ev, event.clientX, event.clientY)
+                        }}
+                        onMouseMove={(event) => {
+                          movePointerTooltip(ev.id, event.clientX, event.clientY)
+                        }}
+                        onMouseLeave={() => {
+                          setActiveEventGroupId((current) => (current === hoverGroupId ? null : current))
+                          setActiveEventId((current) => (current === ev.id ? null : current))
+                          clearPointerTooltip()
+                        }}
+                        onFocus={(event) => {
+                          setActiveEventGroupId(hoverGroupId)
+                          if (event.currentTarget.matches(":focus-visible")) {
+                            const rect = event.currentTarget.getBoundingClientRect()
+                            beginPointerTooltip(ev, rect.left + Math.min(rect.width / 2, 40), rect.top + 16)
+                          }
+                        }}
+                        onBlur={() => {
+                          setActiveEventGroupId((current) => (current === hoverGroupId ? null : current))
+                          setActiveEventId((current) => (current === ev.id ? null : current))
+                          clearPointerTooltip()
+                        }}
+                        className={`group absolute flex min-w-0 cursor-pointer flex-col items-start justify-start gap-0.5 overflow-hidden rounded-md border border-transparent border-l-[3px] px-1.5 py-1 text-left transition-[left,width,box-shadow,background-color,transform,opacity,filter] ease-[cubic-bezier(0.22,1,0.36,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 active:scale-[0.99] ${
+                          isActive ? "-translate-y-0.5 scale-[1.015]" : "hover:-translate-y-0.5 hover:scale-[1.015]"
+                        } ${isCompleted ? "opacity-60 saturate-50 hover:opacity-80 focus-visible:opacity-80" : ""}`}
+                        style={{
+                          transitionDuration: `${isDirectlyActive ? EVENT_OPEN_TRANSITION_MS : EVENT_CLOSE_TRANSITION_MS}ms`,
+                          top: ev.top,
+                          left: isDirectlyActive ? EVENT_COLUMN_GUTTER : eventLeft,
+                          width: isDirectlyActive ? `calc(100% - ${EVENT_COLUMN_GUTTER * 2}px)` : eventWidth,
+                          height: ev.height,
+                          zIndex: isDirectlyActive ? 110 : isActive ? 100 : 10 + ev.columnIndex,
+                          backgroundColor: ev.isEmergency ? "#fef2f2" : "#efefef",
+                          borderColor: color,
+                          borderLeftColor: color,
+                          boxShadow: isActive
+                            ? "0 16px 36px rgba(15, 23, 42, 0.22), 0 2px 6px rgba(15, 23, 42, 0.16)"
+                            : isOverlapping
+                            ? "0 6px 14px rgba(15, 23, 42, 0.10), 0 1px 2px rgba(15, 23, 42, 0.10)"
+                            : "0 1px 2px rgba(15, 23, 42, 0.08)",
+                        }}
+                      >
+                        <p className="w-full min-w-0 truncate text-[10px] font-semibold leading-tight text-foreground/90">
+                          {ev.title}
+                        </p>
+                        {ev.height > 30 && (
+                          <p className="w-full min-w-0 truncate text-[9px] leading-tight text-foreground/70">
+                            {ev.time} - {formatEndTime(ev.time, ev.duration)}
+                          </p>
+                        )}
+                        {ev.height > 45 && (
+                          <p className="w-full min-w-0 truncate text-[9px] leading-tight text-foreground/65">
+                            {ev.subtitle}
+                          </p>
+                        )}
                       </button>
                     )
                   })}
-                </div>
-              )
-            })}
-          </div>
+                  </div>
+                )
+              })}
+              {Array.from({ length: compactDayFillerCount }, (_, index) => (
+                <div key={`compact-column-filler-${index}`} aria-hidden="true" className="min-w-0 flex-1" />
+              ))}
+              {wideDayFillerCount > 0 ? (
+                <div aria-hidden="true" className="hidden min-w-0 flex-1 xl:block" />
+              ) : null}
+            </div>
+          )}
         </div>
       </div>
       {pointerTooltipEvent && typeof document !== "undefined"

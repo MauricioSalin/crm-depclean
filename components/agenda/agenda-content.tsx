@@ -24,20 +24,22 @@ import {
 import { listClients } from "@/lib/api/clients"
 import { listEmployees } from "@/lib/api/employees"
 import { getApiErrorMessage } from "@/lib/api/errors"
-import { listSchedules, createSchedule, updateSchedule, updateScheduleStatus, startSchedule, completeSchedule, cancelSchedule, reactivateSchedule, uploadScheduleNa, type ScheduleRecord } from "@/lib/api/schedules"
+import { listSchedules, createSchedule, updateSchedule, updateScheduleStatus, startSchedule, completeSchedule, cancelSchedule, reactivateSchedule, uploadScheduleNa, listScheduleCompletionEmployees, type ScheduleRecord } from "@/lib/api/schedules"
 import { listServices } from "@/lib/api/services"
 import { listTeams } from "@/lib/api/teams"
 import { hasAnyPermission } from "@/lib/auth/permissions"
 import { getStoredUser } from "@/lib/auth/session"
 import { addCivilDaysKey, addCivilMonthsKey, parseCivilDate, toBrasiliaTimeKey, toCivilDateKey } from "@/lib/date-utils"
 import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
+import { useUrlDateRangeState } from "@/lib/hooks/use-url-date-range-state"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 import { normalizeScheduleStatusFilter, SCHEDULE_STATUS_FILTER_OPTIONS } from "@/lib/schedule-status"
 import { cn } from "@/lib/utils"
 import {
   checkScheduleAvailability,
+  formatDailyServiceCapacityViolation,
   getScheduleConflictResourceNames,
-  hasDailyServiceCapacity,
+  getDailyServiceCapacityViolation,
   isScheduleConflictErrorMessage,
 } from "@/lib/schedule-availability"
 import { canStartSchedule } from "@/lib/schedule-permissions"
@@ -55,16 +57,17 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { DatePicker } from "@/components/ui/date-picker"
+import { DateRangePicker } from "@/components/ui/date-range-picker"
 import { Input } from "@/components/ui/input"
-import { TimeInput } from "@/components/ui/time-input"
 import { FilterSearchInput } from "@/components/ui/filter-search-input"
-import { Label } from "@/components/ui/label"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { EmptyState } from "@/components/ui/empty-state"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { WeekTimeline } from "./week-timeline"
+import { AgendaPeriodSelector } from "./agenda-period-selector"
+import { WeekTimeline, type TimelineResource } from "./week-timeline"
 import { CompletionNaAttachments } from "@/components/agendamentos/completion-na-attachments"
+import { AttendanceCompletionFields } from "@/components/agendamentos/attendance-completion-fields"
 import { ScheduleDetailsDialog } from "@/components/agendamentos/schedule-details-dialog"
 import { CancelScheduleDialog } from "@/components/agendamentos/cancel-schedule-dialog"
 import { ScheduleConflictDialog } from "@/components/agendamentos/schedule-conflict-dialog"
@@ -90,6 +93,8 @@ const AGENDA_WORKDAY_START_TIME = "08:00"
 const AGENDA_DAY_DURATION_MINUTES = 8 * 60
 const DAY_PANEL_CONTENT_HIDE_MS = 80
 const DAY_PANEL_DRAWER_MS = 500
+const DAY_PANEL_STORAGE_VERSION = "v1"
+const EMERGENCY_SCHEDULE_COLOR = "#dc2626"
 
 const DEFAULT_RECURRENCE: AgendaRecurrenceConfig = {
   type: "none",
@@ -201,7 +206,7 @@ const mapSchedule = (schedule: ScheduleRecord): AgendaScheduledServiceRow => ({
 
 function getScheduleIconTone(schedule: Pick<ScheduleRecord, "isEmergency">) {
   return schedule.isEmergency
-    ? { wrapper: "bg-amber-50", icon: "text-amber-700" }
+    ? { wrapper: "bg-red-50", icon: "text-red-700" }
     : { wrapper: "bg-primary/10", icon: "text-primary" }
 }
 
@@ -243,10 +248,15 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   const deferredSearchTerm = useDeferredValue(searchTerm)
   const [statusFilterParam, setStatusFilter] = useUrlQueryState("status", "all", { debounceMs: 0 })
   const statusFilter = normalizeScheduleStatusFilter(statusFilterParam)
+  const [dateRange, setDateRange] = useUrlDateRangeState()
   const [viewModeParam, setViewModeParam] = useUrlQueryState("view", "week", { debounceMs: 0 })
-  const viewMode = viewModeParam === "month" ? "month" : "week"
-  const [dayPanelOpen, setDayPanelOpen] = useState(true)
-  const [dayPanelContentVisible, setDayPanelContentVisible] = useState(true)
+  const viewMode = viewModeParam === "month" || viewModeParam === "day" ? viewModeParam : "week"
+  const dayPanelStorageKey = useMemo(() => {
+    const user = getStoredUser()
+    return `depclean:agenda-day-panel-open:${DAY_PANEL_STORAGE_VERSION}:${user?.id ?? user?.email ?? "default"}`
+  }, [])
+  const [dayPanelOpen, setDayPanelOpen] = useState(false)
+  const [dayPanelContentVisible, setDayPanelContentVisible] = useState(false)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingService, setEditingService] = useState<AgendaScheduledServiceRow | null>(null)
   const [initialFormData, setInitialFormData] = useState<Partial<SchedulingFormData> | null>(null)
@@ -260,10 +270,14 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   const [selectedSchedule, setSelectedSchedule] = useState<AgendaScheduledServiceRow | null>(null)
   const [cancelTarget, setCancelTarget] = useState<AgendaScheduledServiceRow | null>(null)
   const [completionTarget, setCompletionTarget] = useState<AgendaScheduledServiceRow | null>(null)
+  const [completionStep, setCompletionStep] = useState<"attachments" | "checkout">("attachments")
   const [completionStartDate, setCompletionStartDate] = useState("")
   const [completionStartTime, setCompletionStartTime] = useState("")
   const [completionEndDate, setCompletionEndDate] = useState("")
   const [completionEndTime, setCompletionEndTime] = useState("")
+  const [completionDriverEmployeeId, setCompletionDriverEmployeeId] = useState("")
+  const [completionHelperEmployeeIds, setCompletionHelperEmployeeIds] = useState<string[]>([])
+  const [completionServiceReport, setCompletionServiceReport] = useState("")
   const [completionFiles, setCompletionFiles] = useState<File[]>([])
   const scheduleDialogResetTimeoutRef = useRef<number | null>(null)
   const dayPanelTransitionTimeoutRef = useRef<number | null>(null)
@@ -272,6 +286,10 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   const canManageLockedSchedules = hasAnyPermission(currentUser, ["agenda_manage_locked"])
   const canManageScheduleStatus = hasAnyPermission(currentUser, ["agenda_manage_status"])
   const canOpenScheduleEditor = canManageAgenda || canManageScheduleStatus
+  const restrictAgendaToOwnEmployee = Boolean(
+    currentUser?.permissions.includes("agenda_own_view") &&
+    !currentUser.permissions.includes("settings_manage"),
+  )
 
   const setCurrentDate = useCallback((date: Date) => {
     const dateKey = toCivilDateKey(date)
@@ -306,6 +324,21 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
     }
   }, [])
 
+  useEffect(() => {
+    try {
+      const storedOpen = window.localStorage.getItem(dayPanelStorageKey) === "true"
+      setDayPanelOpen(storedOpen)
+      setDayPanelContentVisible(storedOpen)
+    } catch {
+      setDayPanelOpen(false)
+      setDayPanelContentVisible(false)
+    }
+  }, [dayPanelStorageKey])
+
+  useEffect(() => {
+    if (viewMode !== "week" && dateRange) setDateRange(undefined)
+  }, [dateRange, setDateRange, viewMode])
+
   const schedulesQuery = useQuery({
     queryKey: ["schedules", "agenda"],
     queryFn: () => listSchedules(),
@@ -330,6 +363,11 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
     queryFn: () => listEmployees(),
     enabled: canManageAgenda,
   })
+  const completionEmployeesQuery = useQuery({
+    queryKey: ["schedules", "completion-employees"],
+    queryFn: () => listScheduleCompletionEmployees(),
+    enabled: Boolean(completionTarget),
+  })
 
   const schedules = useMemo(
     () => (schedulesQuery.data?.data ?? []).map(mapSchedule),
@@ -339,6 +377,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   const serviceTypes = serviceTypesQuery.data?.data ?? []
   const teams = teamsQuery.data?.data ?? []
   const employees = employeesQuery.data?.data ?? []
+  const completionEmployees = completionEmployeesQuery.data?.data ?? []
 
   useEffect(() => {
     if (openDialog !== undefined && openDialog !== isDialogOpen) {
@@ -382,6 +421,9 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
     clearDayPanelTransitionTimeout()
 
     if (dayPanelOpen) {
+      try {
+        window.localStorage.setItem(dayPanelStorageKey, "false")
+      } catch {}
       setDayPanelContentVisible(false)
       dayPanelTransitionTimeoutRef.current = window.setTimeout(() => {
         setDayPanelOpen(false)
@@ -390,6 +432,9 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       return
     }
 
+    try {
+      window.localStorage.setItem(dayPanelStorageKey, "true")
+    } catch {}
     setDayPanelContentVisible(false)
     setDayPanelOpen(true)
     dayPanelTransitionTimeoutRef.current = window.setTimeout(() => {
@@ -639,6 +684,9 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       startTime,
       endDate,
       endTime,
+      driverEmployeeId,
+      helperEmployeeIds,
+      serviceReport,
       files,
     }: {
       schedule: AgendaScheduledServiceRow
@@ -646,6 +694,9 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       startTime: string
       endDate: string
       endTime: string
+      driverEmployeeId: string
+      helperEmployeeIds: string[]
+      serviceReport: string
       files: File[]
     }) => {
       const hasExistingNa = Boolean(schedule.naAttachments?.length || schedule.naDocumentUrl)
@@ -657,18 +708,30 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
         await uploadScheduleNa(schedule.id, file)
       }
 
-      return completeSchedule(schedule.id, { startDate, startTime, endDate, endTime })
+      return completeSchedule(schedule.id, {
+        startDate,
+        startTime,
+        endDate,
+        endTime,
+        driverEmployeeId,
+        helperEmployeeIds,
+        serviceReport,
+      })
     },
     onMutate: () => {
-      setCompletionTarget(null)
       const toastId = toast.loading("Concluindo atendimento...")
       return { toastId }
     },
     onSuccess: (_response, _variables, context) => {
+      setCompletionTarget(null)
+      setCompletionStep("attachments")
       setCompletionStartDate("")
       setCompletionStartTime("")
       setCompletionEndDate("")
       setCompletionEndTime("")
+      setCompletionDriverEmployeeId("")
+      setCompletionHelperEmployeeIds([])
+      setCompletionServiceReport("")
       setCompletionFiles([])
       toast.success("Atendimento concluído.", {
         id: context?.toastId,
@@ -716,9 +779,14 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
         service.additionalEmployees.some((employee) => employee.name.toLowerCase().includes(term))
 
       const matchesStatus = statusFilter === "all" || service.status === statusFilter
-      return matchesSearch && matchesStatus
+      const fromStr = dateRange?.from ? toCivilDateKey(dateRange.from) : ""
+      const toStr = dateRange?.to ? toCivilDateKey(dateRange.to) : ""
+      const matchesDateFrom = !fromStr || service.date >= fromStr
+      const matchesDateTo = !toStr || service.date <= toStr
+
+      return matchesSearch && matchesStatus && matchesDateFrom && matchesDateTo
     })
-  }, [schedules, deferredSearchTerm, statusFilter])
+  }, [dateRange, schedules, deferredSearchTerm, statusFilter])
 
   const getServicesForDate = (date: Date) => {
     const dateStr = toCivilDateKey(date)
@@ -727,7 +795,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
 
   const navigateMonth = (direction: number) => {
     const monthStartKey = `${currentYear}-${String(currentMonth + 1).padStart(2, "0")}-01`
-    setCurrentDate(parseCivilDate(addCivilMonthsKey(monthStartKey, direction)) ?? new Date())
+    setSelectedDate(parseCivilDate(addCivilMonthsKey(monthStartKey, direction)) ?? new Date())
   }
 
   const isToday = (date: Date) => {
@@ -745,7 +813,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       return
     }
 
-    if (!hasDailyServiceCapacity({
+    const capacityViolation = getDailyServiceCapacityViolation({
       schedules,
       ignoreScheduleId: scheduleId,
       serviceTypeIds: formData.serviceTypeIds,
@@ -754,8 +822,9 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       time: formData.time,
       durationMinutes: scheduleDurationToMinutes(formData.duration, formData.durationType),
       durationType: formData.durationType,
-    })) {
-      toast.error("O limite diário deste serviço foi atingido na data selecionada.")
+    })
+    if (capacityViolation) {
+      toast.error(formatDailyServiceCapacityViolation(capacityViolation, serviceTypes))
       return
     }
 
@@ -806,7 +875,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
     onDialogChange?.(true)
   }
 
-  const openScheduleFormAtSlot = (date: Date, time: string) => {
+  const openScheduleFormAtSlot = (date: Date, time: string, resource?: TimelineResource) => {
     if (!canManageAgenda) return
 
     clearScheduleDialogResetTimeout()
@@ -817,6 +886,8 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       time,
       durationType: "hours",
       duration: 1,
+      teamIds: resource?.assignment?.teamIds ?? [],
+      employeeIds: resource?.assignment?.employeeIds ?? [],
     })
     setIsDialogOpen(true)
     onDialogChange?.(true)
@@ -828,10 +899,14 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
     const now = currentCompletionDateTime()
     const defaultDate = schedule.completionStartDate || now.date || schedule.date
     setCompletionTarget(schedule)
+    setCompletionStep("attachments")
     setCompletionStartDate(defaultDate)
     setCompletionStartTime(schedule.completionStartTime || schedule.time || "")
     setCompletionEndDate(schedule.completionEndDate || now.date || defaultDate)
     setCompletionEndTime(schedule.completionEndTime || now.time)
+    setCompletionDriverEmployeeId(schedule.attendanceDriver?.id || "")
+    setCompletionHelperEmployeeIds(schedule.attendanceHelpers?.map((employee) => employee.id) ?? [])
+    setCompletionServiceReport(schedule.serviceReport || "")
     setCompletionFiles([])
   }
 
@@ -868,59 +943,146 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
     return teams.find((team) => team.id === teamId)?.color || "#9CA3AF"
   }
 
-  const timelineEvents = useMemo(() => filteredServices.flatMap((service) => {
-    const baseEvent = {
-      id: service.id,
-      scheduleId: service.id,
-      hoverGroupId: service.id,
-      title: service.clientName,
-      subtitle: service.serviceTypeName,
-      teamColor: service.teams.length > 0 ? service.teams[0].color : getTeamColor(service.teamId),
-      teamNames: [...service.teams.map((team) => team.name), ...service.additionalEmployees.map((employee) => employee.name)],
-      status: service.status,
+  const getScheduleColor = (schedule: Pick<AgendaScheduledServiceRow, "isEmergency" | "teamId" | "teams">) => {
+    if (schedule.isEmergency) return EMERGENCY_SCHEDULE_COLOR
+    return schedule.teams[0]?.color || getTeamColor(schedule.teamId)
+  }
+
+  const timelineEvents = useMemo(() => {
+    const resourceIdsForSchedule = (service: AgendaScheduledServiceRow) => {
+      const resourceIds = new Set<string>()
+
+      for (const employee of service.additionalEmployees) resourceIds.add(`employee:${employee.id}`)
+      for (const assignedTeam of service.teams) resourceIds.add(`team:${assignedTeam.id}`)
+
+      if (resourceIds.size === 0) resourceIds.add("unassigned")
+      return [...resourceIds]
     }
 
-    if (!isFullDaySchedule(service)) {
-      return [{
-        ...baseEvent,
-        date: service.date,
-        time: service.time || AGENDA_WORKDAY_START_TIME,
-        duration: service.duration,
-      }]
-    }
+    return filteredServices.flatMap((service) => {
+      const baseEvent = {
+        id: service.id,
+        scheduleId: service.id,
+        hoverGroupId: service.id,
+        title: service.clientName,
+        subtitle: service.serviceTypeName,
+        teamColor: getScheduleColor(service),
+        teamNames: [...service.teams.map((team) => team.name), ...service.additionalEmployees.map((employee) => employee.name)],
+        resourceIds: resourceIdsForSchedule(service),
+        isEmergency: service.isEmergency,
+        status: service.status,
+      }
 
-    const days = scheduleDaySpan(service)
-    const events: Array<{
-      id: string
-      title: string
-      subtitle: string
-      date: string
-      time: string
-      duration: number
-      totalDays?: number
-      teamColor: string | null
-      status: string
-    }> = []
-    const allowWeekends = isWeekendCivilDateKey(service.date)
-    let currentDate = allowWeekends ? service.date : toBusinessDateKey(service.date)
+      if (!isFullDaySchedule(service)) {
+        return [{
+          ...baseEvent,
+          date: service.date,
+          time: service.time || AGENDA_WORKDAY_START_TIME,
+          duration: service.duration,
+        }]
+      }
 
-    for (let index = 0; index < days; index += 1) {
-      events.push({
-        ...baseEvent,
-        id: `${service.id}-${currentDate}`,
-        subtitle: days > 1 ? `${service.serviceTypeName} (${index + 1}/${days})` : service.serviceTypeName,
-        date: currentDate,
-        time: AGENDA_WORKDAY_START_TIME,
-        duration: AGENDA_DAY_DURATION_MINUTES,
-        totalDays: days,
-      })
-      currentDate = allowWeekends
-        ? addCivilDaysKey(currentDate, 1)
-        : nextBusinessDateKey(currentDate)
-    }
+      const days = scheduleDaySpan(service)
+      const events: Array<{
+        id: string
+        scheduleId?: string
+        hoverGroupId?: string
+        title: string
+        subtitle: string
+        date: string
+        time: string
+        duration: number
+        totalDays?: number
+        teamColor: string | null
+        teamNames?: string[]
+        resourceIds?: string[]
+        isEmergency?: boolean
+        status: string
+      }> = []
+      const allowWeekends = isWeekendCivilDateKey(service.date)
+      let currentDate = allowWeekends ? service.date : toBusinessDateKey(service.date)
 
-    return events
-  }), [filteredServices, teams])
+      for (let index = 0; index < days; index += 1) {
+        events.push({
+          ...baseEvent,
+          id: `${service.id}-${currentDate}`,
+          subtitle: days > 1 ? `${service.serviceTypeName} (${index + 1}/${days})` : service.serviceTypeName,
+          date: currentDate,
+          time: AGENDA_WORKDAY_START_TIME,
+          duration: AGENDA_DAY_DURATION_MINUTES,
+          totalDays: days,
+        })
+        currentDate = allowWeekends
+          ? addCivilDaysKey(currentDate, 1)
+          : nextBusinessDateKey(currentDate)
+      }
+
+      return events
+    })
+  }, [filteredServices, teams])
+
+  const dayTimelineEvents = useMemo(() => {
+    const employeeId = currentUser?.employeeId?.trim()
+    if (viewMode !== "day" || !restrictAgendaToOwnEmployee || !employeeId) return timelineEvents
+
+    const ownResourceId = `employee:${employeeId}`
+    return timelineEvents.map((event) => ({
+      ...event,
+      resourceIds: [ownResourceId],
+    }))
+  }, [currentUser?.employeeId, restrictAgendaToOwnEmployee, timelineEvents, viewMode])
+
+  const dayResources = useMemo<TimelineResource[]>(() => {
+    if (viewMode !== "day") return []
+
+    const dateKey = toCivilDateKey(currentDate)
+    const activeResourceIds = new Set(
+      dayTimelineEvents
+        .filter((event) => event.date === dateKey)
+        .flatMap((event) => event.resourceIds ?? []),
+    )
+    const employeeById = new Map(employees.map((employee) => [employee.id, employee]))
+    const additionalEmployeeById = new Map(
+      filteredServices.flatMap((service) => service.additionalEmployees).map((employee) => [employee.id, employee]),
+    )
+    const assignedTeamById = new Map(
+      filteredServices.flatMap((service) => service.teams).map((team) => [team.id, team]),
+    )
+
+    return [...activeResourceIds].map((resourceId) => {
+      if (resourceId === "unassigned") {
+        return { id: resourceId, kind: "unassigned" as const, name: "Sem responsável", subtitle: "Atribuição pendente" }
+      }
+
+      const [kind, id] = resourceId.split(":", 2)
+      if (kind === "employee") {
+        const employee = employeeById.get(id) ?? additionalEmployeeById.get(id) ?? (
+          currentUser?.employeeId === id ? currentUser : undefined
+        )
+        const role = employee && "role" in employee ? String(employee.role ?? "") : ""
+        return {
+          id: resourceId,
+          kind: "employee" as const,
+          name: employee?.name ?? "Funcionário",
+          subtitle: role || "Responsável",
+          assignment: { employeeIds: [id] },
+        }
+      }
+
+      const team = assignedTeamById.get(id)
+      return {
+        id: resourceId,
+        kind: "team" as const,
+        name: team?.name ?? "Equipe",
+        subtitle: "Equipe responsável",
+        assignment: { teamIds: [id] },
+      }
+    }).sort((left, right) => {
+      const kindOrder = { employee: 0, team: 1, unassigned: 2 }
+      const kindDifference = kindOrder[left.kind] - kindOrder[right.kind]
+      return kindDifference || left.name.localeCompare(right.name, "pt-BR", { sensitivity: "base" })
+    })
+  }, [currentDate, currentUser, dayTimelineEvents, employees, filteredServices, viewMode])
 
   const selectedDateServices = selectedDate ? getServicesForDate(selectedDate) : []
 
@@ -1017,66 +1179,69 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
             setCompletionStartTime("")
             setCompletionEndDate("")
             setCompletionEndTime("")
+            setCompletionDriverEmployeeId("")
+            setCompletionHelperEmployeeIds([])
+            setCompletionServiceReport("")
+            setCompletionStep("attachments")
             setCompletionFiles([])
           }
         }}
       >
         <DialogContent className="flex max-h-[calc(100dvh-1rem)] min-w-0 flex-col gap-0 overflow-hidden p-0 max-sm:left-0 max-sm:top-0 max-sm:h-[100dvh] max-sm:max-h-none max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none max-sm:border-0 max-sm:[&_[data-slot=dialog-close]]:right-5 max-sm:[&_[data-slot=dialog-close]]:top-[calc(env(safe-area-inset-top)+1rem)] sm:max-w-lg">
           <DialogHeader className="min-w-0 px-6 pb-4 pt-6 max-sm:px-5 max-sm:pt-[calc(env(safe-area-inset-top)+1.75rem)]">
-            <DialogTitle>Concluir agendamento</DialogTitle>
+            <DialogTitle>{completionStep === "checkout" ? "Dados do atendimento" : "NAs do atendimento"}</DialogTitle>
             <DialogDescription>
-              Registre o horário executado e anexe a NA da visita para vincular ao cliente.
+              {completionStep === "checkout"
+                ? "Informe o período executado, a equipe de apoio e as observações para confirmar o encerramento."
+                : "Anexe a NA da visita antes de avançar para os dados finais do atendimento."}
             </DialogDescription>
           </DialogHeader>
 
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 pb-5 max-sm:px-5">
-            <div className="grid min-w-0 gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="agenda-completion-start-date">Data de início *</Label>
-                <DatePicker
-                  value={parseCivilDate(completionStartDate)}
-                  onChange={(date) => setCompletionStartDate(date ? toCivilDateKey(date) : "")}
-                  placeholder="Selecionar data"
-                  disabled
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="agenda-completion-start">Horário de início *</Label>
-                <TimeInput
-                  id="agenda-completion-start"
-                  value={completionStartTime}
-                  onChange={(event) => setCompletionStartTime(event.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="agenda-completion-end-date">Data de fim *</Label>
-                <DatePicker
-                  value={parseCivilDate(completionEndDate)}
-                  onChange={(date) => setCompletionEndDate(date ? toCivilDateKey(date) : "")}
-                  placeholder="Selecionar data"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="agenda-completion-end">Horário de fim *</Label>
-                <TimeInput
-                  id="agenda-completion-end"
-                  value={completionEndTime}
-                  onChange={(event) => setCompletionEndTime(event.target.value)}
-                />
-              </div>
-            </div>
-
-            <CompletionNaAttachments
-              existingAttachments={completionTarget?.naAttachments ?? []}
-              files={completionFiles}
-              disabled={completeMutation.isPending}
-              onAddFiles={(files) => setCompletionFiles((current) => [...current, ...files])}
-              onRemoveFile={(index) => setCompletionFiles((current) => current.filter((_, currentIndex) => currentIndex !== index))}
-            />
+            {completionStep === "checkout" ? (
+              <AttendanceCompletionFields
+                idPrefix="agenda-completion"
+                startDate={completionStartDate}
+                startTime={completionStartTime}
+                endDate={completionEndDate}
+                endTime={completionEndTime}
+                driverEmployeeId={completionDriverEmployeeId}
+                helperEmployeeIds={completionHelperEmployeeIds}
+                serviceReport={completionServiceReport}
+                employees={completionEmployees}
+                disabled={completeMutation.isPending || completionEmployeesQuery.isLoading}
+                onStartDateChange={setCompletionStartDate}
+                onStartTimeChange={setCompletionStartTime}
+                onEndDateChange={setCompletionEndDate}
+                onEndTimeChange={setCompletionEndTime}
+                onDriverEmployeeIdChange={setCompletionDriverEmployeeId}
+                onHelperEmployeeIdsChange={setCompletionHelperEmployeeIds}
+                onServiceReportChange={setCompletionServiceReport}
+              />
+            ) : (
+              <CompletionNaAttachments
+                existingAttachments={completionTarget?.naAttachments ?? []}
+                files={completionFiles}
+                disabled={completeMutation.isPending}
+                onAddFiles={(files) => setCompletionFiles((current) => [...current, ...files])}
+                onRemoveFile={(index) => setCompletionFiles((current) => current.filter((_, currentIndex) => currentIndex !== index))}
+              />
+            )}
           </div>
 
           <DialogFooter className="gap-2 px-6 pb-6 pt-3 max-sm:px-5 max-sm:pb-[calc(env(safe-area-inset-bottom)+1.25rem)] sm:gap-2">
-            <Button type="button" variant="outline" className="w-full min-w-0 sm:w-auto" onClick={() => setCompletionTarget(null)}>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full min-w-0 sm:w-auto"
+              onClick={() => {
+                if (completionStep === "checkout") {
+                  setCompletionStep("attachments")
+                  return
+                }
+                setCompletionTarget(null)
+              }}
+            >
               Voltar
             </Button>
             <Button
@@ -1084,24 +1249,40 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
               className="w-full min-w-0 sm:w-auto"
               disabled={
                 !completionTarget ||
-                !completionStartDate ||
-                !completionStartTime ||
-                !completionEndDate ||
-                !completionEndTime ||
                 (completionFiles.length === 0 && !completionTarget.naAttachments?.length && !completionTarget.naDocumentUrl) ||
+                (completionStep === "checkout" && (
+                  !completionStartDate ||
+                  !completionStartTime ||
+                  !completionEndDate ||
+                  !completionEndTime
+                )) ||
                 completeMutation.isPending
               }
               onClick={() => {
-                if (completionTarget) {
-                  completeMutation.mutate({
-                    schedule: completionTarget,
-                    startDate: completionStartDate,
-                    startTime: completionStartTime,
-                    endDate: completionEndDate,
-                    endTime: completionEndTime,
-                    files: completionFiles,
-                  })
+                if (!completionTarget) return
+                if (completionStep === "attachments") {
+                  setCompletionStep("checkout")
+                  return
                 }
+
+                const startedAt = new Date(`${completionStartDate}T${completionStartTime}:00`)
+                const completedAt = new Date(`${completionEndDate}T${completionEndTime}:00`)
+                if (completedAt.getTime() <= startedAt.getTime()) {
+                  toast.error("A data e o horário final devem ser maiores que o início.")
+                  return
+                }
+
+                completeMutation.mutate({
+                  schedule: completionTarget,
+                  startDate: completionStartDate,
+                  startTime: completionStartTime,
+                  endDate: completionEndDate,
+                  endTime: completionEndTime,
+                  driverEmployeeId: completionDriverEmployeeId,
+                  helperEmployeeIds: completionHelperEmployeeIds,
+                  serviceReport: completionServiceReport,
+                  files: completionFiles,
+                })
               }}
             >
               {completeMutation.isPending ? (
@@ -1109,9 +1290,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                   <Loader2 className="mr-2 h-4 w-4 shrink-0 animate-spin" />
                   <span className="truncate">Concluindo...</span>
                 </>
-              ) : (
-                "Concluir visita"
-              )}
+              ) : completionStep === "checkout" ? "Confirmar encerramento" : "Continuar"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1167,23 +1346,64 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
             className="sm:w-[160px]"
           />
 
+          <div
+            data-agenda-period-filter
+            className={cn(
+              "col-span-2 w-full min-w-0 sm:col-auto sm:shrink-0 sm:transition-[width] sm:duration-500 sm:ease-[cubic-bezier(.22,1,.36,1)] motion-reduce:transition-none",
+              viewMode === "week" ? "sm:w-[360px]" : "sm:w-[180px]",
+            )}
+          >
+            {viewMode === "day" ? (
+              <DatePicker
+                value={currentDate}
+                onChange={(date) => {
+                  if (date) setSelectedDate(date)
+                }}
+                ariaLabel="Filtrar dia"
+                className="w-full min-w-0"
+              />
+            ) : viewMode === "week" ? (
+              <DateRangePicker
+                value={dateRange}
+                onChange={setDateRange}
+                placeholder="Filtrar data"
+                className="w-full min-w-0"
+              />
+            ) : (
+              <AgendaPeriodSelector
+                date={currentDate}
+                label={`${MONTHS[currentMonth]} ${currentYear}`}
+                mode="month"
+                variant="filter"
+                ariaLabel="Filtrar mês e ano"
+                triggerClassName="w-full min-w-0"
+                onSelect={setSelectedDate}
+              />
+            )}
+          </div>
+
           <Tabs
+            data-agenda-view-tabs
             value={viewMode}
             onValueChange={(value) => {
-              const mode = value as "month" | "week"
-              if (mode === "week") {
+              const mode = value as "month" | "week" | "day"
+              if (mode === "week" || mode === "day") {
                 setCurrentDate(selectedDate || new Date())
               }
+              if (mode !== "week") setDateRange(undefined)
               setViewModeParam(mode)
             }}
-            className="hidden shrink-0 sm:block"
+            className="hidden shrink-0 sm:block [&_[data-slot=tabs-indicator]]:duration-500 [&_[data-slot=tabs-indicator]]:ease-[cubic-bezier(.22,1,.36,1)] motion-reduce:[&_[data-slot=tabs-indicator]]:transition-none"
           >
             <TabsList className="h-9">
-              <TabsTrigger value="month" className="px-3 text-xs">
-                Mês
+              <TabsTrigger value="day" className="px-3 text-xs">
+                Dia
               </TabsTrigger>
               <TabsTrigger value="week" className="px-3 text-xs">
                 Semana
+              </TabsTrigger>
+              <TabsTrigger value="month" className="px-3 text-xs">
+                Mês
               </TabsTrigger>
             </TabsList>
           </Tabs>
@@ -1210,27 +1430,49 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
             dayPanelOpen ? "lg:gap-4" : "lg:gap-0",
           )}
         >
-          <Card className="flex h-full min-h-[420px] min-w-0 flex-col lg:flex-1 lg:overflow-hidden">
-            <CardHeader className="shrink-0 px-4 py-2">
-              <div className="flex items-center justify-between">
-                <Button variant="ghost" size="icon" className="h-10 w-10" onClick={() => navigateMonth(-1)}>
+          <Card className="flex h-full min-h-[420px] min-w-0 flex-col gap-0 py-0 lg:flex-1 lg:overflow-hidden">
+            <CardHeader data-agenda-period-navigation className="flex h-14 shrink-0 items-center px-3 py-0">
+              <div className="grid w-full grid-cols-[1fr_auto_1fr] items-center">
+                <Button variant="ghost" size="icon" className="h-9 w-9 justify-self-start" onClick={() => navigateMonth(-1)}>
                   <span className="sr-only">Mês anterior</span>
-                  <ChevronLeft className="h-6 w-6" />
+                  <ChevronLeft className="h-5 w-5" />
                 </Button>
                 <CardTitle className="text-base">
-                  {MONTHS[currentMonth]} {currentYear}
+                  <AgendaPeriodSelector
+                    date={currentDate}
+                    label={`${MONTHS[currentMonth]} ${currentYear}`}
+                    mode="month"
+                    onSelect={(date) => {
+                      setCurrentDate(date)
+                      setSelectedDate(date)
+                    }}
+                  />
                 </CardTitle>
-                <Button variant="ghost" size="icon" className="h-10 w-10" onClick={() => navigateMonth(1)}>
-                  <span className="sr-only">Próximo mês</span>
-                  <ChevronRight className="h-6 w-6" />
-                </Button>
+                <div className="flex items-center justify-self-end gap-2">
+                  <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => navigateMonth(1)}>
+                    <span className="sr-only">Próximo mês</span>
+                    <ChevronRight className="h-5 w-5" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="hidden h-9 rounded-full px-4 text-sm sm:inline-flex"
+                    onClick={() => {
+                      const today = new Date()
+                      setSelectedDate(today)
+                      setDateRange(undefined)
+                    }}
+                  >
+                    Hoje
+                  </Button>
+                </div>
               </div>
             </CardHeader>
 
-            <CardContent className="flex min-h-0 flex-1 flex-col px-4 pb-3 pt-0">
-              <div className="grid w-full shrink-0 grid-cols-7 gap-1">
+            <CardContent className="flex min-h-0 flex-1 flex-col p-0">
+              <div className="grid h-10 w-full shrink-0 grid-cols-7 items-center gap-1">
                 {DAYS_OF_WEEK.map((day) => (
-                  <div key={day.value} className="py-1 text-center text-xs font-medium text-muted-foreground">
+                  <div key={day.value} className="text-center text-xs font-medium text-muted-foreground">
                     {day.label}
                   </div>
                 ))}
@@ -1261,7 +1503,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                               <div
                                 key={service.id}
                                 className="h-2 w-2 shrink-0 rounded-full"
-                                style={{ backgroundColor: getTeamColor(service.teamId) }}
+                                style={{ backgroundColor: getScheduleColor(service) }}
                                 title={`${service.clientName} - ${service.serviceTypeName}`}
                               />
                             ))}
@@ -1311,7 +1553,14 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                   <ScrollArea className="lg:h-full">
                     <div className="grid grid-cols-1 gap-3 px-6 py-2 sm:grid-cols-2 lg:grid-cols-1">
                       {selectedDateServices.map((service) => (
-                        <Card key={service.id} className="group cursor-pointer border-border/70 transition-colors duration-200 hover:border-primary/30" onClick={() => openSchedule(service)}>
+                        <Card
+                          key={service.id}
+                          className={cn(
+                            "group cursor-pointer border-border/70 transition-colors duration-200 hover:border-primary/30",
+                            service.isEmergency && "border-red-300 bg-red-50 hover:border-red-400",
+                          )}
+                          onClick={() => openSchedule(service)}
+                        >
                           <CardContent>
                             <div className="mb-4 flex items-start justify-between gap-3">
                               <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -1454,10 +1703,13 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
           <Card className="flex min-w-0 flex-col py-0 lg:flex-1 lg:overflow-hidden">
             <CardContent className="flex min-h-0 flex-1 flex-col p-0 lg:h-[calc(100vh-280px)] lg:[@media(max-height:1199px)]:h-[calc(100dvh-180px)]">
               <WeekTimeline
-                events={timelineEvents}
+                events={viewMode === "day" ? dayTimelineEvents : timelineEvents}
                 currentDate={currentDate}
                 selectedDate={selectedDate}
+                mode={viewMode === "day" ? "day" : "week"}
+                resources={dayResources}
                 onDateChange={setCurrentDate}
+                onToday={() => setDateRange(undefined)}
                 onDaySelect={(date) => handleDateClick(date)}
                 onEventClick={(eventId) => {
                   const schedule = filteredServices.find((service) => service.id === eventId)
@@ -1506,7 +1758,14 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                   <ScrollArea className="lg:h-full">
                     <div className="grid grid-cols-1 gap-3 px-6 py-2 sm:grid-cols-2 lg:grid-cols-1">
                       {selectedDateServices.map((service) => (
-                        <Card key={service.id} className="group cursor-pointer border-border/70 transition-colors duration-200 hover:border-primary/30" onClick={() => openSchedule(service)}>
+                        <Card
+                          key={service.id}
+                          className={cn(
+                            "group cursor-pointer border-border/70 transition-colors duration-200 hover:border-primary/30",
+                            service.isEmergency && "border-red-300 bg-red-50 hover:border-red-400",
+                          )}
+                          onClick={() => openSchedule(service)}
+                        >
                           <CardContent>
                             <div className="mb-4 flex items-start justify-between gap-3">
                               <div className="flex min-w-0 flex-1 items-center gap-2">

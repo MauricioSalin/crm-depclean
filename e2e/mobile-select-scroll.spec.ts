@@ -91,13 +91,16 @@ test("permite rolar selects, selects pesquisáveis e multiselects no mobile", as
   const scheduleDialog = page.getByRole("dialog")
   const servicesCombobox = page.getByRole("combobox").filter({ hasText: "Buscar e adicionar serviços" })
   await servicesCombobox.click()
-  await expectTouchScroll(page, scheduleDialog.locator('[data-slot="command-list"]'))
+  const dialogPopoverList = page.locator('[data-slot="command-list"]')
+  await expectTouchScroll(page, dialogPopoverList)
+  expect(await dialogPopoverList.evaluate((element) => element.closest('[data-slot="dialog-content"]'))).toBeNull()
   await page.keyboard.press("Escape")
 
   const durationTypeSelect = scheduleDialog.getByText("Tipo de Duração", { exact: true }).locator("..").getByRole("combobox")
   await durationTypeSelect.click()
-  const dialogSelectContent = scheduleDialog.locator('[data-slot="select-content"]')
+  const dialogSelectContent = page.locator('[data-slot="select-content"]')
   await expect(dialogSelectContent).toBeVisible()
+  expect(await dialogSelectContent.evaluate((element) => element.closest('[data-slot="dialog-content"]'))).toBeNull()
   await dialogSelectContent.getByRole("option", { name: "Minutos" }).click()
 
   await page.setViewportSize({ width: 390, height: 480 })
