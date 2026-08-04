@@ -588,6 +588,14 @@ export function ScheduleDetailsDialog({
                           : "Nenhum ajudante informado"}
                       </p>
                     </div>
+                    <div data-schedule-execution-notes className="pt-3 sm:col-span-2">
+                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        Observações do atendimento
+                      </p>
+                      <p className="mt-1 whitespace-pre-wrap text-foreground">
+                        {schedule.serviceReport?.trim() || "Nenhuma observação registrada."}
+                      </p>
+                    </div>
                   </div>
                 </div>
               ) : null}
@@ -653,13 +661,6 @@ export function ScheduleDetailsDialog({
                 <div className="rounded-2xl border p-4 md:col-span-2">
                   <div className="mb-2 text-sm font-medium">Observações do agendamento</div>
                   <p className="text-sm text-muted-foreground">{schedule.notes}</p>
-                </div>
-              ) : null}
-
-              {schedule.status === "completed" && schedule.serviceReport ? (
-                <div className="rounded-2xl border p-4 md:col-span-2">
-                  <div className="mb-2 text-sm font-medium">Observações do atendimento</div>
-                  <p className="whitespace-pre-wrap text-sm text-muted-foreground">{schedule.serviceReport}</p>
                 </div>
               ) : null}
 

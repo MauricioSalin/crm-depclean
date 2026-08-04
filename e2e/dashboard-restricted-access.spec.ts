@@ -109,11 +109,22 @@ test("sem dashboard_view mostra somente os widgets operacionais com o escopo da 
   const finishSliderBox = await page.locator('[data-attendance-slider="finish"]').boundingBox()
   expect(informationButtonBox).not.toBeNull()
   expect(finishSliderBox).not.toBeNull()
-  expect(informationButtonBox!.x + informationButtonBox!.width).toBeLessThan(finishSliderBox!.x)
-  expect(Math.abs(informationButtonBox!.y - finishSliderBox!.y)).toBeLessThanOrEqual(1)
+  expect(informationButtonBox!.height).toBeLessThanOrEqual(40)
+  expect(informationButtonBox!.width).toBeGreaterThan(340)
+  expect(finishSliderBox!.width).toBeGreaterThan(340)
+  expect(informationButtonBox!.y + informationButtonBox!.height).toBeLessThan(finishSliderBox!.y)
   await expect(page.getByRole("button", { name: "Editar agendamento", exact: true })).toHaveCount(0)
   await page.setViewportSize({ width: 1280, height: 720 })
-  await expect(page.getByRole("button", { name: "Encerrar atendimento", exact: true })).toBeEnabled()
+  const desktopFinishButton = page.getByRole("button", { name: "Encerrar atendimento", exact: true })
+  await expect(desktopFinishButton).toBeEnabled()
+  await expect.poll(async () => {
+    const [informationBox, finishBox] = await Promise.all([
+      page.getByRole("button", { name: "Ver informações", exact: true }).boundingBox(),
+      desktopFinishButton.boundingBox(),
+    ])
+    if (!informationBox || !finishBox) return false
+    return informationBox.x + informationBox.width < finishBox.x && Math.abs(informationBox.y - finishBox.y) <= 1
+  }).toBe(true)
 
   await page.keyboard.press("Escape")
   await expect(page.getByRole("heading", { name: "NAs do atendimento", exact: true })).toHaveCount(0)

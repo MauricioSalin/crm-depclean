@@ -1280,12 +1280,12 @@ export function AgendamentosContent({
               />
             )}
           </div>
-          <div className={`flex shrink-0 gap-2 bg-background px-6 pb-6 pt-3 max-sm:px-5 max-sm:pb-[calc(env(safe-area-inset-bottom)+1.25rem)] sm:flex-row sm:flex-wrap sm:justify-end ${completionStep === "attachments" ? "max-sm:grid max-sm:grid-cols-2" : "flex-col"}`}>
+          <div className="flex shrink-0 flex-col gap-2 bg-background px-6 pb-6 pt-3 max-sm:px-5 max-sm:pb-[calc(env(safe-area-inset-bottom)+1.25rem)] sm:flex-row sm:flex-wrap sm:justify-end">
             {completionStep === "attachments" ? (
               <Button
                 type="button"
                 variant="outline"
-                className="w-full min-w-0 max-sm:h-12 max-sm:px-2 max-sm:text-xs sm:basis-full"
+                className="w-full min-w-0 sm:w-auto"
                 onClick={() => setCompletionInfoOpen(true)}
               >
                 Ver informações
@@ -1294,7 +1294,6 @@ export function AgendamentosContent({
             {completionStep === "attachments" ? (
               <AttendanceStartSlider
                 action="finish"
-                compact
                 className="sm:hidden"
                 disabled={completeMutation.isPending || uploadNaMutation.isPending || deleteNaMutation.isPending}
                 onComplete={() => setCompletionStep("checkout")}

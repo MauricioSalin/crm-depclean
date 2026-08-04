@@ -62,4 +62,22 @@ test("abre a Agenda mobile no dia e mantém somente os agendamentos permitidos",
   await expect.poll(() => page.locator("[data-agenda-timeline-scroll]").evaluate((element) => element.scrollTop)).toBeGreaterThan(300)
   await scheduleButton.click()
   await expect(page.getByRole("heading", { name: "NAs do atendimento", exact: true })).toBeVisible()
+  const informationButtonBox = await page.getByRole("button", { name: "Ver informações", exact: true }).boundingBox()
+  const finishSliderBox = await page.locator('[data-attendance-slider="finish"]').boundingBox()
+  expect(informationButtonBox).not.toBeNull()
+  expect(finishSliderBox).not.toBeNull()
+  expect(informationButtonBox!.height).toBeLessThanOrEqual(40)
+  expect(informationButtonBox!.width).toBeGreaterThan(340)
+  expect(finishSliderBox!.width).toBeGreaterThan(340)
+  expect(informationButtonBox!.y + informationButtonBox!.height).toBeLessThan(finishSliderBox!.y)
+
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await expect.poll(async () => {
+    const [informationBox, finishBox] = await Promise.all([
+      page.getByRole("button", { name: "Ver informações", exact: true }).boundingBox(),
+      page.getByRole("button", { name: "Encerrar atendimento", exact: true }).boundingBox(),
+    ])
+    if (!informationBox || !finishBox) return false
+    return informationBox.x + informationBox.width < finishBox.x && Math.abs(informationBox.y - finishBox.y) <= 1
+  }).toBe(true)
 })

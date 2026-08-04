@@ -166,6 +166,12 @@ test("mostra os dados concluídos e baixa o resumo pelo botão Exportar", async 
       { id: "employee-helper-2", name: "Ajudante Dois" },
     ],
   }
+  const completedScheduleWithoutNotes = {
+    ...completedSchedule,
+    id: "schedule-completed-without-notes",
+    clientName: "Cliente sem observações do atendimento",
+    serviceReport: "",
+  }
 
   await installAuthenticatedSession(page)
   await installApiMock(page)
@@ -186,11 +192,13 @@ test("mostra os dados concluídos e baixa o resumo pelo botão Exportar", async 
       return
     }
 
-    if (request.method() === "GET" && path.endsWith(`/schedules/${completedSchedule.id}`)) {
+    const requestedSchedule = [completedSchedule, completedScheduleWithoutNotes]
+      .find((schedule) => path.endsWith(`/schedules/${schedule.id}`))
+    if (request.method() === "GET" && requestedSchedule) {
       await route.fulfill({
         status: 200,
         contentType: "application/json; charset=utf-8",
-        body: JSON.stringify({ success: true, data: completedSchedule }),
+        body: JSON.stringify({ success: true, data: requestedSchedule }),
       })
       return
     }
@@ -199,7 +207,7 @@ test("mostra os dados concluídos e baixa o resumo pelo botão Exportar", async 
       await route.fulfill({
         status: 200,
         contentType: "application/json; charset=utf-8",
-        body: JSON.stringify({ success: true, data: [completedSchedule] }),
+        body: JSON.stringify({ success: true, data: [completedSchedule, completedScheduleWithoutNotes] }),
       })
       return
     }
@@ -213,8 +221,15 @@ test("mostra os dados concluídos e baixa o resumo pelo botão Exportar", async 
   const detailCards = detailsDialog.locator("[data-schedule-detail-card]")
   await expect(detailCards.nth(0)).toHaveAttribute("data-schedule-detail-card", "execution")
   await expect(detailCards.nth(1)).toHaveAttribute("data-schedule-detail-card", "service")
-  await expect(detailsDialog.locator('[data-schedule-detail-card="execution"]')).toContainText(
+  const executionCard = detailsDialog.locator('[data-schedule-detail-card="execution"]')
+  await expect(executionCard).toContainText(
     "03/08/2026 às 08:00 até 03/08/2026 às 10:30",
+  )
+  const executionNotes = executionCard.locator("[data-schedule-execution-notes]")
+  await expect(executionNotes).toHaveCSS("border-top-width", "0px")
+  await expect(executionNotes).toContainText("Observações do atendimento")
+  await expect(executionNotes).toContainText(
+    "Atendimento concluído sem intercorrências.",
   )
   await expect(detailsDialog.locator('[data-schedule-detail-card="scheduled-date"]')).toContainText("04/08/2026")
   await expect(detailsDialog.locator('[data-schedule-detail-card="scheduled-time"]')).toContainText("07:15 • 120 minutos")
@@ -226,4 +241,10 @@ test("mostra os dados concluídos e baixa o resumo pelo botão Exportar", async 
   await page.getByRole("button", { name: "Exportar", exact: true }).click()
   const download = await downloadPromise
   expect(download.suggestedFilename()).toBe(`resumo-agendamento-e2e-${date}.pdf`)
+
+  await page.goto(`/agenda?date=${date}&scheduleId=${completedScheduleWithoutNotes.id}`)
+  const emptyNotesDialog = page.getByRole("dialog", { name: new RegExp(completedScheduleWithoutNotes.clientName) })
+  const emptyExecutionNotes = emptyNotesDialog.locator("[data-schedule-execution-notes]")
+  await expect(emptyExecutionNotes).toContainText("Observações do atendimento")
+  await expect(emptyExecutionNotes).toContainText("Nenhuma observação registrada.")
 })
