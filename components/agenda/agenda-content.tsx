@@ -77,9 +77,13 @@ import { CancelScheduleDialog } from "@/components/agendamentos/cancel-schedule-
 import { ScheduleConflictDialog } from "@/components/agendamentos/schedule-conflict-dialog"
 import { SchedulingFormDialog, type SchedulingFormData } from "@/components/agendamentos/scheduling-form-dialog"
 import {
-  formatConfiguredScheduleDuration,
   scheduleDurationToMinutes,
 } from "@/lib/schedule-duration"
+import {
+  formatScheduleDisplayDuration,
+  getScheduleDisplaySegments,
+  resolveScheduleDisplayPeriod,
+} from "@/lib/schedule-display-period"
 
 type AgendaRecurrenceType = "none" | "daily" | RecurrenceType
 
@@ -167,6 +171,11 @@ function scheduleDaySpan(schedule: Pick<AgendaScheduledServiceRow, "duration" | 
 }
 
 function scheduleOccupiesDate(schedule: AgendaScheduledServiceRow, dateKey: string) {
+  const displayPeriod = resolveScheduleDisplayPeriod(schedule)
+  if (displayPeriod.usesExecutionPeriod) {
+    return getScheduleDisplaySegments(schedule).some((segment) => segment.date === dateKey)
+  }
+
   if (!isFullDaySchedule(schedule)) return schedule.date === dateKey
 
   let currentDate = schedule.date
@@ -884,8 +893,11 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       const matchesStatus = statusFilter === "all" || service.status === statusFilter
       const fromStr = dateRange?.from ? toCivilDateKey(dateRange.from) : ""
       const toStr = dateRange?.to ? toCivilDateKey(dateRange.to) : ""
-      const matchesDateFrom = !fromStr || service.date >= fromStr
-      const matchesDateTo = !toStr || service.date <= toStr
+      const displayPeriod = resolveScheduleDisplayPeriod(service)
+      const dateFrom = displayPeriod.usesExecutionPeriod ? displayPeriod.date : service.date
+      const dateTo = displayPeriod.usesExecutionPeriod ? displayPeriod.endDate : service.date
+      const matchesDateFrom = !fromStr || dateTo >= fromStr
+      const matchesDateTo = !toStr || dateFrom <= toStr
 
       return matchesSearch && matchesStatus && matchesDateFrom && matchesDateTo
     })
@@ -1050,6 +1062,20 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
         status: service.status,
       }
 
+      const displayPeriod = resolveScheduleDisplayPeriod(service)
+      if (displayPeriod.usesExecutionPeriod) {
+        const segments = getScheduleDisplaySegments(service)
+        return segments.map((segment, index) => ({
+          ...baseEvent,
+          id: `${service.id}-execution-${segment.date}`,
+          subtitle: segments.length > 1 ? `${service.serviceTypeName} (${index + 1}/${segments.length})` : service.serviceTypeName,
+          date: segment.date,
+          time: segment.time,
+          duration: segment.durationMinutes,
+          totalDays: segments.length,
+        }))
+      }
+
       if (!isFullDaySchedule(service)) {
         return [{
           ...baseEvent,
@@ -1167,7 +1193,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
     const schedule = schedules.find((item) => item.id === scheduleId)
     if (!schedule) return
 
-    const selectedScheduleDate = parseCivilDate(schedule.date) ?? new Date()
+    const selectedScheduleDate = parseCivilDate(resolveScheduleDisplayPeriod(schedule).date) ?? new Date()
     setSelectedDate(selectedScheduleDate)
     openSchedule(schedule)
   }, [currentUser, openSchedule, schedules, searchParams, setSelectedDate])
@@ -1704,7 +1730,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                             <div className="space-y-1 text-xs text-muted-foreground">
                               <div className="flex items-center gap-2">
                                 <Clock className="h-3 w-3" />
-                                {service.time} ({formatConfiguredScheduleDuration(service)})
+                                {resolveScheduleDisplayPeriod(service).time} ({formatScheduleDisplayDuration(service)})
                               </div>
                               {service.address ? (
                                 <div className="flex items-center gap-2">
@@ -1910,7 +1936,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                             <div className="space-y-1 text-xs text-muted-foreground">
                               <div className="flex items-center gap-2">
                                 <Clock className="h-3 w-3" />
-                                {service.time} ({formatConfiguredScheduleDuration(service)})
+                                {resolveScheduleDisplayPeriod(service).time} ({formatScheduleDisplayDuration(service)})
                               </div>
                               {service.address ? (
                                 <div className="flex items-center gap-2">

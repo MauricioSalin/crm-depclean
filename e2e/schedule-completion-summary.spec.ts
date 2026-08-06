@@ -149,16 +149,20 @@ test("conclui o atendimento com motorista opcional, ajudantes e observações", 
 })
 
 test("mostra os dados concluídos e baixa o resumo pelo botão Exportar", async ({ page }) => {
+  test.setTimeout(60_000)
   const date = "2026-08-04"
   const completedSchedule = {
     ...scheduleFixture,
     date,
-    time: "07:15",
+    time: "08:00",
+    duration: 8 * 60,
+    durationValue: 1,
+    durationType: "days" as const,
     status: "completed" as const,
     completionStartDate: "2026-08-03",
-    completionStartTime: "08:00",
+    completionStartTime: "09:00",
     completionEndDate: "2026-08-03",
-    completionEndTime: "10:30",
+    completionEndTime: "15:00",
     serviceReport: "Atendimento concluído sem intercorrências.",
     attendanceDriver: { id: "employee-driver", name: "Motorista E2E" },
     attendanceHelpers: [
@@ -223,7 +227,7 @@ test("mostra os dados concluídos e baixa o resumo pelo botão Exportar", async 
   await expect(detailCards.nth(1)).toHaveAttribute("data-schedule-detail-card", "service")
   const executionCard = detailsDialog.locator('[data-schedule-detail-card="execution"]')
   await expect(executionCard).toContainText(
-    "03/08/2026 às 08:00 até 03/08/2026 às 10:30",
+    "03/08/2026 às 09:00 até 03/08/2026 às 15:00",
   )
   const executionNotes = executionCard.locator("[data-schedule-execution-notes]")
   await expect(executionNotes).toHaveCSS("border-top-width", "0px")
@@ -231,8 +235,8 @@ test("mostra os dados concluídos e baixa o resumo pelo botão Exportar", async 
   await expect(executionNotes).toContainText(
     "Atendimento concluído sem intercorrências.",
   )
-  await expect(detailsDialog.locator('[data-schedule-detail-card="scheduled-date"]')).toContainText("04/08/2026")
-  await expect(detailsDialog.locator('[data-schedule-detail-card="scheduled-time"]')).toContainText("07:15 • 120 minutos")
+  await expect(detailsDialog.locator('[data-schedule-detail-card="scheduled-date"]')).toContainText("03/08/2026")
+  await expect(detailsDialog.locator('[data-schedule-detail-card="scheduled-time"]')).toContainText("09:00 • 6 horas")
   await expect(page.getByText("Motorista E2E", { exact: true })).toBeVisible()
   await expect(page.getByText("Ajudante Um • Ajudante Dois", { exact: true })).toBeVisible()
   await expect(page.getByText("Atendimento concluído sem intercorrências.", { exact: true })).toBeVisible()
@@ -241,6 +245,26 @@ test("mostra os dados concluídos e baixa o resumo pelo botão Exportar", async 
   await page.getByRole("button", { name: "Exportar", exact: true }).click()
   const download = await downloadPromise
   expect(download.suggestedFilename()).toBe(`resumo-agendamento-e2e-${date}.pdf`)
+
+  await page.goto("/agendamentos")
+  const completedRow = page.getByRole("row").filter({ hasText: completedSchedule.clientName }).first()
+  await expect(completedRow).toContainText("03/08/2026")
+  await expect(completedRow).toContainText("09:00")
+  await expect(completedRow).toContainText("6 horas")
+  await expect(completedRow).not.toContainText("04/08/2026")
+  await expect(completedRow).not.toContainText("1 dia")
+
+  await page.goto("/agenda?date=2026-08-03&view=week")
+  await expect(page.getByRole("button", { name: /Condomínio E2E 09:00 - 15:00/ })).toBeVisible()
+
+  await page.goto("/agenda?date=2026-08-03&view=day")
+  await expect(page.getByRole("button", { name: /Condomínio E2E 09:00 - 15:00/ }).first()).toBeVisible()
+
+  await page.goto("/agenda?date=2026-08-03&view=month")
+  await page.locator("button").filter({ hasText: /^3$/ }).click()
+  const monthDayDetails = page.locator("[data-agenda-day-details]")
+  await expect(monthDayDetails).toContainText(completedSchedule.clientName)
+  await expect(monthDayDetails).toContainText("09:00 (6 horas)")
 
   await page.goto(`/agenda?date=${date}&scheduleId=${completedScheduleWithoutNotes.id}`)
   const emptyNotesDialog = page.getByRole("dialog", { name: new RegExp(completedScheduleWithoutNotes.clientName) })

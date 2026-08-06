@@ -64,6 +64,7 @@ import { useHasAnyPermission } from "@/hooks/use-permissions"
 import { BRASILIA_TIME_ZONE, formatCivilDate, formatCivilLongDate, parseCivilDate } from "@/lib/date-utils"
 import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
+import { resolveScheduleDisplayPeriod } from "@/lib/schedule-display-period"
 import { cn, formatContractNumber } from "@/lib/utils"
 
 export type ContractTemplate = TemplateRecord
@@ -1446,7 +1447,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
                             }))
                           : previewSchedules.map((schedule) => ({
                               value: schedule.id,
-                              label: `${formatDate(schedule.date)} - ${schedule.serviceTypeName} - ${schedule.unitName}`,
+                              label: `${formatDate(resolveScheduleDisplayPeriod(schedule).date)} - ${schedule.serviceTypeName} - ${schedule.unitName}`,
                             }))
                       }
                       placeholder={

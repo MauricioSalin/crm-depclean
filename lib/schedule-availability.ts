@@ -107,7 +107,7 @@ export function checkScheduleAvailability(params: {
     allowWeekends: params.allowWeekends,
     mode,
   })
-  const isFullDay = isFullDaySchedule(requested.durationMinutes, params.formData.durationType)
+  const isFullDay = isFullDaySchedule(requested.durationMinutes, params.formData.durationType, mode)
   const respectsBusinessHours = mode === "automation" && params.formData.isEmergency !== true
   const outsideWorkday = respectsBusinessHours &&
     !isFullDay &&
@@ -357,7 +357,7 @@ export function getAvailableRescheduleTimes(params: {
   const startMinutes = params.startMinutes ?? (mode === "manual" ? 0 : WORKDAY_START_MINUTES)
   const endMinutes = params.endMinutes ?? (mode === "manual" ? DAY_END_MINUTES : WORKDAY_END_MINUTES)
   const todayKey = toCivilDateKey(params.now ?? new Date())
-  const isFullDay = isFullDaySchedule(durationMinutes, durationConfig.durationType)
+  const isFullDay = isFullDaySchedule(durationMinutes, durationConfig.durationType, mode)
 
   if (
     date < todayKey ||
@@ -473,7 +473,7 @@ function findNextAvailableSlot(params: {
     return undefined
   }
 
-  if (!params.isEmergency && isFullDaySchedule(params.durationMinutes, params.durationType)) {
+  if (!params.isEmergency && isFullDaySchedule(params.durationMinutes, params.durationType, params.mode)) {
     return findNextAvailableFullDaySlot(params)
   }
 
@@ -555,10 +555,10 @@ function buildScheduleBlocks(params: {
   const durationMinutes = Math.max(1, Number(params.durationMinutes || 60))
   const mode = params.mode ?? "automation"
 
-  if (isFullDaySchedule(durationMinutes, params.durationType)) {
+  if (isFullDaySchedule(durationMinutes, params.durationType, mode)) {
     const blocks: Array<{ date: string; startMinutes: number; endMinutes: number }> = []
     let currentDate = mode === "manual" || params.allowWeekends ? params.date : toBusinessDateKey(params.date)
-    const days = scheduleDaySpan(durationMinutes, params.durationType)
+    const days = scheduleDaySpan(durationMinutes, params.durationType, mode)
     const startMinutes = mode === "manual"
       ? minutesFromTime(params.time || "08:00")
       : WORKDAY_START_MINUTES
@@ -609,13 +609,21 @@ function dailyMinutesByDate(blocks: Array<{ date: string; startMinutes: number; 
   return minutesByDate
 }
 
-function isFullDaySchedule(durationMinutes: number, durationType?: ScheduleDurationType) {
+function isFullDaySchedule(
+  durationMinutes: number,
+  durationType?: ScheduleDurationType,
+  mode: AvailabilityMode = "automation",
+) {
   const parsed = Number(durationMinutes || 0)
-  return durationType === "days" || parsed > DAY_DURATION_MINUTES
+  return durationType === "days" || (mode === "automation" && parsed > DAY_DURATION_MINUTES)
 }
 
-function scheduleDaySpan(durationMinutes: number, durationType?: ScheduleDurationType) {
-  if (!isFullDaySchedule(durationMinutes, durationType)) return 1
+function scheduleDaySpan(
+  durationMinutes: number,
+  durationType?: ScheduleDurationType,
+  mode: AvailabilityMode = "automation",
+) {
+  if (!isFullDaySchedule(durationMinutes, durationType, mode)) return 1
   return Math.max(1, Math.ceil(Number(durationMinutes || DAY_DURATION_MINUTES) / DAY_DURATION_MINUTES))
 }
 

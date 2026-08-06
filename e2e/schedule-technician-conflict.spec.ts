@@ -46,6 +46,40 @@ const eduardoSchedule = {
   durationType: "hours",
 }
 
+const previousDayThirteenHoursSchedule = {
+  ...scheduleFixture,
+  id: "schedule-previous-day-thirteen-hours",
+  contractId: "",
+  contractServiceId: "",
+  contractServiceIds: [],
+  isManual: true,
+  clientName: "Condomínio Ubiratan",
+  teams: [],
+  additionalEmployees: [{ id: eduardo.id, name: eduardo.name }],
+  date: "2026-08-13",
+  time: "08:00",
+  duration: 13 * 60,
+  durationValue: 13,
+  durationType: "hours" as const,
+}
+
+const nextDaySchedule = {
+  ...scheduleFixture,
+  id: "schedule-next-day-free",
+  contractId: "",
+  contractServiceId: "",
+  contractServiceIds: [],
+  isManual: true,
+  clientName: "Condomínio Flamboyan",
+  teams: [],
+  additionalEmployees: [],
+  date: "2026-08-14",
+  time: "08:00",
+  duration: 8 * 60,
+  durationValue: 8,
+  durationType: "hours" as const,
+}
+
 const brokenHoursSchedule = {
   ...scheduleFixture,
   id: "schedule-broken-hours",
@@ -189,6 +223,42 @@ async function installBrokenHoursMock(page: Page) {
   }
 }
 
+async function installPreviousDayHoursMock(page: Page) {
+  let savedPayload: Record<string, unknown> | null = null
+
+  await page.route("**/api/v1/schedules**", async (route) => {
+    const request = route.request()
+    const path = new URL(request.url()).pathname.replace("/api/v1", "")
+
+    if (request.method() === "GET" && path === "/schedules") {
+      await fulfill(route, [previousDayThirteenHoursSchedule, nextDaySchedule])
+      return
+    }
+
+    if (request.method() === "PATCH" && path === `/schedules/${nextDaySchedule.id}`) {
+      savedPayload = request.postDataJSON() as Record<string, unknown>
+      await fulfill(route, {
+        ...nextDaySchedule,
+        additionalEmployees: [{ id: eduardo.id, name: eduardo.name }],
+      })
+      return
+    }
+
+    await route.fallback()
+  })
+
+  await page.route("**/api/v1/employees**", async (route) => {
+    const path = new URL(route.request().url()).pathname.replace("/api/v1", "")
+    if (route.request().method() === "GET" && path === "/employees") {
+      await fulfill(route, [eduardo])
+      return
+    }
+    await route.fallback()
+  })
+
+  return { getSavedPayload: () => savedPayload }
+}
+
 async function installMultiDayLimitMock(page: Page) {
   let savedPayload: Record<string, unknown> | null = null
 
@@ -231,13 +301,13 @@ test.beforeEach(async ({ page }) => {
   await installApiMock(page)
 })
 
-test("mantém o serviço como texto simples na listagem de agendamentos", async ({ page }) => {
+test("mantém a duração configurada em horas na listagem de agendamentos", async ({ page }) => {
   await installTechnicianConflictMock(page)
 
   await page.goto("/agendamentos")
   const scheduleRow = page.getByRole("row").filter({ hasText: longSchedule.clientName })
   await expect(scheduleRow.getByText(longSchedule.serviceTypeName, { exact: true })).toBeVisible()
-  await expect(scheduleRow.getByText("1 dia", { exact: true })).toBeVisible()
+  await expect(scheduleRow.getByText("8 horas", { exact: true })).toBeVisible()
   await expect(scheduleRow.locator('[data-slot="badge"]').filter({ hasText: longSchedule.serviceTypeName })).toHaveCount(0)
   await expect(scheduleRow.getByRole("button", { name: `Ver serviços de ${longSchedule.clientName}` })).toHaveCount(0)
 })
@@ -295,6 +365,7 @@ test("edita três dias de quinta a segunda sem considerar o sábado no limite", 
 
   await page.goto("/agenda?date=2026-08-06&view=month")
   const calendarEventLabel = `${multiDaySchedule.clientName} - ${multiDaySchedule.serviceTypeName}`
+  await expect(page.getByText("12:00 (3 dias)", { exact: true })).toBeVisible()
   await expect(page.getByRole("button", { name: `6 ${calendarEventLabel}`, exact: true })).toBeVisible()
   await expect(page.getByRole("button", { name: `7 ${calendarEventLabel}`, exact: true })).toBeVisible()
   await expect(page.getByRole("button", { name: `8 ${calendarEventLabel}`, exact: true })).toHaveCount(0)
@@ -320,4 +391,31 @@ test("bloqueia com toast ao vincular técnico com sobreposição de horário", a
   await expect(editDialog).toBeVisible()
   expect(mock.getSavedPayload()).toBeNull()
   expect(mock.getPatchCount()).toBe(0)
+})
+
+test("permite vincular técnico no dia seguinte após agendamento manual de treze horas", async ({ page }) => {
+  const mock = await installPreviousDayHoursMock(page)
+
+  await page.goto("/agenda?date=2026-08-13&view=week")
+  await expect(page.getByText("08:00 (13 horas)", { exact: true })).toBeVisible()
+
+  await page.goto("/agenda?date=2026-08-14&view=week")
+  await expect(page.getByText("08:00 (8 horas)", { exact: true })).toBeVisible()
+  await page.getByRole("button", { name: /Condomínio Flamboyan 08:00 - 16:00/ }).click()
+  await page.getByRole("button", { name: "Editar agendamento" }).click()
+
+  const editDialog = page.getByRole("dialog", { name: "Editar atendimento avulso" })
+  await editDialog.getByRole("combobox", { name: "Buscar e adicionar funcionários" }).click()
+  await page.getByRole("option", { name: /Eduardo/ }).click()
+  await page.keyboard.press("Escape")
+  await editDialog.getByRole("button", { name: "Salvar", exact: true }).click()
+
+  await expect.poll(() => mock.getSavedPayload()).toMatchObject({
+    additionalEmployeeIds: [eduardo.id],
+    estimatedDuration: 8 * 60,
+    durationValue: 8,
+    durationType: "hours",
+  })
+  await expect(page.getByRole("dialog", { name: "Conflito de horário" })).toHaveCount(0)
+  await expect(editDialog).toBeHidden()
 })

@@ -94,6 +94,7 @@ import { formatCPF } from "@/lib/masks"
 import { buildPathWithSearchParams, getSafeReturnTo, withReturnTo } from "@/lib/navigation"
 import { invalidateInstallmentRelatedQueries } from "@/lib/query-invalidation"
 import { formatConfiguredScheduleDuration } from "@/lib/schedule-duration"
+import { formatScheduleDisplayDuration, resolveScheduleDisplayPeriod } from "@/lib/schedule-display-period"
 import { formatContractNumber } from "@/lib/utils"
 
 interface ClientProfileProps {
@@ -1691,6 +1692,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                 </TableHeader>
                 <TableBody page={scheduledServices.length > 0 ? agendaPage : undefined} pageSize={scheduledServices.length > 0 ? agendaPageSize : undefined}>
                   {scheduledServices.map((service) => {
+                      const displayPeriod = resolveScheduleDisplayPeriod(service)
                       return (
                         <TableRow key={service.id}>
                           <TableCell>
@@ -1705,9 +1707,9 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                           <TableCell className="hidden md:table-cell">
                             <AssignmentBadges teams={service.teams} employees={service.additionalEmployees} />
                           </TableCell>
-                          <TableCell className="text-sm">{formatDate(service.date)}</TableCell>
-                          <TableCell className="text-sm">{service.time || "08:00"}</TableCell>
-                          <TableCell className="text-sm">{formatConfiguredScheduleDuration(service)}</TableCell>
+                          <TableCell className="text-sm">{formatDate(displayPeriod.date)}</TableCell>
+                          <TableCell className="text-sm">{displayPeriod.time}</TableCell>
+                          <TableCell className="text-sm">{formatScheduleDisplayDuration(service)}</TableCell>
                           <TableCell>{getScheduleStatusBadge(service.status)}</TableCell>
                         </TableRow>
                       )

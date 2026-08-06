@@ -83,6 +83,7 @@ import {
 import { BRASILIA_TIME_ZONE, formatCivilDate } from "@/lib/date-utils"
 import { invalidateInstallmentRelatedQueries } from "@/lib/query-invalidation"
 import { formatConfiguredScheduleDuration, formatScheduleDurationValue } from "@/lib/schedule-duration"
+import { formatScheduleDisplayDuration, resolveScheduleDisplayPeriod } from "@/lib/schedule-display-period"
 import { useHasAnyPermission } from "@/hooks/use-permissions"
 import { buildPathWithSearchParams, getSafeReturnTo, withReturnTo } from "@/lib/navigation"
 import { cn, formatContractNumber } from "@/lib/utils"
@@ -1513,6 +1514,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                   <TableEmptyState colSpan={7} icon={Calendar} title="Nenhum agendamento vinculado a este contrato." />
                 ) : (
                   contractSchedules.map((schedule) => {
+                    const displayPeriod = resolveScheduleDisplayPeriod(schedule)
                     const scheduleTeams =
                       schedule.teams.length > 0
                         ? schedule.teams
@@ -1532,9 +1534,9 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                             showEmptyIcon={false}
                           />
                         </TableCell>
-                        <TableCell>{formatDate(schedule.date)}</TableCell>
-                        <TableCell>{schedule.time}</TableCell>
-                        <TableCell>{formatConfiguredScheduleDuration(schedule)}</TableCell>
+                        <TableCell>{formatDate(displayPeriod.date)}</TableCell>
+                        <TableCell>{displayPeriod.time}</TableCell>
+                        <TableCell>{formatScheduleDisplayDuration(schedule)}</TableCell>
                         <TableCell>{getScheduleStatusBadge(schedule.status)}</TableCell>
                       </TableRow>
                     )

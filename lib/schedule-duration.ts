@@ -117,6 +117,11 @@ function formatHoursAndMinutes(value: number) {
   return parts.join(" e ") || "0 minutos"
 }
 
+export function formatExactScheduleDuration(durationMinutes: number) {
+  const normalizedMinutes = Math.max(0, Math.round(Number(durationMinutes) || 0))
+  return formatHoursAndMinutes(normalizedMinutes / DURATION_TYPE_MINUTES.hours)
+}
+
 export function formatBusinessScheduleDuration(durationMinutes: number) {
   const totalMinutes = Math.max(0, Math.round(Number(durationMinutes) || 0))
   const days = Math.floor(totalMinutes / DURATION_TYPE_MINUTES.days)
@@ -132,9 +137,7 @@ export function formatBusinessScheduleDuration(durationMinutes: number) {
   return parts.join(" e ") || "0 minutos"
 }
 
-export function formatScheduleDurationValue(value: number, type: ScheduleDurationType) {
-  const totalMinutes = Math.max(0, Math.round(value * DURATION_TYPE_MINUTES[type]))
-  if (totalMinutes >= DURATION_TYPE_MINUTES.days) return formatBusinessScheduleDuration(totalMinutes)
+function formatScheduleDurationValueByType(value: number, type: ScheduleDurationType) {
   if (type === "hours") return formatHoursAndMinutes(value)
 
   const amount = formatDurationAmount(value)
@@ -142,6 +145,12 @@ export function formatScheduleDurationValue(value: number, type: ScheduleDuratio
   if (type === "days") return `${amount} ${value === 1 ? "dia" : "dias"}`
   if (type === "shift") return `${amount} ${value === 1 ? "turno" : "turnos"}`
   return `${amount} horas`
+}
+
+export function formatScheduleDurationValue(value: number, type: ScheduleDurationType) {
+  const totalMinutes = Math.max(0, Math.round(value * DURATION_TYPE_MINUTES[type]))
+  if (totalMinutes >= DURATION_TYPE_MINUTES.days) return formatBusinessScheduleDuration(totalMinutes)
+  return formatScheduleDurationValueByType(value, type)
 }
 
 function inferDurationTypeFromMinutes(minutes: number): ScheduleDurationType {
@@ -156,7 +165,7 @@ export function formatConfiguredScheduleDuration(schedule: {
   duration: number
   durationValue?: number
   durationType?: ScheduleDurationType
-}) {
+}, preserveConfiguredType = false) {
   const value = Number(schedule.durationValue)
   const type = schedule.durationType
 
@@ -164,6 +173,7 @@ export function formatConfiguredScheduleDuration(schedule: {
     if (type === "minutes" && value >= DURATION_TYPE_MINUTES.hours && value % DURATION_TYPE_MINUTES.hours !== 0) {
       return formatHoursAndMinutes(value / DURATION_TYPE_MINUTES.hours)
     }
+    if (preserveConfiguredType) return formatScheduleDurationValueByType(value, type)
     return formatScheduleDurationValue(value, type)
   }
 

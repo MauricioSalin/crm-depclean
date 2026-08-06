@@ -50,7 +50,8 @@ import { formatCivilDate, toBrasiliaTimeKey, toCivilDateKey } from "@/lib/date-u
 import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 import { useUrlDateRangeState } from "@/lib/hooks/use-url-date-range-state"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
-import { formatConfiguredScheduleDuration, minutesToScheduleDuration, scheduleDurationToMinutes } from "@/lib/schedule-duration"
+import { minutesToScheduleDuration, scheduleDurationToMinutes } from "@/lib/schedule-duration"
+import { formatScheduleDisplayDuration, resolveScheduleDisplayPeriod } from "@/lib/schedule-display-period"
 import { normalizeScheduleStatusFilter, SCHEDULE_STATUS_FILTER_OPTIONS } from "@/lib/schedule-status"
 import {
   checkScheduleAvailability,
@@ -133,11 +134,11 @@ function currentCompletionDateTime() {
 }
 
 function getDisplayedScheduleDate(schedule: ScheduleRecord) {
-  return schedule.date
+  return resolveScheduleDisplayPeriod(schedule).date
 }
 
 function getDisplayedScheduleTime(schedule: ScheduleRecord) {
-  return schedule.time
+  return resolveScheduleDisplayPeriod(schedule).time
 }
 
 function getScheduleIconTone(_schedule: Pick<ScheduleRecord, "isEmergency">) {
@@ -1026,8 +1027,9 @@ export function AgendamentosContent({
       const matchesStatus = statusFilter === "all" || item.status === statusFilter
       const fromStr = dateRange?.from ? format(dateRange.from, "yyyy-MM-dd") : ""
       const toStr = dateRange?.to ? format(dateRange.to, "yyyy-MM-dd") : ""
-      const matchesDateFrom = !fromStr || item.date >= fromStr
-      const matchesDateTo = !toStr || item.date <= toStr
+      const displayPeriod = resolveScheduleDisplayPeriod(item)
+      const matchesDateFrom = !fromStr || displayPeriod.endDate >= fromStr
+      const matchesDateTo = !toStr || displayPeriod.date <= toStr
 
       return matchesSearch && matchesStatus && matchesDateFrom && matchesDateTo
     })
@@ -1443,14 +1445,14 @@ export function AgendamentosContent({
                               {schedule.isClientDelinquent ? <BusinessStatusBadge status="delinquent" /> : null}
                             </div>
                             <p className="text-xs text-muted-foreground sm:hidden">
-                              {schedule.serviceTypeName} • {formatConfiguredScheduleDuration(schedule)}
+                              {schedule.serviceTypeName} • {formatScheduleDisplayDuration(schedule)}
                             </p>
                           </div>
                         </div>
                       </TableCell>
                       <TableCell className="hidden sm:table-cell">
                         <p>{schedule.serviceTypeName}</p>
-                        <p className="text-xs text-muted-foreground">{formatConfiguredScheduleDuration(schedule)}</p>
+                        <p className="text-xs text-muted-foreground">{formatScheduleDisplayDuration(schedule)}</p>
                       </TableCell>
                       <TableCell className="hidden lg:table-cell">
                         <ScheduleTypeBadge schedule={schedule} />
@@ -1615,7 +1617,7 @@ export function AgendamentosContent({
                     <div className="space-y-1 text-xs text-muted-foreground">
                       <div className="flex items-center gap-2">
                         <Clock className="h-3 w-3" />
-                        {getDisplayedScheduleTime(schedule)} ({formatConfiguredScheduleDuration(schedule)})
+                        {getDisplayedScheduleTime(schedule)} ({formatScheduleDisplayDuration(schedule)})
                       </div>
                       <div className="flex items-center gap-2">
                         <Calendar className="h-3 w-3" />

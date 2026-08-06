@@ -28,7 +28,7 @@ import {
   getScheduleDailyServiceCapacityViolation,
   isScheduleConflictErrorMessage,
 } from "@/lib/schedule-availability"
-import { formatConfiguredScheduleDuration } from "@/lib/schedule-duration"
+import { formatScheduleDisplayDuration, resolveScheduleDisplayPeriod } from "@/lib/schedule-display-period"
 import { cn } from "@/lib/utils"
 
 interface ScheduleDetailsDialogProps {
@@ -236,8 +236,9 @@ export function ScheduleDetailsDialog({
 
   if (!schedule) return null
 
-  const displayedDate = schedule.date
-  const displayedTime = schedule.time
+  const displayedPeriod = resolveScheduleDisplayPeriod(schedule)
+  const displayedDate = displayedPeriod.date
+  const displayedTime = displayedPeriod.time
   const assignees = [
     ...schedule.teams.map((team) => team.name),
     ...schedule.additionalEmployees.map((employee) => employee.name),
@@ -622,7 +623,7 @@ export function ScheduleDetailsDialog({
                   Horário e duração
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  {displayedTime || "Sem horário"} • {formatConfiguredScheduleDuration(schedule)}
+                  {displayedTime || "Sem horário"} • {formatScheduleDisplayDuration(schedule)}
                 </p>
               </div>
 
