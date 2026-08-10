@@ -14,6 +14,7 @@ import { CircleHelp, ChevronLeft, ChevronRight, UserRound, Users, UsersRound } f
 import { Button } from "@/components/ui/button"
 import { addCivilDaysKey, BRASILIA_TIME_ZONE, minutesFromBrasiliaDate, parseCivilDate, toCivilDateKey } from "@/lib/date-utils"
 import { AgendaPeriodSelector } from "./agenda-period-selector"
+import { TimelineItemSkeleton } from "./timeline-item-skeleton"
 
 interface TimelineEvent {
   id: string
@@ -52,6 +53,7 @@ interface WeekTimelineProps {
   onSlotClick?: (date: Date, time: string, resource?: TimelineResource) => void
   mode?: "week" | "day"
   resources?: TimelineResource[]
+  isLoading?: boolean
 }
 
 const HOUR_HEIGHT = 60 // px per hour
@@ -69,6 +71,11 @@ const POINTER_TOOLTIP_OFFSET = 14
 const POINTER_TOOLTIP_VIEWPORT_MARGIN = 8
 const DAY_RESOURCE_MIN_WIDTH = 220
 const HORIZONTAL_DRAG_THRESHOLD = 6
+const LOADING_EVENT_LAYOUTS = [
+  { top: 8 * HOUR_HEIGHT, height: 86 },
+  { top: 10.5 * HOUR_HEIGHT, height: 58 },
+  { top: 14 * HOUR_HEIGHT, height: 74 },
+] as const
 
 const DAY_LABELS_SHORT = ["DOM.", "SEG.", "TER.", "QUA.", "QUI.", "SEX.", "SÁB."]
 
@@ -194,6 +201,7 @@ export function WeekTimeline({
   onSlotClick,
   mode = "week",
   resources = [],
+  isLoading = false,
 }: WeekTimelineProps) {
   const currentDateKey = toCivilDateKey(currentDate)
   const weekDays = useMemo(() => getWeekDays(currentDate), [currentDate])
@@ -488,7 +496,19 @@ export function WeekTimeline({
         <div className="w-14 shrink-0" />
         <div ref={headerScrollRef} data-agenda-timeline-header-scroll className="min-w-0 flex-1 overflow-hidden">
           <div className="flex w-full" style={{ minWidth: dayColumnsMinWidth }}>
-            {columns.map(({ key, date: day, resource }, i) => {
+            {isLoading && mode === "day" ? (
+              Array.from({ length: 3 }, (_, index) => (
+                <div key={`loading-header-${index}`} className="flex min-w-0 flex-1 items-center justify-center px-4 py-3">
+                  <div className="flex w-full max-w-40 items-center gap-2">
+                    <TimelineItemSkeleton className="h-4 w-4 shrink-0 rounded-full" />
+                    <div className="min-w-0 flex-1 space-y-1.5">
+                      <TimelineItemSkeleton className="h-2.5 w-3/4" />
+                      <TimelineItemSkeleton className="h-2 w-1/2" />
+                    </div>
+                  </div>
+                </div>
+              ))
+            ) : columns.map(({ key, date: day, resource }, i) => {
               const isSelected = mode === "week" && selectedDate?.toDateString() === day.toDateString()
               const today = isToday(day)
               return (
@@ -528,10 +548,10 @@ export function WeekTimeline({
                 </button>
               )
             })}
-            {Array.from({ length: compactDayFillerCount }, (_, index) => (
+            {!isLoading && Array.from({ length: compactDayFillerCount }, (_, index) => (
               <div key={`compact-header-filler-${index}`} aria-hidden="true" className="min-w-0 flex-1" />
             ))}
-            {wideDayFillerCount > 0 ? (
+            {!isLoading && wideDayFillerCount > 0 ? (
               <div aria-hidden="true" className="hidden min-w-0 flex-1 xl:block" />
             ) : null}
           </div>
@@ -569,7 +589,41 @@ export function WeekTimeline({
           </div>
 
           {/* Day columns */}
-          {columns.length === 0 ? (
+          {isLoading ? (
+            <div
+              data-agenda-timeline-loading
+              role="status"
+              aria-label="Carregando itens da agenda"
+              className="relative flex flex-1"
+            >
+              <div className="pointer-events-none absolute inset-0">
+                {Array.from({ length: TOTAL_HOURS }, (_, index) => (
+                  <div
+                    key={index}
+                    className="absolute left-0 right-0 border-t border-border/50"
+                    style={{ top: index * HOUR_HEIGHT }}
+                  />
+                ))}
+              </div>
+              {Array.from({ length: mode === "day" ? 3 : 7 }, (_, columnIndex) => (
+                <div
+                  key={columnIndex}
+                  className="relative min-w-0 flex-1 border-l border-border/50"
+                  style={{ height: TOTAL_HOURS * HOUR_HEIGHT }}
+                >
+                  {LOADING_EVENT_LAYOUTS
+                    .filter((_, eventIndex) => (columnIndex + eventIndex) % 2 === 0)
+                    .map((layout, eventIndex) => (
+                      <TimelineItemSkeleton
+                        key={eventIndex}
+                        className="absolute left-2 right-2 border border-border/50"
+                        style={layout}
+                      />
+                    ))}
+                </div>
+              ))}
+            </div>
+          ) : columns.length === 0 ? (
             <div className="flex min-h-[420px] flex-1 flex-col items-center justify-center gap-2 text-center text-muted-foreground">
               <Users className="h-9 w-9 opacity-45" />
               <p className="text-sm font-medium">Nenhum responsável com agendamento neste dia.</p>
@@ -732,7 +786,7 @@ export function WeekTimeline({
                         {isActive && ev.referenceLabel ? (
                           <span
                             data-schedule-reference={ev.referenceLabel}
-                            className="absolute right-1 top-1 rounded bg-foreground/85 px-1 py-0.5 text-[8px] font-semibold leading-none text-background shadow-sm"
+                            className="absolute right-1 top-1 rounded bg-foreground/85 px-1 py-0.5 text-[8px] font-semibold leading-none text-background"
                           >
                             {ev.referenceLabel}
                           </span>

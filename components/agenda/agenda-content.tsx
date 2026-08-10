@@ -71,6 +71,7 @@ import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { AgendaPeriodSelector } from "./agenda-period-selector"
 import { WeekTimeline, type TimelineResource } from "./week-timeline"
+import { TimelineItemSkeleton } from "./timeline-item-skeleton"
 import { CompletionNaAttachments } from "@/components/agendamentos/completion-na-attachments"
 import { AttendanceCompletionFields } from "@/components/agendamentos/attendance-completion-fields"
 import { AttendanceStartSlider } from "@/components/agendamentos/attendance-start-slider"
@@ -574,16 +575,21 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
     closeScheduleDialog()
   }
 
-  const invalidateSchedules = async () => {
-    await queryClient.invalidateQueries({ queryKey: ["schedules"] })
-    await queryClient.invalidateQueries({ queryKey: ["schedules", "agenda"] })
-    await queryClient.invalidateQueries({ queryKey: ["agendamentos"] })
-    await queryClient.invalidateQueries({ queryKey: ["notifications"] })
-    await queryClient.invalidateQueries({ queryKey: ["certificates"] })
-    await queryClient.invalidateQueries({ queryKey: ["analytics"] })
+  const invalidateSchedules = () => Promise.all([
+    queryClient.invalidateQueries({ queryKey: ["schedules"] }),
+    queryClient.invalidateQueries({ queryKey: ["agendamentos"] }),
+    queryClient.invalidateQueries({ queryKey: ["notifications"] }),
+    queryClient.invalidateQueries({ queryKey: ["certificates"] }),
+    queryClient.invalidateQueries({ queryKey: ["analytics"] }),
+  ])
+
+  const reflectScheduleUpdate = (schedule: ScheduleRecord) => {
+    cacheSavedSchedule(queryClient, schedule)
+    void invalidateSchedules().catch(() => undefined)
   }
 
   const saveMutation = useMutation({
+    meta: { skipGlobalInvalidation: true },
     mutationFn: async ({
       formData,
       scheduleId,
@@ -678,13 +684,12 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       return { toastId }
     },
     onSuccess: (response, variables, context) => {
-      cacheSavedSchedule(queryClient, response.data)
+      reflectScheduleUpdate(response.data)
       closeScheduleDialog()
       toast.success(variables.scheduleId ? "Agendamento atualizado." : "Agendamento criado.", {
         id: context?.toastId,
         description: `${response.data.clientName} • ${response.data.serviceTypeName}`,
       })
-      void invalidateSchedules().catch(() => undefined)
     },
     onError: (error: any, variables, context) => {
       const message = getApiErrorMessage(error, "Não foi possível salvar o agendamento.")
@@ -720,13 +725,14 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   })
 
   const startMutation = useMutation({
+    meta: { skipGlobalInvalidation: true },
     mutationFn: (schedule: AgendaScheduledServiceRow) => startSchedule(schedule.id),
     onMutate: () => {
       const toastId = toast.loading("Iniciando atendimento...")
       return { toastId }
     },
-    onSuccess: async (_response, _variables, context) => {
-      await invalidateSchedules()
+    onSuccess: ({ data }, _variables, context) => {
+      reflectScheduleUpdate(data)
       setSelectedSchedule(null)
       closeCompletionDialog()
       toast.success("Atendimento iniciado.", {
@@ -742,6 +748,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   })
 
   const cancelMutation = useMutation({
+    meta: { skipGlobalInvalidation: true },
     mutationFn: ({ id, reason }: { id: string; reason: string }) =>
       cancelSchedule(id, { cancellationReason: reason }),
     onMutate: () => {
@@ -749,12 +756,12 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       const toastId = toast.loading("Cancelando agendamento...")
       return { toastId }
     },
-    onSuccess: (_data, _variables, context) => {
+    onSuccess: ({ data }, _variables, context) => {
+      reflectScheduleUpdate(data)
       toast.success("Agendamento cancelado.", {
         id: context?.toastId,
         description: "O motivo foi salvo no histórico.",
       })
-      void invalidateSchedules().catch(() => undefined)
     },
     onError: (error: any, _variables, context) => {
       toast.error(getApiErrorMessage(error, "Não foi possível cancelar o agendamento."), {
@@ -764,18 +771,19 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   })
 
   const cancelAttendanceMutation = useMutation({
+    meta: { skipGlobalInvalidation: true },
     mutationFn: (id: string) => cancelScheduleAttendance(id),
     onMutate: () => {
       setAttendanceCancelTarget(null)
       closeCompletionDialog()
       return { toastId: toast.loading("Cancelando atendimento...") }
     },
-    onSuccess: (_response, _id, context) => {
+    onSuccess: ({ data }, _id, context) => {
+      reflectScheduleUpdate(data)
       toast.success("Atendimento cancelado.", {
         id: context?.toastId,
         description: "O agendamento voltou ao estado anterior.",
       })
-      void invalidateSchedules().catch(() => undefined)
     },
     onError: (error, _id, context) => {
       toast.error(getApiErrorMessage(error, "Não foi possível cancelar o atendimento."), {
@@ -785,13 +793,14 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   })
 
   const reactivateMutation = useMutation({
+    meta: { skipGlobalInvalidation: true },
     mutationFn: (schedule: AgendaScheduledServiceRow) => reactivateSchedule(schedule.id),
     onMutate: () => {
       const toastId = toast.loading("Reativando agendamento...")
       return { toastId }
     },
-    onSuccess: async ({ data }, _variables, context) => {
-      await invalidateSchedules()
+    onSuccess: ({ data }, _variables, context) => {
+      reflectScheduleUpdate(data)
       toast.success("Agendamento reativado.", {
         id: context?.toastId,
         description: `${data.clientName} • ${data.serviceTypeName}`,
@@ -805,6 +814,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   })
 
   const uploadNaMutation = useMutation({
+    meta: { skipGlobalInvalidation: true },
     mutationFn: async ({ schedule, files }: { schedule: AgendaScheduledServiceRow; files: File[] }) => {
       let updatedSchedule: AgendaScheduledServiceRow = schedule
       for (const file of files) {
@@ -817,11 +827,11 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       const toastId = toast.loading(files.length === 1 ? "Salvando anexo..." : `Salvando ${files.length} anexos...`)
       return { toastId }
     },
-    onSuccess: async (updatedSchedule, _variables, context) => {
+    onSuccess: (updatedSchedule, _variables, context) => {
       setCompletionTarget((current) => current?.id === updatedSchedule.id ? updatedSchedule : current)
       setSelectedSchedule((current) => current?.id === updatedSchedule.id ? updatedSchedule : current)
       setCompletionFiles([])
-      await invalidateSchedules()
+      reflectScheduleUpdate(updatedSchedule)
       toast.success("Anexo salvo no agendamento.", {
         id: context?.toastId,
         description: "O arquivo já está seguro e continuará disponível mesmo sem concluir o atendimento.",
@@ -843,15 +853,16 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   })
 
   const deleteNaMutation = useMutation({
+    meta: { skipGlobalInvalidation: true },
     mutationFn: ({ schedule, documentUrl }: { schedule: AgendaScheduledServiceRow; documentUrl: string }) => (
       deleteScheduleNa(schedule.id, documentUrl)
     ),
     onMutate: () => ({ toastId: toast.loading("Removendo anexo...") }),
-    onSuccess: async ({ data }, _variables, context) => {
+    onSuccess: ({ data }, _variables, context) => {
       const updatedSchedule = data as AgendaScheduledServiceRow
       setCompletionTarget((current) => current?.id === updatedSchedule.id ? updatedSchedule : current)
       setSelectedSchedule((current) => current?.id === updatedSchedule.id ? updatedSchedule : current)
-      await invalidateSchedules()
+      reflectScheduleUpdate(updatedSchedule)
       toast.success("Anexo removido do agendamento.", { id: context?.toastId })
     },
     onError: async (error, variables, context) => {
@@ -866,6 +877,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   })
 
   const completeMutation = useMutation({
+    meta: { skipGlobalInvalidation: true },
     mutationFn: async ({
       schedule,
       startDate,
@@ -919,8 +931,9 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       )
       return { toastId }
     },
-    onSuccess: (_response, variables, context) => {
+    onSuccess: ({ data }, variables, context) => {
       const isEditingExecution = variables.schedule.status === "completed"
+      reflectScheduleUpdate(data)
       closeCompletionDialog()
       toast.success(isEditingExecution ? "Execução atualizada." : "Atendimento concluído.", {
         id: context?.toastId,
@@ -928,7 +941,6 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
           ? "Os dados executados do atendimento foram corrigidos."
           : "A agenda foi atualizada com o horário executado.",
       })
-      void invalidateSchedules().catch(() => undefined)
     },
     onError: (error: any, variables, context) => {
       const fallback = variables.schedule.status === "completed"
@@ -1843,7 +1855,13 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                     >
                       <div className="flex h-full flex-col items-center justify-center">
                         <span className={`font-medium ${isToday(date) ? "text-primary" : ""}`}>{Number(toCivilDateKey(date).slice(8, 10))}</span>
-                        {services.length > 0 ? (
+                        {schedulesQuery.isLoading ? (
+                          <div data-agenda-month-loading className="mx-auto mt-1 flex w-[5.75rem] max-w-full justify-center gap-1">
+                            {Array.from({ length: (Number(toCivilDateKey(date).slice(8, 10)) % 3) + 1 }, (_, itemIndex) => (
+                              <TimelineItemSkeleton key={itemIndex} className="h-2 w-2 shrink-0 rounded-full" />
+                            ))}
+                          </div>
+                        ) : services.length > 0 ? (
                           <div className="mx-auto mt-1 flex w-[5.75rem] max-w-full flex-wrap justify-center gap-1">
                             {services.map((service) => (
                               <div
@@ -2056,6 +2074,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                 selectedDate={selectedDate}
                 mode={viewMode === "day" ? "day" : "week"}
                 resources={dayResources}
+                isLoading={schedulesQuery.isLoading}
                 onDateChange={setCurrentDate}
                 onToday={() => setDateRange(undefined)}
                 onDaySelect={(date) => handleDateClick(date)}
