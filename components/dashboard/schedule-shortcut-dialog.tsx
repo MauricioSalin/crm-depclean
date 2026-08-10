@@ -577,7 +577,7 @@ export function ScheduleShortcutDialog({
                 <Button
                   type="button"
                   variant="outline"
-                  className="w-full min-w-0 border-red-500 text-red-600 hover:border-red-600 hover:bg-red-50 hover:text-red-700 sm:w-auto"
+                  className="w-full min-w-0 border-red-500 text-red-600 hover:border-red-600 hover:bg-red-50 hover:text-red-700 hover:ring-red-600/50 sm:w-auto"
                   disabled={cancelAttendanceMutation.isPending}
                   onClick={() => setCancelAttendanceOpen(true)}
                 >

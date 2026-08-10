@@ -445,10 +445,24 @@ test("mostra os dados concluídos e baixa o resumo pelo botão Exportar", async 
   const download = await downloadPromise
   expect(download.suggestedFilename()).toBe(`resumo-agendamento-e2e-${date}.pdf`)
 
+  await page.setViewportSize({ width: 390, height: 844 })
   await editExecutionButton.click()
   await expect(page.getByRole("heading", { name: "Editar execução do atendimento" })).toBeVisible()
-  await expect(page.getByLabel("Horário de início *")).toHaveValue("09:00")
-  await expect(page.getByLabel("Horário de início *")).not.toHaveAttribute("readonly")
+  const startTimeInput = page.getByLabel("Horário de início *")
+  await expect(startTimeInput).toHaveValue("09:00")
+  await expect(startTimeInput).not.toHaveAttribute("readonly")
+  await expect(startTimeInput.locator("xpath=../..")).toHaveCSS("min-width", "0px")
+  expect(await startTimeInput.evaluate((input) => {
+    const dialog = input.closest('[role="dialog"]')
+    let ancestor = input.parentElement
+
+    while (ancestor && ancestor !== dialog) {
+      if (ancestor.scrollWidth > ancestor.clientWidth + 1) return false
+      ancestor = ancestor.parentElement
+    }
+
+    return Boolean(dialog && dialog.scrollWidth <= dialog.clientWidth + 1)
+  })).toBe(true)
   await expect(page.getByLabel("Horário de fim *")).toHaveValue("15:00")
   await expect(page.getByRole("combobox", { name: "Selecione o motorista" })).toContainText("Motorista E2E")
   await expect(page.locator('[data-slot="badge"]').filter({ hasText: "Ajudante Um" })).toBeVisible()
@@ -482,6 +496,7 @@ test("mostra os dados concluídos e baixa o resumo pelo botão Exportar", async 
     disposalQuantityM3: 2.5,
   })
 
+  await page.setViewportSize({ width: 1280, height: 720 })
   await page.goto("/agendamentos")
   const completedRow = page.getByRole("row").filter({ hasText: completedSchedule.clientName }).first()
   await expect(completedRow).toContainText("03/08/2026")

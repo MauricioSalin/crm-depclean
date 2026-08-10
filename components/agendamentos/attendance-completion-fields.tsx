@@ -103,7 +103,7 @@ export function AttendanceCompletionFields({
             readOnly={!canEditStart}
           />
         </div>
-        <div className="space-y-2">
+        <div className="min-w-0 space-y-2">
           <Label htmlFor={`${idPrefix}-start-time`}>Horário de início *</Label>
           <TimeInput
             id={`${idPrefix}-start-time`}
@@ -122,7 +122,7 @@ export function AttendanceCompletionFields({
             placeholder="Selecionar data"
           />
         </div>
-        <div className="space-y-2">
+        <div className="min-w-0 space-y-2">
           <Label htmlFor={`${idPrefix}-end-time`}>Horário de fim *</Label>
           <TimeInput
             id={`${idPrefix}-end-time`}
