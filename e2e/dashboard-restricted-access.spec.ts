@@ -20,13 +20,13 @@ test("sem dashboard_view mostra somente os widgets operacionais com o escopo da 
     status: "in_progress" as const,
     naAttachments: [{ fileName: "na-dashboard.pdf", documentUrl: "/files/na-dashboard.pdf" }],
   }
-  const ownScheduledSchedule = {
+  let ownScheduledSchedule = {
     ...scheduleFixture,
     id: "schedule-dashboard-startable",
     clientName: "Cliente agendado permitido no dashboard",
     date: "2026-07-28",
     time: "11:00",
-    status: "scheduled" as const,
+    status: "scheduled" as "scheduled" | "in_progress",
     canStartAttendance: true,
   }
   let dashboardAnalyticsRequests = 0
@@ -64,12 +64,13 @@ test("sem dashboard_view mostra somente os widgets operacionais com o escopo da 
     }
 
     if (request.method() === "PATCH" && pathname === `/api/v1/schedules/${ownScheduledSchedule.id}/start`) {
+      ownScheduledSchedule = { ...ownScheduledSchedule, status: "in_progress" as const, canAttachNa: true }
       await route.fulfill({
         status: 200,
         contentType: "application/json; charset=utf-8",
         body: JSON.stringify({
           success: true,
-          data: { ...ownScheduledSchedule, status: "in_progress", canAttachNa: true },
+          data: ownScheduledSchedule,
         }),
       })
       return
@@ -92,7 +93,7 @@ test("sem dashboard_view mostra somente os widgets operacionais com o escopo da 
   const liveWidget = page.locator('[data-dashboard-widget="live-services"]')
   await liveWidget.getByRole("button", { name: `Abrir agendamento de ${ownInProgressSchedule.clientName}` }).click()
   await expect(page).toHaveURL("/")
-  const naHeading = page.getByRole("heading", { name: "NAs do atendimento", exact: true })
+  const naHeading = page.getByRole("heading", { name: "Anexos do atendimento", exact: true })
   const naBackButton = page.getByRole("button", { name: "Voltar", exact: true })
   await expect(naHeading).toBeVisible()
   await page.setViewportSize({ width: 390, height: 844 })
@@ -127,14 +128,18 @@ test("sem dashboard_view mostra somente os widgets operacionais com o escopo da 
   }).toBe(true)
 
   await page.keyboard.press("Escape")
-  await expect(page.getByRole("heading", { name: "NAs do atendimento", exact: true })).toHaveCount(0)
+  await expect(page.getByRole("heading", { name: "Anexos do atendimento", exact: true })).toHaveCount(0)
   const upcomingWidget = page.locator('[data-dashboard-widget="upcoming-services"]')
   await upcomingWidget.getByRole("button", { name: `Abrir agendamento de ${ownScheduledSchedule.clientName}` }).click()
   await expect(page).toHaveURL("/")
   await expect(page.getByRole("dialog", { name: new RegExp(ownScheduledSchedule.clientName) })).toBeVisible()
   await page.getByRole("button", { name: "Iniciar atendimento", exact: true }).click()
   await expect(page).toHaveURL("/")
-  await expect(page.getByRole("heading", { name: "NAs do atendimento", exact: true })).toBeVisible()
+  await expect(page.getByRole("dialog")).toHaveCount(0)
+  await expect(page.getByRole("heading", { name: "Anexos do atendimento", exact: true })).toHaveCount(0)
+
+  await liveWidget.getByRole("button", { name: `Abrir agendamento de ${ownScheduledSchedule.clientName}` }).click()
+  await expect(page.getByRole("heading", { name: "Anexos do atendimento", exact: true })).toBeVisible()
 })
 
 test("editor abre o formulário pela tela de NAs do dashboard sem trocar de página", async ({ page }) => {
@@ -185,7 +190,7 @@ test("editor abre o formulário pela tela de NAs do dashboard sem trocar de pág
   await page.goto("/")
   const liveWidget = page.locator('[data-dashboard-widget="live-services"]')
   await liveWidget.getByRole("button", { name: `Abrir agendamento de ${editableSchedule.clientName}` }).click()
-  await expect(page.getByRole("heading", { name: "NAs do atendimento", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Anexos do atendimento", exact: true })).toBeVisible()
   await page.getByRole("button", { name: "Editar agendamento", exact: true }).click()
 
   await expect(page).toHaveURL("/")

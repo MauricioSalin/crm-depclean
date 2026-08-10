@@ -46,6 +46,24 @@ const employeeSchedule = {
   duration: 60,
   durationValue: 60,
 }
+const cancelledSchedule = {
+  ...employeeSchedule,
+  id: "schedule-maria-cancelled",
+  clientId: "client-maria-cancelled",
+  clientName: "Atendimento cancelado da Maria",
+  time: "11:00",
+  status: "cancelled" as const,
+  cancellationReason: "Cancelado para validação visual.",
+}
+const inProgressSchedule = {
+  ...employeeSchedule,
+  id: "schedule-maria-in-progress",
+  clientId: "client-maria-in-progress",
+  clientName: "Atendimento em andamento da Maria",
+  isEmergency: false,
+  time: "13:00",
+  status: "in_progress" as const,
+}
 
 test.beforeEach(async ({ page }) => {
   await installAuthenticatedSession(page)
@@ -73,7 +91,10 @@ test.beforeEach(async ({ page }) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json; charset=utf-8",
-      body: JSON.stringify({ success: true, data: [teamSchedule, employeeSchedule] }),
+      body: JSON.stringify({
+        success: true,
+        data: [teamSchedule, employeeSchedule, cancelledSchedule, inProgressSchedule],
+      }),
     })
   })
 })
@@ -104,12 +125,37 @@ test("ordena avulsos antes das equipes, diferencia os cabeçalhos e preenche a p
 
   const emergencyCard = page.getByRole("button", { name: new RegExp(employeeSchedule.clientName) })
   const teamCard = page.getByRole("button", { name: new RegExp(teamSchedule.clientName) })
+  const cancelledCard = page.getByRole("button", { name: new RegExp(cancelledSchedule.clientName) })
+  const inProgressCard = page.getByRole("button", { name: new RegExp(inProgressSchedule.clientName) })
   await expect(emergencyCard).toHaveCSS("border-left-color", "rgb(220, 38, 38)")
-  await expect(emergencyCard).toHaveCSS("background-color", "rgb(254, 242, 242)")
-  await expect(teamCard).toHaveCSS("border-left-color", "rgb(132, 199, 0)")
-  await expect(teamCard).toHaveCSS("opacity", "0.6")
-  expect(await teamCard.evaluate((element) => getComputedStyle(element).filter)).toContain("saturate(0.5)")
+  await expect(emergencyCard).toHaveAttribute("style", /background-color: color-mix\(in srgb, .* 10%, white\)/)
+  await expect(teamCard).toHaveAttribute("style", /background-color: color-mix\(in srgb, .* 6%, white\)/)
+  await expect(teamCard).toHaveAttribute("style", /border-color: color-mix\(in srgb, .* 45%, white\)/)
+  await expect(teamCard).toHaveCSS("opacity", "1")
+  await expect(teamCard).toHaveCSS("filter", "none")
   await expect(emergencyCard).toHaveCSS("opacity", "1")
+  await expect(cancelledCard).toHaveCSS("opacity", "1")
+  await expect(cancelledCard).toHaveCSS("filter", "none")
+  await expect(cancelledCard).toHaveAttribute("style", /background-color: color-mix\(in srgb, .* 6%, white\)/)
+  await expect(cancelledCard).toHaveAttribute("style", /border-color: color-mix\(in srgb, .* 45%, white\)/)
+  await expect(inProgressCard).toHaveAttribute(
+    "style",
+    /background-color: color-mix\(in srgb, rgb\(237, 214, 107\) 10%, white\)/,
+  )
+  await expect(inProgressCard).toHaveCSS("border-top-color", "rgb(237, 214, 107)")
+  await expect(inProgressCard).toHaveCSS("border-right-color", "rgb(237, 214, 107)")
+  await expect(inProgressCard).toHaveCSS("border-bottom-color", "rgb(237, 214, 107)")
+  await expect(inProgressCard).toHaveCSS("border-left-color", "rgb(237, 214, 107)")
+  await expect(inProgressCard).toHaveCSS("opacity", "1")
+
+  await cancelledCard.click()
+  const cancelledDetailsDialog = page.getByRole("dialog", { name: new RegExp(cancelledSchedule.clientName) })
+  const cancellationReasonCard = cancelledDetailsDialog
+    .getByText("Motivo do cancelamento", { exact: true })
+    .locator("xpath=ancestor::div[contains(@class,'rounded-2xl')][1]")
+  await expect(cancellationReasonCard).toHaveClass(/bg-red-50\/70/)
+  await expect(cancellationReasonCard).toHaveClass(/border-red-100/)
+  await page.keyboard.press("Escape")
 
   await page.getByRole("button", { name: "Mostrar detalhes do dia" }).click()
   const dayPanel = page
@@ -117,11 +163,25 @@ test("ordena avulsos antes das equipes, diferencia os cabeçalhos e preenche a p
     .locator("xpath=ancestor::div[@data-slot='card'][1]")
   await expect(dayPanel.getByText(teamSchedule.clientName, { exact: true })).toBeVisible()
   await expect(dayPanel.getByText(employeeSchedule.clientName, { exact: true })).toBeVisible()
+  await expect(dayPanel.getByText(cancelledSchedule.clientName, { exact: true })).toBeVisible()
+  await expect(dayPanel.getByText(inProgressSchedule.clientName, { exact: true })).toBeVisible()
   const emergencyPanelCard = dayPanel
     .getByRole("heading", { name: employeeSchedule.clientName, exact: true })
     .locator("xpath=ancestor::div[@data-slot='card'][1]")
   await expect(emergencyPanelCard).toHaveClass(/border-red-300/)
-  await expect(emergencyPanelCard).toHaveClass(/bg-red-50/)
+  await expect(emergencyPanelCard).not.toHaveClass(/bg-red-50/)
+  const inProgressPanelCard = dayPanel
+    .getByRole("heading", { name: inProgressSchedule.clientName, exact: true })
+    .locator("xpath=ancestor::div[@data-slot='card'][1]")
+  await expect(inProgressPanelCard).not.toHaveClass(/bg-yellow-/)
+  await expect(inProgressPanelCard).toHaveCSS("border-color", "rgb(237, 214, 107)")
+  await expect(
+    emergencyPanelCard.locator('[data-slot="badge"]').filter({ hasText: maria.name }),
+  ).toHaveCSS("background-color", "rgb(255, 255, 255)")
+  await expect(emergencyPanelCard.getByRole("button", { name: "Editar" })).toHaveCSS(
+    "background-color",
+    "rgb(255, 255, 255)",
+  )
 
   await page.getByRole("button", { name: `Novo agendamento em ${DAY} às 10:00 para ${maria.name}` }).click()
   const dialog = page.getByRole("dialog")

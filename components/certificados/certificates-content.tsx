@@ -157,16 +157,20 @@ export function CertificatesContent({ viewMode, viewToggle, createOpen = false, 
 
   const deleteMutation = useMutation({
     mutationFn: (record: CertificateQueueRecord) => deleteCertificate(record.scheduleId, record.serviceTypeId),
-    onMutate: () => {
-      const toastId = toast.loading("Excluindo certificado...")
+    onMutate: (record) => {
+      const toastId = toast.loading(
+        record.status === "pending" ? "Excluindo solicitação..." : "Excluindo certificado...",
+      )
       return { toastId }
     },
     onSuccess: async (_response, record, context) => {
       await invalidateCertificates(record.clientId)
       setCertificateToDelete(null)
-      toast.success("Certificado excluído.", {
+      toast.success(record.status === "pending" ? "Solicitação de certificado excluída." : "Certificado excluído.", {
         id: context?.toastId,
-        description: "O arquivo também foi removido dos anexos do cliente.",
+        description: record.status === "pending"
+          ? "O agendamento e seus anexos foram mantidos."
+          : "O arquivo também foi removido dos anexos do cliente.",
       })
     },
     onError: (error, _record, context) => {
@@ -491,7 +495,7 @@ export function CertificatesContent({ viewMode, viewToggle, createOpen = false, 
                             </Tooltip>
                           ) : null}
 
-                          {certificateUrl || (canManage && record.status === "sent") ? (
+                          {certificateUrl || canManage ? (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full" aria-label="Ações do certificado">
@@ -507,15 +511,17 @@ export function CertificatesContent({ viewMode, viewToggle, createOpen = false, 
                                     </a>
                                   </DropdownMenuItem>
                                 ) : null}
-                                {canManage && record.status === "sent" ? (
+                                {canManage ? (
                                   <>
-                                    <DropdownMenuItem
-                                      className="cursor-pointer"
-                                      onClick={() => router.push(getCertificateEditorPath(record))}
-                                    >
-                                      <RotateCcw className="mr-2 h-4 w-4" />
-                                      Reemitir
-                                    </DropdownMenuItem>
+                                    {record.status === "sent" ? (
+                                      <DropdownMenuItem
+                                        className="cursor-pointer"
+                                        onClick={() => router.push(getCertificateEditorPath(record))}
+                                      >
+                                        <RotateCcw className="mr-2 h-4 w-4" />
+                                        Reemitir
+                                      </DropdownMenuItem>
+                                    ) : null}
                                     <DropdownMenuItem
                                       className="cursor-pointer"
                                       disabled={deleteMutation.isPending}
@@ -633,12 +639,37 @@ export function CertificatesContent({ viewMode, viewToggle, createOpen = false, 
                       {canManage ? (
                         <>
                         {record.status === "pending" ? (
-                          <Button asChild className="h-9 flex-1 text-sm">
-                            <Link href={getCertificateEditorPath(record)}>
-                              <Award className="mr-2 h-4 w-4" />
-                              Emitir
-                            </Link>
-                          </Button>
+                          <>
+                            <Button asChild className="h-9 flex-1 text-sm">
+                              <Link href={getCertificateEditorPath(record)}>
+                                <Award className="mr-2 h-4 w-4" />
+                                Emitir
+                              </Link>
+                            </Button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-9 w-9 shrink-0 rounded-full"
+                                  aria-label="Ações do certificado"
+                                >
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                  className="cursor-pointer"
+                                  disabled={deleteMutation.isPending}
+                                  onClick={() => setCertificateToDelete(record)}
+                                >
+                                  <Trash2 className="mr-2 h-4 w-4" />
+                                  Excluir
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </>
                         ) : (
                           <>
                             <Button
@@ -697,10 +728,12 @@ export function CertificatesContent({ viewMode, viewToggle, createOpen = false, 
 
       <ConfirmActionDialog
         open={!!certificateToDelete}
-        title="Excluir certificado"
+        title={certificateToDelete?.status === "pending" ? "Excluir solicitação de certificado" : "Excluir certificado"}
         description={
           certificateToDelete
-            ? `Tem certeza que deseja excluir o certificado de ${certificateToDelete.clientName}? Esta ação também remove o arquivo dos anexos do cliente.`
+            ? certificateToDelete.status === "pending"
+              ? `Tem certeza que deseja remover o certificado de ${certificateToDelete.clientName} da fila de emissão? O agendamento e seus anexos serão mantidos.`
+              : `Tem certeza que deseja excluir o certificado de ${certificateToDelete.clientName}? Esta ação também remove o arquivo dos anexos do cliente.`
             : "Tem certeza que deseja excluir este certificado?"
         }
         confirmLabel="Excluir"

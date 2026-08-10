@@ -21,9 +21,10 @@ function futureCivilDate() {
 
 test("editor inicia atendimento futuro de outro responsável", async ({ page }) => {
   const date = futureCivilDate()
-  const futureSchedule = {
+  let futureSchedule = {
     ...scheduleFixture,
     date,
+    status: scheduleFixture.status as "scheduled" | "in_progress",
     canStartAttendance: false,
   }
 
@@ -31,6 +32,19 @@ test("editor inicia atendimento futuro de outro responsável", async ({ page }) 
   await installApiMock(page, scheduleEditor)
   await page.route("**/api/v1/schedules**", async (route) => {
     const url = new URL(route.request().url())
+    if (
+      route.request().method() === "PATCH" &&
+      url.pathname === `/api/v1/schedules/${futureSchedule.id}/start`
+    ) {
+      futureSchedule = { ...futureSchedule, status: "in_progress" as const, canAttachNa: true }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json; charset=utf-8",
+        body: JSON.stringify({ success: true, data: futureSchedule }),
+      })
+      return
+    }
+
     if (route.request().method() !== "GET" || url.pathname !== "/api/v1/schedules") {
       await route.fallback()
       return
@@ -47,4 +61,11 @@ test("editor inicia atendimento futuro de outro responsável", async ({ page }) 
 
   await expect(page.getByRole("button", { name: "Iniciar atendimento", exact: true })).toBeEnabled()
   await expect(page.getByText("Atendimento indisponível nesta data", { exact: true })).toHaveCount(0)
+  await page.getByRole("button", { name: "Iniciar atendimento", exact: true }).click()
+
+  await expect(page.getByRole("dialog")).toHaveCount(0)
+  await expect(page.getByRole("heading", { name: "Anexos do atendimento", exact: true })).toHaveCount(0)
+
+  await page.getByRole("button", { name: new RegExp(futureSchedule.clientName) }).click()
+  await expect(page.getByRole("heading", { name: "Anexos do atendimento", exact: true })).toBeVisible()
 })

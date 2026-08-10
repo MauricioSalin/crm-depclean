@@ -76,9 +76,9 @@ export function CompletionNaAttachments({
               <Paperclip className="h-4 w-4" />
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-semibold">NAs da visita</p>
+              <p className="text-sm font-semibold">NAs e evidências</p>
               <p className="text-xs text-muted-foreground">
-                Adicione uma NA por dia executado. Cada arquivo é salvo imediatamente.
+                Anexe documentos ou fotos que comprovem a execução do atendimento. Cada arquivo é salvo imediatamente.
               </p>
             </div>
           </div>
@@ -139,7 +139,7 @@ export function CompletionNaAttachments({
       <div className="mt-4 space-y-2">
         {totalItems === 0 ? (
           <div className="rounded-xl border bg-background/60 px-4 py-5 text-center text-sm text-muted-foreground">
-            Nenhuma NA adicionada ainda.
+            Nenhum anexo adicionado ainda.
           </div>
         ) : null}
 
@@ -149,7 +149,7 @@ export function CompletionNaAttachments({
               <CheckCircle2 className="h-4 w-4" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium">{attachment.fileName || `NA salva ${index + 1}`}</p>
+              <p className="truncate text-sm font-medium">{attachment.fileName || `Anexo salvo ${index + 1}`}</p>
               <p className="text-xs text-muted-foreground">
                 Salva no agendamento{formatFileSize(attachment.fileSize) ? ` • ${formatFileSize(attachment.fileSize)}` : ""}
               </p>
@@ -160,7 +160,7 @@ export function CompletionNaAttachments({
                   href={buildApiFileUrl(attachment.documentUrl)}
                   target="_blank"
                   rel="noreferrer"
-                  aria-label={`Visualizar ${attachment.fileName || `NA salva ${index + 1}`}`}
+                  aria-label={`Visualizar ${attachment.fileName || `anexo salvo ${index + 1}`}`}
                   title="Visualizar anexo"
                 >
                   <Eye className="h-4 w-4" />
@@ -172,7 +172,7 @@ export function CompletionNaAttachments({
                 size="icon"
                 className="h-8 w-8 rounded-full text-destructive hover:bg-destructive/10 hover:text-destructive"
                 disabled={disabled || Boolean(removingDocumentUrl)}
-                aria-label={`Remover ${attachment.fileName || `NA salva ${index + 1}`}`}
+                aria-label={`Remover ${attachment.fileName || `anexo salvo ${index + 1}`}`}
                 title="Remover anexo"
                 onClick={() => setPendingRemoval({ attachment, index })}
               >
@@ -221,7 +221,7 @@ export function CompletionNaAttachments({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remover NA?</AlertDialogTitle>
+            <AlertDialogTitle>Remover anexo?</AlertDialogTitle>
             <AlertDialogDescription>
               O arquivo {pendingRemoval?.attachment.fileName || "selecionado"} será removido do agendamento.
             </AlertDialogDescription>
@@ -237,7 +237,7 @@ export function CompletionNaAttachments({
                 setPendingRemoval(null)
               }}
             >
-              Remover NA
+              Remover anexo
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

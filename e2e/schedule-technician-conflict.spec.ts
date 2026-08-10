@@ -370,6 +370,19 @@ test("edita três dias de quinta a segunda sem considerar o sábado no limite", 
   await expect(page.getByRole("button", { name: `7 ${calendarEventLabel}`, exact: true })).toBeVisible()
   await expect(page.getByRole("button", { name: `8 ${calendarEventLabel}`, exact: true })).toHaveCount(0)
   await expect(page.getByRole("button", { name: `10 ${calendarEventLabel}`, exact: true })).toBeVisible()
+
+  await page.goto("/agenda?date=2026-08-06&view=week")
+  const occurrences = page.getByRole("button").filter({ hasText: multiDaySchedule.clientName })
+  await expect(occurrences).toHaveCount(2)
+  await occurrences.nth(1).hover()
+  await expect(occurrences.nth(0).locator('[data-schedule-reference="1/3"]')).toBeVisible()
+  await expect(occurrences.nth(1).locator('[data-schedule-reference="2/3"]')).toBeVisible()
+
+  await page.goto("/agenda?date=2026-08-10&view=week")
+  const finalOccurrence = page.getByRole("button").filter({ hasText: multiDaySchedule.clientName })
+  await expect(finalOccurrence).toHaveCount(1)
+  await finalOccurrence.hover()
+  await expect(finalOccurrence.locator('[data-schedule-reference="3/3"]')).toBeVisible()
 })
 
 test("bloqueia com toast ao vincular técnico com sobreposição de horário", async ({ page }) => {

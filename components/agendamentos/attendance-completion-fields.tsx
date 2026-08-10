@@ -1,13 +1,21 @@
 "use client"
 
 import { DatePicker } from "@/components/ui/date-picker"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { MultiSelect } from "@/components/ui/multi-select"
+import { NumericInput } from "@/components/ui/numeric-input"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Textarea } from "@/components/ui/textarea"
 import { TimeInput } from "@/components/ui/time-input"
 import type { ScheduleCompletionEmployee } from "@/lib/api/schedules"
 import { parseCivilDate, toCivilDateKey } from "@/lib/date-utils"
+import {
+  formatScheduleDisposalCurrency,
+  SCHEDULE_DISPOSAL_STATIONS,
+  scheduleDisposalTotal,
+  type ScheduleDisposalType,
+} from "@/lib/schedule-disposal"
 
 type AttendanceCompletionFieldsProps = {
   idPrefix: string
@@ -15,9 +23,14 @@ type AttendanceCompletionFieldsProps = {
   startTime: string
   endDate: string
   endTime: string
+  canEditStart: boolean
   driverEmployeeId: string
   helperEmployeeIds: string[]
   serviceReport: string
+  vehiclePlate: string
+  disposalType: ScheduleDisposalType | ""
+  disposalStationId: string
+  disposalQuantityM3: number | null
   employees: ScheduleCompletionEmployee[]
   disabled?: boolean
   onStartDateChange: (value: string) => void
@@ -27,6 +40,10 @@ type AttendanceCompletionFieldsProps = {
   onDriverEmployeeIdChange: (value: string) => void
   onHelperEmployeeIdsChange: (value: string[]) => void
   onServiceReportChange: (value: string) => void
+  onVehiclePlateChange: (value: string) => void
+  onDisposalTypeChange: (value: ScheduleDisposalType | "") => void
+  onDisposalStationIdChange: (value: string) => void
+  onDisposalQuantityM3Change: (value: number | null) => void
 }
 
 export function AttendanceCompletionFields({
@@ -35,9 +52,14 @@ export function AttendanceCompletionFields({
   startTime,
   endDate,
   endTime,
+  canEditStart,
   driverEmployeeId,
   helperEmployeeIds,
   serviceReport,
+  vehiclePlate,
+  disposalType,
+  disposalStationId,
+  disposalQuantityM3,
   employees,
   disabled = false,
   onStartDateChange,
@@ -47,6 +69,10 @@ export function AttendanceCompletionFields({
   onDriverEmployeeIdChange,
   onHelperEmployeeIdsChange,
   onServiceReportChange,
+  onVehiclePlateChange,
+  onDisposalTypeChange,
+  onDisposalStationIdChange,
+  onDisposalQuantityM3Change,
 }: AttendanceCompletionFieldsProps) {
   const driverOptions = [
     { value: "none", label: "Sem motorista" },
@@ -61,6 +87,8 @@ export function AttendanceCompletionFields({
       id: employee.id,
       name: employee.name,
     }))
+  const disposalStations = disposalType ? SCHEDULE_DISPOSAL_STATIONS[disposalType] : []
+  const disposalTotal = scheduleDisposalTotal(disposalType, disposalStationId, disposalQuantityM3)
 
   return (
     <fieldset className="min-w-0 space-y-5" disabled={disabled}>
@@ -71,7 +99,8 @@ export function AttendanceCompletionFields({
             value={parseCivilDate(startDate)}
             onChange={(date) => onStartDateChange(date ? toCivilDateKey(date) : "")}
             placeholder="Selecionar data"
-            disabled
+            disabled={disabled}
+            readOnly={!canEditStart}
           />
         </div>
         <div className="space-y-2">
@@ -79,6 +108,9 @@ export function AttendanceCompletionFields({
           <TimeInput
             id={`${idPrefix}-start-time`}
             value={startTime}
+            readOnly={!canEditStart}
+            aria-readonly={!canEditStart}
+            className="read-only:bg-muted/40 read-only:text-muted-foreground"
             onChange={(event) => onStartTimeChange(event.target.value)}
           />
         </div>
@@ -136,6 +168,83 @@ export function AttendanceCompletionFields({
           selectedBadgeClassName="text-secondary-foreground"
         />
       </div>
+
+      <div className="space-y-2">
+        <Label htmlFor={`${idPrefix}-vehicle-plate`}>Placa do veículo</Label>
+        <Input
+          id={`${idPrefix}-vehicle-plate`}
+          value={vehiclePlate}
+          maxLength={15}
+          placeholder="Ex.: ABC1D23"
+          className="uppercase"
+          onChange={(event) => onVehiclePlateChange(event.target.value.toUpperCase())}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor={`${idPrefix}-disposal-type`}>Descarte</Label>
+        <SearchableSelect
+          id={`${idPrefix}-disposal-type`}
+          value={disposalType || "none"}
+          onValueChange={(value) => {
+            const nextType = value === "none" ? "" : value as ScheduleDisposalType
+            onDisposalTypeChange(nextType)
+            onDisposalStationIdChange("")
+            onDisposalQuantityM3Change(null)
+          }}
+          options={[
+            { value: "none", label: "Sem descarte" },
+            { value: "fossa", label: "Fossa" },
+            { value: "gordura", label: "Gordura" },
+          ]}
+          includeAll={false}
+          placeholder="Selecione o tipo de descarte"
+          searchPlaceholder="Buscar tipo..."
+          emptyMessage="Nenhum tipo encontrado."
+          className="w-full"
+          disabled={disabled}
+        />
+      </div>
+
+      {disposalType ? (
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor={`${idPrefix}-disposal-station`}>Estação *</Label>
+            <SearchableSelect
+              id={`${idPrefix}-disposal-station`}
+              value={disposalStationId}
+              onValueChange={onDisposalStationIdChange}
+              options={disposalStations.map((station) => ({
+                value: station.id,
+                label: `${station.name} (${formatScheduleDisposalCurrency(station.unitPrice)})`,
+              }))}
+              includeAll={false}
+              placeholder="Selecione a estação"
+              searchPlaceholder="Buscar estação..."
+              emptyMessage="Nenhuma estação encontrada."
+              className="w-full"
+              disabled={disabled}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor={`${idPrefix}-disposal-quantity`}>Quantidade (M³) *</Label>
+            <NumericInput
+              id={`${idPrefix}-disposal-quantity`}
+              value={disposalQuantityM3 === null ? null : String(disposalQuantityM3).replace(".", ",")}
+              min={0.001}
+              allowDecimal
+              allowEmpty
+              placeholder="Ex.: 2,5"
+              onEmpty={() => onDisposalQuantityM3Change(null)}
+              onValueChange={onDisposalQuantityM3Change}
+            />
+          </div>
+          <div className="rounded-2xl bg-primary/[0.05] p-4 text-sm">
+            <span className="text-muted-foreground">Valor: </span>
+            <span className="font-semibold text-foreground">{formatScheduleDisposalCurrency(disposalTotal)}</span>
+          </div>
+        </div>
+      ) : null}
 
       <div className="space-y-2">
         <Label htmlFor={`${idPrefix}-observations`}>Observações</Label>

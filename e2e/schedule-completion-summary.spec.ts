@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test"
 
 import { installApiMock, scheduleFixture } from "./support/api-mock"
-import { installAuthenticatedSession } from "./support/session"
+import { E2E_USER, installAuthenticatedSession } from "./support/session"
 
 function todayKey() {
   const now = new Date()
@@ -32,7 +32,12 @@ test("conclui o atendimento com motorista opcional, ajudantes e observações", 
   let completionPayload: Record<string, unknown> | null = null
   let deletedNaDocumentUrl = ""
 
-  await installAuthenticatedSession(page)
+  await installAuthenticatedSession(page, {
+    ...E2E_USER,
+    permissions: E2E_USER.permissions.filter(
+      (permission) => !["agenda_manage", "settings_manage"].includes(permission),
+    ),
+  })
   await installApiMock(page)
   await page.route("**/api/v1/schedules**", async (route) => {
     const request = route.request()
@@ -101,13 +106,17 @@ test("conclui o atendimento com motorista opcional, ajudantes e observações", 
   await page.goto(`/agenda?date=${date}`)
   await page.getByRole("button", { name: /Condomínio E2E/ }).click()
 
-  await expect(page.getByRole("heading", { name: "NAs do atendimento" })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Anexos do atendimento" })).toBeVisible()
+  await expect(page.getByText("Adicione NAs e evidências da execução. Cada arquivo é salvo no agendamento assim que for anexado.")).toBeVisible()
+  await expect(page.getByText("NAs e evidências", { exact: true })).toBeVisible()
+  await expect(page.getByText("Anexe documentos ou fotos que comprovem a execução do atendimento. Cada arquivo é salvo imediatamente.")).toBeVisible()
+  await expect(page.getByText(/concluir o atendimento somente no último dia/i)).toHaveCount(0)
   await expect(page.getByRole("link", { name: "Visualizar na-remover.pdf" })).toBeVisible()
   await expect(page.getByText("Abrir", { exact: true })).toHaveCount(0)
   await page.getByRole("button", { name: "Remover na-remover.pdf" }).click()
-  const removeDialog = page.getByRole("alertdialog", { name: "Remover NA?" })
+  const removeDialog = page.getByRole("alertdialog", { name: "Remover anexo?" })
   await expect(removeDialog).toBeVisible()
-  await removeDialog.getByRole("button", { name: "Remover NA", exact: true }).click()
+  await removeDialog.getByRole("button", { name: "Remover anexo", exact: true }).click()
   await expect.poll(() => deletedNaDocumentUrl).toBe("/files/na-remover.pdf")
   await expect(page.getByText("na-remover.pdf", { exact: true })).toHaveCount(0)
   await expect(page.getByText("na-manter.pdf", { exact: true })).toBeVisible()
@@ -115,12 +124,16 @@ test("conclui o atendimento com motorista opcional, ajudantes e observações", 
   await page.getByRole("button", { name: "Ver informações", exact: true }).click()
   const detailsDialog = page.getByRole("dialog", { name: new RegExp(inProgressSchedule.clientName) })
   await expect(detailsDialog.getByText(inProgressSchedule.serviceTypeName, { exact: true })).toBeVisible()
-  await page.getByRole("button", { name: "Voltar para NAs do atendimento" }).click()
-  await expect(page.getByRole("heading", { name: "NAs do atendimento" })).toBeVisible()
-  await page.getByRole("button", { name: "Encerrar atendimento", exact: true }).click()
+  await page.getByRole("button", { name: "Voltar para anexos do atendimento" }).click()
+  await expect(page.getByRole("heading", { name: "Anexos do atendimento" })).toBeVisible()
+  const finishAttendanceButton = page.getByRole("button", { name: "Encerrar atendimento", exact: true })
+  await expect(finishAttendanceButton.locator("svg")).toHaveCount(0)
+  await finishAttendanceButton.click()
   await expect(page.getByRole("heading", { name: "Encerrar atendimento" })).toBeVisible()
 
-  await page.getByLabel("Horário de início *").fill("08:00")
+  const startDateField = page.getByText("Data de início *", { exact: true }).locator("..").getByRole("button")
+  await expect(startDateField).toHaveAttribute("aria-readonly", "true")
+  await expect(page.getByLabel("Horário de início *")).toHaveAttribute("readonly", "")
   await page.getByLabel("Horário de fim *").fill("10:30")
   await page.getByRole("combobox", { name: "Selecione o motorista" }).click()
   await expect(page.getByRole("option", { name: "Motorista E2E", exact: true })).toBeVisible()
@@ -133,6 +146,15 @@ test("conclui o atendimento com motorista opcional, ajudantes e observações", 
   await page.keyboard.press("Escape")
   await expect(page.getByText("Você pode selecionar mais de um ajudante.")).toHaveCount(0)
   await expect(page.locator('[data-slot="badge"]').filter({ hasText: "Ajudante Um" })).toHaveClass(/bg-secondary/)
+  await page.getByLabel("Placa do veículo").fill("abc1d23")
+  await page.getByRole("combobox", { name: "Selecione o tipo de descarte" }).click()
+  await page.getByRole("option", { name: "Fossa", exact: true }).click()
+  await page.getByRole("combobox", { name: "Selecione a estação" }).click()
+  await page.getByRole("option", { name: /ACQUA SERVIÇOS DE TRATAMENTO DE EFLUENTES.*R\$ 20,00/ }).click()
+  await page.getByLabel("Quantidade (M³) *").fill("2,5")
+  const disposalValueBox = page.getByText("Valor: R$ 50,00", { exact: true })
+  await expect(disposalValueBox).toBeVisible()
+  await expect(disposalValueBox).toHaveCSS("border-top-width", "0px")
   await page.getByLabel("Observações").fill("Atendimento concluído sem intercorrências.")
 
   await page.getByRole("button", { name: "Confirmar encerramento" }).click()
@@ -145,12 +167,16 @@ test("conclui o atendimento com motorista opcional, ajudantes e observações", 
     driverEmployeeId: "",
     helperEmployeeIds: ["employee-helper-1", "employee-helper-2"],
     serviceReport: "Atendimento concluído sem intercorrências.",
+    vehiclePlate: "ABC1D23",
+    disposalType: "fossa",
+    disposalStationId: "acqua-servicos",
+    disposalQuantityM3: 2.5,
   })
 })
 
 test("mostra os dados concluídos e baixa o resumo pelo botão Exportar", async ({ page }) => {
   test.setTimeout(60_000)
-  const date = "2026-08-04"
+  const date = "2026-08-03"
   const completedSchedule = {
     ...scheduleFixture,
     date,
@@ -159,6 +185,9 @@ test("mostra os dados concluídos e baixa o resumo pelo botão Exportar", async 
     durationValue: 1,
     durationType: "days" as const,
     status: "completed" as const,
+    multiDayGroupId: "schedule-multi-day-group",
+    multiDayIndex: 1,
+    multiDayTotal: 3,
     completionStartDate: "2026-08-03",
     completionStartTime: "09:00",
     completionEndDate: "2026-08-03",
@@ -169,19 +198,70 @@ test("mostra os dados concluídos e baixa o resumo pelo botão Exportar", async 
       { id: "employee-helper-1", name: "Ajudante Um" },
       { id: "employee-helper-2", name: "Ajudante Dois" },
     ],
+    attendanceVehiclePlate: "ABC1D23",
+    attendanceDisposal: {
+      type: "fossa" as const,
+      stationId: "acqua-servicos",
+      stationName: "ACQUA SERVIÇOS DE TRATAMENTO DE EFLUENTES",
+      unitPrice: 20,
+      quantityM3: 2.5,
+      totalValue: 50,
+    },
   }
   const completedScheduleWithoutNotes = {
     ...completedSchedule,
     id: "schedule-completed-without-notes",
     clientName: "Cliente sem observações do atendimento",
     serviceReport: "",
+    multiDayGroupId: undefined,
+    multiDayIndex: undefined,
+    multiDayTotal: undefined,
   }
+  const pendingOccurrences = [2, 3].map((index) => ({
+    ...scheduleFixture,
+    id: `schedule-multi-day-${index}`,
+    date: index === 2 ? "2026-08-04" : "2026-08-05",
+    time: "08:00",
+    duration: 8 * 60,
+    durationValue: 1,
+    durationType: "days" as const,
+    status: "scheduled" as const,
+    multiDayGroupId: completedSchedule.multiDayGroupId,
+    multiDayIndex: index,
+    multiDayTotal: 3,
+  }))
+  let executionUpdatePayload: Record<string, unknown> | null = null
 
   await installAuthenticatedSession(page)
   await installApiMock(page)
   await page.route("**/api/v1/schedules**", async (route) => {
     const request = route.request()
     const path = new URL(request.url()).pathname
+
+    if (request.method() === "GET" && path.endsWith("/schedules/completion-employees")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json; charset=utf-8",
+        body: JSON.stringify({ success: true, data: completionEmployees }),
+      })
+      return
+    }
+
+    if (request.method() === "PATCH" && path.endsWith(`/schedules/${completedSchedule.id}/complete`)) {
+      executionUpdatePayload = request.postDataJSON()
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json; charset=utf-8",
+        body: JSON.stringify({
+          success: true,
+          data: {
+            ...completedSchedule,
+            ...executionUpdatePayload,
+          },
+        }),
+      })
+      return
+    }
 
     if (request.method() === "GET" && path.endsWith(`/schedules/${completedSchedule.id}/summary-pdf`)) {
       await route.fulfill({
@@ -211,7 +291,10 @@ test("mostra os dados concluídos e baixa o resumo pelo botão Exportar", async 
       await route.fulfill({
         status: 200,
         contentType: "application/json; charset=utf-8",
-        body: JSON.stringify({ success: true, data: [completedSchedule, completedScheduleWithoutNotes] }),
+        body: JSON.stringify({
+          success: true,
+          data: [completedSchedule, ...pendingOccurrences, completedScheduleWithoutNotes],
+        }),
       })
       return
     }
@@ -226,6 +309,9 @@ test("mostra os dados concluídos e baixa o resumo pelo botão Exportar", async 
   await expect(detailCards.nth(0)).toHaveAttribute("data-schedule-detail-card", "execution")
   await expect(detailCards.nth(1)).toHaveAttribute("data-schedule-detail-card", "service")
   const executionCard = detailsDialog.locator('[data-schedule-detail-card="execution"]')
+  const editExecutionButton = executionCard.getByRole("button", { name: "Editar execução do atendimento" })
+  await expect(editExecutionButton).toHaveCSS("width", "24px")
+  await expect(editExecutionButton).toHaveCSS("height", "24px")
   await expect(executionCard).toContainText(
     "03/08/2026 às 09:00 até 03/08/2026 às 15:00",
   )
@@ -236,15 +322,63 @@ test("mostra os dados concluídos e baixa o resumo pelo botão Exportar", async 
     "Atendimento concluído sem intercorrências.",
   )
   await expect(detailsDialog.locator('[data-schedule-detail-card="scheduled-date"]')).toContainText("03/08/2026")
-  await expect(detailsDialog.locator('[data-schedule-detail-card="scheduled-time"]')).toContainText("09:00 • 6 horas")
+  await expect(detailsDialog.locator('[data-schedule-detail-card="scheduled-time"]')).toContainText("08:00 • 1 dia")
   await expect(page.getByText("Motorista E2E", { exact: true })).toBeVisible()
   await expect(page.getByText("Ajudante Um • Ajudante Dois", { exact: true })).toBeVisible()
+  await expect(executionCard).toContainText("ABC1D23")
+  await expect(executionCard).toContainText("Fossa")
+  await expect(executionCard).toContainText("ACQUA SERVIÇOS DE TRATAMENTO DE EFLUENTES")
+  await expect(executionCard).toContainText("2,5 m³")
+  const executionDisposal = executionCard.locator("[data-schedule-execution-disposal]")
+  const executionDisposalValue = executionDisposal.locator("[data-schedule-execution-disposal-value]")
+  await expect(executionDisposalValue.getByText("Valor", { exact: true })).toBeVisible()
+  await expect(executionDisposalValue.getByText("R$ 50,00", { exact: true })).toBeVisible()
+  await expect(executionDisposalValue).not.toContainText("Valor:")
+  await expect(executionDisposal).toHaveCSS("border-top-width", "0px")
+  await expect(executionDisposal).toHaveCSS("background-color", "rgba(0, 0, 0, 0)")
   await expect(page.getByText("Atendimento concluído sem intercorrências.", { exact: true })).toBeVisible()
 
   const downloadPromise = page.waitForEvent("download")
   await page.getByRole("button", { name: "Exportar", exact: true }).click()
   const download = await downloadPromise
   expect(download.suggestedFilename()).toBe(`resumo-agendamento-e2e-${date}.pdf`)
+
+  await editExecutionButton.click()
+  await expect(page.getByRole("heading", { name: "Editar execução do atendimento" })).toBeVisible()
+  await expect(page.getByLabel("Horário de início *")).toHaveValue("09:00")
+  await expect(page.getByLabel("Horário de início *")).not.toHaveAttribute("readonly")
+  await expect(page.getByLabel("Horário de fim *")).toHaveValue("15:00")
+  await expect(page.getByRole("combobox", { name: "Selecione o motorista" })).toContainText("Motorista E2E")
+  await expect(page.locator('[data-slot="badge"]').filter({ hasText: "Ajudante Um" })).toBeVisible()
+  await expect(page.locator('[data-slot="badge"]').filter({ hasText: "Ajudante Dois" })).toBeVisible()
+  await expect(page.getByLabel("Observações")).toHaveValue("Atendimento concluído sem intercorrências.")
+  await expect(page.getByLabel("Placa do veículo")).toHaveValue("ABC1D23")
+  await expect(page.getByText("Valor: R$ 50,00", { exact: true })).toBeVisible()
+  await page.getByRole("button", { name: "Editar anexos", exact: true }).click()
+  await expect(page.getByRole("heading", { name: "Anexos do atendimento" })).toBeVisible()
+  await page.getByRole("dialog", { name: "Anexos do atendimento" }).getByRole("button", { name: "Voltar", exact: true }).click()
+  await expect(page.getByRole("heading", { name: "Editar execução do atendimento" })).toBeVisible()
+  await page.getByRole("button", { name: "Editar anexos", exact: true }).click()
+  const saveAttachmentsButton = page.getByRole("button", { name: "Salvar", exact: true })
+  await expect(saveAttachmentsButton.locator("svg")).toHaveCount(0)
+  await saveAttachmentsButton.click()
+  await expect(page.getByRole("heading", { name: "Editar execução do atendimento" })).toBeVisible()
+  await page.getByLabel("Observações").fill("Execução corrigida pelo usuário.")
+  await page.getByRole("button", { name: "Salvar", exact: true }).click()
+  await expect.poll(() => executionUpdatePayload).not.toBeNull()
+  expect(executionUpdatePayload).toMatchObject({
+    startDate: "2026-08-03",
+    startTime: "09:00",
+    endDate: "2026-08-03",
+    endTime: "15:00",
+    driverEmployeeId: "employee-driver",
+    helperEmployeeIds: ["employee-helper-1", "employee-helper-2"],
+    serviceReport: "Execução corrigida pelo usuário.",
+    vehiclePlate: "ABC1D23",
+    disposalType: "fossa",
+    disposalStationId: "acqua-servicos",
+    disposalQuantityM3: 2.5,
+  })
 
   await page.goto("/agendamentos")
   const completedRow = page.getByRole("row").filter({ hasText: completedSchedule.clientName }).first()
@@ -255,10 +389,35 @@ test("mostra os dados concluídos e baixa o resumo pelo botão Exportar", async 
   await expect(completedRow).not.toContainText("1 dia")
 
   await page.goto("/agenda?date=2026-08-03&view=week")
-  await expect(page.getByRole("button", { name: /Condomínio E2E 09:00 - 15:00/ })).toBeVisible()
+  const completedOccurrence = page.locator(
+    `[data-schedule-id="${completedSchedule.id}"][data-schedule-status="completed"]`,
+  )
+  const secondOccurrence = page.locator(
+    `[data-schedule-id="${pendingOccurrences[0]?.id}"][data-schedule-status="scheduled"]`,
+  )
+  const thirdOccurrence = page.locator(
+    `[data-schedule-id="${pendingOccurrences[1]?.id}"][data-schedule-status="scheduled"]`,
+  )
+  await expect(completedOccurrence).toBeVisible()
+  await expect(secondOccurrence).toBeVisible()
+  await expect(thirdOccurrence).toBeVisible()
+  await expect(completedOccurrence).toContainText("09:00 - 15:00")
+  await expect(completedOccurrence).toHaveCSS("opacity", "1")
+  await expect(secondOccurrence).toHaveCSS("opacity", "1")
+  expect(await completedOccurrence.getAttribute("style")).toContain("6%")
+  expect(await secondOccurrence.getAttribute("style")).toContain("10%")
+  await secondOccurrence.hover()
+  await expect(completedOccurrence.locator('[data-schedule-reference="1/3"]')).toBeVisible()
+  await expect(secondOccurrence.locator('[data-schedule-reference="2/3"]')).toBeVisible()
+  await expect(thirdOccurrence.locator('[data-schedule-reference="3/3"]')).toBeVisible()
+  for (const occurrence of [completedOccurrence, secondOccurrence, thirdOccurrence]) {
+    await expect.poll(() => occurrence.evaluate((element) => element.classList.contains("-translate-y-0.5"))).toBe(true)
+  }
 
   await page.goto("/agenda?date=2026-08-03&view=day")
-  await expect(page.getByRole("button", { name: /Condomínio E2E 09:00 - 15:00/ }).first()).toBeVisible()
+  await expect(page.locator(
+    `[data-schedule-id="${completedSchedule.id}"][data-schedule-status="completed"]`,
+  ).first()).toContainText("09:00 - 15:00")
 
   await page.goto("/agenda?date=2026-08-03&view=month")
   await page.locator("button").filter({ hasText: /^3$/ }).click()
@@ -271,4 +430,79 @@ test("mostra os dados concluídos e baixa o resumo pelo botão Exportar", async 
   const emptyExecutionNotes = emptyNotesDialog.locator("[data-schedule-execution-notes]")
   await expect(emptyExecutionNotes).toContainText("Observações do atendimento")
   await expect(emptyExecutionNotes).toContainText("Nenhuma observação registrada.")
+
+  await page.evaluate(() => {
+    const storedUser = JSON.parse(window.localStorage.getItem("depclean.user") || "{}")
+    storedUser.permissions = (storedUser.permissions || []).filter(
+      (permission: string) => !["agenda_manage_locked", "settings_manage"].includes(permission),
+    )
+    window.localStorage.setItem("depclean.user", JSON.stringify(storedUser))
+    window.dispatchEvent(new Event("depclean:session"))
+  })
+  const restrictedDetailsDialog = page.getByRole("dialog", { name: new RegExp(completedScheduleWithoutNotes.clientName) })
+  const restrictedExecutionCard = restrictedDetailsDialog.locator('[data-schedule-detail-card="execution"]')
+  await expect(restrictedExecutionCard.getByRole("button", { name: "Editar execução do atendimento" })).toHaveCount(0)
+})
+
+test("mantém o dia concluído no período executado e revela execuções anteriores às seis", async ({ page }) => {
+  const groupId = "schedule-early-execution-group"
+  const completedOccurrence = {
+    ...scheduleFixture,
+    id: "schedule-early-execution-1",
+    clientName: "Cliente com execução na madrugada",
+    date: "2026-08-10",
+    time: "08:00",
+    duration: 8 * 60,
+    durationValue: 1,
+    durationType: "days" as const,
+    status: "completed" as const,
+    multiDayGroupId: groupId,
+    multiDayIndex: 1,
+    multiDayTotal: 2,
+    completionStartDate: "2026-08-10",
+    completionStartTime: "01:00",
+    completionEndDate: "2026-08-10",
+    completionEndTime: "02:00",
+  }
+  const pendingOccurrence = {
+    ...completedOccurrence,
+    id: "schedule-early-execution-2",
+    date: "2026-08-11",
+    status: "scheduled" as const,
+    multiDayIndex: 2,
+    completionStartDate: undefined,
+    completionStartTime: undefined,
+    completionEndDate: undefined,
+    completionEndTime: undefined,
+  }
+
+  await installAuthenticatedSession(page)
+  await installApiMock(page)
+  await page.route("**/api/v1/schedules**", async (route) => {
+    const request = route.request()
+    const path = new URL(request.url()).pathname
+    if (request.method() === "GET" && path.endsWith("/schedules")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json; charset=utf-8",
+        body: JSON.stringify({ success: true, data: [completedOccurrence, pendingOccurrence] }),
+      })
+      return
+    }
+    await route.fallback()
+  })
+
+  await page.goto("/agenda?date=2026-08-10&view=week")
+
+  const completedCard = page.locator(
+    `[data-schedule-id="${completedOccurrence.id}"][data-schedule-status="completed"]`,
+  )
+  const pendingCard = page.locator(
+    `[data-schedule-id="${pendingOccurrence.id}"][data-schedule-status="scheduled"]`,
+  )
+  await expect(completedCard).toContainText("01:00 - 02:00")
+  await expect(completedCard).toHaveCSS("opacity", "1")
+  expect(await completedCard.getAttribute("style")).toContain("6%")
+  await expect(pendingCard).toBeAttached()
+  await expect.poll(() => page.locator("[data-agenda-timeline-scroll]").evaluate((element) => element.scrollTop)).toBe(0)
 })

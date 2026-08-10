@@ -28,7 +28,8 @@ import {
   getScheduleDailyServiceCapacityViolation,
   isScheduleConflictErrorMessage,
 } from "@/lib/schedule-availability"
-import { formatScheduleDisplayDuration, resolveScheduleDisplayPeriod } from "@/lib/schedule-display-period"
+import { formatConfiguredScheduleDuration } from "@/lib/schedule-duration"
+import { formatScheduleDisposalCurrency } from "@/lib/schedule-disposal"
 import { cn } from "@/lib/utils"
 
 interface ScheduleDetailsDialogProps {
@@ -46,6 +47,8 @@ interface ScheduleDetailsDialogProps {
   canReschedule?: boolean
   canEdit?: boolean
   onEdit?: () => void
+  canEditExecution?: boolean
+  onEditExecution?: () => void
   onBack?: () => void
   backLabel?: string
 }
@@ -88,6 +91,8 @@ export function ScheduleDetailsDialog({
   canReschedule,
   canEdit = false,
   onEdit,
+  canEditExecution = false,
+  onEditExecution,
   onBack,
   backLabel = "Voltar",
 }: ScheduleDetailsDialogProps) {
@@ -236,9 +241,6 @@ export function ScheduleDetailsDialog({
 
   if (!schedule) return null
 
-  const displayedPeriod = resolveScheduleDisplayPeriod(schedule)
-  const displayedDate = displayedPeriod.date
-  const displayedTime = displayedPeriod.time
   const assignees = [
     ...schedule.teams.map((team) => team.name),
     ...schedule.additionalEmployees.map((employee) => employee.name),
@@ -564,9 +566,20 @@ export function ScheduleDetailsDialog({
             <div className="mt-3 grid gap-3 md:grid-cols-2">
               {schedule.status === "completed" ? (
                 <div data-schedule-detail-card="execution" className="rounded-2xl border border-primary/20 bg-primary/[0.03] p-4 md:col-span-2">
-                  <div className="mb-3 flex items-center gap-2 text-sm font-medium">
+                  <div className="mb-3 flex items-center gap-1.5 text-sm font-medium">
                     <Clock3 className="h-4 w-4 text-primary" />
-                    Execução do atendimento
+                    <span>Execução do atendimento</span>
+                    {canEditExecution && onEditExecution ? (
+                      <button
+                        type="button"
+                        aria-label="Editar execução do atendimento"
+                        className="ring-offset-background focus-visible:ring-ring inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-full bg-transparent text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 [&_svg]:pointer-events-none [&_svg]:size-3.5 [&_svg]:shrink-0"
+                        onClick={onEditExecution}
+                      >
+                        <Pencil />
+                        <span className="sr-only">Editar execução do atendimento</span>
+                      </button>
+                    ) : null}
                   </div>
                   <div className="grid gap-3 text-sm sm:grid-cols-2">
                     <div>
@@ -581,6 +594,10 @@ export function ScheduleDetailsDialog({
                       <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Motorista</p>
                       <p className="mt-1 text-foreground">{schedule.attendanceDriver?.name || "Não informado"}</p>
                     </div>
+                    <div>
+                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Placa do veículo</p>
+                      <p className="mt-1 text-foreground">{schedule.attendanceVehiclePlate || "Não informada"}</p>
+                    </div>
                     <div className="sm:col-span-2">
                       <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Ajudantes</p>
                       <p className="mt-1 text-foreground">
@@ -589,6 +606,32 @@ export function ScheduleDetailsDialog({
                           : "Nenhum ajudante informado"}
                       </p>
                     </div>
+                    {schedule.attendanceDisposal ? (
+                      <div data-schedule-execution-disposal className="grid gap-3 sm:col-span-2 sm:grid-cols-2">
+                        <div>
+                          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Descarte</p>
+                          <p className="mt-1 text-foreground">
+                            {schedule.attendanceDisposal.type === "fossa" ? "Fossa" : "Gordura"}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Quantidade</p>
+                          <p className="mt-1 text-foreground">
+                            {schedule.attendanceDisposal.quantityM3.toLocaleString("pt-BR", { maximumFractionDigits: 3 })} m³
+                          </p>
+                        </div>
+                        <div className="sm:col-span-2">
+                          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Estação</p>
+                          <p className="mt-1 text-foreground">{schedule.attendanceDisposal.stationName}</p>
+                        </div>
+                        <div data-schedule-execution-disposal-value className="sm:col-span-2">
+                          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Valor</p>
+                          <p className="mt-1 text-foreground">
+                            {formatScheduleDisposalCurrency(schedule.attendanceDisposal.totalValue)}
+                          </p>
+                        </div>
+                      </div>
+                    ) : null}
                     <div data-schedule-execution-notes className="pt-3 sm:col-span-2">
                       <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                         Observações do atendimento
@@ -614,7 +657,7 @@ export function ScheduleDetailsDialog({
                   <CalendarDays className="h-4 w-4 text-primary" />
                   Data
                 </div>
-                <p className="text-sm text-muted-foreground">{formatScheduleDate(displayedDate)}</p>
+                <p className="text-sm text-muted-foreground">{formatScheduleDate(schedule.date)}</p>
               </div>
 
               <div data-schedule-detail-card="scheduled-time" className="rounded-2xl border p-4">
@@ -623,7 +666,7 @@ export function ScheduleDetailsDialog({
                   Horário e duração
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  {displayedTime || "Sem horário"} • {formatScheduleDisplayDuration(schedule)}
+                  {schedule.time || "Sem horário"} • {formatConfiguredScheduleDuration(schedule)}
                 </p>
               </div>
 

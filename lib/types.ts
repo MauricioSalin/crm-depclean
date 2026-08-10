@@ -295,6 +295,7 @@ export type NotificationType =
   | "payment_overdue"
   | "contract_expiring"
   | "schedule_confirmed"
+  | "schedule_reminder"
 
 export type NotificationChannel = "system" | "whatsapp"
 

@@ -98,6 +98,8 @@ const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
   payment_due: "Parcela Vencendo",
   payment_overdue: "Parcela Vencida",
   contract_expiring: "Contrato Vencendo",
+  schedule_confirmed: "Agendamento Confirmado ao Cliente",
+  schedule_reminder: "Lembrete de Agendamento ao Cliente",
 }
 
 const CHANNELS = [
@@ -210,6 +212,8 @@ function getNotificationRuleSummary(rule: NotificationRuleRecord) {
       return "Disparo quando um agendamento for marcado como emergencial."
     case "schedule_confirmed":
       return "Disparo quando o agendamento do contrato for confirmado ao cliente."
+    case "schedule_reminder":
+      return `Lembrete ao cliente: ${formatRuleDaysBefore(rule.daysBefore)}, às ${rule.time}.`
     case "daily_services":
       return `Envio diário às ${rule.time}.`
     case "contract_signature":

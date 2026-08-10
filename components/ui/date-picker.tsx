@@ -19,6 +19,7 @@ type DatePickerProps = {
   ariaLabel?: string
   className?: string
   disabled?: boolean
+  readOnly?: boolean
   disabledDates?: Matcher | Matcher[]
   dateTooltip?: (date: Date) => string | undefined
 }
@@ -30,21 +31,29 @@ export function DatePicker({
   ariaLabel,
   className,
   disabled = false,
+  readOnly = false,
   disabledDates,
   dateTooltip,
 }: DatePickerProps) {
   const [open, setOpen] = React.useState(false)
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={readOnly ? false : open}
+      onOpenChange={(nextOpen) => {
+        if (!readOnly) setOpen(nextOpen)
+      }}
+    >
       <PopoverTrigger asChild>
         <Button
           type="button"
           variant="outline"
           aria-label={ariaLabel}
+          aria-readonly={readOnly || undefined}
           disabled={disabled}
           className={cn(
             "h-9 w-full justify-start text-left font-normal",
+            readOnly && "cursor-default bg-muted/40 text-muted-foreground hover:bg-muted/40",
             !value && "text-muted-foreground",
             className,
           )}

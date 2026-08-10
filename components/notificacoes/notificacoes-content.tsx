@@ -43,6 +43,7 @@ const NOTIFICATION_TYPES: { value: NotificationType; label: string; icon: typeof
   { value: "payment_due", label: "Parcela Vencendo", icon: DollarSign },
   { value: "payment_overdue", label: "Parcela Vencida", icon: DollarSign },
   { value: "contract_expiring", label: "Contrato Vencendo", icon: FileText },
+  { value: "schedule_reminder", label: "Lembrete de Agendamento", icon: Clock },
 ]
 
 const CHANNELS: { value: NotificationChannel; label: string; icon: typeof Bell }[] = [
@@ -83,6 +84,7 @@ export function NotificacoesContent({
       case "new_schedule":
       case "schedule_assigned":
       case "daily_services":
+      case "schedule_reminder":
         return "text-blue-500 bg-blue-50"
       case "schedule_unassigned":
         return "text-gray-500 bg-gray-50"

@@ -26,7 +26,7 @@ import {
 import { listClients } from "@/lib/api/clients"
 import { listEmployees } from "@/lib/api/employees"
 import { getApiErrorMessage } from "@/lib/api/errors"
-import { listSchedules, createSchedule, updateSchedule, updateScheduleStatus, startSchedule, completeSchedule, cancelSchedule, reactivateSchedule, uploadScheduleNa, deleteScheduleNa, getScheduleById, listScheduleCompletionEmployees, type ScheduleRecord } from "@/lib/api/schedules"
+import { listSchedules, createSchedule, updateSchedule, updateScheduleStatus, startSchedule, cancelScheduleAttendance, completeSchedule, cancelSchedule, reactivateSchedule, uploadScheduleNa, deleteScheduleNa, getScheduleById, listScheduleCompletionEmployees, type ScheduleRecord } from "@/lib/api/schedules"
 import { listServices } from "@/lib/api/services"
 import { listTeams } from "@/lib/api/teams"
 import { useIsMobile } from "@/hooks/use-mobile"
@@ -47,10 +47,12 @@ import {
 } from "@/lib/schedule-availability"
 import { canAccessScheduleCompletion, canStartSchedule } from "@/lib/schedule-permissions"
 import { cacheSavedSchedule } from "@/lib/schedule-query-cache"
+import { scheduleDisposalValidationMessage, type ScheduleDisposalType } from "@/lib/schedule-disposal"
 import type { RecurrenceType } from "@/lib/types"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
 import {
   Dialog,
   DialogContent,
@@ -208,7 +210,7 @@ const mapSchedule = (schedule: ScheduleRecord): AgendaScheduledServiceRow => ({
 
 function getScheduleIconTone(schedule: Pick<ScheduleRecord, "isEmergency">) {
   return schedule.isEmergency
-    ? { wrapper: "bg-red-50", icon: "text-red-700" }
+    ? { wrapper: "bg-red-100", icon: "text-red-600" }
     : { wrapper: "bg-primary/10", icon: "text-primary" }
 }
 
@@ -276,6 +278,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   } | null>(null)
   const [selectedSchedule, setSelectedSchedule] = useState<AgendaScheduledServiceRow | null>(null)
   const [cancelTarget, setCancelTarget] = useState<AgendaScheduledServiceRow | null>(null)
+  const [attendanceCancelTarget, setAttendanceCancelTarget] = useState<AgendaScheduledServiceRow | null>(null)
   const [completionTarget, setCompletionTarget] = useState<AgendaScheduledServiceRow | null>(null)
   const [completionInfoOpen, setCompletionInfoOpen] = useState(false)
   const [completionStep, setCompletionStep] = useState<"attachments" | "checkout">("attachments")
@@ -286,14 +289,20 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   const [completionDriverEmployeeId, setCompletionDriverEmployeeId] = useState("")
   const [completionHelperEmployeeIds, setCompletionHelperEmployeeIds] = useState<string[]>([])
   const [completionServiceReport, setCompletionServiceReport] = useState("")
+  const [completionVehiclePlate, setCompletionVehiclePlate] = useState("")
+  const [completionDisposalType, setCompletionDisposalType] = useState<ScheduleDisposalType | "">("")
+  const [completionDisposalStationId, setCompletionDisposalStationId] = useState("")
+  const [completionDisposalQuantityM3, setCompletionDisposalQuantityM3] = useState<number | null>(null)
   const [completionFiles, setCompletionFiles] = useState<File[]>([])
   const scheduleDialogResetTimeoutRef = useRef<number | null>(null)
   const dayPanelTransitionTimeoutRef = useRef<number | null>(null)
   const [currentUser, setCurrentUser] = useState<ReturnType<typeof getStoredUser>>(null)
   const canManageAgenda = hasAnyPermission(currentUser, ["agenda_manage"])
+  const canCancelAttendance = hasAnyPermission(currentUser, ["agenda_manage", "settings_manage"])
   const canManageLockedSchedules = hasAnyPermission(currentUser, ["agenda_manage_locked"])
   const canManageScheduleStatus = hasAnyPermission(currentUser, ["agenda_manage_status"])
   const canOpenScheduleEditor = canManageAgenda || canManageScheduleStatus
+  const canEditCompletedExecution = canManageAgenda && canManageLockedSchedules
   const restrictAgendaToOwnEmployee = Boolean(
     currentUser?.permissions.includes("agenda_own_view") &&
     !currentUser.permissions.includes("settings_manage"),
@@ -310,6 +319,10 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
     setCompletionDriverEmployeeId("")
     setCompletionHelperEmployeeIds([])
     setCompletionServiceReport("")
+    setCompletionVehiclePlate("")
+    setCompletionDisposalType("")
+    setCompletionDisposalStationId("")
+    setCompletionDisposalQuantityM3(null)
     setCompletionFiles([])
   }, [])
 
@@ -338,8 +351,35 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
     setCompletionDriverEmployeeId(schedule.attendanceDriver?.id || "")
     setCompletionHelperEmployeeIds(schedule.attendanceHelpers?.map((employee) => employee.id) ?? [])
     setCompletionServiceReport(schedule.serviceReport || "")
+    setCompletionVehiclePlate(schedule.attendanceVehiclePlate || "")
+    setCompletionDisposalType(schedule.attendanceDisposal?.type || "")
+    setCompletionDisposalStationId(schedule.attendanceDisposal?.stationId || "")
+    setCompletionDisposalQuantityM3(schedule.attendanceDisposal?.quantityM3 ?? null)
     setCompletionFiles([])
   }, [currentUser])
+
+  const openExecutionEditDialog = useCallback((schedule: AgendaScheduledServiceRow) => {
+    if (schedule.status !== "completed" || !canEditCompletedExecution) return
+
+    const now = currentCompletionDateTime()
+    const defaultDate = schedule.completionStartDate || now.date || schedule.date
+    setSelectedSchedule(null)
+    setCompletionTarget(schedule)
+    setCompletionInfoOpen(false)
+    setCompletionStep("checkout")
+    setCompletionStartDate(defaultDate)
+    setCompletionStartTime(schedule.completionStartTime || schedule.time || "")
+    setCompletionEndDate(schedule.completionEndDate || now.date || defaultDate)
+    setCompletionEndTime(schedule.completionEndTime || now.time)
+    setCompletionDriverEmployeeId(schedule.attendanceDriver?.id || "")
+    setCompletionHelperEmployeeIds(schedule.attendanceHelpers?.map((employee) => employee.id) ?? [])
+    setCompletionServiceReport(schedule.serviceReport || "")
+    setCompletionVehiclePlate(schedule.attendanceVehiclePlate || "")
+    setCompletionDisposalType(schedule.attendanceDisposal?.type || "")
+    setCompletionDisposalStationId(schedule.attendanceDisposal?.stationId || "")
+    setCompletionDisposalQuantityM3(schedule.attendanceDisposal?.quantityM3 ?? null)
+    setCompletionFiles([])
+  }, [canEditCompletedExecution])
 
   const openSchedule = useCallback((schedule: AgendaScheduledServiceRow) => {
     if (canAccessScheduleCompletion(schedule, currentUser)) {
@@ -685,10 +725,10 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       const toastId = toast.loading("Iniciando atendimento...")
       return { toastId }
     },
-    onSuccess: async ({ data }, _variables, context) => {
+    onSuccess: async (_response, _variables, context) => {
       await invalidateSchedules()
       setSelectedSchedule(null)
-      openCompletionDialog(data)
+      closeCompletionDialog()
       toast.success("Atendimento iniciado.", {
         id: context?.toastId,
         description: "O agendamento foi movido para em andamento.",
@@ -718,6 +758,27 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
     },
     onError: (error: any, _variables, context) => {
       toast.error(getApiErrorMessage(error, "Não foi possível cancelar o agendamento."), {
+        id: context?.toastId,
+      })
+    },
+  })
+
+  const cancelAttendanceMutation = useMutation({
+    mutationFn: (id: string) => cancelScheduleAttendance(id),
+    onMutate: () => {
+      setAttendanceCancelTarget(null)
+      closeCompletionDialog()
+      return { toastId: toast.loading("Cancelando atendimento...") }
+    },
+    onSuccess: (_response, _id, context) => {
+      toast.success("Atendimento cancelado.", {
+        id: context?.toastId,
+        description: "O agendamento voltou ao estado anterior.",
+      })
+      void invalidateSchedules().catch(() => undefined)
+    },
+    onError: (error, _id, context) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível cancelar o atendimento."), {
         id: context?.toastId,
       })
     },
@@ -753,7 +814,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       return updatedSchedule
     },
     onMutate: ({ files }) => {
-      const toastId = toast.loading(files.length === 1 ? "Salvando NA..." : `Salvando ${files.length} NAs...`)
+      const toastId = toast.loading(files.length === 1 ? "Salvando anexo..." : `Salvando ${files.length} anexos...`)
       return { toastId }
     },
     onSuccess: async (updatedSchedule, _variables, context) => {
@@ -761,7 +822,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       setSelectedSchedule((current) => current?.id === updatedSchedule.id ? updatedSchedule : current)
       setCompletionFiles([])
       await invalidateSchedules()
-      toast.success("NA salva no agendamento.", {
+      toast.success("Anexo salvo no agendamento.", {
         id: context?.toastId,
         description: "O arquivo já está seguro e continuará disponível mesmo sem concluir o atendimento.",
       })
@@ -774,7 +835,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
         setSelectedSchedule((current) => current?.id === refreshed.data.id ? refreshed.data as AgendaScheduledServiceRow : current)
       }
       await invalidateSchedules()
-      toast.error(getApiErrorMessage(error, "Não foi possível salvar a NA."), {
+      toast.error(getApiErrorMessage(error, "Não foi possível salvar o anexo."), {
         id: context?.toastId,
         description: "Os arquivos enviados antes da falha permanecem salvos. Confira a lista antes de tentar novamente.",
       })
@@ -785,13 +846,13 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
     mutationFn: ({ schedule, documentUrl }: { schedule: AgendaScheduledServiceRow; documentUrl: string }) => (
       deleteScheduleNa(schedule.id, documentUrl)
     ),
-    onMutate: () => ({ toastId: toast.loading("Removendo NA...") }),
+    onMutate: () => ({ toastId: toast.loading("Removendo anexo...") }),
     onSuccess: async ({ data }, _variables, context) => {
       const updatedSchedule = data as AgendaScheduledServiceRow
       setCompletionTarget((current) => current?.id === updatedSchedule.id ? updatedSchedule : current)
       setSelectedSchedule((current) => current?.id === updatedSchedule.id ? updatedSchedule : current)
       await invalidateSchedules()
-      toast.success("NA removida do agendamento.", { id: context?.toastId })
+      toast.success("Anexo removido do agendamento.", { id: context?.toastId })
     },
     onError: async (error, variables, context) => {
       const refreshed = await getScheduleById(variables.schedule.id).catch(() => null)
@@ -800,7 +861,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
         setSelectedSchedule((current) => current?.id === refreshed.data.id ? refreshed.data as AgendaScheduledServiceRow : current)
       }
       await invalidateSchedules()
-      toast.error(getApiErrorMessage(error, "Não foi possível remover a NA."), { id: context?.toastId })
+      toast.error(getApiErrorMessage(error, "Não foi possível remover o anexo."), { id: context?.toastId })
     },
   })
 
@@ -814,6 +875,10 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       driverEmployeeId,
       helperEmployeeIds,
       serviceReport,
+      vehiclePlate,
+      disposalType,
+      disposalStationId,
+      disposalQuantityM3,
     }: {
       schedule: AgendaScheduledServiceRow
       startDate: string
@@ -823,10 +888,15 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       driverEmployeeId: string
       helperEmployeeIds: string[]
       serviceReport: string
+      vehiclePlate: string
+      disposalType: ScheduleDisposalType | ""
+      disposalStationId: string
+      disposalQuantityM3: number | null
     }) => {
+      const isEditingExecution = schedule.status === "completed"
       const hasExistingNa = Boolean(schedule.naAttachments?.length || schedule.naDocumentUrl)
-      if (!hasExistingNa) {
-        throw new Error("Anexe a NA da visita antes de concluir o atendimento.")
+      if (!isEditingExecution && !hasExistingNa) {
+        throw new Error("Anexe ao menos uma NA ou evidência antes de concluir o atendimento.")
       }
 
       return completeSchedule(schedule.id, {
@@ -837,22 +907,34 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
         driverEmployeeId,
         helperEmployeeIds,
         serviceReport,
+        vehiclePlate,
+        disposalType: disposalType || null,
+        disposalStationId: disposalStationId || undefined,
+        disposalQuantityM3: disposalQuantityM3 ?? undefined,
       })
     },
-    onMutate: () => {
-      const toastId = toast.loading("Concluindo atendimento...")
+    onMutate: ({ schedule }) => {
+      const toastId = toast.loading(
+        schedule.status === "completed" ? "Salvando execução..." : "Concluindo atendimento...",
+      )
       return { toastId }
     },
-    onSuccess: (_response, _variables, context) => {
+    onSuccess: (_response, variables, context) => {
+      const isEditingExecution = variables.schedule.status === "completed"
       closeCompletionDialog()
-      toast.success("Atendimento concluído.", {
+      toast.success(isEditingExecution ? "Execução atualizada." : "Atendimento concluído.", {
         id: context?.toastId,
-        description: "A agenda foi atualizada com o horário executado.",
+        description: isEditingExecution
+          ? "Os dados executados do atendimento foram corrigidos."
+          : "A agenda foi atualizada com o horário executado.",
       })
       void invalidateSchedules().catch(() => undefined)
     },
-    onError: (error: any, _variables, context) => {
-      toast.error(getApiErrorMessage(error, "Não foi possível concluir o atendimento."), {
+    onError: (error: any, variables, context) => {
+      const fallback = variables.schedule.status === "completed"
+        ? "Não foi possível atualizar a execução."
+        : "Não foi possível concluir o atendimento."
+      toast.error(getApiErrorMessage(error, fallback), {
         id: context?.toastId,
       })
     },
@@ -1049,12 +1131,17 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
     }
 
     return filteredServices.flatMap((service) => {
+      const linkedTotalDays = Math.max(1, Number(service.multiDayTotal) || 1)
+      const linkedDayIndex = Math.min(linkedTotalDays, Math.max(1, Number(service.multiDayIndex) || 1))
       const baseEvent = {
         id: service.id,
         scheduleId: service.id,
-        hoverGroupId: service.id,
+        hoverGroupId: service.multiDayGroupId || service.id,
         title: service.clientName,
-        subtitle: service.serviceTypeName,
+        subtitle: linkedTotalDays > 1
+          ? `${service.serviceTypeName} (${linkedDayIndex}/${linkedTotalDays})`
+          : service.serviceTypeName,
+        referenceLabel: linkedTotalDays > 1 ? `${linkedDayIndex}/${linkedTotalDays}` : undefined,
         teamColor: getScheduleColor(service),
         teamNames: [...service.teams.map((team) => team.name), ...service.additionalEmployees.map((employee) => employee.name)],
         resourceIds: resourceIdsForSchedule(service),
@@ -1068,7 +1155,12 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
         return segments.map((segment, index) => ({
           ...baseEvent,
           id: `${service.id}-execution-${segment.date}`,
-          subtitle: segments.length > 1 ? `${service.serviceTypeName} (${index + 1}/${segments.length})` : service.serviceTypeName,
+          subtitle: segments.length > 1
+            ? `${service.serviceTypeName} (${index + 1}/${segments.length})`
+            : baseEvent.subtitle,
+          referenceLabel: segments.length > 1
+            ? `${index + 1}/${segments.length}`
+            : baseEvent.referenceLabel,
           date: segment.date,
           time: segment.time,
           duration: segment.durationMinutes,
@@ -1096,6 +1188,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
         time: string
         duration: number
         totalDays?: number
+        referenceLabel?: string
         teamColor: string | null
         teamNames?: string[]
         resourceIds?: string[]
@@ -1108,11 +1201,12 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
         events.push({
           ...baseEvent,
           id: `${service.id}-${currentDate}`,
-          subtitle: days > 1 ? `${service.serviceTypeName} (${index + 1}/${days})` : service.serviceTypeName,
+          subtitle: days > 1 ? `${service.serviceTypeName} (${index + 1}/${days})` : baseEvent.subtitle,
+          referenceLabel: days > 1 ? `${index + 1}/${days}` : baseEvent.referenceLabel,
           date: currentDate,
           time: AGENDA_WORKDAY_START_TIME,
           duration: AGENDA_DAY_DURATION_MINUTES,
-          totalDays: days,
+          totalDays: Math.max(days, linkedTotalDays),
         })
         currentDate = nextBusinessDateKey(currentDate)
       }
@@ -1199,6 +1293,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   }, [currentUser, openSchedule, schedules, searchParams, setSelectedDate])
 
   const detailsSchedule = completionInfoOpen ? completionTarget : selectedSchedule
+  const isEditingExecution = completionTarget?.status === "completed"
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
@@ -1255,8 +1350,14 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
         onEdit={() => {
           if (detailsSchedule) handleEditService(detailsSchedule)
         }}
+        canEditExecution={Boolean(
+          detailsSchedule?.status === "completed" && canEditCompletedExecution,
+        )}
+        onEditExecution={() => {
+          if (detailsSchedule) openExecutionEditDialog(detailsSchedule)
+        }}
         onBack={completionInfoOpen ? () => setCompletionInfoOpen(false) : undefined}
-        backLabel="Voltar para NAs do atendimento"
+        backLabel="Voltar para anexos do atendimento"
         onStartAttendance={async (schedule) => {
           if (!canStartSchedule(schedule, currentUser, teams)) return
           await startMutation.mutateAsync(schedule)
@@ -1278,6 +1379,20 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
         }}
       />
 
+      <ConfirmActionDialog
+        open={Boolean(attendanceCancelTarget)}
+        title="Cancelar atendimento?"
+        description="O agendamento voltará ao estado anterior (Agendado ou Reagendado). O agendamento não será cancelado."
+        confirmLabel="Cancelar atendimento"
+        busy={cancelAttendanceMutation.isPending}
+        onOpenChange={(open) => {
+          if (!open) setAttendanceCancelTarget(null)
+        }}
+        onConfirm={() => {
+          if (attendanceCancelTarget) cancelAttendanceMutation.mutate(attendanceCancelTarget.id)
+        }}
+      />
+
       <Dialog
         open={!!completionTarget && !completionInfoOpen}
         onOpenChange={(open) => {
@@ -1289,11 +1404,21 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
             type="button"
             variant="ghost"
             size="sm"
-            aria-label={completionStep === "checkout" ? "Voltar para NAs do atendimento" : "Voltar"}
+            aria-label={
+              isEditingExecution
+                ? "Voltar"
+                : completionStep === "checkout"
+                  ? "Voltar para anexos do atendimento"
+                  : "Voltar"
+            }
             className="absolute left-3 top-3 z-20 gap-1.5 px-2 text-foreground hover:text-foreground max-sm:top-[calc(env(safe-area-inset-top)+0.85rem)]"
             onClick={() => {
-              if (completionStep === "checkout") {
+              if (completionStep === "checkout" && !isEditingExecution) {
                 setCompletionStep("attachments")
+                return
+              }
+              if (completionStep === "attachments" && isEditingExecution) {
+                setCompletionStep("checkout")
                 return
               }
               closeCompletionDialog()
@@ -1303,6 +1428,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
             Voltar
           </Button>
           {completionStep === "attachments" &&
+          !isEditingExecution &&
           completionTarget &&
           canShowScheduleEditAction(
             completionTarget,
@@ -1321,11 +1447,19 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
             </button>
           ) : null}
           <DialogHeader className="min-w-0 px-6 pb-4 pt-14 max-sm:px-5 max-sm:pt-[calc(env(safe-area-inset-top)+3.75rem)]">
-            <DialogTitle>{completionStep === "checkout" ? "Encerrar atendimento" : "NAs do atendimento"}</DialogTitle>
+            <DialogTitle>
+              {completionStep === "attachments"
+                ? "Anexos do atendimento"
+                : isEditingExecution
+                ? "Editar execução do atendimento"
+                : "Encerrar atendimento"}
+            </DialogTitle>
             <DialogDescription>
-              {completionStep === "checkout"
-                ? "Informe o período executado, a equipe de apoio e as observações para confirmar o encerramento."
-                : "A NA é salva assim que for adicionada. Você pode anexar uma por dia e concluir o atendimento somente no último dia."}
+              {completionStep === "attachments"
+                ? "Adicione NAs e evidências da execução. Cada arquivo é salvo no agendamento assim que for anexado."
+                : isEditingExecution
+                ? "Revise o período executado, a equipe de apoio e as observações antes de salvar."
+                : "Informe o período executado, a equipe de apoio e as observações para confirmar o encerramento."}
             </DialogDescription>
           </DialogHeader>
 
@@ -1337,9 +1471,14 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                 startTime={completionStartTime}
                 endDate={completionEndDate}
                 endTime={completionEndTime}
+                canEditStart={canManageAgenda}
                 driverEmployeeId={completionDriverEmployeeId}
                 helperEmployeeIds={completionHelperEmployeeIds}
                 serviceReport={completionServiceReport}
+                vehiclePlate={completionVehiclePlate}
+                disposalType={completionDisposalType}
+                disposalStationId={completionDisposalStationId}
+                disposalQuantityM3={completionDisposalQuantityM3}
                 employees={completionEmployees}
                 disabled={completeMutation.isPending || completionEmployeesQuery.isLoading}
                 onStartDateChange={setCompletionStartDate}
@@ -1349,6 +1488,10 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                 onDriverEmployeeIdChange={setCompletionDriverEmployeeId}
                 onHelperEmployeeIdsChange={setCompletionHelperEmployeeIds}
                 onServiceReportChange={setCompletionServiceReport}
+                onVehiclePlateChange={setCompletionVehiclePlate}
+                onDisposalTypeChange={setCompletionDisposalType}
+                onDisposalStationIdChange={setCompletionDisposalStationId}
+                onDisposalQuantityM3Change={setCompletionDisposalQuantityM3}
               />
             ) : (
               <CompletionNaAttachments
@@ -1371,8 +1514,8 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
             )}
           </div>
 
-          <DialogFooter className="flex-col gap-2 px-6 pb-6 pt-3 max-sm:px-5 max-sm:pb-[calc(env(safe-area-inset-bottom)+1.25rem)] sm:flex-row sm:flex-wrap sm:gap-2">
-            {completionStep === "attachments" ? (
+          <DialogFooter className="flex-col gap-2 px-6 pb-6 pt-3 max-sm:px-5 max-sm:pb-[calc(env(safe-area-inset-bottom)+1.25rem)] sm:flex-row sm:flex-nowrap sm:gap-2 sm:[&>button]:px-2.5">
+            {completionStep === "attachments" && !isEditingExecution ? (
               <Button
                 type="button"
                 variant="outline"
@@ -1382,7 +1525,20 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                 Ver informações
               </Button>
             ) : null}
-            {completionStep === "attachments" ? (
+            {completionStep === "attachments" && !isEditingExecution ? (
+              canCancelAttendance && completionTarget ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full min-w-0 border-red-500 text-red-600 hover:border-red-600 hover:bg-red-50 hover:text-red-700 sm:w-auto"
+                  disabled={cancelAttendanceMutation.isPending}
+                  onClick={() => setAttendanceCancelTarget(completionTarget)}
+                >
+                  Cancelar atendimento
+                </Button>
+              ) : null
+            ) : null}
+            {completionStep === "attachments" && !isEditingExecution ? (
               <AttendanceStartSlider
                 action="finish"
                 className="sm:hidden"
@@ -1390,19 +1546,39 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                 onComplete={() => setCompletionStep("checkout")}
               />
             ) : null}
+            {completionStep === "checkout" && isEditingExecution ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full min-w-0 sm:w-auto"
+                disabled={completeMutation.isPending || uploadNaMutation.isPending || deleteNaMutation.isPending}
+                onClick={() => setCompletionStep("attachments")}
+              >
+                Editar anexos
+              </Button>
+            ) : null}
             <Button
               type="button"
-              className={completionStep === "attachments" ? "hidden w-full min-w-0 sm:inline-flex sm:w-auto" : "w-full min-w-0 sm:w-auto"}
+              className={
+                completionStep === "attachments" && !isEditingExecution
+                  ? "hidden w-full min-w-0 sm:inline-flex sm:w-auto"
+                  : "w-full min-w-0 sm:w-auto"
+              }
               disabled={
                 !completionTarget ||
-                (!completionTarget.naAttachments?.length && !completionTarget.naDocumentUrl) ||
+                (!isEditingExecution && !completionTarget.naAttachments?.length && !completionTarget.naDocumentUrl) ||
                 uploadNaMutation.isPending ||
                 deleteNaMutation.isPending ||
                 (completionStep === "checkout" && (
                   !completionStartDate ||
                   !completionStartTime ||
                   !completionEndDate ||
-                  !completionEndTime
+                  !completionEndTime ||
+                  Boolean(scheduleDisposalValidationMessage(
+                    completionDisposalType,
+                    completionDisposalStationId,
+                    completionDisposalQuantityM3,
+                  ))
                 )) ||
                 completeMutation.isPending
               }
@@ -1410,6 +1586,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                 if (!completionTarget) return
                 if (completionStep === "attachments") {
                   setCompletionStep("checkout")
+                  if (isEditingExecution) toast.success("Anexos atualizados.")
                   return
                 }
 
@@ -1417,6 +1594,16 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                 const completedAt = new Date(`${completionEndDate}T${completionEndTime}:00`)
                 if (completedAt.getTime() <= startedAt.getTime()) {
                   toast.error("A data e o horário final devem ser maiores que o início.")
+                  return
+                }
+
+                const disposalValidationMessage = scheduleDisposalValidationMessage(
+                  completionDisposalType,
+                  completionDisposalStationId,
+                  completionDisposalQuantityM3,
+                )
+                if (disposalValidationMessage) {
+                  toast.error(disposalValidationMessage)
                   return
                 }
 
@@ -1429,15 +1616,27 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                   driverEmployeeId: completionDriverEmployeeId,
                   helperEmployeeIds: completionHelperEmployeeIds,
                   serviceReport: completionServiceReport,
+                  vehiclePlate: completionVehiclePlate,
+                  disposalType: completionDisposalType,
+                  disposalStationId: completionDisposalStationId,
+                  disposalQuantityM3: completionDisposalQuantityM3,
                 })
               }}
             >
               {completeMutation.isPending ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 shrink-0 animate-spin" />
-                  <span className="truncate">Concluindo...</span>
+                  <span className="truncate">{isEditingExecution ? "Salvando..." : "Concluindo..."}</span>
                 </>
-              ) : completionStep === "checkout" ? "Confirmar encerramento" : "Encerrar atendimento"}
+              ) : isEditingExecution && completionStep === "attachments" ? (
+                "Salvar"
+              ) : isEditingExecution ? (
+                "Salvar"
+              ) : completionStep === "checkout" ? (
+                "Confirmar encerramento"
+              ) : (
+                "Encerrar atendimento"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1705,7 +1904,8 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                           key={service.id}
                           className={cn(
                             "group cursor-pointer border-border/70 transition-colors duration-200 hover:border-primary/30",
-                            service.isEmergency && "border-red-300 bg-red-50 hover:border-red-400",
+                            service.status === "in_progress" && !service.isEmergency && "border-[#edd66b] hover:border-[#ddc253]",
+                            service.isEmergency && "border-red-300 hover:border-red-400",
                           )}
                           onClick={() => openSchedule(service)}
                         >
@@ -1911,7 +2111,8 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                           key={service.id}
                           className={cn(
                             "group cursor-pointer border-border/70 transition-colors duration-200 hover:border-primary/30",
-                            service.isEmergency && "border-red-300 bg-red-50 hover:border-red-400",
+                            service.status === "in_progress" && !service.isEmergency && "border-[#edd66b] hover:border-[#ddc253]",
+                            service.isEmergency && "border-red-300 hover:border-red-400",
                           )}
                           onClick={() => openSchedule(service)}
                         >

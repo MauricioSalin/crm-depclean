@@ -26,6 +26,7 @@ import { listEmployees, type EmployeeRecord } from "@/lib/api/employees"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import {
   cancelSchedule,
+  cancelScheduleAttendance,
   completeSchedule,
   createSchedule,
   deleteScheduleNa,
@@ -61,6 +62,7 @@ import {
 } from "@/lib/schedule-availability"
 import { canAccessScheduleCompletion, canStartSchedule } from "@/lib/schedule-permissions"
 import { cacheSavedSchedule } from "@/lib/schedule-query-cache"
+import { scheduleDisposalValidationMessage, type ScheduleDisposalType } from "@/lib/schedule-disposal"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
@@ -141,8 +143,10 @@ function getDisplayedScheduleTime(schedule: ScheduleRecord) {
   return resolveScheduleDisplayPeriod(schedule).time
 }
 
-function getScheduleIconTone(_schedule: Pick<ScheduleRecord, "isEmergency">) {
-  return { wrapper: "bg-primary/10", icon: "text-primary" }
+function getScheduleIconTone(schedule: Pick<ScheduleRecord, "isEmergency">) {
+  return schedule.isEmergency
+    ? { wrapper: "bg-red-100", icon: "text-red-600" }
+    : { wrapper: "bg-primary/10", icon: "text-primary" }
 }
 
 function canCancelSchedule(schedule: Pick<ScheduleRecord, "status">) {
@@ -471,6 +475,7 @@ export function AgendamentosContent({
   const [editingSchedule, setEditingSchedule] = useState<ScheduleRecord | null>(null)
   const [selectedSchedule, setSelectedSchedule] = useState<ScheduleRecord | null>(null)
   const [cancelTarget, setCancelTarget] = useState<ScheduleRecord | null>(null)
+  const [attendanceCancelTarget, setAttendanceCancelTarget] = useState<ScheduleRecord | null>(null)
   const [completionTarget, setCompletionTarget] = useState<ScheduleRecord | null>(null)
   const [completionInfoOpen, setCompletionInfoOpen] = useState(false)
   const [completionStep, setCompletionStep] = useState<"attachments" | "checkout">("attachments")
@@ -481,14 +486,20 @@ export function AgendamentosContent({
   const [completionDriverEmployeeId, setCompletionDriverEmployeeId] = useState("")
   const [completionHelperEmployeeIds, setCompletionHelperEmployeeIds] = useState<string[]>([])
   const [completionServiceReport, setCompletionServiceReport] = useState("")
+  const [completionVehiclePlate, setCompletionVehiclePlate] = useState("")
+  const [completionDisposalType, setCompletionDisposalType] = useState<ScheduleDisposalType | "">("")
+  const [completionDisposalStationId, setCompletionDisposalStationId] = useState("")
+  const [completionDisposalQuantityM3, setCompletionDisposalQuantityM3] = useState<number | null>(null)
   const [completionFiles, setCompletionFiles] = useState<File[]>([])
   const [pendingDelete, setPendingDelete] = useState<ScheduleRecord | null>(null)
   const scheduleDialogResetTimeoutRef = useRef<number | null>(null)
   const [currentUser, setCurrentUser] = useState<ReturnType<typeof getStoredUser>>(null)
   const canManageAgenda = hasAnyPermission(currentUser, ["agenda_manage"])
+  const canCancelAttendance = hasAnyPermission(currentUser, ["agenda_manage", "settings_manage"])
   const canManageLockedSchedules = hasAnyPermission(currentUser, ["agenda_manage_locked"])
   const canManageScheduleStatus = hasAnyPermission(currentUser, ["agenda_manage_status"])
   const canOpenScheduleEditor = canManageAgenda || canManageScheduleStatus
+  const canEditCompletedExecution = canManageAgenda && canManageLockedSchedules
 
   const resetCompletionDialog = useCallback(() => {
     setCompletionTarget(null)
@@ -501,6 +512,10 @@ export function AgendamentosContent({
     setCompletionDriverEmployeeId("")
     setCompletionHelperEmployeeIds([])
     setCompletionServiceReport("")
+    setCompletionVehiclePlate("")
+    setCompletionDisposalType("")
+    setCompletionDisposalStationId("")
+    setCompletionDisposalQuantityM3(null)
     setCompletionFiles([])
   }, [])
 
@@ -524,8 +539,35 @@ export function AgendamentosContent({
     setCompletionDriverEmployeeId(schedule.attendanceDriver?.id || "")
     setCompletionHelperEmployeeIds(schedule.attendanceHelpers?.map((employee) => employee.id) ?? [])
     setCompletionServiceReport(schedule.serviceReport || "")
+    setCompletionVehiclePlate(schedule.attendanceVehiclePlate || "")
+    setCompletionDisposalType(schedule.attendanceDisposal?.type || "")
+    setCompletionDisposalStationId(schedule.attendanceDisposal?.stationId || "")
+    setCompletionDisposalQuantityM3(schedule.attendanceDisposal?.quantityM3 ?? null)
     setCompletionFiles([])
   }, [currentUser])
+
+  const openExecutionEditDialog = useCallback((schedule: ScheduleRecord) => {
+    if (schedule.status !== "completed" || !canEditCompletedExecution) return
+
+    const now = currentCompletionDateTime()
+    const defaultDate = schedule.completionStartDate || now.date || schedule.date
+    setSelectedSchedule(null)
+    setCompletionTarget(schedule)
+    setCompletionInfoOpen(false)
+    setCompletionStep("checkout")
+    setCompletionStartDate(defaultDate)
+    setCompletionStartTime(schedule.completionStartTime || schedule.time || "")
+    setCompletionEndDate(schedule.completionEndDate || now.date || defaultDate)
+    setCompletionEndTime(schedule.completionEndTime || now.time)
+    setCompletionDriverEmployeeId(schedule.attendanceDriver?.id || "")
+    setCompletionHelperEmployeeIds(schedule.attendanceHelpers?.map((employee) => employee.id) ?? [])
+    setCompletionServiceReport(schedule.serviceReport || "")
+    setCompletionVehiclePlate(schedule.attendanceVehiclePlate || "")
+    setCompletionDisposalType(schedule.attendanceDisposal?.type || "")
+    setCompletionDisposalStationId(schedule.attendanceDisposal?.stationId || "")
+    setCompletionDisposalQuantityM3(schedule.attendanceDisposal?.quantityM3 ?? null)
+    setCompletionFiles([])
+  }, [canEditCompletedExecution])
 
   const openSchedule = useCallback((schedule: ScheduleRecord) => {
     if (canAccessScheduleCompletion(schedule, currentUser)) {
@@ -768,10 +810,10 @@ export function AgendamentosContent({
       const toastId = toast.loading("Iniciando atendimento...")
       return { toastId }
     },
-    onSuccess: async ({ data }, _variables, context) => {
+    onSuccess: async (_response, _variables, context) => {
       await invalidateSchedules()
       setSelectedSchedule(null)
-      openCompletionDialog(data)
+      closeCompletionDialog()
       toast.success("Atendimento iniciado.", {
         id: context?.toastId,
         description: "O agendamento foi movido para em andamento.",
@@ -864,7 +906,7 @@ export function AgendamentosContent({
       return updatedSchedule
     },
     onMutate: ({ files }) => {
-      const toastId = toast.loading(files.length === 1 ? "Salvando NA..." : `Salvando ${files.length} NAs...`)
+      const toastId = toast.loading(files.length === 1 ? "Salvando anexo..." : `Salvando ${files.length} anexos...`)
       return { toastId }
     },
     onSuccess: async (updatedSchedule, _variables, context) => {
@@ -872,7 +914,7 @@ export function AgendamentosContent({
       setSelectedSchedule((current) => current?.id === updatedSchedule.id ? updatedSchedule : current)
       setCompletionFiles([])
       await invalidateSchedules()
-      toast.success("NA salva no agendamento.", {
+      toast.success("Anexo salvo no agendamento.", {
         id: context?.toastId,
         description: "O arquivo já está seguro e continuará disponível mesmo sem concluir o atendimento.",
       })
@@ -885,7 +927,7 @@ export function AgendamentosContent({
         setSelectedSchedule((current) => current?.id === refreshed.data.id ? refreshed.data : current)
       }
       await invalidateSchedules()
-      toast.error(getApiErrorMessage(error, "Não foi possível salvar a NA."), {
+      toast.error(getApiErrorMessage(error, "Não foi possível salvar o anexo."), {
         id: context?.toastId,
         description: "Os arquivos enviados antes da falha permanecem salvos. Confira a lista antes de tentar novamente.",
       })
@@ -902,6 +944,10 @@ export function AgendamentosContent({
       driverEmployeeId,
       helperEmployeeIds,
       serviceReport,
+      vehiclePlate,
+      disposalType,
+      disposalStationId,
+      disposalQuantityM3,
     }: {
       schedule: ScheduleRecord
       startDate: string
@@ -911,10 +957,15 @@ export function AgendamentosContent({
       driverEmployeeId: string
       helperEmployeeIds: string[]
       serviceReport: string
+      vehiclePlate: string
+      disposalType: ScheduleDisposalType | ""
+      disposalStationId: string
+      disposalQuantityM3: number | null
     }) => {
+      const isEditingExecution = schedule.status === "completed"
       const hasExistingNa = Boolean(schedule.naAttachments?.length || schedule.naDocumentUrl)
-      if (!hasExistingNa) {
-        throw new Error("Anexe a NA da visita antes de concluir o atendimento.")
+      if (!isEditingExecution && !hasExistingNa) {
+        throw new Error("Anexe ao menos uma NA ou evidência antes de concluir o atendimento.")
       }
 
       return completeSchedule(schedule.id, {
@@ -925,22 +976,34 @@ export function AgendamentosContent({
         driverEmployeeId,
         helperEmployeeIds,
         serviceReport,
+        vehiclePlate,
+        disposalType: disposalType || null,
+        disposalStationId,
+        disposalQuantityM3: disposalQuantityM3 ?? undefined,
       })
     },
-    onMutate: () => {
-      const toastId = toast.loading("Concluindo atendimento...")
+    onMutate: ({ schedule }) => {
+      const toastId = toast.loading(
+        schedule.status === "completed" ? "Salvando execução..." : "Concluindo atendimento...",
+      )
       return { toastId }
     },
-    onSuccess: (_response, _variables, context) => {
+    onSuccess: (_response, variables, context) => {
+      const isEditingExecution = variables.schedule.status === "completed"
       closeCompletionDialog()
-      toast.success("Atendimento concluído.", {
+      toast.success(isEditingExecution ? "Execução atualizada." : "Atendimento concluído.", {
         id: context?.toastId,
-        description: "A agenda foi atualizada com o horário executado.",
+        description: isEditingExecution
+          ? "Os dados executados do atendimento foram corrigidos."
+          : "A agenda foi atualizada com o horário executado.",
       })
       void invalidateSchedules().catch(() => undefined)
     },
-    onError: (error: any, _variables, context) => {
-      toast.error(getApiErrorMessage(error, "Não foi possível concluir o atendimento."), {
+    onError: (error: any, variables, context) => {
+      const fallback = variables.schedule.status === "completed"
+        ? "Não foi possível atualizar a execução."
+        : "Não foi possível concluir o atendimento."
+      toast.error(getApiErrorMessage(error, fallback), {
         id: context?.toastId,
       })
     },
@@ -967,16 +1030,37 @@ export function AgendamentosContent({
     },
   })
 
+  const cancelAttendanceMutation = useMutation({
+    mutationFn: (id: string) => cancelScheduleAttendance(id),
+    onMutate: () => {
+      setAttendanceCancelTarget(null)
+      closeCompletionDialog()
+      return { toastId: toast.loading("Cancelando atendimento...") }
+    },
+    onSuccess: (_response, _id, context) => {
+      toast.success("Atendimento cancelado.", {
+        id: context?.toastId,
+        description: "O agendamento voltou ao estado anterior.",
+      })
+      void invalidateSchedules().catch(() => undefined)
+    },
+    onError: (error, _id, context) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível cancelar o atendimento."), {
+        id: context?.toastId,
+      })
+    },
+  })
+
   const deleteNaMutation = useMutation({
     mutationFn: ({ schedule, documentUrl }: { schedule: ScheduleRecord; documentUrl: string }) => (
       deleteScheduleNa(schedule.id, documentUrl)
     ),
-    onMutate: () => ({ toastId: toast.loading("Removendo NA...") }),
+    onMutate: () => ({ toastId: toast.loading("Removendo anexo...") }),
     onSuccess: async ({ data: updatedSchedule }, _variables, context) => {
       setCompletionTarget((current) => current?.id === updatedSchedule.id ? updatedSchedule : current)
       setSelectedSchedule((current) => current?.id === updatedSchedule.id ? updatedSchedule : current)
       await invalidateSchedules()
-      toast.success("NA removida do agendamento.", { id: context?.toastId })
+      toast.success("Anexo removido do agendamento.", { id: context?.toastId })
     },
     onError: async (error, variables, context) => {
       const refreshed = await getScheduleById(variables.schedule.id).catch(() => null)
@@ -985,7 +1069,7 @@ export function AgendamentosContent({
         setSelectedSchedule((current) => current?.id === refreshed.data.id ? refreshed.data : current)
       }
       await invalidateSchedules()
-      toast.error(getApiErrorMessage(error, "Não foi possível remover a NA."), { id: context?.toastId })
+      toast.error(getApiErrorMessage(error, "Não foi possível remover o anexo."), { id: context?.toastId })
     },
   })
 
@@ -1117,6 +1201,7 @@ export function AgendamentosContent({
   }
 
   const detailsSchedule = completionInfoOpen ? completionTarget : selectedSchedule
+  const isEditingExecution = completionTarget?.status === "completed"
 
   return (
     <>
@@ -1172,8 +1257,14 @@ export function AgendamentosContent({
         onEdit={() => {
           if (detailsSchedule) openEditSchedule(detailsSchedule)
         }}
+        canEditExecution={Boolean(
+          detailsSchedule?.status === "completed" && canEditCompletedExecution,
+        )}
+        onEditExecution={() => {
+          if (detailsSchedule) openExecutionEditDialog(detailsSchedule)
+        }}
         onBack={completionInfoOpen ? () => setCompletionInfoOpen(false) : undefined}
-        backLabel="Voltar para NAs do atendimento"
+        backLabel="Voltar para anexos do atendimento"
         onStartAttendance={async (schedule) => {
           if (!canStartSchedule(schedule, currentUser, teams)) return
           await startMutation.mutateAsync(schedule)
@@ -1193,6 +1284,20 @@ export function AgendamentosContent({
         }}
       />
 
+      <ConfirmActionDialog
+        open={Boolean(attendanceCancelTarget)}
+        title="Cancelar atendimento?"
+        description="O agendamento voltará ao estado anterior (Agendado ou Reagendado). O agendamento não será cancelado."
+        confirmLabel="Cancelar atendimento"
+        busy={cancelAttendanceMutation.isPending}
+        onOpenChange={(open) => {
+          if (!open) setAttendanceCancelTarget(null)
+        }}
+        onConfirm={() => {
+          if (attendanceCancelTarget) cancelAttendanceMutation.mutate(attendanceCancelTarget.id)
+        }}
+      />
+
       <Dialog
         open={!!completionTarget && !completionInfoOpen}
         onOpenChange={(open) => {
@@ -1204,11 +1309,21 @@ export function AgendamentosContent({
             type="button"
             variant="ghost"
             size="sm"
-            aria-label={completionStep === "checkout" ? "Voltar para NAs do atendimento" : "Voltar"}
+            aria-label={
+              isEditingExecution
+                ? "Voltar"
+                : completionStep === "checkout"
+                  ? "Voltar para anexos do atendimento"
+                  : "Voltar"
+            }
             className="absolute left-3 top-3 z-20 gap-1.5 px-2 text-foreground hover:text-foreground max-sm:top-[calc(env(safe-area-inset-top)+0.85rem)]"
             onClick={() => {
-              if (completionStep === "checkout") {
+              if (completionStep === "checkout" && !isEditingExecution) {
                 setCompletionStep("attachments")
+                return
+              }
+              if (completionStep === "attachments" && isEditingExecution) {
+                setCompletionStep("checkout")
                 return
               }
               closeCompletionDialog()
@@ -1218,6 +1333,7 @@ export function AgendamentosContent({
             Voltar
           </Button>
           {completionStep === "attachments" &&
+          !isEditingExecution &&
           completionTarget &&
           (canManageScheduleStatus ||
             (canManageAgenda && canEditSchedule(completionTarget, canManageLockedSchedules))) ? (
@@ -1233,12 +1349,18 @@ export function AgendamentosContent({
           ) : null}
           <DialogHeader className="min-w-0 px-6 pb-4 pt-14 max-sm:px-5 max-sm:pt-[calc(env(safe-area-inset-top)+3.75rem)]">
             <DialogTitle>
-              {completionStep === "checkout" ? "Encerrar atendimento" : "NAs do atendimento"}
+              {completionStep === "attachments"
+                ? "Anexos do atendimento"
+                : isEditingExecution
+                ? "Editar execução do atendimento"
+                : "Encerrar atendimento"}
             </DialogTitle>
             <DialogDescription>
-              {completionStep === "checkout"
-                ? "Informe o período executado, a equipe de apoio e as observações para confirmar o encerramento."
-                : "A NA é salva assim que for adicionada. Você pode anexar uma por dia e concluir o atendimento somente no último dia."}
+              {completionStep === "attachments"
+                ? "Adicione NAs e evidências da execução. Cada arquivo é salvo no agendamento assim que for anexado."
+                : isEditingExecution
+                ? "Revise o período executado, a equipe de apoio e as observações antes de salvar."
+                : "Informe o período executado, a equipe de apoio e as observações para confirmar o encerramento."}
             </DialogDescription>
           </DialogHeader>
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 pb-5 max-sm:px-5">
@@ -1249,9 +1371,14 @@ export function AgendamentosContent({
                 startTime={completionStartTime}
                 endDate={completionEndDate}
                 endTime={completionEndTime}
+                canEditStart={canManageAgenda}
                 driverEmployeeId={completionDriverEmployeeId}
                 helperEmployeeIds={completionHelperEmployeeIds}
                 serviceReport={completionServiceReport}
+                vehiclePlate={completionVehiclePlate}
+                disposalType={completionDisposalType}
+                disposalStationId={completionDisposalStationId}
+                disposalQuantityM3={completionDisposalQuantityM3}
                 employees={completionEmployees}
                 disabled={completeMutation.isPending || completionEmployeesQuery.isLoading}
                 onStartDateChange={setCompletionStartDate}
@@ -1261,6 +1388,10 @@ export function AgendamentosContent({
                 onDriverEmployeeIdChange={setCompletionDriverEmployeeId}
                 onHelperEmployeeIdsChange={setCompletionHelperEmployeeIds}
                 onServiceReportChange={setCompletionServiceReport}
+                onVehiclePlateChange={setCompletionVehiclePlate}
+                onDisposalTypeChange={setCompletionDisposalType}
+                onDisposalStationIdChange={setCompletionDisposalStationId}
+                onDisposalQuantityM3Change={setCompletionDisposalQuantityM3}
               />
             ) : (
               <CompletionNaAttachments
@@ -1282,8 +1413,8 @@ export function AgendamentosContent({
               />
             )}
           </div>
-          <div className="flex shrink-0 flex-col gap-2 bg-background px-6 pb-6 pt-3 max-sm:px-5 max-sm:pb-[calc(env(safe-area-inset-bottom)+1.25rem)] sm:flex-row sm:flex-wrap sm:justify-end">
-            {completionStep === "attachments" ? (
+          <div className="flex shrink-0 flex-col gap-2 bg-background px-6 pb-6 pt-3 max-sm:px-5 max-sm:pb-[calc(env(safe-area-inset-bottom)+1.25rem)] sm:flex-row sm:flex-nowrap sm:justify-end sm:[&>button]:px-2.5">
+            {completionStep === "attachments" && !isEditingExecution ? (
               <Button
                 type="button"
                 variant="outline"
@@ -1293,7 +1424,20 @@ export function AgendamentosContent({
                 Ver informações
               </Button>
             ) : null}
-            {completionStep === "attachments" ? (
+            {completionStep === "attachments" && !isEditingExecution ? (
+              canCancelAttendance && completionTarget ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full min-w-0 border-red-500 text-red-600 hover:border-red-600 hover:bg-red-50 hover:text-red-700 sm:w-auto"
+                  disabled={cancelAttendanceMutation.isPending}
+                  onClick={() => setAttendanceCancelTarget(completionTarget)}
+                >
+                  Cancelar atendimento
+                </Button>
+              ) : null
+            ) : null}
+            {completionStep === "attachments" && !isEditingExecution ? (
               <AttendanceStartSlider
                 action="finish"
                 className="sm:hidden"
@@ -1301,16 +1445,27 @@ export function AgendamentosContent({
                 onComplete={() => setCompletionStep("checkout")}
               />
             ) : null}
+            {completionStep === "checkout" && isEditingExecution ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full min-w-0 sm:w-auto"
+                disabled={completeMutation.isPending || uploadNaMutation.isPending || deleteNaMutation.isPending}
+                onClick={() => setCompletionStep("attachments")}
+              >
+                Editar anexos
+              </Button>
+            ) : null}
             <Button
               type="button"
               className={
-                completionStep === "attachments"
+                completionStep === "attachments" && !isEditingExecution
                   ? "hidden w-full min-w-0 sm:inline-flex sm:w-auto"
                   : "w-full min-w-0 sm:w-auto"
               }
               disabled={
                 !completionTarget ||
-                (!completionTarget.naAttachments?.length && !completionTarget.naDocumentUrl) ||
+                (!isEditingExecution && !completionTarget.naAttachments?.length && !completionTarget.naDocumentUrl) ||
                 uploadNaMutation.isPending ||
                 deleteNaMutation.isPending ||
                 completeMutation.isPending ||
@@ -1318,12 +1473,18 @@ export function AgendamentosContent({
                   (!completionStartDate ||
                     !completionStartTime ||
                     !completionEndDate ||
-                    !completionEndTime))
+                    !completionEndTime ||
+                    Boolean(scheduleDisposalValidationMessage(
+                      completionDisposalType,
+                      completionDisposalStationId,
+                      completionDisposalQuantityM3,
+                    ))))
               }
               onClick={() => {
                 if (!completionTarget) return
                 if (completionStep === "attachments") {
                   setCompletionStep("checkout")
+                  if (isEditingExecution) toast.success("Anexos atualizados.")
                   return
                 }
 
@@ -1331,6 +1492,16 @@ export function AgendamentosContent({
                 const completedAt = new Date(`${completionEndDate}T${completionEndTime}:00`)
                 if (completedAt.getTime() <= startedAt.getTime()) {
                   toast.error("A data e o horário final devem ser maiores que o início.")
+                  return
+                }
+
+                const disposalValidationMessage = scheduleDisposalValidationMessage(
+                  completionDisposalType,
+                  completionDisposalStationId,
+                  completionDisposalQuantityM3,
+                )
+                if (disposalValidationMessage) {
+                  toast.error(disposalValidationMessage)
                   return
                 }
 
@@ -1343,18 +1514,23 @@ export function AgendamentosContent({
                   driverEmployeeId: completionDriverEmployeeId,
                   helperEmployeeIds: completionHelperEmployeeIds,
                   serviceReport: completionServiceReport,
+                  vehiclePlate: completionVehiclePlate,
+                  disposalType: completionDisposalType,
+                  disposalStationId: completionDisposalStationId,
+                  disposalQuantityM3: completionDisposalQuantityM3,
                 })
               }}
             >
               {completeMutation.isPending ? (
-                "Encerrando..."
+                isEditingExecution ? "Salvando..." : "Encerrando..."
+              ) : isEditingExecution && completionStep === "attachments" ? (
+                "Salvar"
+              ) : isEditingExecution ? (
+                "Salvar"
               ) : completionStep === "checkout" ? (
                 "Confirmar encerramento"
               ) : (
-                <>
-                  <Check className="mr-2 h-4 w-4 shrink-0" />
-                  Encerrar atendimento
-                </>
+                "Encerrar atendimento"
               )}
             </Button>
           </div>

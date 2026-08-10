@@ -1,4 +1,5 @@
 import { api } from "@/lib/api/client"
+import type { ScheduleDisposalRecord, ScheduleDisposalType } from "@/lib/schedule-disposal"
 
 export type ScheduleNaAttachmentRecord = {
   type?: string
@@ -38,6 +39,9 @@ export type ScheduleRecord = {
   contractNumber?: string
   contractServiceId: string | null
   contractServiceIds: string[]
+  multiDayGroupId?: string
+  multiDayIndex?: number
+  multiDayTotal?: number
   isManual: boolean
   isClientDelinquent: boolean
   clientId: string
@@ -82,6 +86,8 @@ export type ScheduleRecord = {
   serviceReport?: string
   attendanceDriver?: { id: string; name: string } | null
   attendanceHelpers?: Array<{ id: string; name: string }>
+  attendanceVehiclePlate?: string
+  attendanceDisposal?: ScheduleDisposalRecord | null
   naFileName?: string
   naDocumentUrl?: string
   naAttachments: ScheduleNaAttachmentRecord[]
@@ -214,6 +220,11 @@ export async function startSchedule(id: string, payload?: { startTime?: string }
   return response.data
 }
 
+export async function cancelScheduleAttendance(id: string) {
+  const response = await api.patch<{ success: true; data: ScheduleRecord }>(`/schedules/${id}/cancel-attendance`)
+  return response.data
+}
+
 export async function completeSchedule(
   id: string,
   payload: {
@@ -224,6 +235,10 @@ export async function completeSchedule(
     serviceReport?: string
     driverEmployeeId?: string
     helperEmployeeIds?: string[]
+    vehiclePlate?: string
+    disposalType?: ScheduleDisposalType | null
+    disposalStationId?: string
+    disposalQuantityM3?: number
   },
 ) {
   const response = await api.patch<{ success: true; data: ScheduleRecord }>(`/schedules/${id}/complete`, payload)

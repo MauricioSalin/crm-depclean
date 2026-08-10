@@ -108,7 +108,7 @@ export async function resendCertificate(scheduleId: string, serviceTypeId?: stri
 }
 
 export async function deleteCertificate(scheduleId: string, serviceTypeId?: string) {
-  const response = await api.delete<{ success: true; data: CertificateQueueRecord }>(
+  const response = await api.delete<{ success: true; data: CertificateQueueRecord | null }>(
     `/certificates/${scheduleId}`,
     { params: { serviceTypeId } },
   )

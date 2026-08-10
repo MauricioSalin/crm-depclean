@@ -55,6 +55,7 @@ const getNotificationDotColor = (type: string) => {
     schedule_unassigned: "bg-gray-500",
     schedule_change: "bg-blue-500",
     schedule_cancel: "bg-gray-500",
+    schedule_reminder: "bg-blue-500",
     daily_services: "bg-blue-500",
     contract_signature: "bg-emerald-500",
     informative: "bg-emerald-500",

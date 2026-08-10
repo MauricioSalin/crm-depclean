@@ -25,6 +25,7 @@ interface TimelineEvent {
   time: string
   duration: number
   totalDays?: number
+  referenceLabel?: string
   teamColor: string | null
   teamNames?: string[]
   resourceIds?: string[]
@@ -267,12 +268,25 @@ export function WeekTimeline({
     if (pointerTooltipEvent) positionPointerTooltip()
   }, [pointerTooltipEvent])
 
-  // Auto-scroll after the responsive timeline has real columns.
+  // Keep early executions visible instead of always hiding everything before 06:00.
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = 6 * HOUR_HEIGHT
-    }
-  }, [mode, resources.length])
+    const scroll = scrollRef.current
+    if (!scroll) return
+
+    const visibleDateKeys = new Set(
+      (mode === "day" ? [currentDate] : weekDays).map((date) => toCivilDateKey(date)),
+    )
+    const earliestStartMinutes = events.reduce<number | null>((earliest, event) => {
+      if (!visibleDateKeys.has(event.date)) return earliest
+      const startMinutes = timeToMinutes(event.time)
+      return earliest === null ? startMinutes : Math.min(earliest, startMinutes)
+    }, null)
+    const defaultStartMinutes = 6 * 60
+    const scrollStartMinutes = earliestStartMinutes === null
+      ? defaultStartMinutes
+      : Math.min(defaultStartMinutes, Math.max(0, earliestStartMinutes - 60))
+    scroll.scrollTop = (scrollStartMinutes / 60) * HOUR_HEIGHT
+  }, [currentDate, events, mode, resources.length, weekDays])
 
   useEffect(() => {
     return () => {
@@ -638,9 +652,14 @@ export function WeekTimeline({
                     )
                   })}
                   {dayEvents.map((ev) => {
-                    const color = ev.teamColor || "#9CA3AF" // gray for no team
+                    const baseColor = ev.status === "in_progress" && !ev.isEmergency
+                      ? "#edd66b"
+                      : ev.teamColor || "#9CA3AF" // gray for no team
                     const isOverlapping = ev.columnCount > 1
-                    const isCompleted = ev.status === "completed"
+                    const isInactive = ev.status === "completed" || ev.status === "cancelled"
+                    const color = isInactive
+                      ? `color-mix(in srgb, ${baseColor} 45%, white)`
+                      : baseColor
                     const hoverGroupId = ev.hoverGroupId ?? ev.scheduleId ?? ev.id
                     const isActive = activeEventGroupId === hoverGroupId
                     const isDirectlyActive = activeEventId === ev.id
@@ -655,6 +674,8 @@ export function WeekTimeline({
                       <button
                         key={ev.id}
                         type="button"
+                        data-schedule-id={ev.scheduleId ?? ev.id}
+                        data-schedule-status={ev.status}
                         onClick={(event) => {
                           event.stopPropagation()
                           setActiveEventGroupId(hoverGroupId)
@@ -686,9 +707,9 @@ export function WeekTimeline({
                           setActiveEventId((current) => (current === ev.id ? null : current))
                           clearPointerTooltip()
                         }}
-                        className={`group absolute flex min-w-0 cursor-pointer flex-col items-start justify-start gap-0.5 overflow-hidden rounded-md border border-transparent border-l-[3px] px-1.5 py-1 text-left transition-[left,width,box-shadow,background-color,transform,opacity,filter] ease-[cubic-bezier(0.22,1,0.36,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 active:scale-[0.99] ${
+                        className={`group absolute flex min-w-0 cursor-pointer flex-col items-start justify-start gap-0.5 overflow-hidden rounded-md border border-transparent border-l-[3px] px-1.5 py-1 text-left transition-[left,width,box-shadow,background-color,border-color,transform] ease-[cubic-bezier(0.22,1,0.36,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 active:scale-[0.99] ${
                           isActive ? "-translate-y-0.5 scale-[1.015]" : "hover:-translate-y-0.5 hover:scale-[1.015]"
-                        } ${isCompleted ? "opacity-60 saturate-50 hover:opacity-80 focus-visible:opacity-80" : ""}`}
+                        }`}
                         style={{
                           transitionDuration: `${isDirectlyActive ? EVENT_OPEN_TRANSITION_MS : EVENT_CLOSE_TRANSITION_MS}ms`,
                           top: ev.top,
@@ -696,8 +717,10 @@ export function WeekTimeline({
                           width: isDirectlyActive ? `calc(100% - ${EVENT_COLUMN_GUTTER * 2}px)` : eventWidth,
                           height: ev.height,
                           zIndex: isDirectlyActive ? 110 : isActive ? 100 : 10 + ev.columnIndex,
-                          backgroundColor: ev.isEmergency ? "#fef2f2" : "#efefef",
-                          borderColor: color,
+                          backgroundColor: `color-mix(in srgb, ${baseColor} ${isInactive ? 6 : 10}%, white)`,
+                          borderTopColor: color,
+                          borderRightColor: color,
+                          borderBottomColor: color,
                           borderLeftColor: color,
                           boxShadow: isActive
                             ? "0 16px 36px rgba(15, 23, 42, 0.22), 0 2px 6px rgba(15, 23, 42, 0.16)"
@@ -706,7 +729,19 @@ export function WeekTimeline({
                             : "0 1px 2px rgba(15, 23, 42, 0.08)",
                         }}
                       >
-                        <p className="w-full min-w-0 truncate text-[10px] font-semibold leading-tight text-foreground/90">
+                        {isActive && ev.referenceLabel ? (
+                          <span
+                            data-schedule-reference={ev.referenceLabel}
+                            className="absolute right-1 top-1 rounded bg-foreground/85 px-1 py-0.5 text-[8px] font-semibold leading-none text-background shadow-sm"
+                          >
+                            {ev.referenceLabel}
+                          </span>
+                        ) : null}
+                        <p className={`w-full min-w-0 truncate text-[10px] font-semibold leading-tight ${
+                          isInactive ? "text-muted-foreground" : "text-foreground/90"
+                        } ${
+                          isActive && ev.referenceLabel ? "pr-7" : ""
+                        }`}>
                           {ev.title}
                         </p>
                         {ev.height > 30 && (
@@ -754,6 +789,9 @@ export function WeekTimeline({
                 </p>
                 {pointerTooltipEvent.totalDays && pointerTooltipEvent.totalDays > 1 ? (
                   <p>Duração: {pointerTooltipEvent.totalDays} dias</p>
+                ) : null}
+                {pointerTooltipEvent.referenceLabel ? (
+                  <p>Referência: {pointerTooltipEvent.referenceLabel}</p>
                 ) : null}
                 <p>Status: {formatTimelineStatus(pointerTooltipEvent.status)}</p>
                 {pointerTooltipEvent.teamNames?.length ? (

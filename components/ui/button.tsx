@@ -13,7 +13,7 @@ const buttonVariants = cva(
         destructive:
           'bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60',
         outline:
-          'border border-input bg-transparent shadow-xs hover:border-ring hover:bg-transparent hover:text-foreground hover:ring-[3px] hover:ring-ring/50 dark:border-input dark:bg-input/30 dark:hover:border-ring dark:hover:bg-input/30',
+          'border border-input bg-white shadow-xs hover:border-ring hover:bg-white hover:text-foreground hover:ring-[3px] hover:ring-ring/50 dark:border-input dark:bg-input/30 dark:hover:border-ring dark:hover:bg-input/30',
         secondary:
           'bg-secondary text-secondary-foreground hover:bg-secondary/80',
         ghost:
@@ -55,7 +55,7 @@ function Button({
       className={cn(
         buttonVariants({ variant, size }),
         isCombobox &&
-          'hover:bg-transparent hover:text-foreground dark:hover:bg-input/30 aria-expanded:border-ring aria-expanded:bg-transparent aria-expanded:ring-ring/50 aria-expanded:ring-[3px] data-[state=open]:border-ring data-[state=open]:bg-transparent data-[state=open]:ring-ring/50 data-[state=open]:ring-[3px]',
+          'hover:bg-white hover:text-foreground dark:hover:bg-input/30 aria-expanded:border-ring aria-expanded:bg-white aria-expanded:ring-ring/50 aria-expanded:ring-[3px] data-[state=open]:border-ring data-[state=open]:bg-white data-[state=open]:ring-ring/50 data-[state=open]:ring-[3px]',
         className,
       )}
       {...props}
