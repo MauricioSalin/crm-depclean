@@ -72,6 +72,23 @@ export type ReportScheduleDetail = {
   isManual: boolean
   billable: boolean
   value: number
+  completionStartDate?: string
+  completionStartTime?: string
+  completionEndDate?: string
+  completionEndTime?: string
+  executionDurationMinutes?: number | null
+  serviceReport?: string
+  attendanceDriver?: { id: string; name: string } | null
+  attendanceHelpers?: Array<{ id: string; name: string }>
+  attendanceVehiclePlate?: string
+  attendanceDisposal?: {
+    type: "fossa" | "gordura"
+    stationId: string
+    stationName: string
+    unitPrice: number
+    quantityM3: number
+    totalValue: number
+  } | null
 }
 
 export type ServiceClientSummaryRecord = {

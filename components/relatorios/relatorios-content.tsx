@@ -35,7 +35,7 @@ import { isOperationallyActiveContract } from "@/lib/contract-status"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 import { useUrlDateRangeState } from "@/lib/hooks/use-url-date-range-state"
 import { addCivilDaysKey, addCivilMonthsKey, parseCivilDate, toCivilDateKey } from "@/lib/date-utils"
-import { formatScheduleDurationValue } from "@/lib/schedule-duration"
+import { formatExactScheduleDuration, formatScheduleDurationValue } from "@/lib/schedule-duration"
 import { cn, formatContractNumber } from "@/lib/utils"
 import {
   BarChart,
@@ -201,6 +201,18 @@ function formatReportDuration(detail: ReportsAnalyticsRecord["scheduleDetails"][
   if (detail.durationType === "shift") return "Meio período"
   const hours = detail.durationValue > 0 ? detail.durationValue : detail.estimatedDuration / 60
   return formatScheduleDurationValue(hours, "hours")
+}
+
+function formatReportExecutionDateTime(date?: string, time?: string) {
+  if (!date || !time) return "Não informado"
+  return `${formatReportDate(date)} às ${time}`
+}
+
+function formatReportExecutionDuration(detail: ReportsAnalyticsRecord["scheduleDetails"][number]) {
+  const minutes = Number(detail.executionDurationMinutes)
+  return Number.isFinite(minutes) && minutes > 0
+    ? formatExactScheduleDuration(minutes)
+    : "Não informado"
 }
 
 function reportStatusLabel(status: ReportsAnalyticsRecord["scheduleDetails"][number]["status"]) {
@@ -1232,21 +1244,63 @@ export function RelatoriosContent() {
   }
 
   const buildScheduleDetailRows = (data: ReportsAnalyticsRecord): ExcelCell[][] => [
-    ["Data", "Horário", "Cliente", "Unidade", "Contrato", "Serviços", "Equipes", "Funcionários", "Duração", "Status", "Emergência", "Tipo", "Valor"],
+    [
+      "Data agendada",
+      "Horário agendado",
+      "Tempo agendado",
+      "Cliente",
+      "Unidade",
+      "Contrato",
+      "Serviços",
+      "Equipes",
+      "Funcionários agendados",
+      "Status",
+      "Emergência",
+      "Tipo",
+      "Valor",
+      "Início da execução",
+      "Fim da execução",
+      "Tempo de execução",
+      "Motorista",
+      "Ajudantes",
+      "Placa do veículo",
+      "Observações do atendimento",
+      "Tipo de descarte",
+      "Quantidade do descarte (m³)",
+      "Estação de descarte",
+      "Valor unitário do descarte",
+      "Valor total do descarte",
+    ],
     ...data.scheduleDetails.map((detail) => [
       formatReportDate(detail.scheduledDate),
       detail.scheduledTime || "Sem horário",
+      formatReportDuration(detail),
       detail.clientName,
       detail.unitName,
       formatContractNumber(detail.contractNumber),
       detail.serviceNames.join(", ") || "Sem serviço",
       detail.teamNames.join(", ") || "Sem equipe",
       detail.employeeNames.join(", ") || "Sem funcionário",
-      formatReportDuration(detail),
       reportStatusLabel(detail.status),
       detail.isEmergency ? "Sim" : "Não",
       detail.isManual ? "Avulso" : "Recorrente",
       detail.billable ? detail.value : 0,
+      formatReportExecutionDateTime(detail.completionStartDate, detail.completionStartTime),
+      formatReportExecutionDateTime(detail.completionEndDate, detail.completionEndTime),
+      formatReportExecutionDuration(detail),
+      detail.attendanceDriver?.name || "Não informado",
+      detail.attendanceHelpers?.map((employee) => employee.name).join(", ") || "Nenhum ajudante informado",
+      detail.attendanceVehiclePlate || "Não informada",
+      detail.serviceReport?.trim() || "Nenhuma observação registrada",
+      detail.attendanceDisposal?.type === "fossa"
+        ? "Fossa"
+        : detail.attendanceDisposal?.type === "gordura"
+          ? "Gordura"
+          : "Não informado",
+      detail.attendanceDisposal?.quantityM3 ?? "",
+      detail.attendanceDisposal?.stationName || "Não informada",
+      detail.attendanceDisposal?.unitPrice ?? "",
+      detail.attendanceDisposal?.totalValue ?? "",
     ]),
   ]
 

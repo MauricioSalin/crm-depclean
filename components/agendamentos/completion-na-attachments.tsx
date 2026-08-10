@@ -1,7 +1,7 @@
 "use client"
 
 import { useRef, useState } from "react"
-import { Camera, CheckCircle2, Eye, FileText, FileUp, ImageIcon, Loader2, Paperclip, Trash2, X } from "lucide-react"
+import { Camera, CheckCircle2, Eye, FileText, FileUp, ImageIcon, Loader2, Paperclip, ScanLine, Trash2, X } from "lucide-react"
 
 import { buildApiFileUrl } from "@/lib/api/client"
 import type { ScheduleNaAttachmentRecord } from "@/lib/api/schedules"
@@ -16,6 +16,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
+import { DocumentScannerDialog } from "@/components/agendamentos/document-scanner-dialog"
 
 interface CompletionNaAttachmentsProps {
   existingAttachments?: ScheduleNaAttachmentRecord[]
@@ -54,6 +55,9 @@ export function CompletionNaAttachments({
 }: CompletionNaAttachmentsProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
+  const scannerGalleryInputRef = useRef<HTMLInputElement>(null)
+  const [scannerOpen, setScannerOpen] = useState(false)
+  const [scannerSourceFile, setScannerSourceFile] = useState<File | null>(null)
   const [pendingRemoval, setPendingRemoval] = useState<{
     attachment: ScheduleNaAttachmentRecord
     index: number
@@ -65,6 +69,12 @@ export function CompletionNaAttachments({
     if (selectedFiles.length > 0) {
       onAddFiles(selectedFiles)
     }
+  }
+
+  const openScannerFromFile = (file?: File) => {
+    if (!file) return
+    setScannerSourceFile(file)
+    setScannerOpen(true)
   }
 
   return (
@@ -112,8 +122,20 @@ export function CompletionNaAttachments({
           event.currentTarget.value = ""
         }}
       />
+      <input
+        ref={scannerGalleryInputRef}
+        data-testid="document-scanner-gallery-input"
+        type="file"
+        className="hidden"
+        accept="image/*"
+        disabled={disabled}
+        onChange={(event) => {
+          openScannerFromFile(event.target.files?.[0])
+          event.currentTarget.value = ""
+        }}
+      />
 
-      <div className="mt-4 flex min-w-0 flex-col gap-2 sm:flex-row">
+      <div className="mt-4 grid min-w-0 gap-2 sm:grid-cols-3">
         <Button
           type="button"
           variant="ghost"
@@ -133,6 +155,16 @@ export function CompletionNaAttachments({
         >
           <Camera className="mr-2 h-4 w-4 shrink-0 text-primary" />
           <span className="truncate">Usar câmera</span>
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          className="min-w-0 rounded-full border border-primary/20 bg-primary/10 text-primary shadow-none hover:border-primary/35 hover:bg-primary/15 hover:text-primary"
+          disabled={disabled}
+          onClick={() => scannerGalleryInputRef.current?.click()}
+        >
+          <ScanLine className="mr-2 h-4 w-4 shrink-0 text-primary" />
+          <span className="truncate">Digitalizar</span>
         </Button>
       </div>
 
@@ -242,6 +274,15 @@ export function CompletionNaAttachments({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <DocumentScannerDialog
+        open={scannerOpen}
+        sourceFile={scannerSourceFile}
+        onOpenChange={(open) => {
+          setScannerOpen(open)
+          if (!open) setScannerSourceFile(null)
+        }}
+        onScan={(file) => onAddFiles([file])}
+      />
     </div>
   )
 }

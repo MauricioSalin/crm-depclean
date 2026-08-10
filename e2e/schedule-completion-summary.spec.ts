@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test"
 
+import type { ScheduleNaAttachmentRecord } from "@/lib/api/schedules"
 import { installApiMock, scheduleFixture } from "./support/api-mock"
 import { E2E_USER, installAuthenticatedSession } from "./support/session"
 
@@ -13,6 +14,107 @@ const completionEmployees = [
   { id: "employee-helper-1", name: "Ajudante Um", role: "Auxiliar", status: "active" },
   { id: "employee-helper-2", name: "Ajudante Dois", role: "Auxiliar", status: "active" },
 ] as const
+
+test("digitaliza uma foto e a anexa ao agendamento", async ({ page }) => {
+  const date = todayKey()
+  let uploadedScan = false
+  const scanSource = {
+    name: "nota-de-autorizacao.svg",
+    mimeType: "image/svg+xml",
+    buffer: Buffer.from(`
+      <svg xmlns="http://www.w3.org/2000/svg" width="600" height="800">
+        <rect width="600" height="800" fill="#efefef"/>
+        <rect x="30" y="20" width="540" height="760" fill="white" stroke="#111" stroke-width="4"/>
+        <text x="70" y="90" font-size="38" font-family="Arial" fill="#111">NOTA DE SERVIÇO</text>
+        <path d="M70 140H530M70 200H530M70 260H530M70 320H530" stroke="#222" stroke-width="3"/>
+      </svg>
+    `),
+  }
+  let inProgressSchedule = {
+    ...scheduleFixture,
+    date,
+    status: "in_progress" as const,
+    completionStartDate: date,
+    completionStartTime: "08:00",
+    naAttachments: [] as ScheduleNaAttachmentRecord[],
+  }
+
+  await installAuthenticatedSession(page)
+  await installApiMock(page)
+  await page.route("**/api/v1/schedules**", async (route) => {
+    const request = route.request()
+    const path = new URL(request.url()).pathname
+
+    if (request.method() === "GET" && path.endsWith("/schedules")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json; charset=utf-8",
+        body: JSON.stringify({ success: true, data: [inProgressSchedule] }),
+      })
+      return
+    }
+
+    if (request.method() === "POST" && path.endsWith(`/schedules/${inProgressSchedule.id}/na`)) {
+      uploadedScan = request.postDataBuffer()?.includes(Buffer.from("documento-digitalizado-")) ?? false
+      inProgressSchedule = {
+        ...inProgressSchedule,
+        naAttachments: [{
+          fileName: "documento-digitalizado-e2e.jpg",
+          documentUrl: "/files/documento-digitalizado-e2e.jpg",
+          mimeType: "image/jpeg",
+        }],
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json; charset=utf-8",
+        body: JSON.stringify({ success: true, data: inProgressSchedule }),
+      })
+      return
+    }
+
+    await route.fallback()
+  })
+
+  await page.goto(`/agenda?date=${date}`)
+  await page.getByRole("button", { name: /Condomínio E2E/ }).click()
+  const nativeChooserPromise = page.waitForEvent("filechooser")
+  await page.getByRole("button", { name: "Digitalizar", exact: true }).click()
+  const nativeChooser = await nativeChooserPromise
+  expect(await nativeChooser.element().getAttribute("accept")).toBe("image/*")
+  expect(await nativeChooser.element().getAttribute("capture")).toBeNull()
+  await nativeChooser.setFiles(scanSource)
+
+  const scanner = page.getByRole("dialog", { name: "Digitalizar documento" })
+  await expect(scanner).toBeVisible()
+  await expect(scanner.locator('input[type="file"]')).not.toHaveAttribute("capture")
+  await expect(scanner.getByRole("button", { name: /^Ajustar canto/ })).toHaveCount(4)
+  await expect(scanner.getByRole("button", { name: "Modificar foto", exact: true })).toBeVisible()
+  await expect(scanner.getByRole("button", { name: "Escolher foto", exact: true })).toHaveCount(0)
+  await expect(scanner.getByRole("button", { name: "Tirar outra", exact: true })).toHaveCount(0)
+
+  const modifyChooserPromise = page.waitForEvent("filechooser")
+  await scanner.getByRole("button", { name: "Modificar foto", exact: true }).click()
+  const modifyChooser = await modifyChooserPromise
+  expect(await modifyChooser.element().getAttribute("accept")).toBe("image/*")
+  expect(await modifyChooser.element().getAttribute("capture")).toBeNull()
+  await modifyChooser.setFiles(scanSource)
+  await expect(scanner.getByRole("button", { name: /^Ajustar canto/ })).toHaveCount(4)
+  await expect(scanner.getByRole("button", { name: "Documento", exact: true })).toHaveCount(0)
+  await expect(scanner.getByRole("button", { name: "Colorido", exact: true })).toHaveCount(0)
+  await expect(scanner.getByRole("button", { name: "Original", exact: true })).toHaveCount(0)
+
+  const digitalizeButton = scanner.getByRole("button", { name: "Digitalizar", exact: true })
+  await expect(digitalizeButton.locator("svg")).toHaveCount(0)
+  await digitalizeButton.click()
+  await expect(scanner.getByAltText("Documento digitalizado")).toBeVisible()
+
+  const sendButton = scanner.getByRole("button", { name: "Enviar", exact: true })
+  await expect(sendButton.locator("svg")).toHaveCount(0)
+  await sendButton.click()
+
+  await expect.poll(() => uploadedScan).toBe(true)
+  await expect(page.getByText("documento-digitalizado-e2e.jpg", { exact: true })).toBeVisible()
+})
 
 test("conclui o atendimento com motorista opcional, ajudantes e observações", async ({ page }) => {
   const date = todayKey()
