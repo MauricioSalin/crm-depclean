@@ -322,6 +322,10 @@ const organizationFixture = {
   },
   phone: "(51) 99999-9999",
   email: "contato@depclean.test",
+  financialSettings: {
+    installmentOverdueGraceDays: 5,
+    firstInstallmentOverdueGraceDays: 12,
+  },
   createdAt: NOW,
   updatedAt: NOW,
 }
@@ -560,6 +564,7 @@ export async function installApiMock(page: Page, currentUser: typeof E2E_USER = 
   const handleRoute = (route: Route) => handleApiRoute(route, currentUser)
   await page.route("http://localhost:3333/api/v1/**", handleRoute)
   await page.route("http://127.0.0.1:3333/api/v1/**", handleRoute)
+  await page.route("**/api/v1/**", handleRoute)
   await page.route("https://viacep.com.br/**", async (route) => {
     await route.fulfill({
       status: 200,

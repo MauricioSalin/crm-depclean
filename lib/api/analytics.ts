@@ -2,6 +2,8 @@ import { api } from "@/lib/api/client"
 
 export type MonthlyRevenuePoint = {
   month: string
+  dateFrom?: string
+  dateTo?: string
   value: number
   paidValue: number
   pendingValue: number
@@ -192,6 +194,7 @@ export type FinancialAnalyticsRecord = {
 export type DashboardAnalyticsRecord = {
   stats: DashboardStatsRecord
   monthlyRevenueData: MonthlyRevenuePoint[]
+  installments: FinancialInstallmentRecord[]
   servicesByPeriodData: ServicesByPeriodPoint[]
   servicesByStatusData: ServicesByStatusPoint[]
   servicesByTeamData: ServicesByTeamPoint[]

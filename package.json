@@ -5,7 +5,7 @@
   "packageManager": "pnpm@10.32.1",
   "scripts": {
     "build": "next build",
-    "dev": "next dev -p 3100",
+    "dev": "next dev --hostname 0.0.0.0 -p 3100",
     "lint": "eslint .",
     "start": "next start -p 3100",
     "test:e2e": "playwright test",

@@ -73,6 +73,10 @@ export type OrganizationSettingsRecord = {
   }
   phone: string
   email: string
+  financialSettings: {
+    installmentOverdueGraceDays: number
+    firstInstallmentOverdueGraceDays: number
+  }
   createdAt: string | null
   updatedAt: string | null
 }
@@ -217,7 +221,7 @@ export async function getOrganizationSettings() {
   return response.data
 }
 
-export async function updateOrganizationSettings(payload: Partial<Pick<OrganizationSettingsRecord, "legalName" | "cnpj" | "address" | "phone" | "email">>) {
+export async function updateOrganizationSettings(payload: Partial<Pick<OrganizationSettingsRecord, "legalName" | "cnpj" | "address" | "phone" | "email" | "financialSettings">>) {
   const response = await api.patch<{ success: true; data: OrganizationSettingsRecord }>("/settings/organization", payload)
   return response.data
 }

@@ -7,9 +7,25 @@ let handlingUnauthorizedSession = false
 const mutatingMethods = new Set(["post", "put", "patch", "delete"])
 const pendingMutationKeys = new Set<string>()
 const requestMutationKeys = new WeakMap<InternalAxiosRequestConfig, string>()
+const defaultApiBaseUrl = "http://localhost:3333/api/v1"
+
+export function resolveApiBaseUrl() {
+  const configuredApiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? defaultApiBaseUrl
+
+  if (process.env.NODE_ENV !== "development" || typeof window === "undefined") {
+    return configuredApiBaseUrl
+  }
+
+  const localApiUrl = new URL(window.location.origin)
+  localApiUrl.port = "3333"
+  localApiUrl.pathname = "/api/v1"
+  localApiUrl.search = ""
+  localApiUrl.hash = ""
+  return localApiUrl.toString().replace(/\/$/, "")
+}
 
 export const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3333/api/v1",
+  baseURL: resolveApiBaseUrl(),
   headers: {
     "Content-Type": "application/json",
   },
@@ -18,7 +34,7 @@ export const api = axios.create({
 export function buildApiFileUrl(path: string) {
   if (!path) return ""
   if (/^https?:\/\//i.test(path)) return path
-  const baseURL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3333/api/v1"
+  const baseURL = resolveApiBaseUrl()
   const origin = new URL(baseURL).origin
   return `${origin}${path.startsWith("/") ? path : `/${path}`}`
 }

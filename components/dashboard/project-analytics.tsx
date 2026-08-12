@@ -1,9 +1,15 @@
 "use client"
 
+import { useState } from "react"
 import {
   FinancialPeriodBarChart,
   ServicesPeriodLineChart,
+  type FinancialChartStatus,
 } from "@/components/analytics/operational-charts"
+import {
+  FinancialInstallmentsDialog,
+  type FinancialChartSelection,
+} from "@/components/dashboard/financial-installments-dialog"
 import { Card } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -11,17 +17,28 @@ import { getDashboardAnalytics, type DashboardAnalyticsParams } from "@/lib/api/
 import { useQuery } from "@tanstack/react-query"
 
 export function ProjectAnalytics(period: DashboardAnalyticsParams = {}) {
+  const [financialSelection, setFinancialSelection] = useState<FinancialChartSelection | null>(null)
   const dashboardQuery = useQuery({
     queryKey: ["analytics", "dashboard", period],
     queryFn: () => getDashboardAnalytics(period),
   })
   const isLoading = dashboardQuery.isLoading || (dashboardQuery.isFetching && !dashboardQuery.data)
   const monthlyRevenueData = dashboardQuery.data?.data.monthlyRevenueData ?? []
+  const installments = dashboardQuery.data?.data.installments ?? []
   const servicesByPeriodData = dashboardQuery.data?.data.servicesByPeriodData ?? []
 
+  const openFinancialDetails = (
+    selectedPeriod: (typeof monthlyRevenueData)[number],
+    status?: FinancialChartStatus,
+  ) => {
+    if (!selectedPeriod.dateFrom || !selectedPeriod.dateTo) return
+    setFinancialSelection({ period: selectedPeriod, status: status ?? "all" })
+  }
+
   return (
-    <Card className="flex h-full min-h-[360px] flex-col p-4 md:p-5">
-      <Tabs defaultValue="faturamento" className="flex h-full w-full flex-col">
+    <>
+      <Card className="flex h-full min-h-[360px] flex-col p-4 md:p-5">
+        <Tabs defaultValue="faturamento" className="flex h-full w-full flex-col">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h3 className="text-base font-semibold">Análise Operacional</h3>
           <TabsList className="grid w-full grid-cols-2 sm:w-auto">
@@ -40,7 +57,7 @@ export function ProjectAnalytics(period: DashboardAnalyticsParams = {}) {
                   ))}
                 </div>
               ) : (
-                <FinancialPeriodBarChart data={monthlyRevenueData} />
+                <FinancialPeriodBarChart data={monthlyRevenueData} onPeriodSelect={openFinancialDetails} />
               )}
             </div>
           </div>
@@ -65,7 +82,17 @@ export function ProjectAnalytics(period: DashboardAnalyticsParams = {}) {
             </div>
           </div>
         </TabsContent>
-      </Tabs>
-    </Card>
+        </Tabs>
+      </Card>
+
+      <FinancialInstallmentsDialog
+        key={financialSelection
+          ? `${financialSelection.period.dateFrom}-${financialSelection.period.dateTo}-${financialSelection.status}`
+          : "closed"}
+        selection={financialSelection}
+        installments={installments}
+        onClose={() => setFinancialSelection(null)}
+      />
+    </>
   )
 }

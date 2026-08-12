@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react"
-import { Bell, Building, Copy, Edit, Eye, EyeOff, Mail, MessageCircle, MoreHorizontal, RefreshCcw, Save, Search, Shield, Trash2, Users } from "lucide-react"
+import { Bell, Building, Copy, Edit, Eye, EyeOff, Mail, MessageCircle, MoreHorizontal, RefreshCcw, Save, Search, Settings2, Shield, Trash2, Users } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -76,7 +76,7 @@ export type SettingsCreateAction = "client-type" | "profile" | "user"
 export const SETTINGS_CREATE_ACTION_EVENT = "depclean:settings-create-action"
 
 const SETTINGS_CARDS = [
-  { id: "empresa" as SettingsSection, label: "Empresa", icon: Building, description: "Configure os dados da Depclean nos documentos", adminOnly: true },
+  { id: "empresa" as SettingsSection, label: "Empresa", icon: Building, description: "Configure os dados e regras gerais da Depclean", adminOnly: true },
   { id: "tipos-cliente" as SettingsSection, label: "Tipos de Cliente", icon: Building, description: "Categorize seus clientes por tipo" },
   { id: "permissoes" as SettingsSection, label: "Perfis de Permissões", icon: Shield, description: "Configure níveis de acesso ao sistema" },
   { id: "usuarios" as SettingsSection, label: "Usuários do Sistema", icon: Users, description: "Gerencie usuários e seus acessos" },
@@ -117,6 +117,8 @@ const CONTRACT_SIGNER_ROLE_LABELS: Record<ClientTypeRecord["contractSignerRole"]
   syndic: "Síndico",
 }
 const DEFAULT_CONTRACT_EXPIRATION_ALERT_DAYS: ContractExpirationAlertDay[] = [60, 30]
+const DEFAULT_INSTALLMENT_OVERDUE_GRACE_DAYS = 5
+const DEFAULT_FIRST_INSTALLMENT_OVERDUE_GRACE_DAYS = 12
 const EMPTY_ORGANIZATION_ADDRESS = {
   street: "",
   number: "",
@@ -264,6 +266,10 @@ export function ConfiguracoesContent() {
     phone: "",
     email: "",
   })
+  const [financialSettingsForm, setFinancialSettingsForm] = useState({
+    installmentOverdueGraceDays: DEFAULT_INSTALLMENT_OVERDUE_GRACE_DAYS,
+    firstInstallmentOverdueGraceDays: DEFAULT_FIRST_INSTALLMENT_OVERDUE_GRACE_DAYS,
+  })
   const [clientTypes, setClientTypes] = useState<ClientTypeRecord[]>([])
   const [permissionProfiles, setPermissionProfiles] = useState<PermissionProfileRecord[]>([])
   const [users, setUsers] = useState<UserRecord[]>([])
@@ -369,6 +375,10 @@ export function ConfiguracoesContent() {
           address: normalizeOrganizationAddress(organizationResponse.data.address),
           phone: formatPhone(organizationResponse.data.phone),
           email: organizationResponse.data.email,
+        })
+        setFinancialSettingsForm(organizationResponse.data.financialSettings ?? {
+          installmentOverdueGraceDays: DEFAULT_INSTALLMENT_OVERDUE_GRACE_DAYS,
+          firstInstallmentOverdueGraceDays: DEFAULT_FIRST_INSTALLMENT_OVERDUE_GRACE_DAYS,
         })
       }
       setClientTypes(response.data.clientTypes)
@@ -672,6 +682,30 @@ export function ConfiguracoesContent() {
       toast.success("Dados da empresa atualizados.", { id: toastId })
     } catch (error) {
       toast.error(getApiErrorMessage(error, "Não foi possível salvar os dados da empresa."), { id: toastId })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleFinancialSettingsSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!canManageSettings || saving) return
+
+    const values = Object.values(financialSettingsForm)
+    if (values.some((value) => !Number.isInteger(value) || value < 0 || value > 365)) {
+      toast.error("Informe prazos inteiros entre 0 e 365 dias.")
+      return
+    }
+
+    setSaving(true)
+    const toastId = toast.loading("Salvando configurações da empresa...")
+    try {
+      const response = await updateOrganizationSettings({ financialSettings: financialSettingsForm })
+      setOrganizationSettings(response.data)
+      setFinancialSettingsForm(response.data.financialSettings ?? financialSettingsForm)
+      toast.success("Configurações da empresa atualizadas.", { id: toastId })
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Não foi possível salvar as configurações da empresa."), { id: toastId })
     } finally {
       setSaving(false)
     }
@@ -1290,8 +1324,9 @@ export function ConfiguracoesContent() {
       </div>
 
       {activeSection === "empresa" && isAdmin && canManageSettings && (
-        <form autoComplete="off" noValidate onSubmit={handleOrganizationSubmit} className="space-y-4">
-          <Card>
+        <div className="space-y-4">
+          <form autoComplete="off" noValidate onSubmit={handleOrganizationSubmit}>
+            <Card>
             <CardHeader>
               <div className="flex items-center gap-3">
                 <div className="rounded-lg bg-primary/10 p-2 text-primary">
@@ -1419,8 +1454,73 @@ export function ConfiguracoesContent() {
                 </Button>
               </div>
             </CardContent>
-          </Card>
-        </form>
+            </Card>
+          </form>
+
+          <form autoComplete="off" noValidate onSubmit={handleFinancialSettingsSubmit}>
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-3">
+                  <div className="rounded-lg bg-primary/10 p-2 text-primary">
+                    <Settings2 className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-base">Configurações da empresa</CardTitle>
+                    <CardDescription>
+                      Centralize regras operacionais e futuras configurações gerais da empresa.
+                    </CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <div className="mb-4">
+                    <h3 className="font-medium">Parcelas vencidas</h3>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Defina quantos dias após o vencimento a parcela muda para vencida e pode gerar alerta ao cliente.
+                    </p>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="installment-overdue-grace-days">Prazo padrão (dias)</Label>
+                      <NumericInput
+                        id="installment-overdue-grace-days"
+                        className="bg-white"
+                        min={0}
+                        max={365}
+                        value={financialSettingsForm.installmentOverdueGraceDays}
+                        onValueChange={(value) => setFinancialSettingsForm((current) => ({
+                          ...current,
+                          installmentOverdueGraceDays: value,
+                        }))}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="first-installment-overdue-grace-days">Prazo da primeira parcela (dias)</Label>
+                      <NumericInput
+                        id="first-installment-overdue-grace-days"
+                        className="bg-white"
+                        min={0}
+                        max={365}
+                        value={financialSettingsForm.firstInstallmentOverdueGraceDays}
+                        onValueChange={(value) => setFinancialSettingsForm((current) => ({
+                          ...current,
+                          firstInstallmentOverdueGraceDays: value,
+                        }))}
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="flex justify-end">
+                  <Button type="submit" disabled={saving} className="gap-2">
+                    <Save className="h-4 w-4" />
+                    Salvar
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </form>
+        </div>
       )}
 
       {activeSection === "tipos-cliente" && (

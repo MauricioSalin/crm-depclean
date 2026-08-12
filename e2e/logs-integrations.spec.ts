@@ -28,8 +28,8 @@ test("exibe detalhes e anexo do WhatsApp junto ao envio de contrato da ClickSign
           items: [
             {
               id: "log-whatsapp-notif-1",
-              type: "send",
-              typeLabel: "Envio",
+              type: "whatsapp",
+              typeLabel: "WhatsApp",
               status: "success",
               module: "whatsapp",
               moduleLabel: "WhatsApp",
@@ -128,6 +128,13 @@ test("exibe detalhes e anexo do WhatsApp junto ao envio de contrato da ClickSign
   await expect(page.getByText("Assinatura pendente").first()).toBeVisible()
   await expect(page.getByText("Envio em ClickSign").first()).toBeVisible()
   await expect(page.getByText("Sucesso", { exact: true }).first()).toBeVisible()
+  const whatsappRow = page.getByRole("button", { name: /Assinatura pendente/ })
+  await expect(whatsappRow.getByText("WhatsApp", { exact: true })).toHaveClass(/bg-green-100/)
+
+  const typeFilter = page.locator("label").filter({ hasText: /^Tipo$/ }).locator("..").getByRole("combobox")
+  await typeFilter.click()
+  await expect(page.getByRole("option", { name: "WhatsApp", exact: true })).toBeVisible()
+  await page.keyboard.press("Escape")
 
   await page.getByText("Assinatura pendente").first().click()
   await expect(page.getByText("Seu contrato está pronto para assinatura.", { exact: true })).toBeVisible()
@@ -156,8 +163,8 @@ test("simula o template exato e informa quando a mensagem não possui anexos", a
         data: {
           items: [{
             id: "log-whatsapp-account-access",
-            type: "send",
-            typeLabel: "Envio",
+            type: "whatsapp",
+            typeLabel: "WhatsApp",
             status: "success",
             module: "whatsapp",
             moduleLabel: "WhatsApp",

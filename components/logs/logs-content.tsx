@@ -54,6 +54,7 @@ const LOG_TYPE_OPTIONS = [
   { value: "upload", label: "Upload" },
   { value: "download", label: "Download" },
   { value: "send", label: "Envio" },
+  { value: "whatsapp", label: "WhatsApp" },
   { value: "duplicate", label: "Duplicação" },
   { value: "revoke", label: "Revogação" },
   { value: "execute", label: "Execução" },
@@ -95,6 +96,7 @@ const TYPE_BADGE_CLASS: Record<string, string> = {
   start: "bg-lime-100 text-lime-700 hover:bg-lime-100",
   update: "bg-yellow-100 text-yellow-700 hover:bg-yellow-100",
   upload: "bg-pink-100 text-pink-700 hover:bg-pink-100",
+  whatsapp: "bg-green-100 text-green-700 hover:bg-green-100",
 }
 
 const AUDIT_LOG_TABLE_SORT_FIELDS = ["createdAt", "type", "title", "clientName", "actorName", "status"] as const
