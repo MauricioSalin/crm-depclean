@@ -69,7 +69,7 @@ test("preenche o vencimento nas edições abertas por Agendamentos e Agenda", as
   await expect(page.getByRole("button", { name: "Data de vencimento" })).toContainText("20/08/2026")
 })
 
-test("lista a cobrança avulsa no perfil e permite marcar como paga ou não paga", async ({ page }) => {
+test("lista a cobrança avulsa em Extras e permite editar, pagar ou marcar como não paga", async ({ page }) => {
   type BillingScheduleState = Omit<
     typeof scheduleFixture,
     | "id"
@@ -150,14 +150,17 @@ test("lista a cobrança avulsa no perfil e permite marcar como paga ou não paga
   await expect(agendaRow.getByText("Vencida", { exact: true })).toBeVisible()
 
   await page.getByRole("tab", { name: /Parcelas/ }).click()
+  await expect(page.getByRole("row").filter({ hasText: "Agendamento avulso" })).toHaveCount(0)
+
+  await page.getByRole("tab", { name: /Extras/ }).click()
   const chargeRow = page.getByRole("row").filter({ hasText: "Agendamento avulso" })
-  await expect(chargeRow.getByText("Avulsa", { exact: true })).toBeVisible()
+  await expect(chargeRow.getByText(scheduleState.serviceTypeName, { exact: true })).toBeVisible()
   await expect(chargeRow.getByText("R$ 5.040,00", { exact: true })).toBeVisible()
   await expect(chargeRow.getByText("20/08/2026", { exact: true })).toBeVisible()
 
-  await chargeRow.getByRole("button").click()
-  await page.getByRole("menuitem", { name: "Editar parcela" }).click()
-  const editDialog = page.getByRole("dialog", { name: "Editar parcela 1" })
+  await chargeRow.getByRole("button", { name: "Abrir ações da cobrança do agendamento avulso" }).click()
+  await page.getByRole("menuitem", { name: "Editar cobrança" }).click()
+  const editDialog = page.getByRole("dialog", { name: "Editar cobrança avulsa" })
   const valueInput = editDialog.getByRole("textbox", { name: "Valor", exact: true })
   await expect(valueInput).toBeEnabled()
   await valueInput.press("Backspace")

@@ -67,6 +67,7 @@ import {
   updateClientExtraStatus,
   uploadClientAttachment,
   type ClientAttachmentRecord,
+  type ClientExtraRecord,
   type ClientExtraStatus,
 } from "@/lib/api/clients"
 import {
@@ -122,9 +123,13 @@ type ClientScheduleChargeRecord = {
   billingStatus: ScheduleRecord["billingStatus"]
   paidDate?: string
   paidValue?: number
+  createdDate: string
+  description: string
 }
 
 type ClientInstallmentRecord = ClientContractInstallmentRecord | ClientScheduleChargeRecord
+type ClientStoredExtraRecord = ClientExtraRecord & { source: "extra" }
+type ClientProfileExtraRecord = ClientStoredExtraRecord | ClientScheduleChargeRecord
 
 const clientProfileTabs = ["dados", "contratos", "parcelas", "extras", "servicos", "agenda", "anexos"] as const
 
@@ -690,17 +695,17 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
 
       return updateScheduleBilling(scheduleId, payload)
     },
-    onMutate: () => ({ toastId: toast.loading("Atualizando parcela...") }),
+    onMutate: () => ({ toastId: toast.loading("Atualizando cobrança...") }),
     onSuccess: async (_data, _variables, context) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["schedules"] }),
         queryClient.invalidateQueries({ queryKey: ["analytics"] }),
       ])
       setEditingInstallment(null)
-      toast.success("Parcela do agendamento atualizada.", { id: context?.toastId })
+      toast.success("Cobrança do agendamento atualizada.", { id: context?.toastId })
     },
     onError: (error, _variables, context) => {
-      toast.error(getApiErrorMessage(error, "Não foi possível atualizar a parcela do agendamento."), {
+      toast.error(getApiErrorMessage(error, "Não foi possível atualizar a cobrança do agendamento."), {
         id: context?.toastId,
       })
     },
@@ -909,17 +914,20 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
     }
   }, [informativePdfJob])
 
-  const allInstallments = useMemo(() => {
-    const contractInstallments: ClientContractInstallmentRecord[] = clientContracts.flatMap((contract) =>
+  const allInstallments = useMemo<ClientContractInstallmentRecord[]>(
+    () => clientContracts.flatMap((contract) =>
       contract.installments.map((installment) => ({
-        ...installment,
-        source: "contract" as const,
-        contractId: contract.id,
-        contractNumber: contract.contractNumber,
-        installmentsCount: contract.installmentsCount,
-      })),
-    )
-    const scheduleCharges: ClientScheduleChargeRecord[] = (canViewFinancial ? scheduledServices : [])
+          ...installment,
+          source: "contract" as const,
+          contractId: contract.id,
+          contractNumber: contract.contractNumber,
+          installmentsCount: contract.installmentsCount,
+        })),
+      ),
+    [clientContracts],
+  )
+  const scheduleCharges = useMemo<ClientScheduleChargeRecord[]>(
+    () => (canViewFinancial ? scheduledServices : [])
       .filter((schedule) => schedule.isManual && schedule.billable && schedule.value > 0)
       .map((schedule) => ({
         source: "schedule",
@@ -935,15 +943,27 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
         billingStatus: schedule.billingStatus,
         paidDate: schedule.paidDate,
         paidValue: schedule.paidValue,
-      }))
-
-    return [...contractInstallments, ...scheduleCharges]
-  }, [canViewFinancial, clientContracts, scheduledServices])
+        createdDate: schedule.createdAt,
+        description: schedule.serviceTypeName,
+      })),
+    [canViewFinancial, scheduledServices],
+  )
+  const allExtras = useMemo<ClientProfileExtraRecord[]>(
+    () => [
+      ...clientExtras.map((extra) => ({ ...extra, source: "extra" as const })),
+      ...scheduleCharges,
+    ].sort((first, second) => String(second.createdDate).localeCompare(String(first.createdDate))),
+    [clientExtras, scheduleCharges],
+  )
+  const financialItems = useMemo<ClientInstallmentRecord[]>(
+    () => [...allInstallments, ...scheduleCharges],
+    [allInstallments, scheduleCharges],
+  )
   const installmentsTotalPages = Math.max(1, Math.ceil(allInstallments.length / installmentsPageSize))
   const servicesTotalPages = Math.max(1, Math.ceil(clientServices.length / servicesPageSize))
   const agendaTotalPages = Math.max(1, Math.ceil(scheduledServices.length / agendaPageSize))
   const attachmentsTotalPages = Math.max(1, Math.ceil(clientAttachments.length / attachmentsPageSize))
-  const extrasTotalPages = Math.max(1, Math.ceil(clientExtras.length / extrasPageSize))
+  const extrasTotalPages = Math.max(1, Math.ceil(allExtras.length / extrasPageSize))
   useEffect(() => {
     if (installmentsPage > installmentsTotalPages) setInstallmentsPage(installmentsTotalPages)
   }, [installmentsPage, installmentsTotalPages])
@@ -964,10 +984,10 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
     if (extrasPage > extrasTotalPages) setExtrasPage(extrasTotalPages)
   }, [extrasPage, extrasTotalPages])
 
-  const paidInstallments = allInstallments.filter((installment) => installment.status === "paid")
-  const lateInstallments = allInstallments.filter((installment) => installment.status === "late")
-  const overdueInstallments = allInstallments.filter((installment) => installment.status === "overdue")
-  const pendingInstallments = allInstallments.filter((installment) => installment.status === "pending")
+  const paidInstallments = financialItems.filter((installment) => installment.status === "paid")
+  const lateInstallments = financialItems.filter((installment) => installment.status === "late")
+  const overdueInstallments = financialItems.filter((installment) => installment.status === "overdue")
+  const pendingInstallments = financialItems.filter((installment) => installment.status === "pending")
   const totalPaid = paidInstallments.reduce(
     (accumulator, installment) => accumulator + (installment.paidValue ?? installment.value),
     0,
@@ -1288,7 +1308,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                 className={clientProfileTabTriggerClassName}
               >
                 <DollarSign className="h-4 w-4" />
-                <span className="font-semibold">Extras ({clientExtras.length})</span>
+                <span className="font-semibold">Extras ({allExtras.length})</span>
               </TabsTrigger>
             ) : null}
             {canViewServices ? (
@@ -1540,25 +1560,22 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                     <TableHead>Valor</TableHead>
                     <TableHead className="hidden md:table-cell">Vencimento</TableHead>
                     <TableHead>Status</TableHead>
-                    {canManageInstallments || hasExtraManagementPermission ? <TableHead className="text-right">Ações</TableHead> : null}
+                    {canManageInstallments ? <TableHead className="text-right">Ações</TableHead> : null}
                   </TableRow>
                 </TableHeader>
                 <TableBody page={allInstallments.length > 0 ? installmentsPage : undefined} pageSize={allInstallments.length > 0 ? installmentsPageSize : undefined}>
                   {allInstallments.length === 0 ? (
-                    <TableEmptyState colSpan={canManageInstallments || hasExtraManagementPermission ? 6 : 5} icon={DollarSign} title="Nenhuma parcela encontrada." />
+                    <TableEmptyState colSpan={canManageInstallments ? 6 : 5} icon={DollarSign} title="Nenhuma parcela encontrada." />
                   ) : (
                     allInstallments.map((installment) => (
                       <TableRow key={`${installment.source}:${installment.id}`}>
                         <TableCell className="text-sm">{formatContractNumber(installment.contractNumber)}</TableCell>
-                        <TableCell>
-                          {installment.source === "schedule" ? "Avulsa" : `${installment.number}/${installment.installmentsCount}`}
-                        </TableCell>
+                        <TableCell>{`${installment.number}/${installment.installmentsCount}`}</TableCell>
                         <TableCell className="font-medium">{formatCurrency(installment.value)}</TableCell>
                         <TableCell className="hidden md:table-cell text-sm">{formatDate(installment.dueDate)}</TableCell>
                         <TableCell>{getInstallmentStatusBadge(installment.status)}</TableCell>
-                        {canManageInstallments || hasExtraManagementPermission ? (
+                        {canManageInstallments ? (
                           <TableCell className="text-right">
-                            {(installment.source === "contract" ? canManageInstallments : hasExtraManagementPermission) ? (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" size="icon">
@@ -1567,7 +1584,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
                                 <DropdownMenuItem
-                                  disabled={installmentStatusMutation.isPending || scheduleBillingEditMutation.isPending}
+                                  disabled={installmentStatusMutation.isPending}
                                   onClick={() => setEditingInstallment(installment)}
                                 >
                                   <Pencil className="mr-2 h-4 w-4" />
@@ -1575,16 +1592,16 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                                 </DropdownMenuItem>
                                 {installment.status !== "paid" ? (
                                   <DropdownMenuItem
-                                    disabled={installmentStatusMutation.isPending || scheduleBillingStatusMutation.isPending}
+                                    disabled={installmentStatusMutation.isPending}
                                     onClick={() => setInstallmentStatus(installment, "paid")}
                                   >
                                     <CheckCircle className="mr-2 h-4 w-4" />
                                     Marcar como paga
                                   </DropdownMenuItem>
                                 ) : null}
-                                {installment.source === "contract" && installment.status !== "overdue" ? (
+                                {installment.status !== "overdue" ? (
                                   <DropdownMenuItem
-                                    disabled={installmentStatusMutation.isPending || scheduleBillingStatusMutation.isPending}
+                                    disabled={installmentStatusMutation.isPending}
                                     onClick={() => setInstallmentStatus(installment, "overdue")}
                                   >
                                     <AlertTriangle className="mr-2 h-4 w-4" />
@@ -1593,16 +1610,15 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                                 ) : null}
                                 {installment.status !== "pending" ? (
                                   <DropdownMenuItem
-                                    disabled={installmentStatusMutation.isPending || scheduleBillingStatusMutation.isPending}
+                                    disabled={installmentStatusMutation.isPending}
                                     onClick={() => setInstallmentStatus(installment, "pending")}
                                   >
                                     <Clock className="mr-2 h-4 w-4" />
-                                    {installment.source === "schedule" ? "Marcar como não paga" : "Marcar como pendente"}
+                                    Marcar como pendente
                                   </DropdownMenuItem>
                                 ) : null}
                               </DropdownMenuContent>
                             </DropdownMenu>
-                            ) : null}
                           </TableCell>
                         ) : null}
                       </TableRow>
@@ -1643,56 +1659,95 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                   </TableRow>
                 </TableHeader>
                 <TableBody
-                  page={!extrasQuery.isLoading && clientExtras.length > 0 ? extrasPage : undefined}
-                  pageSize={!extrasQuery.isLoading && clientExtras.length > 0 ? extrasPageSize : undefined}
+                  page={!extrasQuery.isLoading && allExtras.length > 0 ? extrasPage : undefined}
+                  pageSize={!extrasQuery.isLoading && allExtras.length > 0 ? extrasPageSize : undefined}
                 >
-                  {clientExtras.map((extra) => (
-                    <TableRow key={extra.id}>
+                  {allExtras.map((extra) => (
+                    <TableRow key={`${extra.source}:${extra.id}`}>
                       <TableCell className="text-sm">{formatDate(extra.createdDate)}</TableCell>
                       <TableCell className="min-w-64 max-w-md whitespace-normal text-sm">
-                        {extra.description || "Sem descrição"}
+                        {extra.source === "schedule" ? (
+                          <div>
+                            <p className="font-medium">Agendamento avulso</p>
+                            <p className="text-xs text-muted-foreground">{extra.description}</p>
+                          </div>
+                        ) : extra.description || "Sem descrição"}
                       </TableCell>
                       <TableCell className="font-medium">{formatCurrency(extra.value)}</TableCell>
                       <TableCell className="text-sm">{formatDate(extra.dueDate)}</TableCell>
                       <TableCell>{getClientExtraStatusBadge(extra.status)}</TableCell>
                       {canManageExtras ? (
                         <TableCell className="text-right">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                disabled={updateExtraStatusMutation.isPending}
-                                title="Alterar status"
-                              >
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => updateExtraStatusMutation.mutate({ extraId: extra.id, status: "paid" })}>
-                                Marcar como paga
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => updateExtraStatusMutation.mutate({ extraId: extra.id, status: "pending" })}>
-                                Marcar como pendente
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => updateExtraStatusMutation.mutate({ extraId: extra.id, status: "late" })}>
-                                Marcar como atrasada
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => updateExtraStatusMutation.mutate({ extraId: extra.id, status: "overdue" })}>
-                                Marcar como vencida
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => updateExtraStatusMutation.mutate({ extraId: extra.id, status: "cancelled" })}>
-                                Marcar como cancelada
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                          {extra.source === "schedule" ? (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  disabled={scheduleBillingStatusMutation.isPending || scheduleBillingEditMutation.isPending}
+                                  aria-label="Abrir ações da cobrança do agendamento avulso"
+                                >
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => setEditingInstallment(extra)}>
+                                  <Pencil className="mr-2 h-4 w-4" />
+                                  Editar cobrança
+                                </DropdownMenuItem>
+                                {extra.status !== "paid" ? (
+                                  <DropdownMenuItem onClick={() => setInstallmentStatus(extra, "paid")}>
+                                    <CheckCircle className="mr-2 h-4 w-4" />
+                                    Marcar como paga
+                                  </DropdownMenuItem>
+                                ) : null}
+                                {extra.status !== "pending" ? (
+                                  <DropdownMenuItem onClick={() => setInstallmentStatus(extra, "pending")}>
+                                    <Clock className="mr-2 h-4 w-4" />
+                                    Marcar como não paga
+                                  </DropdownMenuItem>
+                                ) : null}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          ) : (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  disabled={updateExtraStatusMutation.isPending}
+                                  title="Alterar status"
+                                >
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => updateExtraStatusMutation.mutate({ extraId: extra.id, status: "paid" })}>
+                                  Marcar como paga
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => updateExtraStatusMutation.mutate({ extraId: extra.id, status: "pending" })}>
+                                  Marcar como pendente
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => updateExtraStatusMutation.mutate({ extraId: extra.id, status: "late" })}>
+                                  Marcar como atrasada
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => updateExtraStatusMutation.mutate({ extraId: extra.id, status: "overdue" })}>
+                                  Marcar como vencida
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => updateExtraStatusMutation.mutate({ extraId: extra.id, status: "cancelled" })}>
+                                  Marcar como cancelada
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          )}
                         </TableCell>
                       ) : null}
                     </TableRow>
                   ))}
 
-                  {!extrasQuery.isLoading && clientExtras.length === 0 ? (
+                  {!extrasQuery.isLoading && allExtras.length === 0 ? (
                     <TableEmptyState
                       colSpan={canManageExtras ? 6 : 5}
                       icon={DollarSign}
@@ -1716,12 +1771,12 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                 </TableBody>
               </Table>
             </div>
-            {!extrasQuery.isLoading && clientExtras.length > 0 ? (
+            {!extrasQuery.isLoading && allExtras.length > 0 ? (
               <DataPagination
                 currentPage={extrasPage}
                 totalPages={extrasTotalPages}
                 pageSize={extrasPageSize}
-                totalItems={clientExtras.length}
+                totalItems={allExtras.length}
                 onPageChange={setExtrasPage}
                 onPageSizeChange={(size) => {
                   setExtrasPageSize(size)
@@ -1986,6 +2041,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
         open={Boolean(editingInstallment)}
         isSaving={installmentStatusMutation.isPending || scheduleBillingEditMutation.isPending}
         valueEditable={editingInstallment?.source === "schedule"}
+        title={editingInstallment?.source === "schedule" ? "Editar cobrança avulsa" : undefined}
         onOpenChange={(open) => {
           if (!open) setEditingInstallment(null)
         }}

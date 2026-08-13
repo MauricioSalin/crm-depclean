@@ -26,6 +26,7 @@ type InstallmentEditDialogProps = {
   open: boolean
   isSaving: boolean
   valueEditable?: boolean
+  title?: string
   onOpenChange: (open: boolean) => void
   onSave: (payload: UpdateContractInstallmentPayload, value?: number) => void
 }
@@ -40,6 +41,7 @@ export function InstallmentEditDialog({
   open,
   isSaving,
   valueEditable = false,
+  title,
   onOpenChange,
   onSave,
 }: InstallmentEditDialogProps) {
@@ -103,7 +105,7 @@ export function InstallmentEditDialog({
     >
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Editar parcela {installment?.number ?? ""}</DialogTitle>
+          <DialogTitle>{title ?? `Editar parcela ${installment?.number ?? ""}`}</DialogTitle>
           <DialogDescription>
             {valueEditable
               ? "Altere o valor, o vencimento, a data de pagamento e o status da cobrança do agendamento."
