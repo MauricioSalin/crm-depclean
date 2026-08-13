@@ -78,7 +78,7 @@ import {
   type UpdateContractInstallmentPayload,
 } from "@/lib/api/contracts"
 import { getApiErrorMessage } from "@/lib/api/errors"
-import { listSchedules, type ScheduleRecord } from "@/lib/api/schedules"
+import { listSchedules, updateScheduleBilling, type ScheduleRecord } from "@/lib/api/schedules"
 import { listTemplates, type TemplateRecord } from "@/lib/api/templates"
 import {
   getClicksignContractStatusLabel,
@@ -101,11 +101,30 @@ interface ClientProfileProps {
   clientId: string
 }
 
-type ClientInstallmentRecord = ContractInstallmentRecord & {
+type ClientContractInstallmentRecord = ContractInstallmentRecord & {
+  source: "contract"
   contractId: string
   contractNumber: string
   installmentsCount: number
 }
+
+type ClientScheduleChargeRecord = {
+  source: "schedule"
+  id: string
+  scheduleId: string
+  contractId: ""
+  contractNumber: "Agendamento avulso"
+  number: 1
+  installmentsCount: 1
+  value: number
+  dueDate: string
+  status: ScheduleRecord["effectiveBillingStatus"]
+  billingStatus: ScheduleRecord["billingStatus"]
+  paidDate?: string
+  paidValue?: number
+}
+
+type ClientInstallmentRecord = ClientContractInstallmentRecord | ClientScheduleChargeRecord
 
 const clientProfileTabs = ["dados", "contratos", "parcelas", "extras", "servicos", "agenda", "anexos"] as const
 
@@ -388,6 +407,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
   const canEditContracts = useHasAnyPermission(["contracts_edit"])
   const canViewServices = useHasAnyPermission(["services_view", "services_manage"])
   const canViewAgenda = useHasAnyPermission(["agenda_own_view", "agenda_view"])
+  const canViewFinancial = useHasAnyPermission(["financial_view", "financial_manage"])
   const hasExtraManagementPermission = useHasAnyPermission(["financial_manage"])
   const canManageInstallments = canViewContracts && canEditContracts
   const canManageExtras = canViewContracts && hasExtraManagementPermission
@@ -622,6 +642,69 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
       })
     },
   })
+  const scheduleBillingStatusMutation = useMutation({
+    mutationFn: ({
+      scheduleId,
+      status,
+      value,
+    }: {
+      scheduleId: string
+      status: "pending" | "paid" | "overdue"
+      value: number
+    }) => {
+      if (!hasExtraManagementPermission) {
+        throw new Error("Sem permissão para alterar cobranças de agendamentos.")
+      }
+
+      return updateScheduleBilling(scheduleId, {
+        billingStatus: status,
+        paidDate: status === "paid" ? new Date().toISOString() : undefined,
+        paidValue: status === "paid" ? value : undefined,
+      })
+    },
+    onMutate: () => ({ toastId: toast.loading("Atualizando cobrança...") }),
+    onSuccess: async (_data, _variables, context) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["schedules"] }),
+        queryClient.invalidateQueries({ queryKey: ["analytics"] }),
+      ])
+      toast.success("Cobrança do agendamento atualizada.", { id: context?.toastId })
+    },
+    onError: (error, _variables, context) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível atualizar a cobrança."), {
+        id: context?.toastId,
+      })
+    },
+  })
+  const scheduleBillingEditMutation = useMutation({
+    mutationFn: ({
+      scheduleId,
+      payload,
+    }: {
+      scheduleId: string
+      payload: Parameters<typeof updateScheduleBilling>[1]
+    }) => {
+      if (!hasExtraManagementPermission) {
+        throw new Error("Sem permissão para editar cobranças de agendamentos.")
+      }
+
+      return updateScheduleBilling(scheduleId, payload)
+    },
+    onMutate: () => ({ toastId: toast.loading("Atualizando parcela...") }),
+    onSuccess: async (_data, _variables, context) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["schedules"] }),
+        queryClient.invalidateQueries({ queryKey: ["analytics"] }),
+      ])
+      setEditingInstallment(null)
+      toast.success("Parcela do agendamento atualizada.", { id: context?.toastId })
+    },
+    onError: (error, _variables, context) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível atualizar a parcela do agendamento."), {
+        id: context?.toastId,
+      })
+    },
+  })
   const [installmentsPage, setInstallmentsPage] = useState(1)
   const [installmentsPageSize, setInstallmentsPageSize] = useState(10)
   const [servicesPage, setServicesPage] = useState(1)
@@ -634,11 +717,12 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
   const [extrasPageSize, setExtrasPageSize] = useState(10)
   const visibleTabs = useMemo<ClientProfileTab[]>(() => {
     const tabs: ClientProfileTab[] = ["dados"]
-    if (canViewContracts) tabs.push("contratos", "parcelas", "extras", "anexos")
+    if (canViewContracts) tabs.push("contratos", "extras", "anexos")
+    if (canViewContracts || canViewFinancial) tabs.push("parcelas")
     if (canViewServices) tabs.push("servicos")
     if (canViewAgenda) tabs.push("agenda")
     return tabs
-  }, [canViewAgenda, canViewContracts, canViewServices])
+  }, [canViewAgenda, canViewContracts, canViewFinancial, canViewServices])
   const visibleTabSet = useMemo(() => new Set(visibleTabs), [visibleTabs])
   const requestedTab = getClientProfileTabFromUrl(searchParams.get("tab"))
   const activeTab = visibleTabSet.has(requestedTab) ? requestedTab : defaultClientProfileTab
@@ -826,15 +910,35 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
   }, [informativePdfJob])
 
   const allInstallments = useMemo(() => {
-    return clientContracts.flatMap((contract) =>
+    const contractInstallments: ClientContractInstallmentRecord[] = clientContracts.flatMap((contract) =>
       contract.installments.map((installment) => ({
         ...installment,
+        source: "contract" as const,
         contractId: contract.id,
         contractNumber: contract.contractNumber,
         installmentsCount: contract.installmentsCount,
       })),
     )
-  }, [clientContracts])
+    const scheduleCharges: ClientScheduleChargeRecord[] = (canViewFinancial ? scheduledServices : [])
+      .filter((schedule) => schedule.isManual && schedule.billable && schedule.value > 0)
+      .map((schedule) => ({
+        source: "schedule",
+        id: `schedule-${schedule.id}`,
+        scheduleId: schedule.id,
+        contractId: "",
+        contractNumber: "Agendamento avulso",
+        number: 1,
+        installmentsCount: 1,
+        value: schedule.value,
+        dueDate: schedule.billingDueDate ?? schedule.date,
+        status: schedule.status === "cancelled" ? "cancelled" : schedule.effectiveBillingStatus,
+        billingStatus: schedule.billingStatus,
+        paidDate: schedule.paidDate,
+        paidValue: schedule.paidValue,
+      }))
+
+    return [...contractInstallments, ...scheduleCharges]
+  }, [canViewFinancial, clientContracts, scheduledServices])
   const installmentsTotalPages = Math.max(1, Math.ceil(allInstallments.length / installmentsPageSize))
   const servicesTotalPages = Math.max(1, Math.ceil(clientServices.length / servicesPageSize))
   const agendaTotalPages = Math.max(1, Math.ceil(scheduledServices.length / agendaPageSize))
@@ -958,8 +1062,18 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
     installment: ClientInstallmentRecord,
     status: ContractInstallmentRecord["status"],
   ) => {
-    if (!canManageInstallments) return
-    if (installmentStatusMutation.isPending) return
+    if (installment.source === "schedule") {
+      if (!hasExtraManagementPermission || scheduleBillingStatusMutation.isPending) return
+      if (status !== "pending" && status !== "paid" && status !== "overdue") return
+      scheduleBillingStatusMutation.mutate({
+        scheduleId: installment.scheduleId,
+        status,
+        value: installment.value,
+      })
+      return
+    }
+
+    if (!canManageInstallments || installmentStatusMutation.isPending) return
     installmentStatusMutation.mutate({
       contractId: installment.contractId,
       installmentId: installment.id,
@@ -1148,32 +1262,34 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
               <span className="font-semibold">Dados</span>
             </TabsTrigger>
             {canViewContracts ? (
-              <>
-                <TabsTrigger
-                  onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
-                  value="contratos"
-                  className={clientProfileTabTriggerClassName}
-                >
-                  <FileText className="h-4 w-4" />
-                  <span className="font-semibold">Contratos ({clientContracts.length})</span>
-                </TabsTrigger>
-                <TabsTrigger
-                  onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
-                  value="parcelas"
-                  className={clientProfileTabTriggerClassName}
-                >
-                  <DollarSign className="h-4 w-4" />
-                  <span className="font-semibold">Parcelas ({allInstallments.length})</span>
-                </TabsTrigger>
-                <TabsTrigger
-                  onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
-                  value="extras"
-                  className={clientProfileTabTriggerClassName}
-                >
-                  <DollarSign className="h-4 w-4" />
-                  <span className="font-semibold">Extras ({clientExtras.length})</span>
-                </TabsTrigger>
-              </>
+              <TabsTrigger
+                onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
+                value="contratos"
+                className={clientProfileTabTriggerClassName}
+              >
+                <FileText className="h-4 w-4" />
+                <span className="font-semibold">Contratos ({clientContracts.length})</span>
+              </TabsTrigger>
+            ) : null}
+            {canViewContracts || canViewFinancial ? (
+              <TabsTrigger
+                onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
+                value="parcelas"
+                className={clientProfileTabTriggerClassName}
+              >
+                <DollarSign className="h-4 w-4" />
+                <span className="font-semibold">Parcelas ({allInstallments.length})</span>
+              </TabsTrigger>
+            ) : null}
+            {canViewContracts ? (
+              <TabsTrigger
+                onFocus={(event) => event.currentTarget.focus({ preventScroll: true })}
+                value="extras"
+                className={clientProfileTabTriggerClassName}
+              >
+                <DollarSign className="h-4 w-4" />
+                <span className="font-semibold">Extras ({clientExtras.length})</span>
+              </TabsTrigger>
             ) : null}
             {canViewServices ? (
               <TabsTrigger
@@ -1424,24 +1540,25 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                     <TableHead>Valor</TableHead>
                     <TableHead className="hidden md:table-cell">Vencimento</TableHead>
                     <TableHead>Status</TableHead>
-                    {canManageInstallments ? <TableHead className="text-right">Ações</TableHead> : null}
+                    {canManageInstallments || hasExtraManagementPermission ? <TableHead className="text-right">Ações</TableHead> : null}
                   </TableRow>
                 </TableHeader>
                 <TableBody page={allInstallments.length > 0 ? installmentsPage : undefined} pageSize={allInstallments.length > 0 ? installmentsPageSize : undefined}>
                   {allInstallments.length === 0 ? (
-                    <TableEmptyState colSpan={canManageInstallments ? 6 : 5} icon={DollarSign} title="Nenhuma parcela encontrada." />
+                    <TableEmptyState colSpan={canManageInstallments || hasExtraManagementPermission ? 6 : 5} icon={DollarSign} title="Nenhuma parcela encontrada." />
                   ) : (
                     allInstallments.map((installment) => (
-                      <TableRow key={`${installment.contractId}:${installment.id}`}>
+                      <TableRow key={`${installment.source}:${installment.id}`}>
                         <TableCell className="text-sm">{formatContractNumber(installment.contractNumber)}</TableCell>
                         <TableCell>
-                          {installment.number}/{installment.installmentsCount}
+                          {installment.source === "schedule" ? "Avulsa" : `${installment.number}/${installment.installmentsCount}`}
                         </TableCell>
                         <TableCell className="font-medium">{formatCurrency(installment.value)}</TableCell>
                         <TableCell className="hidden md:table-cell text-sm">{formatDate(installment.dueDate)}</TableCell>
                         <TableCell>{getInstallmentStatusBadge(installment.status)}</TableCell>
-                        {canManageInstallments ? (
+                        {canManageInstallments || hasExtraManagementPermission ? (
                           <TableCell className="text-right">
+                            {(installment.source === "contract" ? canManageInstallments : hasExtraManagementPermission) ? (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" size="icon">
@@ -1450,7 +1567,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
                                 <DropdownMenuItem
-                                  disabled={installmentStatusMutation.isPending}
+                                  disabled={installmentStatusMutation.isPending || scheduleBillingEditMutation.isPending}
                                   onClick={() => setEditingInstallment(installment)}
                                 >
                                   <Pencil className="mr-2 h-4 w-4" />
@@ -1458,16 +1575,16 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                                 </DropdownMenuItem>
                                 {installment.status !== "paid" ? (
                                   <DropdownMenuItem
-                                    disabled={installmentStatusMutation.isPending}
+                                    disabled={installmentStatusMutation.isPending || scheduleBillingStatusMutation.isPending}
                                     onClick={() => setInstallmentStatus(installment, "paid")}
                                   >
                                     <CheckCircle className="mr-2 h-4 w-4" />
                                     Marcar como paga
                                   </DropdownMenuItem>
                                 ) : null}
-                                {installment.status !== "overdue" ? (
+                                {installment.source === "contract" && installment.status !== "overdue" ? (
                                   <DropdownMenuItem
-                                    disabled={installmentStatusMutation.isPending}
+                                    disabled={installmentStatusMutation.isPending || scheduleBillingStatusMutation.isPending}
                                     onClick={() => setInstallmentStatus(installment, "overdue")}
                                   >
                                     <AlertTriangle className="mr-2 h-4 w-4" />
@@ -1476,15 +1593,16 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                                 ) : null}
                                 {installment.status !== "pending" ? (
                                   <DropdownMenuItem
-                                    disabled={installmentStatusMutation.isPending}
+                                    disabled={installmentStatusMutation.isPending || scheduleBillingStatusMutation.isPending}
                                     onClick={() => setInstallmentStatus(installment, "pending")}
                                   >
                                     <Clock className="mr-2 h-4 w-4" />
-                                    Marcar como pendente
+                                    {installment.source === "schedule" ? "Marcar como não paga" : "Marcar como pendente"}
                                   </DropdownMenuItem>
                                 ) : null}
                               </DropdownMenuContent>
                             </DropdownMenu>
+                            ) : null}
                           </TableCell>
                         ) : null}
                       </TableRow>
@@ -1687,6 +1805,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                     <TableHead>Data</TableHead>
                     <TableHead>Horário</TableHead>
                     <TableHead>Duração</TableHead>
+                    {canViewFinancial ? <TableHead>Financeiro</TableHead> : null}
                     <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -1710,13 +1829,28 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                           <TableCell className="text-sm">{formatDate(displayPeriod.date)}</TableCell>
                           <TableCell className="text-sm">{displayPeriod.time}</TableCell>
                           <TableCell className="text-sm">{formatScheduleDisplayDuration(service)}</TableCell>
+                          {canViewFinancial ? (
+                            <TableCell>
+                              {service.isManual && service.billable && service.value > 0 ? (
+                                <div className="flex min-w-max flex-col items-start gap-1">
+                                  <span className="font-medium">{formatCurrency(service.value)}</span>
+                                  <span className="text-xs text-muted-foreground">
+                                    Venc. {formatDate(service.billingDueDate ?? service.date)}
+                                  </span>
+                                  {getInstallmentStatusBadge(service.status === "cancelled" ? "cancelled" : service.effectiveBillingStatus)}
+                                </div>
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
+                              )}
+                            </TableCell>
+                          ) : null}
                           <TableCell>{getScheduleStatusBadge(service.status)}</TableCell>
                         </TableRow>
                       )
                     })}
 
                   {scheduledServices.length === 0 ? (
-                    <TableEmptyState colSpan={7} icon={Calendar} title="Nenhum serviço agendado." />
+                    <TableEmptyState colSpan={canViewFinancial ? 8 : 7} icon={Calendar} title="Nenhum serviço agendado." />
                   ) : null}
                 </TableBody>
               </Table>
@@ -1850,12 +1984,29 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
       <InstallmentEditDialog
         installment={editingInstallment}
         open={Boolean(editingInstallment)}
-        isSaving={installmentStatusMutation.isPending}
+        isSaving={installmentStatusMutation.isPending || scheduleBillingEditMutation.isPending}
+        valueEditable={editingInstallment?.source === "schedule"}
         onOpenChange={(open) => {
           if (!open) setEditingInstallment(null)
         }}
-        onSave={(payload) => {
+        onSave={(payload, value) => {
           if (!editingInstallment) return
+          if (editingInstallment.source === "schedule") {
+            const billingStatus = payload.status === editingInstallment.status
+              ? editingInstallment.billingStatus
+              : payload.status === "late" ? "pending" : payload.status
+            scheduleBillingEditMutation.mutate({
+              scheduleId: editingInstallment.scheduleId,
+              payload: {
+                value,
+                billingDueDate: payload.dueDate,
+                billingStatus,
+                paidDate: billingStatus === "paid" ? payload.paidDate : undefined,
+                paidValue: billingStatus === "paid" ? value : undefined,
+              },
+            })
+            return
+          }
           installmentStatusMutation.mutate({
             contractId: editingInstallment.contractId,
             installmentId: editingInstallment.id,

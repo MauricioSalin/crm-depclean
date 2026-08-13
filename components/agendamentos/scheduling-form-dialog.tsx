@@ -87,6 +87,7 @@ export interface SchedulingFormData {
   autoSendInformative: boolean
   generateCertificateRequest: boolean
   value: number
+  billingDueDate: string
   createContract: boolean
   isEmergency: boolean
   status: ScheduleManualStatus
@@ -116,6 +117,7 @@ interface EditingSchedule {
   durationType?: ScheduleDurationType
   billable?: boolean
   value?: number
+  billingDueDate?: string
   isEmergency?: boolean
   status: ScheduleManualStatus
   notes?: string
@@ -153,6 +155,7 @@ const DEFAULT_FORM_DATA: SchedulingFormData = {
   autoSendInformative: false,
   generateCertificateRequest: false,
   value: 0,
+  billingDueDate: "",
   createContract: false,
   isEmergency: false,
   status: "scheduled",
@@ -317,6 +320,7 @@ export function SchedulingFormDialog({
       autoSendInformative: serviceDocumentSettings.some((setting) => Boolean(setting.informativeTemplateId)),
       generateCertificateRequest: serviceDocumentSettings.some((setting) => Boolean(setting.certificateTemplateId)),
       value: schedule.billable ? Number(schedule.value ?? 0) : 0,
+      billingDueDate: schedule.billable ? schedule.billingDueDate ?? schedule.date : "",
       createContract: Boolean(schedule.billable),
       isEmergency: schedule.isEmergency ?? false,
       status: schedule.status,
@@ -355,6 +359,7 @@ export function SchedulingFormDialog({
       serviceTypeId: serviceTypeIds[0] ?? "",
       serviceTypeIds,
       serviceDocumentSettings,
+      billingDueDate: initial.createContract ? initial.billingDueDate ?? initial.date ?? "" : "",
     })
   }, [open, editingSchedule, initialFormData, serviceTypes, teams])
 
@@ -514,6 +519,10 @@ export function SchedulingFormDialog({
     }
     if (formData.createContract && (!Number.isFinite(formData.value) || formData.value <= 0)) {
       toast.error("Informe um valor maior que zero para gerar a cobrança no financeiro.")
+      return
+    }
+    if (formData.createContract && !isValidDateKey(formData.billingDueDate)) {
+      toast.error("Informe uma data de vencimento válida para gerar a cobrança no financeiro.")
       return
     }
 
@@ -896,16 +905,32 @@ export function SchedulingFormDialog({
             </div>
           </div>
 
-          {/* Value */}
+          {/* Financial charge */}
           {!(editingSchedule && editingSchedule.contractId && !editingSchedule.isManual) && (
-          <div className="space-y-2">
-            <Label>Valor (R$)</Label>
-            <CurrencyInput
-              value={formData.createContract ? Math.round(formData.value * 100) : 0}
-              onChange={(cents) => setFormData((current) => ({ ...current, value: cents / 100 }))}
-              disabled={!formData.createContract}
-              className={!formData.createContract ? "cursor-not-allowed opacity-60" : undefined}
-            />
+          <div className="grid min-w-0 gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <div className="space-y-2">
+              <Label>Valor (R$)</Label>
+              <CurrencyInput
+                value={formData.createContract ? Math.round(formData.value * 100) : 0}
+                onChange={(cents) => setFormData((current) => ({ ...current, value: cents / 100 }))}
+                disabled={!formData.createContract}
+                className={!formData.createContract ? "cursor-not-allowed opacity-60" : undefined}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Data de vencimento</Label>
+              <DatePicker
+                ariaLabel="Data de vencimento"
+                value={parseCivilDate(formData.billingDueDate)}
+                onChange={(date) => setFormData((current) => ({
+                  ...current,
+                  billingDueDate: date ? toCivilDateKey(date) : "",
+                }))}
+                placeholder="Selecionar vencimento"
+                disabled={!formData.createContract}
+                className={!formData.createContract ? "cursor-not-allowed opacity-60" : undefined}
+              />
+            </div>
           </div>
           )}
 
@@ -933,6 +958,7 @@ export function SchedulingFormDialog({
                         ...current,
                         createContract: !!checked,
                         value: checked ? current.value || serviceType?.baseValue || 0 : 0,
+                        billingDueDate: checked ? current.billingDueDate || current.date : "",
                       }
                     })
                   }}

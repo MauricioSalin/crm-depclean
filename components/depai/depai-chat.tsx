@@ -5,17 +5,23 @@ import type { Worksheet } from "exceljs"
 import { usePathname, useRouter } from "next/navigation"
 import {
   ArrowDown,
+  ArrowRight,
   BarChart3,
   Bot,
+  CalendarDays,
   ClipboardList,
+  Database,
   Download,
   Eye,
   FileSpreadsheet,
   FileText,
   ImageIcon,
   LoaderCircle,
+  LockKeyhole,
+  MessageSquareText,
   Plus,
   Send,
+  ShieldCheck,
   X,
 } from "lucide-react"
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type RefObject } from "react"
@@ -65,18 +71,64 @@ import {
 } from "@/lib/api/depai"
 import { buildApiFileUrl } from "@/lib/api/client"
 import { getApiErrorMessage } from "@/lib/api/errors"
+import { hasAnyPermission } from "@/lib/auth/permissions"
 import { Button } from "@/components/ui/button"
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
 import { Textarea } from "@/components/ui/textarea"
+import { useCurrentUser } from "@/hooks/use-permissions"
 
 const initialMessages: DepAIMessage[] = []
 
-const suggestions = [
-  "O que preciso priorizar hoje?",
-  "Quais atendimentos tenho nos próximos dias?",
-  "Explique minhas permissões atuais",
-  "Como funciona o primeiro acesso por código?",
-]
+const analysisStarters = [
+  {
+    title: "Prioridades de hoje",
+    description: "Cruza o que seu perfil permite e organiza riscos e próximos passos.",
+    prompt:
+      "Analise o que devo priorizar hoje usando apenas os dados que meu perfil permite. Traga primeiro as evidências, depois os riscos e finalize com próximas ações em ordem de prioridade.",
+    icon: ClipboardList,
+    permissions: [],
+  },
+  {
+    title: "Planejar a agenda",
+    description: "Confere próximos atendimentos, responsáveis, horários e conflitos.",
+    prompt:
+      "Analise os próximos atendimentos que meu perfil pode visualizar. Organize por data e horário, destaque conflitos ou pendências e sugira a ordem de acompanhamento.",
+    icon: CalendarDays,
+    permissions: ["agenda_own_view", "agenda_view"],
+  },
+  {
+    title: "Revisar clientes e contratos",
+    description: "Localiza vigências, assinaturas, renovações e dados que exigem atenção.",
+    prompt:
+      "Revise clientes e contratos que exigem atenção agora. Considere vigência, assinatura, renovação e pendências disponíveis, separando fatos confirmados de hipóteses.",
+    icon: FileText,
+    permissions: ["clients_view", "contracts_view", "contracts_create", "contracts_edit"],
+  },
+  {
+    title: "Analisar o financeiro",
+    description: "Resume valores, atrasos e cobranças conforme seu acesso financeiro.",
+    prompt:
+      "Analise a situação financeira atual permitida ao meu perfil. Mostre os valores confirmados, os principais atrasos e as próximas ações de cobrança em ordem de impacto.",
+    icon: BarChart3,
+    permissions: ["financial_view", "financial_manage"],
+  },
+  {
+    title: "Conferir comunicações",
+    description: "Verifica notificações e documentos sem presumir que algo foi enviado.",
+    prompt:
+      "Verifique notificações, informativos e certificados que exigem atenção dentro do meu acesso. Não afirme que algo foi enviado sem status e data que comprovem e indique o que precisa ser conferido.",
+    icon: MessageSquareText,
+    permissions: [],
+  },
+  {
+    title: "Entender meu acesso",
+    description: "Explica o que seu perfil pode consultar e por que uma ação pode não aparecer.",
+    prompt:
+      "Explique minhas permissões atuais em linguagem prática: o que posso visualizar, quais ações consigo executar e quais limitações afetam os dados que a DepAI pode analisar.",
+    icon: LockKeyhole,
+    permissions: [],
+  },
+] as const
 
 const chartGreenPalette = ["#84cc16", "#22c55e", "#16a34a", "#65a30d", "#15803d", "#4d7c0f", "#86efac", "#a3e635"]
 const emptyChartColor = "#DDE7D5"
@@ -2108,7 +2160,9 @@ export function DepAIChat({ compact = false }: { compact?: boolean }) {
   const router = useRouter()
   const pathname = usePathname()
   const queryClient = useQueryClient()
+  const currentUser = useCurrentUser()
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const composerInputRef = useRef<HTMLTextAreaElement | null>(null)
   const messagesScrollRef = useRef<HTMLDivElement | null>(null)
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
   const processedInitialAskRef = useRef(false)
@@ -2122,6 +2176,10 @@ export function DepAIChat({ compact = false }: { compact?: boolean }) {
   const messages = activeConversation.messages ?? []
   const lastMessageId = messages[messages.length - 1]?.id ?? ""
   const [showScrollToBottom, setShowScrollToBottom] = useState(false)
+  const visibleAnalysisStarters = useMemo(
+    () => analysisStarters.filter((starter) => hasAnyPermission(currentUser, [...starter.permissions])),
+    [currentUser],
+  )
 
   const conversationsQuery = useQuery({
     queryKey: ["depai", "conversations"],
@@ -2276,6 +2334,11 @@ export function DepAIChat({ compact = false }: { compact?: boolean }) {
     sendMessage(input)
   }
 
+  const prepareAnalysis = (prompt: string) => {
+    setInput(prompt)
+    window.requestAnimationFrame(() => composerInputRef.current?.focus())
+  }
+
   const addFiles = async (selectedFiles: FileList | File[] | null) => {
     if (!selectedFiles) return
     try {
@@ -2396,7 +2459,7 @@ export function DepAIChat({ compact = false }: { compact?: boolean }) {
             <ArrowDown className="h-4 w-4" />
           </Button>
         )}
-        <ChatComposer input={input} files={files} isPending={sendMutation.isPending} fileInputRef={fileInputRef} onInputChange={setInput} onSubmit={submit} onAddFiles={addFiles} onRemoveFile={removeFile} />
+        <ChatComposer input={input} files={files} isPending={sendMutation.isPending} fileInputRef={fileInputRef} inputRef={composerInputRef} onInputChange={setInput} onSubmit={submit} onAddFiles={addFiles} onRemoveFile={removeFile} />
       </div>
     )
   }
@@ -2407,20 +2470,55 @@ export function DepAIChat({ compact = false }: { compact?: boolean }) {
 
         <div ref={messagesScrollRef} className="flex-1 overflow-y-auto pb-36 pt-4" onScroll={handleMessagesScroll}>
           {messages.length === 0 && (
-            <div className="mx-auto flex max-w-3xl flex-col items-center px-4 pb-4 pt-12 text-center">
+            <div className="mx-auto flex max-w-4xl flex-col items-center px-4 pb-4 pt-8 text-center md:pt-12">
               <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
                 <Bot className="h-7 w-7" />
               </div>
-              <h2 className="text-2xl font-semibold tracking-tight text-foreground">Como posso te ajudar hoje?</h2>
+              <h2 className="text-2xl font-semibold tracking-tight text-foreground">O que você quer analisar?</h2>
               <p className="mt-2 max-w-xl text-sm text-muted-foreground">
-                {"Pergunte algo para a DepAI ou envie um arquivo para preparar a análise com os dados do sistema."}
+                Escolha um objetivo para preparar uma pergunta completa. Você pode revisar e ajustar o texto antes de enviar.
               </p>
-              <div className="mt-6 grid w-full gap-2 sm:grid-cols-2">
-                {suggestions.map((suggestion) => (
-                  <button key={suggestion} type="button" onClick={() => setInput(suggestion)} className="cursor-pointer rounded-2xl border border-border bg-card px-4 py-3 text-left text-sm text-muted-foreground transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/40 hover:text-foreground hover:shadow-sm">
-                    {suggestion}
-                  </button>
-                ))}
+              <div className="mt-5 flex flex-wrap items-center justify-center gap-2 text-xs text-muted-foreground">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5">
+                  <ShieldCheck className="h-3.5 w-3.5 text-primary" />
+                  Somente leitura
+                </span>
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5">
+                  <Database className="h-3.5 w-3.5 text-primary" />
+                  Dados conforme seu acesso
+                </span>
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5">
+                  <FileText className="h-3.5 w-3.5 text-primary" />
+                  Pode combinar anexos
+                </span>
+              </div>
+              <div className="mt-6 grid w-full gap-3 sm:grid-cols-2">
+                {visibleAnalysisStarters.map((starter) => {
+                  const StarterIcon = starter.icon
+                  return (
+                    <button
+                      key={starter.title}
+                      type="button"
+                      onClick={() => prepareAnalysis(starter.prompt)}
+                      className="group cursor-pointer rounded-2xl border border-border bg-card p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+                      aria-label={`${starter.title}: preparar pergunta`}
+                    >
+                      <span className="flex items-start gap-3">
+                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
+                          <StarterIcon className="h-5 w-5" />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm font-semibold text-foreground">{starter.title}</span>
+                          <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">{starter.description}</span>
+                          <span className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary">
+                            Preparar análise
+                            <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+                          </span>
+                        </span>
+                      </span>
+                    </button>
+                  )
+                })}
               </div>
             </div>
           )}
@@ -2447,7 +2545,7 @@ export function DepAIChat({ compact = false }: { compact?: boolean }) {
 
         <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-background via-background to-background/0 px-4 pb-4 pt-10">
           <div className="mx-auto max-w-3xl">
-            <ChatComposer input={input} files={files} isPending={sendMutation.isPending} fileInputRef={fileInputRef} onInputChange={setInput} onSubmit={submit} onAddFiles={addFiles} onRemoveFile={removeFile} />
+            <ChatComposer input={input} files={files} isPending={sendMutation.isPending} fileInputRef={fileInputRef} inputRef={composerInputRef} onInputChange={setInput} onSubmit={submit} onAddFiles={addFiles} onRemoveFile={removeFile} />
             <p className="mt-2 text-center text-[11px] text-muted-foreground">
               {"A DepAI pode cometer erros. Confirme informações importantes antes de usar operacionalmente."}
             </p>
@@ -2538,6 +2636,7 @@ function ChatComposer({
   files,
   isPending,
   fileInputRef,
+  inputRef,
   onInputChange,
   onSubmit,
   onAddFiles,
@@ -2547,6 +2646,7 @@ function ChatComposer({
   files: DepAIFile[]
   isPending: boolean
   fileInputRef: RefObject<HTMLInputElement | null>
+  inputRef: RefObject<HTMLTextAreaElement | null>
   onInputChange: (value: string) => void
   onSubmit: (event?: FormEvent<HTMLFormElement>) => void
   onAddFiles: (files: FileList | File[] | null) => void | Promise<void>
@@ -2592,6 +2692,7 @@ function ChatComposer({
           <Plus className="h-5 w-5" />
         </Button>
         <Textarea
+          ref={inputRef}
           value={input}
           onChange={(event) => onInputChange(event.target.value)}
           onPaste={(event) => {

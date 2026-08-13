@@ -22,11 +22,12 @@ import type {
 import { parseCivilDate, toCivilDateKey } from "@/lib/date-utils"
 
 type InstallmentEditDialogProps = {
-  installment: ContractInstallmentRecord | null
+  installment: Pick<ContractInstallmentRecord, "id" | "number" | "value" | "dueDate" | "paidDate" | "status"> | null
   open: boolean
   isSaving: boolean
+  valueEditable?: boolean
   onOpenChange: (open: boolean) => void
-  onSave: (payload: UpdateContractInstallmentPayload) => void
+  onSave: (payload: UpdateContractInstallmentPayload, value?: number) => void
 }
 
 function civilDateKey(value?: string) {
@@ -38,11 +39,13 @@ export function InstallmentEditDialog({
   installment,
   open,
   isSaving,
+  valueEditable = false,
   onOpenChange,
   onSave,
 }: InstallmentEditDialogProps) {
   const [dueDate, setDueDate] = useState("")
   const [paidDate, setPaidDate] = useState("")
+  const [valueCents, setValueCents] = useState(0)
   const [status, setStatus] = useState<ContractInstallmentRecord["status"]>("pending")
   const [error, setError] = useState("")
 
@@ -50,6 +53,7 @@ export function InstallmentEditDialog({
     if (!open || !installment) return
     setDueDate(civilDateKey(installment.dueDate))
     setPaidDate(civilDateKey(installment.paidDate))
+    setValueCents(Math.round(Number(installment.value ?? 0) * 100))
     setStatus(installment.status)
     setError("")
   }, [installment, open])
@@ -71,16 +75,23 @@ export function InstallmentEditDialog({
       setError("Informe a data de vencimento.")
       return
     }
+    if (valueEditable && valueCents <= 0) {
+      setError("Informe um valor maior que zero.")
+      return
+    }
     if (status === "paid" && !paidDate) {
       setError("Informe a data de pagamento.")
       return
     }
 
-    onSave({
-      dueDate,
-      status,
-      paidDate: status === "paid" ? paidDate : undefined,
-    })
+    onSave(
+      {
+        dueDate,
+        status,
+        paidDate: status === "paid" ? paidDate : undefined,
+      },
+      valueEditable ? valueCents / 100 : undefined,
+    )
   }
 
   return (
@@ -94,7 +105,9 @@ export function InstallmentEditDialog({
         <DialogHeader>
           <DialogTitle>Editar parcela {installment?.number ?? ""}</DialogTitle>
           <DialogDescription>
-            Altere o vencimento, a data de pagamento e o status. O valor é um dado contratual.
+            {valueEditable
+              ? "Altere o valor, o vencimento, a data de pagamento e o status da cobrança do agendamento."
+              : "Altere o vencimento, a data de pagamento e o status. O valor é um dado contratual."}
           </DialogDescription>
         </DialogHeader>
 
@@ -118,9 +131,12 @@ export function InstallmentEditDialog({
               <Label htmlFor="installment-edit-value">Valor</Label>
               <CurrencyInput
                 id="installment-edit-value"
-                value={Math.round(Number(installment?.value ?? 0) * 100)}
-                onChange={() => undefined}
-                disabled
+                value={valueCents}
+                onChange={(cents) => {
+                  setValueCents(cents)
+                  setError("")
+                }}
+                disabled={isSaving || !valueEditable}
               />
             </div>
           </div>

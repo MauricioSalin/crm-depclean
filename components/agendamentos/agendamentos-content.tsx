@@ -765,6 +765,7 @@ export function AgendamentosContent({
         isEmergency: formData.isEmergency,
         billable: formData.createContract,
         value: formData.createContract ? formData.value : 0,
+        billingDueDate: formData.createContract ? formData.billingDueDate : undefined,
         notes: formData.notes,
       }
 

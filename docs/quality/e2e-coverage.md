@@ -17,11 +17,19 @@ Esta suíte usa Playwright e foi separada em duas camadas:
 - acionamento isolado de todos os botões inicialmente utilizáveis nas 16 telas operacionais;
 - abertura e fechamento das seleções inicialmente utilizáveis em cada tela;
 - busca de clientes;
+- início guiado da DepAI, preparação da pergunta sem envio automático e filtragem dos objetivos conforme as permissões do perfil;
 - anexos de inventário dos controles encontrados em cada tela.
 
 ## Resultado de referência
 
-Validação local em 28/07/2026:
+Validação focada da experiência guiada da DepAI em 13/08/2026:
+
+- dois cenários aprovados em Chromium com `--workers=1`;
+- preparação e foco da pergunta validados sem envio automático;
+- objetivos disponíveis validados para perfis completo e restrito;
+- API integralmente simulada, sem acesso a dados ou integrações reais.
+
+Referência histórica da suíte completa em 28/07/2026:
 
 - 84 cenários Playwright;
 - 83 aprovados;
@@ -47,6 +55,12 @@ fornecidos no ambiente. Ele não executa ações de escrita.
 ```bash
 pnpm exec playwright install chromium
 pnpm test:e2e
+```
+
+Para validar somente a experiência guiada da DepAI:
+
+```bash
+pnpm exec playwright test e2e/depai-guided-analysis.spec.ts --workers=1
 ```
 
 Para executar também o smoke real:

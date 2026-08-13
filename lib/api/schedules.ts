@@ -71,7 +71,9 @@ export type ScheduleRecord = {
   recurrence: { type: "none"; daysOfWeek: number[]; interval: number }
   billable: boolean
   value: number
+  billingDueDate?: string
   billingStatus: "pending" | "paid" | "overdue" | "cancelled"
+  effectiveBillingStatus: "pending" | "paid" | "late" | "overdue" | "cancelled"
   paidDate?: string
   paidValue?: number
   paymentMethod?: string
@@ -122,6 +124,7 @@ export type SchedulePayload = {
   allowConflict?: boolean
   billable?: boolean
   value?: number
+  billingDueDate?: string
   billingStatus?: "pending" | "paid" | "overdue" | "cancelled"
   paidDate?: string
   paidValue?: number
@@ -196,7 +199,7 @@ export async function updateScheduleStatus(id: string, status: ScheduleRecord["s
 
 export async function updateScheduleBilling(
   id: string,
-  payload: Pick<SchedulePayload, "billingStatus" | "paidDate" | "paidValue" | "paymentMethod" | "billingNotes">,
+  payload: Pick<SchedulePayload, "value" | "billingDueDate" | "billingStatus" | "paidDate" | "paidValue" | "paymentMethod" | "billingNotes">,
 ) {
   const response = await api.patch<{ success: true; data: ScheduleRecord }>(`/schedules/${id}/billing`, payload)
   return response.data
