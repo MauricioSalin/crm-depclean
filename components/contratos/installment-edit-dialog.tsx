@@ -41,12 +41,14 @@ export function InstallmentEditDialog({
   onOpenChange,
   onSave,
 }: InstallmentEditDialogProps) {
+  const [dueDate, setDueDate] = useState("")
   const [paidDate, setPaidDate] = useState("")
   const [status, setStatus] = useState<ContractInstallmentRecord["status"]>("pending")
   const [error, setError] = useState("")
 
   useEffect(() => {
     if (!open || !installment) return
+    setDueDate(civilDateKey(installment.dueDate))
     setPaidDate(civilDateKey(installment.paidDate))
     setStatus(installment.status)
     setError("")
@@ -65,12 +67,17 @@ export function InstallmentEditDialog({
 
   const handleSave = () => {
     if (!installment) return
+    if (!dueDate) {
+      setError("Informe a data de vencimento.")
+      return
+    }
     if (status === "paid" && !paidDate) {
       setError("Informe a data de pagamento.")
       return
     }
 
     onSave({
+      dueDate,
       status,
       paidDate: status === "paid" ? paidDate : undefined,
     })
@@ -87,7 +94,7 @@ export function InstallmentEditDialog({
         <DialogHeader>
           <DialogTitle>Editar parcela {installment?.number ?? ""}</DialogTitle>
           <DialogDescription>
-            Altere a data de pagamento e o status. Vencimento e valor são dados contratuais.
+            Altere o vencimento, a data de pagamento e o status. O valor é um dado contratual.
           </DialogDescription>
         </DialogHeader>
 
@@ -96,10 +103,14 @@ export function InstallmentEditDialog({
             <div className="grid gap-2">
               <Label>Vencimento</Label>
               <DatePicker
-                value={parseCivilDate(installment?.dueDate)}
+                value={parseCivilDate(dueDate)}
                 ariaLabel="Vencimento da parcela"
+                onChange={(date) => {
+                  setDueDate(date ? toCivilDateKey(date) : "")
+                  setError("")
+                }}
                 placeholder="Selecione o vencimento"
-                disabled
+                disabled={isSaving}
               />
             </div>
 

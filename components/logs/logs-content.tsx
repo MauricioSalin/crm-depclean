@@ -12,6 +12,7 @@ import {
   Download,
   ExternalLink,
   FileText,
+  Mail,
   Paperclip,
   Phone,
   Search,
@@ -125,6 +126,28 @@ type WhatsAppMessagePreview = {
   }>
 }
 
+type EmailAttachment = {
+  url: string
+  fileName: string
+  mimeType: string
+  fileSize: number
+}
+
+type EmailLogDetails = {
+  senderEmail: string
+  recipientName: string
+  recipientEmail: string
+  recipientRole: string
+  subject: string
+  html: string
+  text: string
+  provider: string
+  providerMessageId: string
+  deliveryStatus: string
+  contractNumber: string
+  attachments: EmailAttachment[]
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -195,6 +218,70 @@ function collectWhatsAppAttachments(metadata: Record<string, unknown>) {
   }
 
   return [...attachments.values()]
+}
+
+function getEmailLogDetails(log: AuditLogRecord): EmailLogDetails | null {
+  const metadata = asRecord(log.metadata)
+  if (firstText(metadata.channel).toLowerCase() !== "email") return null
+
+  const attachments = Array.isArray(metadata.attachments)
+    ? metadata.attachments.map((rawAttachment) => {
+        const attachment = asRecord(rawAttachment)
+        return {
+          url: firstText(attachment.documentUrl, attachment.url),
+          fileName: firstText(attachment.fileName, attachment.filename) || "anexo",
+          mimeType: firstText(attachment.mimeType, attachment.contentType) || "application/octet-stream",
+          fileSize: Number(attachment.fileSize ?? attachment.size ?? 0),
+        }
+      })
+    : []
+
+  return {
+    senderEmail: firstText(metadata.senderEmail, metadata.from),
+    recipientName: firstText(metadata.recipientName, log.entityName),
+    recipientEmail: firstText(metadata.recipientEmail, metadata.to),
+    recipientRole: firstText(metadata.recipientRole),
+    subject: firstText(metadata.subject),
+    html: typeof metadata.html === "string" ? metadata.html : "",
+    text: typeof metadata.text === "string" ? metadata.text : "",
+    provider: firstText(metadata.provider),
+    providerMessageId: firstText(metadata.providerMessageId, metadata.messageId),
+    deliveryStatus: firstText(metadata.deliveryStatus),
+    contractNumber: firstText(metadata.contractNumber),
+    attachments,
+  }
+}
+
+function formatFileSize(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return "Tamanho não registrado"
+  if (value < 1024) return `${value} B`
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`
+}
+
+async function downloadEmailAttachment(attachment: EmailAttachment) {
+  const toastId = toast.loading("Baixando anexo...")
+  const url = buildApiFileUrl(attachment.url)
+
+  try {
+    const response = await fetch(url)
+    if (!response.ok) {
+      throw new Error(`Falha ao carregar o anexo (${response.status}).`)
+    }
+
+    const blob = await response.blob()
+    const objectUrl = URL.createObjectURL(blob)
+    const anchor = document.createElement("a")
+    anchor.href = objectUrl
+    anchor.download = attachment.fileName
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 500)
+    toast.success("Anexo baixado.", { id: toastId })
+  } catch (error) {
+    toast.error(getApiErrorMessage(error, "Não foi possível baixar o anexo."), { id: toastId })
+  }
 }
 
 function parsePreviewButtons(value: unknown) {
@@ -563,6 +650,10 @@ export function LogsContent() {
     () => selectedLog?.module === "whatsapp" ? getWhatsAppLogDetails(selectedLog) : null,
     [selectedLog],
   )
+  const selectedEmailDetails = useMemo(
+    () => selectedLog ? getEmailLogDetails(selectedLog) : null,
+    [selectedLog],
+  )
 
   const resetPage = () => setPage(1)
   const clearFilters = () => {
@@ -866,6 +957,118 @@ export function LogsContent() {
                 <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
                   <p className="font-semibold">Motivo da falha</p>
                   <p className="mt-1">{getFailureReason(selectedLog) || "Motivo não registrado para este log."}</p>
+                </div>
+              ) : null}
+
+              {selectedEmailDetails ? (
+                <div className="space-y-5">
+                  <div className="grid gap-3 text-sm sm:grid-cols-2">
+                    <div>
+                      <p className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+                        <Mail className="h-3.5 w-3.5" />
+                        Destinatário
+                      </p>
+                      <p>{selectedEmailDetails.recipientName || "-"}</p>
+                      <p className="break-all text-xs text-muted-foreground">{selectedEmailDetails.recipientEmail || "-"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground">Remetente</p>
+                      <p className="break-all">{selectedEmailDetails.senderEmail || "-"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground">Assunto</p>
+                      <p>{selectedEmailDetails.subject || "-"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground">Destinatário como</p>
+                      <p>{selectedEmailDetails.recipientRole || "-"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground">Provedor e status</p>
+                      <p>{selectedEmailDetails.provider || "-"} · {selectedEmailDetails.deliveryStatus || "-"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground">ID do envio</p>
+                      <p className="break-all font-mono text-xs">{selectedEmailDetails.providerMessageId || "-"}</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-xs font-medium text-muted-foreground">E-mail enviado</p>
+                      {selectedEmailDetails.contractNumber ? (
+                        <Badge variant="outline" className="font-mono text-[10px] font-normal">
+                          {selectedEmailDetails.contractNumber}
+                        </Badge>
+                      ) : null}
+                    </div>
+                    {selectedEmailDetails.html ? (
+                      <iframe
+                        title="Prévia do e-mail enviado"
+                        srcDoc={selectedEmailDetails.html}
+                        sandbox=""
+                        className="h-[520px] w-full rounded-md border bg-white"
+                      />
+                    ) : (
+                      <pre className="max-h-[520px] max-w-full whitespace-pre-wrap overflow-auto rounded-md border bg-white p-4 text-sm leading-relaxed text-slate-900">
+                        {selectedEmailDetails.text || "O conteúdo deste e-mail não foi registrado."}
+                      </pre>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+                      <Paperclip className="h-3.5 w-3.5" />
+                      Anexos enviados ({selectedEmailDetails.attachments.length})
+                    </p>
+                    {selectedEmailDetails.attachments.length > 0 ? (
+                      selectedEmailDetails.attachments.map((attachment) => (
+                        <div
+                          key={`${attachment.url}-${attachment.fileName}`}
+                          className="flex flex-col gap-3 rounded-md border bg-background p-3 sm:flex-row sm:items-center sm:justify-between"
+                        >
+                          <div className="flex min-w-0 items-center gap-2">
+                            <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium">{attachment.fileName}</p>
+                              <p className="truncate text-xs text-muted-foreground">
+                                {attachment.mimeType} · {formatFileSize(attachment.fileSize)}
+                              </p>
+                            </div>
+                          </div>
+                          {attachment.url ? (
+                            <div className="flex shrink-0 flex-wrap items-center gap-2">
+                              <Button asChild variant="outline" size="sm">
+                                <a
+                                  href={buildApiFileUrl(attachment.url)}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  aria-label={`Visualizar ${attachment.fileName}`}
+                                >
+                                  <ExternalLink className="h-4 w-4" />
+                                  Visualizar
+                                </a>
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => void downloadEmailAttachment(attachment)}
+                                aria-label={`Baixar ${attachment.fileName}`}
+                              >
+                                <Download className="h-4 w-4" />
+                                Baixar
+                              </Button>
+                            </div>
+                          ) : null}
+                        </div>
+                      ))
+                    ) : (
+                      <div className="rounded-md border border-dashed bg-background p-3 text-sm text-muted-foreground">
+                        Nenhum anexo foi registrado neste envio.
+                      </div>
+                    )}
+                  </div>
                 </div>
               ) : null}
 

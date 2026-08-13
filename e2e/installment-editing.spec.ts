@@ -68,6 +68,7 @@ test("edita a mesma parcela nos perfis do cliente e do contrato sem repetir o st
         ...contractState,
         installments: contractState.installments.map((installment) => ({
           ...installment,
+          dueDate: String(installmentPatch?.dueDate),
           paidDate: String(installmentPatch?.paidDate),
           paidValue: installment.value,
         })),
@@ -91,7 +92,7 @@ test("edita a mesma parcela nos perfis do cliente e do contrato sem repetir o st
   await page.getByRole("menuitem", { name: "Editar parcela" }).click()
   await expect(page.getByRole("dialog", { name: "Editar parcela 1" })).toBeVisible()
   await expect(page.getByLabel("Vencimento da parcela")).toHaveText("22/07/2026")
-  await expect(page.getByLabel("Vencimento da parcela")).toBeDisabled()
+  await expect(page.getByLabel("Vencimento da parcela")).toBeEnabled()
   await expect(page.getByLabel("Data de pagamento da parcela")).toHaveText("28/07/2026")
   await page.getByRole("button", { name: "Cancelar" }).click()
 
@@ -104,9 +105,12 @@ test("edita a mesma parcela nos perfis do cliente e do contrato sem repetir o st
   const valueInput = page.getByRole("textbox", { name: "Valor", exact: true })
   await expect(valueInput).toHaveValue("R$ 866,66")
   await expect(valueInput).toBeDisabled()
+  await page.getByLabel("Vencimento da parcela").click()
+  await page.getByRole("button", { name: /24 de julho de 2026/i }).click()
   await page.getByRole("button", { name: "Salvar alterações" }).click()
 
   await expect.poll(() => installmentPatch).toEqual({
+    dueDate: "2026-07-24",
     status: "paid",
     paidDate: "2026-07-28",
   })

@@ -222,3 +222,99 @@ test("simula o template exato e informa quando a mensagem não possui anexos", a
   await expect(dialog.getByText("depclean_cadastro_pronto_v2", { exact: true })).toBeVisible()
   await expect(dialog.getByText("Nenhum anexo foi enviado nesta mensagem.", { exact: true })).toBeVisible()
 })
+
+test("mostra o e-mail de agendamentos exatamente como enviado e permite acessar os anexos", async ({ page }) => {
+  let attachmentDownloads = 0
+  await page.route("**/api/v1/files/clients/client-e2e/schedule-plans/contract-e2e/cronograma.pdf", async (route) => {
+    attachmentDownloads += 1
+    await route.fulfill({
+      status: 200,
+      contentType: "application/pdf",
+      body: Buffer.from("%PDF-1.4 cronograma de teste"),
+    })
+  })
+  await page.route("**/api/v1/logs**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        success: true,
+        data: {
+          items: [{
+            id: "log-schedule-email-1",
+            type: "send",
+            typeLabel: "Envio",
+            status: "success",
+            module: "schedules",
+            moduleLabel: "Agendamentos",
+            title: "E-mail de agendamentos enviado",
+            description: "Cronograma enviado por e-mail para Síndica E2E (sindica@depclean.test).",
+            failureReason: "",
+            method: "POST",
+            path: "/integrations/resend/emails",
+            statusCode: 202,
+            durationMs: 180,
+            actorUserId: "",
+            actorEmployeeId: "",
+            actorName: "Sistema",
+            actorEmail: "",
+            clientId: "client-e2e",
+            clientName: "Condomínio E2E",
+            targetEmployeeId: "",
+            targetEmployeeName: "",
+            entityType: "schedule_plan_email",
+            entityId: "contract-e2e:syndic",
+            entityName: "Síndica E2E",
+            metadata: {
+              channel: "email",
+              provider: "resend",
+              providerMessageId: "resend-email-e2e",
+              deliveryStatus: "accepted",
+              senderEmail: "Depclean <atendimento@depclean.test>",
+              recipientName: "Síndica E2E",
+              recipientEmail: "sindica@depclean.test",
+              recipientRole: "síndica",
+              subject: "Depclean | Cronograma de atendimentos - DEP-E2E-0001",
+              html: "<!doctype html><html><body><h1>Cronograma de atendimentos</h1><p>Olá, Síndica E2E.</p><strong>Limpeza de reservatórios</strong></body></html>",
+              text: "Olá, Síndica E2E. Cronograma de atendimentos.",
+              contractNumber: "DEP-E2E-0001",
+              attachments: [{
+                fileName: "cronograma-dep-e2e-0001.pdf",
+                mimeType: "application/pdf",
+                fileSize: 2048,
+                documentUrl: "/api/v1/files/clients/client-e2e/schedule-plans/contract-e2e/cronograma.pdf",
+              }],
+            },
+            createdAt: "2026-08-12T12:00:00.000Z",
+          }],
+          total: 1,
+          page: 1,
+          limit: 20,
+          totalPages: 1,
+        },
+      }),
+    })
+  })
+
+  await page.goto("/logs?type=send")
+  const row = page.getByRole("button", { name: /E-mail de agendamentos enviado/ })
+  await expect(row.getByText("Envio", { exact: true })).toBeVisible()
+  await row.click()
+
+  const dialog = page.getByRole("dialog", { name: "Detalhes do log" })
+  await expect(dialog).toContainText("sindica@depclean.test")
+  await expect(dialog).toContainText("Depclean | Cronograma de atendimentos - DEP-E2E-0001")
+  await expect(dialog.getByText("cronograma-dep-e2e-0001.pdf", { exact: true })).toBeVisible()
+  await expect(dialog.getByText("application/pdf · 2.0 KB", { exact: true })).toBeVisible()
+
+  const emailPreview = dialog.frameLocator('iframe[title="Prévia do e-mail enviado"]')
+  await expect(emailPreview.getByRole("heading", { name: "Cronograma de atendimentos" })).toBeVisible()
+  await expect(emailPreview.getByText("Olá, Síndica E2E.", { exact: true })).toBeVisible()
+  await expect(emailPreview.getByText("Limpeza de reservatórios", { exact: true })).toBeVisible()
+
+  const viewAttachment = dialog.getByRole("link", { name: "Visualizar cronograma-dep-e2e-0001.pdf" })
+  await expect(viewAttachment).toHaveAttribute("href", /schedule-plans\/contract-e2e\/cronograma\.pdf$/)
+  await dialog.getByRole("button", { name: "Baixar cronograma-dep-e2e-0001.pdf" }).click()
+  await expect.poll(() => attachmentDownloads).toBe(1)
+  await expect(page.getByText("Anexo baixado.", { exact: true })).toBeVisible()
+})

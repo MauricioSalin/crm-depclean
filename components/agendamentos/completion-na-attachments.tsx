@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react"
 import { Camera, CheckCircle2, Eye, FileText, FileUp, ImageIcon, Loader2, Paperclip, ScanLine, Trash2, X } from "lucide-react"
+import { toast } from "sonner"
 
 import { buildApiFileUrl } from "@/lib/api/client"
 import type { ScheduleNaAttachmentRecord } from "@/lib/api/schedules"
@@ -29,6 +30,41 @@ interface CompletionNaAttachmentsProps {
   onRemoveExistingAttachment: (attachment: ScheduleNaAttachmentRecord, index: number) => void
 }
 
+const MAX_ATTACHMENT_FILE_SIZE = 15 * 1024 * 1024
+const SUPPORTED_ATTACHMENT_EXTENSIONS = new Set([
+  ".arw", ".avif", ".bmp", ".cr2", ".cr3", ".csv", ".dng", ".doc", ".docx",
+  ".gif", ".heic", ".heif", ".jfif", ".jpe", ".jpeg", ".jpg", ".nef", ".ods",
+  ".odt", ".orf", ".pdf", ".png", ".raf", ".raw", ".rtf", ".rw2", ".tif", ".tiff",
+  ".webp", ".xls", ".xlsb", ".xlsm", ".xlsx",
+])
+const SUPPORTED_DOCUMENT_MIME_TYPES = new Set([
+  "application/csv",
+  "application/msword",
+  "application/pdf",
+  "application/rtf",
+  "application/vnd.ms-excel",
+  "application/vnd.ms-excel.sheet.binary.macroenabled.12",
+  "application/vnd.ms-excel.sheet.macroenabled.12",
+  "application/vnd.oasis.opendocument.spreadsheet",
+  "application/vnd.oasis.opendocument.text",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "text/csv",
+  "text/rtf",
+])
+
+function fileExtension(fileName: string) {
+  const dotIndex = fileName.lastIndexOf(".")
+  return dotIndex >= 0 ? fileName.slice(dotIndex).toLowerCase() : ""
+}
+
+function isSupportedAttachment(file: File) {
+  const mimeType = file.type.split(";", 1)[0]?.trim().toLowerCase() ?? ""
+  if (mimeType.startsWith("image/") && mimeType !== "image/svg+xml") return true
+  if (SUPPORTED_DOCUMENT_MIME_TYPES.has(mimeType)) return true
+  return SUPPORTED_ATTACHMENT_EXTENSIONS.has(fileExtension(file.name))
+}
+
 function formatFileSize(size?: number) {
   if (!size) return ""
   if (size < 1024 * 1024) return `${Math.max(1, Math.round(size / 1024))} KB`
@@ -37,7 +73,7 @@ function formatFileSize(size?: number) {
 
 function getFileIcon(fileName: string, mimeType?: string) {
   const normalized = `${mimeType ?? ""} ${fileName}`.toLowerCase()
-  if (normalized.includes("image") || /\.(png|jpe?g|webp|heic)$/i.test(fileName)) {
+  if (normalized.includes("image") || /\.(arw|avif|bmp|cr2|cr3|dng|gif|heic|heif|jfif|jpe?g|nef|orf|png|raf|raw|rw2|tiff?|webp)$/i.test(fileName)) {
     return <ImageIcon className="h-4 w-4" />
   }
   return <FileText className="h-4 w-4" />
@@ -66,9 +102,19 @@ export function CompletionNaAttachments({
 
   const addFilesFromInput = (fileList: FileList | null) => {
     const selectedFiles = Array.from(fileList ?? [])
-    if (selectedFiles.length > 0) {
-      onAddFiles(selectedFiles)
+    const oversizedFiles = selectedFiles.filter((file) => file.size > MAX_ATTACHMENT_FILE_SIZE)
+    const unsupportedFiles = selectedFiles.filter((file) => !isSupportedAttachment(file))
+    const acceptedFiles = selectedFiles.filter(
+      (file) => file.size <= MAX_ATTACHMENT_FILE_SIZE && isSupportedAttachment(file),
+    )
+
+    if (unsupportedFiles.length > 0) {
+      toast.error("Formato não permitido. Anexe fotos, PDF, Word ou planilhas.")
     }
+    if (oversizedFiles.length > 0) {
+      toast.error("Cada anexo deve ter no máximo 15 MB.")
+    }
+    if (acceptedFiles.length > 0) onAddFiles(acceptedFiles)
   }
 
   const openScannerFromFile = (file?: File) => {
@@ -88,7 +134,7 @@ export function CompletionNaAttachments({
             <div className="min-w-0">
               <p className="text-sm font-semibold">NAs e evidências</p>
               <p className="text-xs text-muted-foreground">
-                Anexe documentos ou fotos que comprovem a execução do atendimento. Cada arquivo é salvo imediatamente.
+                Aceita fotos, PDF, Word e planilhas de até 15 MB. Cada arquivo é salvo imediatamente.
               </p>
             </div>
           </div>
@@ -100,10 +146,10 @@ export function CompletionNaAttachments({
 
       <input
         ref={fileInputRef}
+        data-testid="schedule-attachment-file-input"
         type="file"
         multiple
         className="hidden"
-        accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
         disabled={disabled}
         onChange={(event) => {
           addFilesFromInput(event.target.files)

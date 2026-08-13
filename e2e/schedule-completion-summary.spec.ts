@@ -116,6 +116,100 @@ test("digitaliza uma foto e a anexa ao agendamento", async ({ page }) => {
   await expect(page.getByText("documento-digitalizado-e2e.jpg", { exact: true })).toBeVisible()
 })
 
+test("anexa fotos, PDF, Word e planilhas pelo seletor geral", async ({ page }) => {
+  const date = todayKey()
+  const files = [
+    { name: "evidencia.avif", mimeType: "image/avif", buffer: Buffer.from("foto-avif") },
+    { name: "na-assinada.pdf", mimeType: "application/pdf", buffer: Buffer.from("pdf-na") },
+    {
+      name: "relatorio.docx",
+      mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      buffer: Buffer.from("word-relatorio"),
+    },
+    {
+      name: "medicoes.xlsx",
+      mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      buffer: Buffer.from("excel-medicoes"),
+    },
+  ]
+  const uploadedFileNames: string[] = []
+  let inProgressSchedule = {
+    ...scheduleFixture,
+    date,
+    status: "in_progress" as const,
+    completionStartDate: date,
+    completionStartTime: "08:00",
+    naAttachments: [] as ScheduleNaAttachmentRecord[],
+  }
+
+  await installAuthenticatedSession(page)
+  await installApiMock(page)
+  await page.route("**/api/v1/schedules**", async (route) => {
+    const request = route.request()
+    const path = new URL(request.url()).pathname
+
+    if (request.method() === "GET" && path.endsWith("/schedules")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json; charset=utf-8",
+        body: JSON.stringify({ success: true, data: [inProgressSchedule] }),
+      })
+      return
+    }
+
+    if (request.method() === "POST" && path.endsWith(`/schedules/${inProgressSchedule.id}/na`)) {
+      const body = request.postDataBuffer() ?? Buffer.alloc(0)
+      const uploadedFile = files.find((file) => body.includes(Buffer.from(file.name)))
+      if (uploadedFile) uploadedFileNames.push(uploadedFile.name)
+      inProgressSchedule = {
+        ...inProgressSchedule,
+        naAttachments: uploadedFile
+          ? [...inProgressSchedule.naAttachments, {
+              fileName: uploadedFile.name,
+              documentUrl: `/files/${uploadedFile.name}`,
+              mimeType: uploadedFile.mimeType,
+              fileSize: uploadedFile.buffer.byteLength,
+            }]
+          : inProgressSchedule.naAttachments,
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json; charset=utf-8",
+        body: JSON.stringify({ success: true, data: inProgressSchedule }),
+      })
+      return
+    }
+
+    await route.fallback()
+  })
+
+  await page.goto(`/agenda?date=${date}`)
+  await page.getByRole("button", { name: /Condomínio E2E/ }).click()
+  await expect(page.getByText("Aceita fotos, PDF, Word e planilhas de até 15 MB. Cada arquivo é salvo imediatamente.")).toBeVisible()
+
+  const fileChooserPromise = page.waitForEvent("filechooser")
+  await page.getByRole("button", { name: "Anexar arquivos", exact: true }).click()
+  const fileChooser = await fileChooserPromise
+  expect(await fileChooser.element().getAttribute("accept")).toBeNull()
+  await fileChooser.setFiles(files)
+
+  await expect.poll(() => uploadedFileNames).toEqual(files.map((file) => file.name))
+  for (const file of files) {
+    await expect(page.getByText(file.name, { exact: true })).toBeVisible()
+  }
+
+  const rejectedChooserPromise = page.waitForEvent("filechooser")
+  await page.getByRole("button", { name: "Anexar arquivos", exact: true }).click()
+  const rejectedChooser = await rejectedChooserPromise
+  await rejectedChooser.setFiles({
+    name: "programa.exe",
+    mimeType: "application/x-msdownload",
+    buffer: Buffer.from("executavel"),
+  })
+  await expect(page.getByText("Formato não permitido. Anexe fotos, PDF, Word ou planilhas.", { exact: true })).toBeVisible()
+  await expect.poll(() => uploadedFileNames).toHaveLength(files.length)
+})
+
 test("conclui o atendimento com motorista opcional, ajudantes e observações", async ({ page }) => {
   const date = todayKey()
   let inProgressSchedule = {
@@ -211,7 +305,7 @@ test("conclui o atendimento com motorista opcional, ajudantes e observações", 
   await expect(page.getByRole("heading", { name: "Anexos do atendimento" })).toBeVisible()
   await expect(page.getByText("Adicione NAs e evidências da execução. Cada arquivo é salvo no agendamento assim que for anexado.")).toBeVisible()
   await expect(page.getByText("NAs e evidências", { exact: true })).toBeVisible()
-  await expect(page.getByText("Anexe documentos ou fotos que comprovem a execução do atendimento. Cada arquivo é salvo imediatamente.")).toBeVisible()
+  await expect(page.getByText("Aceita fotos, PDF, Word e planilhas de até 15 MB. Cada arquivo é salvo imediatamente.")).toBeVisible()
   await expect(page.getByText(/concluir o atendimento somente no último dia/i)).toHaveCount(0)
   await expect(page.getByRole("link", { name: "Visualizar na-remover.pdf" })).toBeVisible()
   await expect(page.getByText("Abrir", { exact: true })).toHaveCount(0)

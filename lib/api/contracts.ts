@@ -409,6 +409,7 @@ export async function deleteContract(id: string) {
 }
 
 export type UpdateContractInstallmentPayload = {
+  dueDate?: string
   status: "pending" | "paid" | "late" | "overdue" | "cancelled"
   paidDate?: string
 }
