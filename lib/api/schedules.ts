@@ -72,7 +72,7 @@ export type ScheduleRecord = {
   billable: boolean
   value: number
   billingDueDate?: string
-  billingStatus: "pending" | "paid" | "overdue" | "cancelled"
+  billingStatus: "pending" | "paid" | "late" | "overdue" | "cancelled"
   effectiveBillingStatus: "pending" | "paid" | "late" | "overdue" | "cancelled"
   paidDate?: string
   paidValue?: number
@@ -125,7 +125,7 @@ export type SchedulePayload = {
   billable?: boolean
   value?: number
   billingDueDate?: string
-  billingStatus?: "pending" | "paid" | "overdue" | "cancelled"
+  billingStatus?: "pending" | "paid" | "late" | "overdue" | "cancelled"
   paidDate?: string
   paidValue?: number
   paymentMethod?: string

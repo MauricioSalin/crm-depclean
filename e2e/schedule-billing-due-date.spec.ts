@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test"
 
-import { installApiMock, scheduleFixture } from "./support/api-mock"
+import { clientFixture, installApiMock, scheduleFixture } from "./support/api-mock"
 import { installAuthenticatedSession } from "./support/session"
 
 test("exibe vencimento junto do valor nas criações de Agenda e Agendamentos", async ({ page }) => {
@@ -69,7 +69,7 @@ test("preenche o vencimento nas edições abertas por Agendamentos e Agenda", as
   await expect(page.getByRole("button", { name: "Data de vencimento" })).toContainText("20/08/2026")
 })
 
-test("lista a cobrança avulsa em Extras e permite editar, pagar ou marcar como não paga", async ({ page }) => {
+test("lista a cobrança avulsa em Extras e oferece todos os status financeiros", async ({ page }) => {
   type BillingScheduleState = Omit<
     typeof scheduleFixture,
     | "id"
@@ -91,8 +91,9 @@ test("lista a cobrança avulsa em Extras e permite editar, pagar ou marcar como 
     status: "completed"
     value: number
     billingDueDate: string
-    billingStatus: "pending" | "paid" | "overdue"
-    effectiveBillingStatus: "overdue" | "pending" | "paid"
+    billingStatus: "pending" | "paid" | "late" | "overdue"
+    effectiveBillingStatus: "pending" | "paid" | "late" | "overdue"
+    paidDate?: string
   }
   let scheduleState: BillingScheduleState = {
     ...scheduleFixture,
@@ -126,12 +127,19 @@ test("lista a cobrança avulsa em Extras e permite editar, pagar ou marcar como 
       const patch = request.postDataJSON() as Record<string, unknown>
       billingPatches.push(patch)
       const paid = patch.billingStatus === "paid"
+      const nextStatus = patch.billingStatus === "paid"
+        || patch.billingStatus === "late"
+        || patch.billingStatus === "overdue"
+        || patch.billingStatus === "pending"
+        ? patch.billingStatus
+        : scheduleState.billingStatus
       scheduleState = {
         ...scheduleState,
         value: typeof patch.value === "number" ? patch.value : scheduleState.value,
         billingDueDate: typeof patch.billingDueDate === "string" ? patch.billingDueDate : scheduleState.billingDueDate,
-        billingStatus: paid ? "paid" : patch.billingStatus === "overdue" ? "overdue" : "pending",
-        effectiveBillingStatus: paid ? "paid" : patch.billingStatus === "overdue" ? "overdue" : "pending",
+        billingStatus: nextStatus,
+        effectiveBillingStatus: nextStatus,
+        paidDate: typeof patch.paidDate === "string" ? patch.paidDate : paid ? scheduleState.paidDate : undefined,
       }
       await route.fulfill({
         status: 200,
@@ -153,10 +161,19 @@ test("lista a cobrança avulsa em Extras e permite editar, pagar ou marcar como 
   await expect(page.getByRole("row").filter({ hasText: "Agendamento avulso" })).toHaveCount(0)
 
   await page.getByRole("tab", { name: /Extras/ }).click()
+  await expect(page.getByRole("columnheader", { name: "Data do pagamento" })).toBeVisible()
   const chargeRow = page.getByRole("row").filter({ hasText: "Agendamento avulso" })
   await expect(chargeRow.getByText(scheduleState.serviceTypeName, { exact: true })).toBeVisible()
   await expect(chargeRow.getByText("R$ 5.040,00", { exact: true })).toBeVisible()
   await expect(chargeRow.getByText("20/08/2026", { exact: true })).toBeVisible()
+
+  await chargeRow.getByRole("button", { name: "Abrir ações da cobrança do agendamento avulso" }).click()
+  await expect(page.getByRole("menuitem", { name: "Marcar como atrasada" })).toBeVisible()
+  await expect(page.getByRole("menuitem", { name: "Marcar como pendente" })).toBeVisible()
+  await expect(page.getByRole("menuitem", { name: "Marcar como vencida" })).toHaveCount(0)
+  await page.getByRole("menuitem", { name: "Marcar como atrasada" }).click()
+  await expect.poll(() => billingPatches.at(-1)).toMatchObject({ billingStatus: "late" })
+  await expect(chargeRow.getByText("Atrasada", { exact: true })).toBeVisible()
 
   await chargeRow.getByRole("button", { name: "Abrir ações da cobrança do agendamento avulso" }).click()
   await page.getByRole("menuitem", { name: "Editar cobrança" }).click()
@@ -176,7 +193,7 @@ test("lista a cobrança avulsa em Extras e permite editar, pagar ou marcar como 
   await expect.poll(() => billingPatches.at(-1)).toMatchObject({
     value: 6_123.45,
     billingDueDate: "2026-08-25",
-    billingStatus: "pending",
+    billingStatus: "late",
   })
   await expect(chargeRow.getByText("R$ 6.123,45", { exact: true })).toBeVisible()
   await expect(chargeRow.getByText("25/08/2026", { exact: true })).toBeVisible()
@@ -188,10 +205,72 @@ test("lista a cobrança avulsa em Extras e permite editar, pagar ou marcar como 
     paidDate: expect.any(String),
     paidValue: 6_123.45,
   })
+  const paidDate = String(billingPatches.at(-1)?.paidDate)
+  await expect(chargeRow.getByText(paidDate.slice(0, 10).split("-").reverse().join("/"), { exact: true })).toBeVisible()
   await expect(chargeRow.getByText("Paga", { exact: true })).toBeVisible()
 
   await chargeRow.getByRole("button").click()
-  await page.getByRole("menuitem", { name: "Marcar como não paga" }).click()
+  await page.getByRole("menuitem", { name: "Marcar como vencida" }).click()
+  await expect.poll(() => billingPatches.at(-1)).toMatchObject({ billingStatus: "overdue" })
+  await expect(chargeRow.getByText("Vencida", { exact: true })).toBeVisible()
+
+  await chargeRow.getByRole("button").click()
+  await page.getByRole("menuitem", { name: "Marcar como pendente" }).click()
   await expect.poll(() => billingPatches.at(-1)).toMatchObject({ billingStatus: "pending" })
   await expect(chargeRow.getByText("Pendente", { exact: true })).toBeVisible()
+})
+
+test("padroniza o menu de status dos extras cadastrados", async ({ page }) => {
+  let extraState = {
+    id: "extra-e2e",
+    clientId: clientFixture.id,
+    description: "Descarte adicional",
+    value: 480,
+    createdDate: "2026-08-01",
+    dueDate: "2026-08-10",
+    status: "overdue" as "pending" | "paid" | "late" | "overdue",
+    createdAt: "2026-08-01T12:00:00.000Z",
+    updatedAt: "2026-08-01T12:00:00.000Z",
+  }
+  const statusPatches: string[] = []
+
+  await installAuthenticatedSession(page)
+  await installApiMock(page)
+  await page.route(`**/api/v1/clients/${clientFixture.id}/extras**`, async (route) => {
+    const request = route.request()
+    const pathname = new URL(request.url()).pathname
+    if (request.method() === "GET" && pathname === `/api/v1/clients/${clientFixture.id}/extras`) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json; charset=utf-8",
+        body: JSON.stringify({ success: true, data: [extraState] }),
+      })
+      return
+    }
+    if (request.method() === "PATCH" && pathname === `/api/v1/clients/${clientFixture.id}/extras/${extraState.id}/status`) {
+      const patch = request.postDataJSON() as { status: typeof extraState.status }
+      statusPatches.push(patch.status)
+      extraState = { ...extraState, status: patch.status }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json; charset=utf-8",
+        body: JSON.stringify({ success: true, data: extraState }),
+      })
+      return
+    }
+    await route.fallback()
+  })
+
+  await page.goto(`/clientes/${clientFixture.id}?tab=extras`)
+  const extraRow = page.getByRole("row").filter({ hasText: extraState.description })
+  await extraRow.getByRole("button", { name: "Abrir ações do valor extra" }).click()
+  await expect(page.getByRole("menuitem", { name: "Marcar como paga" })).toBeVisible()
+  await expect(page.getByRole("menuitem", { name: "Marcar como pendente" })).toBeVisible()
+  await expect(page.getByRole("menuitem", { name: "Marcar como atrasada" })).toBeVisible()
+  await expect(page.getByRole("menuitem", { name: "Marcar como vencida" })).toHaveCount(0)
+  await expect(page.getByRole("menuitem", { name: "Marcar como cancelada" })).toHaveCount(0)
+
+  await page.getByRole("menuitem", { name: "Marcar como atrasada" }).click()
+  await expect.poll(() => statusPatches.at(-1)).toBe("late")
+  await expect(extraRow.getByText("Atrasada", { exact: true })).toBeVisible()
 })

@@ -85,7 +85,9 @@ test("edita a mesma parcela nos perfis do cliente e do contrato sem repetir o st
   })
 
   await page.goto(`/clientes/${clientFixture.id}?tab=parcelas`)
+  await expect(page.getByRole("columnheader", { name: "Data do pagamento" })).toBeVisible()
   const clientInstallmentRow = page.getByRole("row").filter({ hasText: "1/1" })
+  await expect(clientInstallmentRow.getByText("28/07/2026", { exact: true })).toBeVisible()
   await clientInstallmentRow.getByRole("button").click()
   await expect(page.getByRole("menuitem", { name: "Editar parcela" })).toBeVisible()
   await expect(page.getByRole("menuitem", { name: "Marcar como paga" })).toHaveCount(0)

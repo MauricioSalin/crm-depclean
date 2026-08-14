@@ -654,7 +654,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
       value,
     }: {
       scheduleId: string
-      status: "pending" | "paid" | "overdue"
+      status: "pending" | "paid" | "late" | "overdue"
       value: number
     }) => {
       if (!hasExtraManagementPermission) {
@@ -1084,7 +1084,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
   ) => {
     if (installment.source === "schedule") {
       if (!hasExtraManagementPermission || scheduleBillingStatusMutation.isPending) return
-      if (status !== "pending" && status !== "paid" && status !== "overdue") return
+      if (status !== "pending" && status !== "paid" && status !== "late" && status !== "overdue") return
       scheduleBillingStatusMutation.mutate({
         scheduleId: installment.scheduleId,
         status,
@@ -1559,13 +1559,14 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                     <TableHead>Parcela</TableHead>
                     <TableHead>Valor</TableHead>
                     <TableHead className="hidden md:table-cell">Vencimento</TableHead>
+                    <TableHead className="hidden md:table-cell">Data do pagamento</TableHead>
                     <TableHead>Status</TableHead>
                     {canManageInstallments ? <TableHead className="text-right">Ações</TableHead> : null}
                   </TableRow>
                 </TableHeader>
                 <TableBody page={allInstallments.length > 0 ? installmentsPage : undefined} pageSize={allInstallments.length > 0 ? installmentsPageSize : undefined}>
                   {allInstallments.length === 0 ? (
-                    <TableEmptyState colSpan={canManageInstallments ? 6 : 5} icon={DollarSign} title="Nenhuma parcela encontrada." />
+                    <TableEmptyState colSpan={canManageInstallments ? 7 : 6} icon={DollarSign} title="Nenhuma parcela encontrada." />
                   ) : (
                     allInstallments.map((installment) => (
                       <TableRow key={`${installment.source}:${installment.id}`}>
@@ -1573,6 +1574,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                         <TableCell>{`${installment.number}/${installment.installmentsCount}`}</TableCell>
                         <TableCell className="font-medium">{formatCurrency(installment.value)}</TableCell>
                         <TableCell className="hidden md:table-cell text-sm">{formatDate(installment.dueDate)}</TableCell>
+                        <TableCell className="hidden md:table-cell text-sm">{formatDate(installment.paidDate)}</TableCell>
                         <TableCell>{getInstallmentStatusBadge(installment.status)}</TableCell>
                         {canManageInstallments ? (
                           <TableCell className="text-right">
@@ -1654,6 +1656,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                     <TableHead>Descrição</TableHead>
                     <TableHead>Valor</TableHead>
                     <TableHead>Vencimento</TableHead>
+                    <TableHead>Data do pagamento</TableHead>
                     <TableHead>Status</TableHead>
                     {canManageExtras ? <TableHead className="text-right">Ações</TableHead> : null}
                   </TableRow>
@@ -1675,6 +1678,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                       </TableCell>
                       <TableCell className="font-medium">{formatCurrency(extra.value)}</TableCell>
                       <TableCell className="text-sm">{formatDate(extra.dueDate)}</TableCell>
+                      <TableCell className="text-sm">{formatDate(extra.paidDate)}</TableCell>
                       <TableCell>{getClientExtraStatusBadge(extra.status)}</TableCell>
                       {canManageExtras ? (
                         <TableCell className="text-right">
@@ -1705,7 +1709,19 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                                 {extra.status !== "pending" ? (
                                   <DropdownMenuItem onClick={() => setInstallmentStatus(extra, "pending")}>
                                     <Clock className="mr-2 h-4 w-4" />
-                                    Marcar como não paga
+                                    Marcar como pendente
+                                  </DropdownMenuItem>
+                                ) : null}
+                                {extra.status !== "late" ? (
+                                  <DropdownMenuItem onClick={() => setInstallmentStatus(extra, "late")}>
+                                    <Clock className="mr-2 h-4 w-4" />
+                                    Marcar como atrasada
+                                  </DropdownMenuItem>
+                                ) : null}
+                                {extra.status !== "overdue" ? (
+                                  <DropdownMenuItem onClick={() => setInstallmentStatus(extra, "overdue")}>
+                                    <AlertTriangle className="mr-2 h-4 w-4" />
+                                    Marcar como vencida
                                   </DropdownMenuItem>
                                 ) : null}
                               </DropdownMenuContent>
@@ -1718,27 +1734,36 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                                   variant="ghost"
                                   size="icon"
                                   disabled={updateExtraStatusMutation.isPending}
-                                  title="Alterar status"
+                                  aria-label="Abrir ações do valor extra"
                                 >
                                   <MoreHorizontal className="h-4 w-4" />
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => updateExtraStatusMutation.mutate({ extraId: extra.id, status: "paid" })}>
-                                  Marcar como paga
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => updateExtraStatusMutation.mutate({ extraId: extra.id, status: "pending" })}>
-                                  Marcar como pendente
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => updateExtraStatusMutation.mutate({ extraId: extra.id, status: "late" })}>
-                                  Marcar como atrasada
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => updateExtraStatusMutation.mutate({ extraId: extra.id, status: "overdue" })}>
-                                  Marcar como vencida
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => updateExtraStatusMutation.mutate({ extraId: extra.id, status: "cancelled" })}>
-                                  Marcar como cancelada
-                                </DropdownMenuItem>
+                                {extra.status !== "paid" ? (
+                                  <DropdownMenuItem onClick={() => updateExtraStatusMutation.mutate({ extraId: extra.id, status: "paid" })}>
+                                    <CheckCircle className="mr-2 h-4 w-4" />
+                                    Marcar como paga
+                                  </DropdownMenuItem>
+                                ) : null}
+                                {extra.status !== "pending" ? (
+                                  <DropdownMenuItem onClick={() => updateExtraStatusMutation.mutate({ extraId: extra.id, status: "pending" })}>
+                                    <Clock className="mr-2 h-4 w-4" />
+                                    Marcar como pendente
+                                  </DropdownMenuItem>
+                                ) : null}
+                                {extra.status !== "late" ? (
+                                  <DropdownMenuItem onClick={() => updateExtraStatusMutation.mutate({ extraId: extra.id, status: "late" })}>
+                                    <Clock className="mr-2 h-4 w-4" />
+                                    Marcar como atrasada
+                                  </DropdownMenuItem>
+                                ) : null}
+                                {extra.status !== "overdue" ? (
+                                  <DropdownMenuItem onClick={() => updateExtraStatusMutation.mutate({ extraId: extra.id, status: "overdue" })}>
+                                    <AlertTriangle className="mr-2 h-4 w-4" />
+                                    Marcar como vencida
+                                  </DropdownMenuItem>
+                                ) : null}
                               </DropdownMenuContent>
                             </DropdownMenu>
                           )}
@@ -1749,7 +1774,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
 
                   {!extrasQuery.isLoading && allExtras.length === 0 ? (
                     <TableEmptyState
-                      colSpan={canManageExtras ? 6 : 5}
+                      colSpan={canManageExtras ? 7 : 6}
                       icon={DollarSign}
                       title="Nenhum valor extra cadastrado para este cliente."
                     />
@@ -1762,6 +1787,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                         { width: "w-28" },
                         { width: "w-64" },
                         { width: "w-24" },
+                        { width: "w-28" },
                         { width: "w-28" },
                         { width: "w-20" },
                         ...(canManageExtras ? [{ align: "right" as const, width: "w-8" }] : []),
