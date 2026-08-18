@@ -235,7 +235,7 @@ export interface ScheduledService {
   updatedAt: Date
 }
 
-export type ClientAttachmentType = "service_na" | "certificate" | "informative" | "contract" | "other"
+export type ClientAttachmentType = "schedule" | "contract" | "meeting_minutes" | "bait_stations" | "checklist" | "other"
 
 export interface ClientAttachment {
   id: string
@@ -250,6 +250,7 @@ export interface ClientAttachment {
   uploadedAt: string
   description?: string
   metadata?: {
+    originKind?: string
     serviceTypeName?: string
     scheduledDate?: string
     startTime?: string

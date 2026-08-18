@@ -116,7 +116,7 @@ test("digitaliza uma foto e a anexa ao agendamento", async ({ page }) => {
   await expect(page.getByText("documento-digitalizado-e2e.jpg", { exact: true })).toBeVisible()
 })
 
-test("anexa fotos, PDF, Word e planilhas pelo seletor geral", async ({ page }) => {
+test("ultrapassa dez anexos acumulados no agendamento", async ({ page }) => {
   const date = todayKey()
   const files = [
     { name: "evidencia.avif", mimeType: "image/avif", buffer: Buffer.from("foto-avif") },
@@ -131,15 +131,26 @@ test("anexa fotos, PDF, Word e planilhas pelo seletor geral", async ({ page }) =
       mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       buffer: Buffer.from("excel-medicoes"),
     },
+    {
+      name: "evidencia-16mb.pdf",
+      mimeType: "application/pdf",
+      buffer: Buffer.alloc(16 * 1024 * 1024),
+    },
   ]
   const uploadedFileNames: string[] = []
+  const existingAttachments = Array.from({ length: 10 }, (_, index) => ({
+    fileName: `anexo-existente-${index + 1}.pdf`,
+    documentUrl: `/files/anexo-existente-${index + 1}.pdf`,
+    mimeType: "application/pdf",
+    fileSize: 1024,
+  }))
   let inProgressSchedule = {
     ...scheduleFixture,
     date,
     status: "in_progress" as const,
     completionStartDate: date,
     completionStartTime: "08:00",
-    naAttachments: [] as ScheduleNaAttachmentRecord[],
+    naAttachments: existingAttachments as ScheduleNaAttachmentRecord[],
   }
 
   await installAuthenticatedSession(page)
@@ -185,7 +196,7 @@ test("anexa fotos, PDF, Word e planilhas pelo seletor geral", async ({ page }) =
 
   await page.goto(`/agenda?date=${date}`)
   await page.getByRole("button", { name: /Condomínio E2E/ }).click()
-  await expect(page.getByText("Aceita fotos, PDF, Word e planilhas de até 15 MB. Cada arquivo é salvo imediatamente.")).toBeVisible()
+  await expect(page.getByText("Aceita fotos, PDF, Word e planilhas de até 30 MB. Cada arquivo é salvo imediatamente.")).toBeVisible()
 
   const fileChooserPromise = page.waitForEvent("filechooser")
   await page.getByRole("button", { name: "Anexar arquivos", exact: true }).click()
@@ -194,6 +205,7 @@ test("anexa fotos, PDF, Word e planilhas pelo seletor geral", async ({ page }) =
   await fileChooser.setFiles(files)
 
   await expect.poll(() => uploadedFileNames).toEqual(files.map((file) => file.name))
+  await expect(page.getByText("15 anexos", { exact: true })).toBeVisible()
   for (const file of files) {
     await expect(page.getByText(file.name, { exact: true })).toBeVisible()
   }
@@ -227,6 +239,7 @@ test("conclui o atendimento com motorista opcional, ajudantes e observações", 
   }
   let completionPayload: Record<string, unknown> | null = null
   let deletedNaDocumentUrl = ""
+  let renamedNaPayload: { documentUrl: string; fileName: string } | null = null
 
   await installAuthenticatedSession(page, {
     ...E2E_USER,
@@ -274,6 +287,25 @@ test("conclui o atendimento com motorista opcional, ajudantes e observações", 
       return
     }
 
+    if (request.method() === "PATCH" && path.endsWith(`/schedules/${inProgressSchedule.id}/na`)) {
+      const payload = request.postDataJSON() as { documentUrl: string; fileName: string }
+      renamedNaPayload = payload
+      inProgressSchedule = {
+        ...inProgressSchedule,
+        naAttachments: inProgressSchedule.naAttachments.map((attachment) => (
+          attachment.documentUrl === payload.documentUrl
+            ? { ...attachment, fileName: payload.fileName }
+            : attachment
+        )),
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json; charset=utf-8",
+        body: JSON.stringify({ success: true, data: inProgressSchedule }),
+      })
+      return
+    }
+
     if (request.method() === "PATCH" && path.endsWith(`/schedules/${inProgressSchedule.id}/complete`)) {
       completionPayload = request.postDataJSON()
       await route.fulfill({
@@ -305,17 +337,28 @@ test("conclui o atendimento com motorista opcional, ajudantes e observações", 
   await expect(page.getByRole("heading", { name: "Anexos do atendimento" })).toBeVisible()
   await expect(page.getByText("Adicione NAs e evidências da execução. Cada arquivo é salvo no agendamento assim que for anexado.")).toBeVisible()
   await expect(page.getByText("NAs e evidências", { exact: true })).toBeVisible()
-  await expect(page.getByText("Aceita fotos, PDF, Word e planilhas de até 15 MB. Cada arquivo é salvo imediatamente.")).toBeVisible()
+  await expect(page.getByText("Aceita fotos, PDF, Word e planilhas de até 30 MB. Cada arquivo é salvo imediatamente.")).toBeVisible()
   await expect(page.getByText(/concluir o atendimento somente no último dia/i)).toHaveCount(0)
   await expect(page.getByRole("link", { name: "Visualizar na-remover.pdf" })).toBeVisible()
   await expect(page.getByText("Abrir", { exact: true })).toHaveCount(0)
+  await page.getByRole("button", { name: "Editar nome de na-manter.pdf" }).click()
+  const renameDialog = page.getByRole("dialog", { name: "Editar nome do arquivo" })
+  await expect(renameDialog).toBeVisible()
+  await renameDialog.getByLabel("Novo nome do arquivo").fill("evidencia-assinada.pdf")
+  await renameDialog.getByRole("button", { name: "Salvar nome", exact: true }).click()
+  await expect.poll(() => renamedNaPayload).toEqual({
+    documentUrl: "/files/na-manter.pdf",
+    fileName: "evidencia-assinada.pdf",
+  })
+  await expect(page.getByText("evidencia-assinada.pdf", { exact: true })).toBeVisible()
+  await expect(page.getByText("na-manter.pdf", { exact: true })).toHaveCount(0)
   await page.getByRole("button", { name: "Remover na-remover.pdf" }).click()
   const removeDialog = page.getByRole("alertdialog", { name: "Remover anexo?" })
   await expect(removeDialog).toBeVisible()
   await removeDialog.getByRole("button", { name: "Remover anexo", exact: true }).click()
   await expect.poll(() => deletedNaDocumentUrl).toBe("/files/na-remover.pdf")
   await expect(page.getByText("na-remover.pdf", { exact: true })).toHaveCount(0)
-  await expect(page.getByText("na-manter.pdf", { exact: true })).toBeVisible()
+  await expect(page.getByText("evidencia-assinada.pdf", { exact: true })).toBeVisible()
   await expect(page.getByText("1 anexo", { exact: true })).toBeVisible()
   await page.getByRole("button", { name: "Ver informações", exact: true }).click()
   const detailsDialog = page.getByRole("dialog", { name: new RegExp(inProgressSchedule.clientName) })

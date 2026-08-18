@@ -26,6 +26,8 @@ import {
   getAvailableRescheduleTimes,
   getScheduleConflictResourceNames,
   getScheduleDailyServiceCapacityViolation,
+  getScheduleRescheduleDurationConfig,
+  getScheduleRescheduleIgnoredIds,
   isScheduleConflictErrorMessage,
 } from "@/lib/schedule-availability"
 import { formatConfiguredScheduleDuration } from "@/lib/schedule-duration"
@@ -256,16 +258,18 @@ export function ScheduleDetailsDialog({
     canStartAction && hasStartableStatus && (isScheduledForToday || canStartOutsideScheduledDate)
   const isBlockedByScheduleDate =
     canStartAction && hasStartableStatus && !isScheduledForToday && !canStartOutsideScheduledDate
-  const isBlockedByDelinquency = Boolean(schedule.isClientDelinquent && !canStartAction && hasStartableStatus)
+  const hasDelinquencyWarning = Boolean(schedule.isClientDelinquent && hasStartableStatus)
   const canRescheduleSchedule = canRescheduleAction && ["draft", "scheduled", "rescheduled"].includes(schedule.status)
-  const showAttendanceAction = canStartAttendance || isBlockedByScheduleDate || isBlockedByDelinquency || canRescheduleSchedule || (canManage && schedule.status === "draft")
-  const attendanceMessage = isBlockedByDelinquency
-    ? "Este cliente possui parcela vencida. Apenas usuários com permissão para gerenciar o status da agenda podem iniciar o atendimento."
-    : isBlockedByScheduleDate
-      ? `Este atendimento só pode ser iniciado na data agendada: ${formatScheduleDate(schedule.date)}.`
-      : canStartAttendance
-        ? "Use o botão abaixo para iniciar o atendimento deste agendamento."
-        : "O atendimento será liberado assim que o contrato estiver assinado."
+  const multiDayTotal = Math.trunc(Number(schedule.multiDayTotal) || 0)
+  const isMultiDayMainSchedule = Number(schedule.multiDayIndex) === 1 && multiDayTotal > 1
+  const isMultiDayChildSchedule = Number(schedule.multiDayIndex) > 1 && multiDayTotal > 1
+  const showAttendanceAction = canStartAttendance || isBlockedByScheduleDate || canRescheduleSchedule || (canManage && schedule.status === "draft")
+  const attendanceMessage = isBlockedByScheduleDate
+    ? `Este atendimento só pode ser iniciado na data agendada: ${formatScheduleDate(schedule.date)}.`
+    : canStartAttendance
+      ? "Use o botão abaixo para iniciar o atendimento deste agendamento."
+      : "O atendimento será liberado assim que o contrato estiver assinado."
+  const delinquencyWarningMessage = "Atenção: este cliente possui parcela vencida. A inadimplência não impede o atendimento."
   const rescheduleOptions = optionsQuery.data?.data ?? []
 
   const submitReschedule = (date: string, time: string, validateAvailability = false, allowConflict = false) => {
@@ -287,14 +291,12 @@ export function ScheduleDetailsDialog({
     }
 
     if (validateAvailability && !allowConflict) {
-      const durationType = schedule.durationType ?? "hours"
-      const duration = Number(schedule.durationValue) > 0
-        ? Number(schedule.durationValue)
-        : Math.max(1 / 60, Number(schedule.duration || 60) / 60)
+      const { duration, durationType } = getScheduleRescheduleDurationConfig(schedule)
       const availability = checkScheduleAvailability({
         schedules,
         teams,
         ignoreScheduleId: schedule.id,
+        ignoreScheduleIds: getScheduleRescheduleIgnoredIds(schedules, schedule),
         mode: "manual",
         formData: {
           teamIds: schedule.teams.map((team) => team.id),
@@ -384,26 +386,21 @@ export function ScheduleDetailsDialog({
 
             {mode === "reschedule" ? (
               <div className="mt-2 space-y-5">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-lg font-semibold text-foreground">Reagendar atendimento</p>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      Escolha uma sugestão validada ou informe uma nova data e horário.
-                    </p>
-                  </div>
-                  {!isMobile ? (
-                    <Button type="button" variant="ghost" size="sm" onClick={() => setMode("details")}>
-                      <ArrowLeft className="mr-2 h-4 w-4" />
-                      Voltar
-                    </Button>
-                  ) : null}
+                <div>
+                  <p className="text-lg font-semibold text-foreground">Reagendar atendimento</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Escolha uma sugestão validada ou informe uma nova data e horário.
+                  </p>
                 </div>
 
-                {isMobile ? (
-                  <Button type="button" variant="ghost" size="sm" className="pl-0" onClick={() => setMode("details")}>
-                    <ArrowLeft className="mr-2 h-4 w-4" />
-                    Voltar para detalhes
-                  </Button>
+                {isMultiDayMainSchedule ? (
+                  <p className="rounded-2xl bg-primary/5 px-4 py-3 text-sm text-foreground">
+                    Este é o primeiro dia. Ao reagendar, os {multiDayTotal} dias do atendimento serão movidos juntos.
+                  </p>
+                ) : isMultiDayChildSchedule ? (
+                  <p className="rounded-2xl bg-primary/5 px-4 py-3 text-sm text-foreground">
+                    Somente este dia será reagendado, com duração de 1 dia.
+                  </p>
                 ) : null}
 
                 <div className="rounded-2xl border p-4">
@@ -731,10 +728,8 @@ export function ScheduleDetailsDialog({
                   <div className="flex flex-col items-start gap-3 rounded-2xl border p-4">
                     <div>
                       <p className="text-sm font-medium text-foreground">
-                        {isBlockedByDelinquency
-                          ? "Atendimento bloqueado por inadimplência"
-                          : isBlockedByScheduleDate
-                            ? "Atendimento indisponível nesta data"
+                        {isBlockedByScheduleDate
+                          ? "Atendimento indisponível nesta data"
                           : canStartAttendance
                             ? "Pronto para iniciar o atendimento"
                             : getStatusLabel(schedule.status)}
@@ -742,6 +737,11 @@ export function ScheduleDetailsDialog({
                       <p className="text-sm text-muted-foreground">
                         {attendanceMessage}
                       </p>
+                      {hasDelinquencyWarning ? (
+                        <p className="mt-2 text-sm text-red-700">
+                          {delinquencyWarningMessage}
+                        </p>
+                      ) : null}
                     </div>
                     <div className="flex flex-wrap gap-2">
                       {canRescheduleSchedule ? (
@@ -782,11 +782,13 @@ export function ScheduleDetailsDialog({
 
           {showAttendanceAction && isMobile && mode === "details" ? (
             <div className="shrink-0 space-y-3 bg-background px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-4">
-              {isBlockedByDelinquency || isBlockedByScheduleDate ? (
-                <p className={isBlockedByDelinquency
-                  ? "text-center text-sm text-red-700"
-                  : "text-center text-sm text-muted-foreground"}
-                >
+              {hasDelinquencyWarning ? (
+                <p className="text-center text-sm text-red-700">
+                  {delinquencyWarningMessage}
+                </p>
+              ) : null}
+              {isBlockedByScheduleDate ? (
+                <p className="text-center text-sm text-muted-foreground">
                   {attendanceMessage}
                 </p>
               ) : null}

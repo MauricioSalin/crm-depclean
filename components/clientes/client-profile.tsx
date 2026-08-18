@@ -13,9 +13,8 @@ import {
   CheckCircle,
   Clock,
   DollarSign,
-  Download,
   Eye,
-  FileCheck2,
+  EyeOff,
   FileText,
   Mail,
   MapPin,
@@ -23,8 +22,6 @@ import {
   Paperclip,
   Pencil,
   Phone,
-  Trash2,
-  Upload,
   Wrench,
 } from "lucide-react"
 
@@ -54,18 +51,18 @@ import { AssignmentBadges } from "@/components/ui/assignment-badges"
 import { ScheduleTypeBadge } from "@/components/ui/schedule-type-badge"
 import { DocxTemplateEditor, type DocxTemplateEditorRef } from "@/components/templates/docx-template-editor"
 import { InstallmentEditDialog } from "@/components/contratos/installment-edit-dialog"
+import { ClientAttachmentsBrowser } from "@/components/clientes/client-attachments-browser"
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
 import { buildApiFileUrl } from "@/lib/api/client"
 import {
-  deleteClientAttachment,
   createClientExtra,
   getClientAttachments,
+  getClientFepamCredentials,
   getClientById,
   listClientExtras,
   listClientServices,
   listClientTypeOptions,
   updateClientExtraStatus,
-  uploadClientAttachment,
   type ClientAttachmentRecord,
   type ClientExtraRecord,
   type ClientExtraStatus,
@@ -209,20 +206,19 @@ const parseExtraValue = (value: string) => {
   return Number(normalized)
 }
 
-const informativePdfFileName = (fileName: string) => {
-  const cleanName = fileName.trim() || "informativo.pdf"
-  if (/\.pdf$/i.test(cleanName)) return cleanName
-  if (/\.docx$/i.test(cleanName)) return cleanName.replace(/\.docx$/i, ".pdf")
-  return `${cleanName.replace(/\.[^.]+$/i, "") || "informativo"}.pdf`
-}
-
 const docxFileName = (fileName: string) => {
   const cleanName = fileName.trim() || "informativo.docx"
   return /\.docx$/i.test(cleanName) ? cleanName : `${cleanName.replace(/\.[^.]+$/i, "") || "informativo"}.docx`
 }
 
+const attachmentDownloadFileName = (attachment: ClientAttachmentRecord) =>
+  attachment.title.trim() || attachment.fileName.trim() || "anexo"
+
 const downloadBrowserFile = (file: File, fileName: string) => {
-  const url = URL.createObjectURL(file)
+  const downloadContent = /\.[^./\\]+$/.test(fileName)
+    ? file
+    : new Blob([file], { type: "application/octet-stream" })
+  const url = URL.createObjectURL(downloadContent)
   const anchor = document.createElement("a")
   anchor.href = url
   anchor.download = fileName
@@ -406,6 +402,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
   const searchParams = useSearchParams()
   const queryClient = useQueryClient()
   const canEditClients = useHasAnyPermission(["clients_edit"])
+  const canRevealFepamCredentials = useHasAnyPermission(["clients_create", "clients_edit"])
   const canDeleteClients = useHasAnyPermission(["clients_delete"])
   const canViewContracts = useHasAnyPermission(["contracts_view", "contracts_edit", "contracts_create", "contracts_delete"])
   const canCreateContracts = useHasAnyPermission(["contracts_create"])
@@ -417,7 +414,6 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
   const canManageInstallments = canViewContracts && canEditContracts
   const canManageExtras = canViewContracts && hasExtraManagementPermission
   const canModifyClientAttachments = canViewContracts && (canEditClients || canDeleteClients)
-  const fileInputRef = useRef<HTMLInputElement | null>(null)
   const informativePdfEditorRef = useRef<DocxTemplateEditorRef | null>(null)
   const [informativePdfJob, setInformativePdfJob] = useState<{
     id: string
@@ -439,6 +435,31 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
     queryFn: () => listContracts(""),
     enabled: canViewContracts,
   })
+  const fepamCredentialsQuery = useQuery({
+    queryKey: ["client", clientId, "fepam-credentials"],
+    queryFn: () => getClientFepamCredentials(clientId),
+    enabled: false,
+  })
+  const [visibleFepamCredentials, setVisibleFepamCredentials] = useState({ cpf: false, password: false })
+
+  const toggleFepamCredential = useCallback(async (field: "cpf" | "password") => {
+    if (!canRevealFepamCredentials) return
+
+    if (visibleFepamCredentials[field]) {
+      setVisibleFepamCredentials((current) => ({ ...current, [field]: false }))
+      return
+    }
+
+    if (!fepamCredentialsQuery.data) {
+      const result = await fepamCredentialsQuery.refetch()
+      if (result.error) {
+        toast.error(getApiErrorMessage(result.error, "Não foi possível carregar as credenciais FEPAM."))
+        return
+      }
+    }
+
+    setVisibleFepamCredentials((current) => ({ ...current, [field]: true }))
+  }, [canRevealFepamCredentials, fepamCredentialsQuery, visibleFepamCredentials])
 
   const markContractAsRenewedMutation = useMutation({
     mutationFn: (contractId: string) => {
@@ -491,48 +512,6 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
     queryKey: ["client-services", resolvedClientId],
     queryFn: () => listClientServices(resolvedClientId),
     enabled: Boolean(client?.id) && canViewServices,
-  })
-
-  const uploadAttachmentMutation = useMutation({
-    mutationFn: (file: File) => {
-      if (!canViewContracts || !canEditClients) {
-        throw new Error("Sem permissao para anexar arquivos ao cliente.")
-      }
-
-      return uploadClientAttachment(resolvedClientId, file)
-    },
-    onMutate: () => {
-      const toastId = toast.loading("Salvando anexo...")
-      return { toastId }
-    },
-    onSuccess: (_data, _variables, context) => {
-      queryClient.invalidateQueries({ queryKey: ["client-attachments", resolvedClientId] })
-      toast.success("Anexo salvo no cliente.", { id: context?.toastId })
-    },
-    onError: (error, _variables, context) => {
-      toast.error(getApiErrorMessage(error, "Não foi possível salvar o anexo."), { id: context?.toastId })
-    },
-  })
-
-  const deleteAttachmentMutation = useMutation({
-    mutationFn: (attachmentId: string) => {
-      if (!canModifyClientAttachments) {
-        throw new Error("Sem permissao para remover anexos do cliente.")
-      }
-
-      return deleteClientAttachment(resolvedClientId, attachmentId)
-    },
-    onMutate: () => {
-      const toastId = toast.loading("Removendo anexo...")
-      return { toastId }
-    },
-    onSuccess: (_data, _variables, context) => {
-      queryClient.invalidateQueries({ queryKey: ["client-attachments", resolvedClientId] })
-      toast.success("Anexo removido.", { id: context?.toastId })
-    },
-    onError: (error, _variables, context) => {
-      toast.error(getApiErrorMessage(error, "Não foi possível remover o anexo."), { id: context?.toastId })
-    },
   })
 
   const [isCreateExtraOpen, setIsCreateExtraOpen] = useState(false)
@@ -716,8 +695,6 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
   const [servicesPageSize, setServicesPageSize] = useState(10)
   const [agendaPage, setAgendaPage] = useState(1)
   const [agendaPageSize, setAgendaPageSize] = useState(10)
-  const [attachmentsPage, setAttachmentsPage] = useState(1)
-  const [attachmentsPageSize, setAttachmentsPageSize] = useState(10)
   const [extrasPage, setExtrasPage] = useState(1)
   const [extrasPageSize, setExtrasPageSize] = useState(10)
   const visibleTabs = useMemo<ClientProfileTab[]>(() => {
@@ -745,16 +722,6 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
     router.replace(`${pathname}?${params.toString()}`, { scroll: false })
   }
 
-  const handleManualAttachmentSelected = (file?: File) => {
-    if (!file) return
-    if (!canViewContracts || !canEditClients) return
-    if (uploadAttachmentMutation.isPending) return
-    uploadAttachmentMutation.mutate(file)
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ""
-    }
-  }
-
   const clientContracts = useMemo(
     () => (contractsQuery.data?.data ?? []).filter((contract) => contract.clientId === resolvedClientId),
     [contractsQuery.data?.data, resolvedClientId],
@@ -766,7 +733,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
   const clientServices = clientServicesQuery.data?.data ?? []
   const clientAttachments = attachmentsQuery.data?.data ?? []
   const clientExtras = extrasQuery.data?.data ?? []
-  const hasInformativeAttachments = clientAttachments.some((attachment) => attachment.type === "informative")
+  const hasInformativeAttachments = clientAttachments.some((attachment) => attachment.metadata?.originKind === "informative")
   const informativeTemplatesQuery = useQuery({
     queryKey: ["templates", "client-profile", "informative"],
     queryFn: () => listTemplates("", "informative"),
@@ -797,7 +764,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
 
   const handleAttachmentDownload = useCallback(
     async (attachment: ClientAttachmentRecord) => {
-      if (attachment.type !== "informative") {
+      if (attachment.metadata?.originKind !== "informative") {
         const toastId = toast.loading("Baixando anexo...")
 
         try {
@@ -807,7 +774,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
           }
 
           const blob = await response.blob()
-          const fileName = attachment.fileName.trim() || attachment.title.trim() || "anexo"
+          const fileName = attachmentDownloadFileName(attachment)
           const file = new File([blob], fileName, {
             type: blob.type || attachment.mimeType || "application/octet-stream",
           })
@@ -834,7 +801,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
           }
 
           const blob = await response.blob()
-          const file = new File([blob], informativePdfFileName(attachment.fileName), { type: "application/pdf" })
+          const file = new File([blob], attachmentDownloadFileName(attachment), { type: "application/pdf" })
           downloadBrowserFile(file, file.name)
           toast.success("PDF do informativo baixado.", { id: toastId })
           setIsGeneratingInformativePdf(false)
@@ -888,7 +855,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
 
           if (cancelled) return
 
-          downloadBrowserFile(file, informativePdfFileName(job.attachment.fileName))
+          downloadBrowserFile(file, attachmentDownloadFileName(job.attachment))
           toast.success("PDF do informativo gerado.", { id: job.toastId })
           setInformativePdfJob(null)
           setIsGeneratingInformativePdf(false)
@@ -962,7 +929,6 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
   const installmentsTotalPages = Math.max(1, Math.ceil(allInstallments.length / installmentsPageSize))
   const servicesTotalPages = Math.max(1, Math.ceil(clientServices.length / servicesPageSize))
   const agendaTotalPages = Math.max(1, Math.ceil(scheduledServices.length / agendaPageSize))
-  const attachmentsTotalPages = Math.max(1, Math.ceil(clientAttachments.length / attachmentsPageSize))
   const extrasTotalPages = Math.max(1, Math.ceil(allExtras.length / extrasPageSize))
   useEffect(() => {
     if (installmentsPage > installmentsTotalPages) setInstallmentsPage(installmentsTotalPages)
@@ -975,10 +941,6 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
   useEffect(() => {
     if (agendaPage > agendaTotalPages) setAgendaPage(agendaTotalPages)
   }, [agendaPage, agendaTotalPages])
-
-  useEffect(() => {
-    if (attachmentsPage > attachmentsTotalPages) setAttachmentsPage(attachmentsTotalPages)
-  }, [attachmentsPage, attachmentsTotalPages])
 
   useEffect(() => {
     if (extrasPage > extrasTotalPages) setExtrasPage(extrasTotalPages)
@@ -1030,53 +992,6 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
   const clientPhone = client.phone?.trim()
   const clientEmail = client.email?.trim()
   const hasClientDirectContact = Boolean(clientPhone || clientEmail)
-
-  const getAttachmentTypeLabel = (type: ClientAttachmentRecord["type"]) => {
-    switch (type) {
-      case "service_na":
-        return "NA"
-      case "certificate":
-        return "Certificado"
-      case "informative":
-        return "Informativo"
-      case "contract":
-        return "Contrato"
-      default:
-        return "Outro"
-    }
-  }
-
-  const getAttachmentTypeBadge = (type: ClientAttachmentRecord["type"]) => {
-    const label = getAttachmentTypeLabel(type)
-
-    switch (type) {
-      case "contract":
-        return <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">{label}</Badge>
-      case "certificate":
-        return <Badge className="bg-green-100 text-green-700 hover:bg-green-100">{label}</Badge>
-      case "service_na":
-        return <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100">{label}</Badge>
-      case "informative":
-        return <Badge className="bg-purple-100 text-purple-700 hover:bg-purple-100">{label}</Badge>
-      default:
-        return <Badge className="bg-slate-100 text-slate-700 hover:bg-slate-100">{label}</Badge>
-    }
-  }
-
-  const formatAttachmentSize = (size?: number) => {
-    if (!size) return ""
-    if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`
-    return `${(size / (1024 * 1024)).toFixed(1)} MB`
-  }
-
-  const formatAttachmentFileInfo = (attachment: ClientAttachmentRecord) => {
-    const fileName = attachment.type === "informative"
-      ? informativePdfFileName(attachment.fileName)
-      : attachment.fileName
-    const size = formatAttachmentSize(attachment.fileSize)
-
-    return [fileName, size].filter(Boolean).join(" - ")
-  }
 
   const setInstallmentStatus = (
     installment: ClientInstallmentRecord,
@@ -1369,6 +1284,66 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                   <TableRow>
                     <TableCell className="text-muted-foreground">CPF do responsável</TableCell>
                     <TableCell className="font-medium">{client.responsibleCpf ? formatCPF(client.responsibleCpf) : "-"}</TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell className="text-muted-foreground">CPF FEPAM</TableCell>
+                    <TableCell className="font-medium">
+                      <div className="flex min-h-8 items-center gap-2">
+                        {client.hasFepamCpf ? (
+                          <>
+                            <span>
+                              {visibleFepamCredentials.cpf
+                                ? (fepamCredentialsQuery.data?.data.fepamCpf
+                                  ? formatCPF(fepamCredentialsQuery.data.data.fepamCpf)
+                                  : "-")
+                                : "********"}
+                            </span>
+                            {canRevealFepamCredentials ? (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                disabled={fepamCredentialsQuery.isFetching}
+                                onClick={() => void toggleFepamCredential("cpf")}
+                                aria-label={visibleFepamCredentials.cpf ? "Ocultar CPF FEPAM" : "Mostrar CPF FEPAM"}
+                              >
+                                {visibleFepamCredentials.cpf ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                              </Button>
+                            ) : null}
+                          </>
+                        ) : <span>-</span>}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell className="text-muted-foreground">Senha FEPAM</TableCell>
+                    <TableCell className="font-medium">
+                      <div className="flex min-h-8 items-center gap-2">
+                        {client.hasFepamPassword ? (
+                          <>
+                            <span>
+                              {visibleFepamCredentials.password
+                                ? (fepamCredentialsQuery.data?.data.fepamPassword || "-")
+                                : "********"}
+                            </span>
+                            {canRevealFepamCredentials ? (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                disabled={fepamCredentialsQuery.isFetching}
+                                onClick={() => void toggleFepamCredential("password")}
+                                aria-label={visibleFepamCredentials.password ? "Ocultar senha FEPAM" : "Mostrar senha FEPAM"}
+                              >
+                                {visibleFepamCredentials.password ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                              </Button>
+                            ) : null}
+                          </>
+                        ) : <span>-</span>}
+                      </div>
+                    </TableCell>
                   </TableRow>
                   <TableRow>
                     <TableCell className="text-muted-foreground">Telefone</TableCell>
@@ -1954,111 +1929,13 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
         </TabsContent>
 
         <TabsContent value="anexos" className="mt-4">
-          <div className="space-y-3">
-            <div className="overflow-x-auto rounded-md">
-              <Table onSortChange={() => setAttachmentsPage(1)}>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Tipo</TableHead>
-                    <TableHead>Arquivo</TableHead>
-                    <TableHead className="hidden md:table-cell">Origem</TableHead>
-                    <TableHead className="hidden md:table-cell">Data</TableHead>
-                    <TableHead className="text-right">Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody page={!attachmentsQuery.isLoading && clientAttachments.length > 0 ? attachmentsPage : undefined} pageSize={!attachmentsQuery.isLoading && clientAttachments.length > 0 ? attachmentsPageSize : undefined}>
-                  {clientAttachments.map((attachment) => (
-                    <TableRow key={attachment.id}>
-                      <TableCell>
-                        {getAttachmentTypeBadge(attachment.type)}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10">
-                            <FileCheck2 className="h-4 w-4 text-primary" />
-                          </div>
-                          <div className="min-w-0">
-                            <p className="truncate font-medium">{attachment.title}</p>
-                            <p className="truncate text-xs text-muted-foreground">
-                              {formatAttachmentFileInfo(attachment)}
-                            </p>
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
-                        {attachment.source === "agenda"
-                          ? "Agenda"
-                          : attachment.source === "contracts"
-                            ? "Contratos"
-                            : attachment.source === "ai"
-                              ? "IA"
-                              : "Manual"}
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell text-sm">
-                        {new Date(attachment.uploadedAt).toLocaleDateString("pt-BR")}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleAttachmentDownload(attachment)}
-                            disabled={attachment.type === "informative" && isGeneratingInformativePdf}
-                            title={attachment.type === "informative" ? "Baixar PDF" : "Baixar arquivo"}
-                          >
-                            <Download className="h-4 w-4" />
-                          </Button>
-                          {attachment.source === "manual" && canModifyClientAttachments ? (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => deleteAttachmentMutation.mutate(attachment.id)}
-                              disabled={deleteAttachmentMutation.isPending}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          ) : null}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-
-                  {!attachmentsQuery.isLoading && clientAttachments.length === 0 ? (
-                    <TableEmptyState colSpan={5} icon={Paperclip} title="Nenhum anexo vinculado a este cliente." />
-                  ) : null}
-
-                  {attachmentsQuery.isLoading ? (
-                    <TableSkeletonRows
-                      rows={3}
-                      columns={[
-                        { width: "w-20" },
-                        { withIcon: true, width: "w-48" },
-                        { className: "hidden md:table-cell", width: "w-20" },
-                        { className: "hidden md:table-cell", width: "w-20" },
-                        { align: "right", width: "w-8" },
-                      ]}
-                    />
-                  ) : null}
-                </TableBody>
-              </Table>
-            </div>
-            {!attachmentsQuery.isLoading && clientAttachments.length > 0 ? (
-              <DataPagination
-                currentPage={attachmentsPage}
-                totalPages={attachmentsTotalPages}
-                pageSize={attachmentsPageSize}
-                totalItems={clientAttachments.length}
-                onPageChange={setAttachmentsPage}
-                onPageSizeChange={(size) => {
-                  setAttachmentsPageSize(size)
-                  setAttachmentsPage(1)
-                }}
-                className="md:static md:bottom-auto md:z-auto"
-              />
-            ) : null}
-          </div>
+          <ClientAttachmentsBrowser
+            clientId={resolvedClientId}
+            canEdit={canViewContracts && canEditClients}
+            canDelete={canModifyClientAttachments}
+            onDownload={handleAttachmentDownload}
+            isDownloadBusy={isGeneratingInformativePdf}
+          />
         </TabsContent>
       </Tabs>
 

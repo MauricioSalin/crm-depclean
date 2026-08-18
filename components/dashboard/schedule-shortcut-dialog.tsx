@@ -25,6 +25,7 @@ import {
   deleteScheduleNa,
   getScheduleById,
   listScheduleCompletionEmployees,
+  renameScheduleNa,
   startSchedule,
   updateSchedule,
   updateScheduleStatus,
@@ -252,6 +253,24 @@ export function ScheduleShortcutDialog({
       if (refreshed?.data) onScheduleChange(refreshed.data)
       await invalidateSchedules()
       toast.error(getApiErrorMessage(error, "Não foi possível remover o anexo."), { id: context?.toastId })
+    },
+  })
+
+  const renameNaMutation = useMutation({
+    mutationFn: ({ target, documentUrl, fileName }: { target: ScheduleRecord; documentUrl: string; fileName: string }) => (
+      renameScheduleNa(target.id, documentUrl, fileName)
+    ),
+    onMutate: () => ({ toastId: toast.loading("Atualizando nome do anexo...") }),
+    onSuccess: async ({ data }, _variables, context) => {
+      onScheduleChange(data)
+      await invalidateSchedules()
+      toast.success("Nome do anexo atualizado.", { id: context?.toastId })
+    },
+    onError: async (error, variables, context) => {
+      const refreshed = await getScheduleById(variables.target.id).catch(() => null)
+      if (refreshed?.data) onScheduleChange(refreshed.data)
+      await invalidateSchedules()
+      toast.error(getApiErrorMessage(error, "Não foi possível atualizar o nome do anexo."), { id: context?.toastId })
     },
   })
 
@@ -545,9 +564,10 @@ export function ScheduleShortcutDialog({
               <CompletionNaAttachments
                 existingAttachments={schedule?.naAttachments ?? []}
                 files={completionFiles}
-                disabled={completeMutation.isPending || uploadNaMutation.isPending || deleteNaMutation.isPending}
+                disabled={completeMutation.isPending || uploadNaMutation.isPending || deleteNaMutation.isPending || renameNaMutation.isPending}
                 uploading={uploadNaMutation.isPending}
                 removingDocumentUrl={deleteNaMutation.isPending ? deleteNaMutation.variables?.documentUrl : undefined}
+                renamingDocumentUrl={renameNaMutation.isPending ? renameNaMutation.variables?.documentUrl : undefined}
                 onAddFiles={(files) => {
                   if (!schedule || uploadNaMutation.isPending) return
                   setCompletionFiles(files)
@@ -557,6 +577,10 @@ export function ScheduleShortcutDialog({
                 onRemoveExistingAttachment={(attachment) => {
                   if (!schedule || deleteNaMutation.isPending) return
                   deleteNaMutation.mutate({ target: schedule, documentUrl: attachment.documentUrl })
+                }}
+                onRenameExistingAttachment={(attachment, fileName) => {
+                  if (!schedule || renameNaMutation.isPending) return
+                  renameNaMutation.mutate({ target: schedule, documentUrl: attachment.documentUrl, fileName })
                 }}
               />
             )}

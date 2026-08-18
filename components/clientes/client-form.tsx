@@ -19,13 +19,14 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
-import { Plus, Trash2, Building2, MapPin, Save, Loader2, Users, CalendarClock, Copy } from "lucide-react"
+import { Plus, Trash2, Building2, MapPin, Save, Loader2, Users, CalendarClock, Copy, Eye, EyeOff, KeyRound } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { formatCNPJ, formatCPF, formatPhone, isValidCNPJ, isValidCPF, onlyDigits } from "@/lib/masks"
 import { toast } from "sonner"
 import {
   createClient,
   deleteClient,
+  getClientFepamCredentials,
   getClientById,
   listClientTypeOptions,
   lookupClientCnpj,
@@ -125,6 +126,12 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
     enabled: Boolean(clientId),
   })
 
+  const fepamCredentialsQuery = useQuery({
+    queryKey: ["client", clientId, "fepam-credentials"],
+    queryFn: () => getClientFepamCredentials(clientId!),
+    enabled: Boolean(clientId && isEditing),
+  })
+
   const clientTypesQuery = useQuery({
     queryKey: ["client-types", "client-form"],
     queryFn: listClientTypeOptions,
@@ -138,6 +145,8 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
     cnpj: client?.cnpj || "",
     responsibleName: client?.responsibleName || "",
     responsibleCpf: client?.responsibleCpf || "",
+    fepamCpf: "",
+    fepamPassword: "",
     phone: client?.phone || "",
     email: client?.email || "",
     clientTypeId: client?.clientTypeId || "",
@@ -156,6 +165,7 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
     preferredServiceWeekday: "",
     preferredServiceShift: "",
   })
+  const [fepamVisibility, setFepamVisibility] = useState({ cpf: false, password: false })
   const selectedClientType = clientTypes.find((type) => type.id === formData.clientTypeId)
   const contractSignerRole = selectedClientType?.contractSignerRole ?? "owner"
   const ownerSignsContract = contractSignerRole === "owner"
@@ -274,11 +284,13 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
     const loadedClient = clientQuery.data?.data
     if (!loadedClient) return
 
-    setFormData({
+    setFormData((prev) => ({
       companyName: normalizeClientCompanyName(loadedClient.companyName || ""),
       cnpj: formatCNPJ(loadedClient.cnpj || ""),
       responsibleName: loadedClient.responsibleName || "",
       responsibleCpf: formatCPF(loadedClient.responsibleCpf || ""),
+      fepamCpf: prev.fepamCpf,
+      fepamPassword: prev.fepamPassword,
       phone: formatPhone(loadedClient.phone || ""),
       email: loadedClient.email || "",
       clientTypeId: loadedClient.clientTypeId || "",
@@ -299,7 +311,7 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
           ? ""
           : String(loadedClient.preferredServiceWeekday),
       preferredServiceShift: loadedClient.preferredServiceShift || "",
-    })
+    }))
 
     setUnits(
       loadedClient.units?.length
@@ -337,6 +349,17 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
           ],
     )
   }, [clientQuery.data])
+
+  useEffect(() => {
+    const credentials = fepamCredentialsQuery.data?.data
+    if (!credentials) return
+
+    setFormData((prev) => ({
+      ...prev,
+      fepamCpf: formatCPF(credentials.fepamCpf || ""),
+      fepamPassword: credentials.fepamPassword || "",
+    }))
+  }, [fepamCredentialsQuery.data])
 
   const lookupCEP = async (cepDigits: string, unitIndex: number) => {
     if (cepDigits.length !== 8) return
@@ -513,6 +536,10 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
       issues.push({ message: "Informe um CPF válido para o responsável.", label: "CPF do responsável" })
     }
 
+    if (hasText(formData.fepamCpf) && !isValidCPF(formData.fepamCpf)) {
+      issues.push({ message: "Informe um CPF FEPAM válido.", label: "CPF FEPAM" })
+    }
+
     if (!hasText(formData.email)) {
       issues.push({ message: "Informe o e-mail do cliente.", label: "E-mail" })
     } else if (!isValidEmail(formData.email)) {
@@ -664,6 +691,11 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
             zipCode: unit.address?.zipCode || "",
           },
         })),
+      }
+
+      if (!isEditing || fepamCredentialsQuery.isSuccess) {
+        payload.fepamCpf = formData.fepamCpf.trim()
+        payload.fepamPassword = formData.fepamPassword
       }
 
       if (clientId) {
@@ -904,6 +936,65 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
               </span>
             </span>
           </label>
+        </div>
+      </Card>
+
+      <Card className="p-6">
+        <div className="mb-6 flex items-center gap-2">
+          <KeyRound className="h-5 w-5 text-primary" />
+          <h3 className="text-lg font-semibold">Dados FEPAM</h3>
+        </div>
+
+        <div className="flex flex-col gap-3 md:flex-row">
+          <div className="space-y-2 md:w-[220px] shrink-0">
+            <Label htmlFor="fepamCpf">CPF</Label>
+            <div className="relative">
+              <Input
+                id="fepamCpf"
+                type={fepamVisibility.cpf ? "text" : "password"}
+                value={formData.fepamCpf}
+                onChange={(e) => handleInputChange("fepamCpf", formatCPF(e.target.value))}
+                placeholder="000.000.000-00"
+                className="pr-10"
+                autoComplete="off"
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                onClick={() => setFepamVisibility((current) => ({ ...current, cpf: !current.cpf }))}
+                aria-label={fepamVisibility.cpf ? "Ocultar CPF FEPAM" : "Mostrar CPF FEPAM"}
+              >
+                {fepamVisibility.cpf ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </Button>
+            </div>
+          </div>
+
+          <div className="space-y-2 md:w-[320px]">
+            <Label htmlFor="fepamPassword">Senha</Label>
+            <div className="relative">
+              <Input
+                id="fepamPassword"
+                type={fepamVisibility.password ? "text" : "password"}
+                value={formData.fepamPassword}
+                onChange={(e) => handleInputChange("fepamPassword", e.target.value)}
+                placeholder="Senha de acesso"
+                className="pr-10"
+                autoComplete="new-password"
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                onClick={() => setFepamVisibility((current) => ({ ...current, password: !current.password }))}
+                aria-label={fepamVisibility.password ? "Ocultar senha FEPAM" : "Mostrar senha FEPAM"}
+              >
+                {fepamVisibility.password ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </Button>
+            </div>
+          </div>
         </div>
       </Card>
 

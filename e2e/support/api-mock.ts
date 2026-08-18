@@ -13,6 +13,8 @@ export const clientFixture = {
   cnpj: "00.000.000/0001-00",
   responsibleName: "Responsável E2E",
   responsibleCpf: "000.000.000-00",
+  hasFepamCpf: true,
+  hasFepamPassword: true,
   email: "cliente@depclean.test",
   phone: "(51) 99999-9999",
   clientTypeId: "client-type-e2e",

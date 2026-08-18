@@ -274,6 +274,14 @@ export async function uploadScheduleNa(id: string, file: File) {
   return response.data
 }
 
+export async function renameScheduleNa(id: string, documentUrl: string, fileName: string) {
+  const response = await api.patch<{ success: true; data: ScheduleRecord }>(`/schedules/${id}/na`, {
+    documentUrl,
+    fileName,
+  })
+  return response.data
+}
+
 export async function deleteScheduleNa(id: string, documentUrl: string) {
   const response = await api.delete<{ success: true; data: ScheduleRecord }>(`/schedules/${id}/na`, {
     params: { documentUrl },

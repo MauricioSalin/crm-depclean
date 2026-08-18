@@ -36,6 +36,7 @@ import {
   listScheduleCompletionEmployees,
   listSchedules,
   reactivateSchedule,
+  renameScheduleNa,
   startSchedule,
   updateScheduleStatus,
   type SchedulePayload,
@@ -1074,6 +1075,28 @@ export function AgendamentosContent({
     },
   })
 
+  const renameNaMutation = useMutation({
+    mutationFn: ({ schedule, documentUrl, fileName }: { schedule: ScheduleRecord; documentUrl: string; fileName: string }) => (
+      renameScheduleNa(schedule.id, documentUrl, fileName)
+    ),
+    onMutate: () => ({ toastId: toast.loading("Atualizando nome do anexo...") }),
+    onSuccess: async ({ data: updatedSchedule }, _variables, context) => {
+      setCompletionTarget((current) => current?.id === updatedSchedule.id ? updatedSchedule : current)
+      setSelectedSchedule((current) => current?.id === updatedSchedule.id ? updatedSchedule : current)
+      await invalidateSchedules()
+      toast.success("Nome do anexo atualizado.", { id: context?.toastId })
+    },
+    onError: async (error, variables, context) => {
+      const refreshed = await getScheduleById(variables.schedule.id).catch(() => null)
+      if (refreshed?.data) {
+        setCompletionTarget((current) => current?.id === refreshed.data.id ? refreshed.data : current)
+        setSelectedSchedule((current) => current?.id === refreshed.data.id ? refreshed.data : current)
+      }
+      await invalidateSchedules()
+      toast.error(getApiErrorMessage(error, "Não foi possível atualizar o nome do anexo."), { id: context?.toastId })
+    },
+  })
+
   const exportMutation = useMutation({
     mutationFn: () => exportSchedules({
       search: searchTerm.trim() || undefined,
@@ -1398,9 +1421,10 @@ export function AgendamentosContent({
               <CompletionNaAttachments
                 existingAttachments={completionTarget?.naAttachments ?? []}
                 files={completionFiles}
-                disabled={completeMutation.isPending || uploadNaMutation.isPending || deleteNaMutation.isPending}
+                disabled={completeMutation.isPending || uploadNaMutation.isPending || deleteNaMutation.isPending || renameNaMutation.isPending}
                 uploading={uploadNaMutation.isPending}
                 removingDocumentUrl={deleteNaMutation.isPending ? deleteNaMutation.variables?.documentUrl : undefined}
+                renamingDocumentUrl={renameNaMutation.isPending ? renameNaMutation.variables?.documentUrl : undefined}
                 onAddFiles={(files) => {
                   if (!completionTarget || uploadNaMutation.isPending) return
                   setCompletionFiles(files)
@@ -1410,6 +1434,10 @@ export function AgendamentosContent({
                 onRemoveExistingAttachment={(attachment) => {
                   if (!completionTarget || deleteNaMutation.isPending) return
                   deleteNaMutation.mutate({ schedule: completionTarget, documentUrl: attachment.documentUrl })
+                }}
+                onRenameExistingAttachment={(attachment, fileName) => {
+                  if (!completionTarget || renameNaMutation.isPending) return
+                  renameNaMutation.mutate({ schedule: completionTarget, documentUrl: attachment.documentUrl, fileName })
                 }}
               />
             )}

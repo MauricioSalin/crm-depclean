@@ -35,7 +35,6 @@ export function canStartSchedule(
 ) {
   const canManageStatus = canManageScheduleStatus(user)
   const hasGlobalStartPermission = canManageStatus || canEditSchedules(user)
-  if (schedule.isClientDelinquent && !canManageStatus) return false
   if (["scheduled", "rescheduled"].includes(schedule.status) && hasGlobalStartPermission) return true
   if (schedule.canStartAttendance !== undefined) return schedule.canStartAttendance
 

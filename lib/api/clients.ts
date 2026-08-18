@@ -29,6 +29,8 @@ export type ClientRecord = {
   cnpj: string
   responsibleName: string
   responsibleCpf: string
+  hasFepamCpf?: boolean
+  hasFepamPassword?: boolean
   email: string
   phone: string
   clientTypeId: string
@@ -86,7 +88,8 @@ export type ClientAttachmentRecord = {
   id: string
   clientId: string
   scheduledServiceId?: string
-  type: "service_na" | "certificate" | "informative" | "contract" | "other"
+  parentId?: string | null
+  type: ClientAttachmentType
   title: string
   fileName: string
   documentUrl: string
@@ -96,6 +99,7 @@ export type ClientAttachmentRecord = {
   uploadedAt: string
   description?: string
   metadata?: {
+    originKind?: string
     templateId?: string
     serviceTypeName?: string
     scheduledDate?: string
@@ -106,6 +110,7 @@ export type ClientAttachmentRecord = {
     startTime?: string
     endTime?: string
     cancellationReason?: string
+    contractId?: string
   }
 }
 
@@ -140,6 +145,36 @@ export type ClientServiceRecord = {
   status: "scheduled" | "in_progress" | "completed" | "cancelled" | "rescheduled"
 }
 
+export const clientAttachmentTypes = [
+  "contract",
+  "schedule",
+  "meeting_minutes",
+  "bait_stations",
+  "checklist",
+  "other",
+] as const
+
+export type ClientAttachmentType = (typeof clientAttachmentTypes)[number]
+
+export type ClientAttachmentFolderRecord = {
+  id: string
+  parentId: string | null
+  name: string
+  systemKind: string
+  scheduledServiceId?: string
+  createdAt: string
+}
+
+export type ClientAttachmentWorkspace = {
+  folders: ClientAttachmentFolderRecord[]
+  files: ClientAttachmentRecord[]
+}
+
+export type ClientFepamCredentialsRecord = {
+  fepamCpf: string
+  fepamPassword: string
+}
+
 export type CreateClientExtraPayload = {
   description: string
   value: number
@@ -153,6 +188,8 @@ export type ClientPayload = {
   cnpj: string
   responsibleName: string
   responsibleCpf: string
+  fepamCpf?: string
+  fepamPassword?: string
   phone: string
   email?: string
   clientTypeId: string
@@ -220,8 +257,22 @@ export async function getClientById(id: string) {
   return response.data
 }
 
+export async function getClientFepamCredentials(id: string) {
+  const response = await api.get<{ success: true; data: ClientFepamCredentialsRecord }>(
+    `/clients/${resolveClientId(id)}/fepam-credentials`,
+  )
+  return response.data
+}
+
 export async function getClientAttachments(id: string) {
   const response = await api.get<{ success: true; data: ClientAttachmentRecord[] }>(`/clients/${resolveClientId(id)}/attachments`)
+  return response.data
+}
+
+export async function getClientAttachmentWorkspace(id: string) {
+  const response = await api.get<{ success: true; data: ClientAttachmentWorkspace }>(
+    `/clients/${resolveClientId(id)}/attachments/workspace`,
+  )
   return response.data
 }
 
@@ -248,16 +299,73 @@ export async function updateClientExtraStatus(id: string, extraId: string, statu
   return response.data
 }
 
-export async function uploadClientAttachment(id: string, file: File, title?: string, type = "other") {
+export async function uploadClientAttachment(
+  id: string,
+  file: File,
+  options: {
+    title?: string
+    type?: ClientAttachmentType
+    parentId?: string | null
+    scheduledServiceId?: string
+  } = {},
+) {
   const formData = new FormData()
   formData.append("file", file)
-  formData.append("title", title?.trim() || file.name)
-  formData.append("type", type)
+  formData.append("title", options.title?.trim() || file.name)
+  formData.append("type", options.type ?? "other")
+  if (options.parentId) formData.append("parentId", options.parentId)
+  if (options.scheduledServiceId) formData.append("scheduledServiceId", options.scheduledServiceId)
 
   const response = await api.post<{ success: true; data: ClientAttachmentRecord }>(
     `/clients/${resolveClientId(id)}/attachments`,
     formData,
     { headers: { "Content-Type": "multipart/form-data" } },
+  )
+  return response.data
+}
+
+export async function createClientAttachmentFolder(id: string, payload: { name: string; parentId: string | null }) {
+  const response = await api.post<{ success: true; data: ClientAttachmentFolderRecord }>(
+    `/clients/${resolveClientId(id)}/attachments/folders`,
+    payload,
+  )
+  return response.data
+}
+
+export async function updateClientAttachmentFolder(
+  id: string,
+  folderId: string,
+  payload: { name?: string; parentId?: string | null },
+) {
+  const response = await api.patch<{ success: true; data: ClientAttachmentFolderRecord }>(
+    `/clients/${resolveClientId(id)}/attachments/folders/${folderId}`,
+    payload,
+  )
+  return response.data
+}
+
+export async function deleteClientAttachmentFolder(id: string, folderId: string) {
+  const response = await api.delete<{ success: true; data: null }>(
+    `/clients/${resolveClientId(id)}/attachments/folders/${folderId}`,
+  )
+  return response.data
+}
+
+export async function updateClientAttachment(
+  id: string,
+  attachmentId: string,
+  payload: { name?: string; type?: ClientAttachmentType; parentId?: string | null },
+) {
+  const response = await api.patch<{ success: true; data: ClientAttachmentRecord }>(
+    `/clients/${resolveClientId(id)}/attachments/files/${attachmentId}`,
+    payload,
+  )
+  return response.data
+}
+
+export async function deleteWorkspaceClientAttachment(clientId: string, attachmentId: string) {
+  const response = await api.delete<{ success: true; data: null }>(
+    `/clients/${resolveClientId(clientId)}/attachments/files/${attachmentId}`,
   )
   return response.data
 }

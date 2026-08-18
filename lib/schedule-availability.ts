@@ -57,6 +57,7 @@ export function checkScheduleAvailability(params: {
   teams: TeamRecord[]
   formData: AvailabilityFormData
   ignoreScheduleId?: string
+  ignoreScheduleIds?: string[]
   allowWeekends?: boolean
   mode?: AvailabilityMode
   suggestAlternative?: boolean
@@ -78,8 +79,12 @@ export function checkScheduleAvailability(params: {
     teams: params.teams,
   })
 
+  const ignoredScheduleIds = new Set(unique([
+    params.ignoreScheduleId ?? "",
+    ...(params.ignoreScheduleIds ?? []),
+  ]))
   const conflicts = params.schedules
-    .filter((schedule) => schedule.id !== params.ignoreScheduleId)
+    .filter((schedule) => !ignoredScheduleIds.has(schedule.id))
     .filter((schedule) => !["cancelled", "completed"].includes(schedule.status))
     .flatMap((schedule) => {
       const resource = expandResource({
@@ -218,24 +223,28 @@ export function getScheduleDailyServiceCapacityViolation(params: {
   date: string
   time?: string
 }) {
+  const durationConfig = getScheduleRescheduleDurationConfig(params.schedule)
+  const isWholeGroup = durationConfig.durationType === "days" && durationConfig.duration > 1
   return getDailyServiceCapacityViolation({
     schedules: params.schedules,
     ignoreScheduleId: params.schedule.id,
+    ignoreScheduleIds: getScheduleRescheduleIgnoredIds(params.schedules, params.schedule),
     serviceTypeIds: params.schedule.serviceTypeIds?.length
       ? params.schedule.serviceTypeIds
       : [params.schedule.serviceTypeId],
     serviceTypes: params.serviceTypes,
     date: params.date,
     time: params.time || params.schedule.time || "08:00",
-    durationMinutes: getScheduleDurationMinutes(params.schedule),
-    durationType: params.schedule.durationType,
-    serviceItems: params.schedule.serviceItems,
+    durationMinutes: scheduleDurationToMinutes(durationConfig.duration, durationConfig.durationType),
+    durationType: durationConfig.durationType,
+    serviceItems: isWholeGroup ? undefined : params.schedule.serviceItems,
   })
 }
 
 export function hasDailyServiceCapacity(params: {
   schedules: ScheduleRecord[]
   ignoreScheduleId?: string
+  ignoreScheduleIds?: string[]
   serviceTypeIds: string[]
   serviceTypes: Array<{ id: string; dailyScheduleLimitHours?: number | null; dailyScheduleLimit?: number | null }>
   date: string
@@ -259,6 +268,7 @@ export type DailyServiceCapacityViolation = {
 export function getDailyServiceCapacityViolation(params: {
   schedules: ScheduleRecord[]
   ignoreScheduleId?: string
+  ignoreScheduleIds?: string[]
   serviceTypeIds: string[]
   serviceTypes: Array<{ id: string; dailyScheduleLimitHours?: number | null; dailyScheduleLimit?: number | null }>
   date: string
@@ -288,8 +298,12 @@ export function getDailyServiceCapacityViolation(params: {
     if (limitHours === null) continue
     const usedMinutesByDate = new Map<string, number>()
 
+    const ignoredScheduleIds = new Set(unique([
+      params.ignoreScheduleId ?? "",
+      ...(params.ignoreScheduleIds ?? []),
+    ]))
     for (const schedule of params.schedules) {
-      if (schedule.id === params.ignoreScheduleId || ["cancelled", "completed"].includes(schedule.status)) continue
+      if (ignoredScheduleIds.has(schedule.id) || ["cancelled", "completed"].includes(schedule.status)) continue
       const scheduleServiceIds = schedule.serviceTypeIds?.length
         ? schedule.serviceTypeIds
         : [schedule.serviceTypeId]
@@ -350,8 +364,9 @@ export function getAvailableRescheduleTimes(params: {
   const { schedule, date } = params
   if (!schedule || !date) return []
 
-  const durationConfig = getScheduleDurationConfig(schedule)
+  const durationConfig = getScheduleRescheduleDurationConfig(schedule)
   const durationMinutes = scheduleDurationToMinutes(durationConfig.duration, durationConfig.durationType)
+  const ignoreScheduleIds = getScheduleRescheduleIgnoredIds(params.schedules, schedule)
   const stepMinutes = params.stepMinutes ?? SLOT_STEP_MINUTES
   const mode = params.mode ?? "automation"
   const startMinutes = params.startMinutes ?? (mode === "manual" ? 0 : WORKDAY_START_MINUTES)
@@ -383,6 +398,7 @@ export function getAvailableRescheduleTimes(params: {
       schedules: params.schedules,
       teams: params.teams,
       ignoreScheduleId: schedule.id,
+      ignoreScheduleIds,
       allowWeekends: params.allowWeekends,
       mode,
       suggestAlternative: false,
@@ -405,6 +421,7 @@ export function getAvailableRescheduleTimes(params: {
       schedules: params.schedules,
       teams: params.teams,
       ignoreScheduleId: schedule.id,
+      ignoreScheduleIds,
       allowWeekends: params.allowWeekends,
       mode,
       suggestAlternative: false,
@@ -716,6 +733,30 @@ function getScheduleDurationConfig(schedule: ScheduleRecord) {
     duration: Number.isFinite(durationMinutes) && durationMinutes > 0 ? durationMinutes / 60 : 1,
     durationType: "hours" as ScheduleDurationType,
   }
+}
+
+export function getScheduleRescheduleDurationConfig(schedule: ScheduleRecord) {
+  const totalDays = Math.trunc(Number(schedule.multiDayTotal) || 0)
+  if (Number(schedule.multiDayIndex) === 1 && totalDays > 1) {
+    return {
+      duration: totalDays,
+      durationType: "days" as ScheduleDurationType,
+    }
+  }
+  return getScheduleDurationConfig(schedule)
+}
+
+export function getScheduleRescheduleIgnoredIds(schedules: ScheduleRecord[], schedule: ScheduleRecord) {
+  const groupId = String(schedule.multiDayGroupId ?? "").trim()
+  if (!groupId || Number(schedule.multiDayIndex) !== 1 || Number(schedule.multiDayTotal) <= 1) {
+    return [schedule.id]
+  }
+  return unique([
+    schedule.id,
+    ...schedules
+      .filter((item) => String(item.multiDayGroupId ?? "").trim() === groupId)
+      .map((item) => item.id),
+  ])
 }
 
 function getScheduleDurationMinutes(schedule: ScheduleRecord) {

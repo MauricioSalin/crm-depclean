@@ -26,7 +26,7 @@ import {
 import { listClients } from "@/lib/api/clients"
 import { listEmployees } from "@/lib/api/employees"
 import { getApiErrorMessage } from "@/lib/api/errors"
-import { listSchedules, createSchedule, updateSchedule, updateScheduleStatus, startSchedule, cancelScheduleAttendance, completeSchedule, cancelSchedule, reactivateSchedule, uploadScheduleNa, deleteScheduleNa, getScheduleById, listScheduleCompletionEmployees, type ScheduleRecord } from "@/lib/api/schedules"
+import { listSchedules, createSchedule, updateSchedule, updateScheduleStatus, startSchedule, cancelScheduleAttendance, completeSchedule, cancelSchedule, reactivateSchedule, uploadScheduleNa, renameScheduleNa, deleteScheduleNa, getScheduleById, listScheduleCompletionEmployees, type ScheduleRecord } from "@/lib/api/schedules"
 import { listServices } from "@/lib/api/services"
 import { listTeams } from "@/lib/api/teams"
 import { useIsMobile } from "@/hooks/use-mobile"
@@ -877,6 +877,30 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
     },
   })
 
+  const renameNaMutation = useMutation({
+    meta: { skipGlobalInvalidation: true },
+    mutationFn: ({ schedule, documentUrl, fileName }: { schedule: AgendaScheduledServiceRow; documentUrl: string; fileName: string }) => (
+      renameScheduleNa(schedule.id, documentUrl, fileName)
+    ),
+    onMutate: () => ({ toastId: toast.loading("Atualizando nome do anexo...") }),
+    onSuccess: ({ data }, _variables, context) => {
+      const updatedSchedule = data as AgendaScheduledServiceRow
+      setCompletionTarget((current) => current?.id === updatedSchedule.id ? updatedSchedule : current)
+      setSelectedSchedule((current) => current?.id === updatedSchedule.id ? updatedSchedule : current)
+      reflectScheduleUpdate(updatedSchedule)
+      toast.success("Nome do anexo atualizado.", { id: context?.toastId })
+    },
+    onError: async (error, variables, context) => {
+      const refreshed = await getScheduleById(variables.schedule.id).catch(() => null)
+      if (refreshed?.data) {
+        setCompletionTarget((current) => current?.id === refreshed.data.id ? refreshed.data as AgendaScheduledServiceRow : current)
+        setSelectedSchedule((current) => current?.id === refreshed.data.id ? refreshed.data as AgendaScheduledServiceRow : current)
+      }
+      await invalidateSchedules()
+      toast.error(getApiErrorMessage(error, "Não foi possível atualizar o nome do anexo."), { id: context?.toastId })
+    },
+  })
+
   const completeMutation = useMutation({
     meta: { skipGlobalInvalidation: true },
     mutationFn: async ({
@@ -1510,9 +1534,10 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
               <CompletionNaAttachments
                 existingAttachments={completionTarget?.naAttachments ?? []}
                 files={completionFiles}
-                disabled={completeMutation.isPending || uploadNaMutation.isPending || deleteNaMutation.isPending}
+                disabled={completeMutation.isPending || uploadNaMutation.isPending || deleteNaMutation.isPending || renameNaMutation.isPending}
                 uploading={uploadNaMutation.isPending}
                 removingDocumentUrl={deleteNaMutation.isPending ? deleteNaMutation.variables?.documentUrl : undefined}
+                renamingDocumentUrl={renameNaMutation.isPending ? renameNaMutation.variables?.documentUrl : undefined}
                 onAddFiles={(files) => {
                   if (!completionTarget || uploadNaMutation.isPending) return
                   setCompletionFiles(files)
@@ -1522,6 +1547,10 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                 onRemoveExistingAttachment={(attachment) => {
                   if (!completionTarget || deleteNaMutation.isPending) return
                   deleteNaMutation.mutate({ schedule: completionTarget, documentUrl: attachment.documentUrl })
+                }}
+                onRenameExistingAttachment={(attachment, fileName) => {
+                  if (!completionTarget || renameNaMutation.isPending) return
+                  renameNaMutation.mutate({ schedule: completionTarget, documentUrl: attachment.documentUrl, fileName })
                 }}
               />
             )}

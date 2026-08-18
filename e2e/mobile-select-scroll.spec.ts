@@ -97,11 +97,14 @@ test("permite rolar selects, selects pesquisáveis e multiselects no mobile", as
   await page.keyboard.press("Escape")
 
   const durationTypeSelect = scheduleDialog.getByText("Tipo de Duração", { exact: true }).locator("..").getByRole("combobox")
+  await expect(durationTypeSelect).toHaveCSS("cursor", "pointer")
   await durationTypeSelect.click()
   const dialogSelectContent = page.locator('[data-slot="select-content"]')
   await expect(dialogSelectContent).toBeVisible()
   expect(await dialogSelectContent.evaluate((element) => element.closest('[data-slot="dialog-content"]'))).toBeNull()
-  await dialogSelectContent.getByRole("option", { name: "Minutos" }).click()
+  const minutesOption = dialogSelectContent.getByRole("option", { name: "Minutos" })
+  await expect(minutesOption).toHaveCSS("cursor", "pointer")
+  await minutesOption.click()
 
   await page.setViewportSize({ width: 390, height: 480 })
   await page.goto("/logs")

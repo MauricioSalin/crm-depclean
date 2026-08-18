@@ -1,7 +1,7 @@
 "use client"
 
 import { useRef, useState } from "react"
-import { Camera, CheckCircle2, Eye, FileText, FileUp, ImageIcon, Loader2, Paperclip, ScanLine, Trash2, X } from "lucide-react"
+import { Camera, CheckCircle2, Eye, FileText, FileUp, ImageIcon, Loader2, Paperclip, Pencil, ScanLine, Trash2, X } from "lucide-react"
 import { toast } from "sonner"
 
 import { buildApiFileUrl } from "@/lib/api/client"
@@ -17,6 +17,16 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { DocumentScannerDialog } from "@/components/agendamentos/document-scanner-dialog"
 
 interface CompletionNaAttachmentsProps {
@@ -25,12 +35,14 @@ interface CompletionNaAttachmentsProps {
   disabled?: boolean
   uploading?: boolean
   removingDocumentUrl?: string
+  renamingDocumentUrl?: string
   onAddFiles: (files: File[]) => void
   onRemoveFile: (index: number) => void
   onRemoveExistingAttachment: (attachment: ScheduleNaAttachmentRecord, index: number) => void
+  onRenameExistingAttachment: (attachment: ScheduleNaAttachmentRecord, fileName: string) => void
 }
 
-const MAX_ATTACHMENT_FILE_SIZE = 15 * 1024 * 1024
+const MAX_ATTACHMENT_FILE_SIZE = 30 * 1024 * 1024
 const SUPPORTED_ATTACHMENT_EXTENSIONS = new Set([
   ".arw", ".avif", ".bmp", ".cr2", ".cr3", ".csv", ".dng", ".doc", ".docx",
   ".gif", ".heic", ".heif", ".jfif", ".jpe", ".jpeg", ".jpg", ".nef", ".ods",
@@ -85,9 +97,11 @@ export function CompletionNaAttachments({
   disabled,
   uploading = false,
   removingDocumentUrl,
+  renamingDocumentUrl,
   onAddFiles,
   onRemoveFile,
   onRemoveExistingAttachment,
+  onRenameExistingAttachment,
 }: CompletionNaAttachmentsProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
@@ -98,7 +112,19 @@ export function CompletionNaAttachments({
     attachment: ScheduleNaAttachmentRecord
     index: number
   } | null>(null)
+  const [pendingRename, setPendingRename] = useState<ScheduleNaAttachmentRecord | null>(null)
+  const [renamedFileName, setRenamedFileName] = useState("")
   const totalItems = existingAttachments.length + files.length
+
+  const openRenameDialog = (attachment: ScheduleNaAttachmentRecord) => {
+    setPendingRename(attachment)
+    setRenamedFileName(attachment.fileName)
+  }
+
+  const closeRenameDialog = () => {
+    setPendingRename(null)
+    setRenamedFileName("")
+  }
 
   const addFilesFromInput = (fileList: FileList | null) => {
     const selectedFiles = Array.from(fileList ?? [])
@@ -112,7 +138,7 @@ export function CompletionNaAttachments({
       toast.error("Formato não permitido. Anexe fotos, PDF, Word ou planilhas.")
     }
     if (oversizedFiles.length > 0) {
-      toast.error("Cada anexo deve ter no máximo 15 MB.")
+      toast.error("Cada anexo deve ter no máximo 30 MB.")
     }
     if (acceptedFiles.length > 0) onAddFiles(acceptedFiles)
   }
@@ -134,7 +160,7 @@ export function CompletionNaAttachments({
             <div className="min-w-0">
               <p className="text-sm font-semibold">NAs e evidências</p>
               <p className="text-xs text-muted-foreground">
-                Aceita fotos, PDF, Word e planilhas de até 15 MB. Cada arquivo é salvo imediatamente.
+                Aceita fotos, PDF, Word e planilhas de até 30 MB. Cada arquivo é salvo imediatamente.
               </p>
             </div>
           </div>
@@ -248,6 +274,22 @@ export function CompletionNaAttachments({
                 type="button"
                 variant="ghost"
                 size="icon"
+                className="h-8 w-8 rounded-full"
+                disabled={disabled || Boolean(renamingDocumentUrl)}
+                aria-label={`Editar nome de ${attachment.fileName || `anexo salvo ${index + 1}`}`}
+                title="Editar nome"
+                onClick={() => openRenameDialog(attachment)}
+              >
+                {renamingDocumentUrl === attachment.documentUrl ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Pencil className="h-4 w-4" />
+                )}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
                 className="h-8 w-8 rounded-full text-destructive hover:bg-destructive/10 hover:text-destructive"
                 disabled={disabled || Boolean(removingDocumentUrl)}
                 aria-label={`Remover ${attachment.fileName || `anexo salvo ${index + 1}`}`}
@@ -320,6 +362,58 @@ export function CompletionNaAttachments({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <Dialog
+        open={Boolean(pendingRename)}
+        onOpenChange={(open) => {
+          if (!open) closeRenameDialog()
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <form
+            className="space-y-5"
+            onSubmit={(event) => {
+              event.preventDefault()
+              const nextFileName = renamedFileName.trim()
+              if (!pendingRename || !nextFileName || nextFileName === pendingRename.fileName) return
+              onRenameExistingAttachment(pendingRename, nextFileName)
+              closeRenameDialog()
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle>Editar nome do arquivo</DialogTitle>
+              <DialogDescription>
+                Escolha o novo nome exibido para este anexo do agendamento.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-2">
+              <Label htmlFor="schedule-attachment-file-name">Novo nome do arquivo</Label>
+              <Input
+                id="schedule-attachment-file-name"
+                value={renamedFileName}
+                maxLength={255}
+                autoFocus
+                onChange={(event) => setRenamedFileName(event.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">Inclua a extensão, como .pdf, .jpg ou .docx.</p>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={closeRenameDialog}>
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                disabled={
+                  !renamedFileName.trim() ||
+                  renamedFileName.trim() === pendingRename?.fileName ||
+                  Boolean(renamingDocumentUrl)
+                }
+              >
+                Salvar nome
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
       <DocumentScannerDialog
         open={scannerOpen}
         sourceFile={scannerSourceFile}
