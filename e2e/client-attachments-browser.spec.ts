@@ -75,6 +75,32 @@ const workspace = {
   ],
 }
 
+test("mostra o carregamento no mesmo formato da lista de anexos", async ({ page }) => {
+  await installAuthenticatedSession(page)
+  await installApiMock(page)
+  let releaseWorkspace: (() => void) | undefined
+  await page.route(`**/api/v1/clients/${clientFixture.id}/attachments/workspace`, async (route) => {
+    await new Promise<void>((resolve) => { releaseWorkspace = resolve })
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json; charset=utf-8",
+      body: JSON.stringify({ success: true, data: workspace }),
+    })
+  })
+
+  await page.goto(`/clientes/${clientFixture.id}?tab=anexos`)
+
+  const skeletonList = page.locator("[data-attachment-skeleton-list]")
+  const skeletonRows = skeletonList.locator("[data-attachment-skeleton-row]")
+  await expect(skeletonList).toBeVisible()
+  await expect(skeletonRows).toHaveCount(6)
+  await expect.poll(() => skeletonRows.first().evaluate((row) => getComputedStyle(row).display)).toBe("flex")
+  await expect(skeletonList.locator(".grid")).toHaveCount(0)
+
+  releaseWorkspace?.()
+  await expect(skeletonList).toBeHidden()
+})
+
 test("navega nas pastas e abre o upload classificado também por arrastar arquivo", async ({ page }) => {
   await installAuthenticatedSession(page)
   await installApiMock(page)

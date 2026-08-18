@@ -713,8 +713,27 @@ export function ClientAttachmentsBrowser({
             ) : null}
 
             {workspaceQuery.isLoading ? (
-              <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
-                {Array.from({ length: 6 }).map((_, index) => <Skeleton key={index} className="h-20 rounded-xl" />)}
+              <div data-attachment-skeleton-list className="divide-y">
+                {Array.from({ length: 6 }).map((_, index) => {
+                  const isFileRow = index >= 3
+                  return (
+                    <div key={index} data-attachment-skeleton-row className="flex items-center gap-3 px-4 py-3">
+                      <Skeleton className={cn(
+                        "h-10 w-10 shrink-0 rounded-full",
+                        isFileRow && "h-11 w-11 rounded-xl",
+                      )} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <Skeleton className={cn("h-4", index % 2 === 0 ? "w-52" : "w-72")} />
+                          {isFileRow ? <Skeleton className="h-5 w-20 rounded-full" /> : null}
+                        </div>
+                        <Skeleton className="mt-2 h-3 w-28" />
+                      </div>
+                      {isFileRow ? <Skeleton className="h-9 w-9 shrink-0 rounded-md" /> : null}
+                      <Skeleton className="h-9 w-9 shrink-0 rounded-md" />
+                    </div>
+                  )
+                })}
               </div>
             ) : null}
 
