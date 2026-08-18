@@ -9,7 +9,7 @@ import { AttendanceStartSlider } from "@/components/agendamentos/attendance-star
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { DatePicker } from "@/components/ui/date-picker"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useIsMobile } from "@/hooks/use-mobile"
@@ -532,21 +532,6 @@ export function ScheduleDetailsDialog({
                       </div>
                     </div>
                   ) : null}
-                  <Button
-                    type="button"
-                    className="mt-4 w-full sm:w-auto"
-                    disabled={rescheduleMutation.isPending || !customDate || !customTime}
-                    onClick={() => submitReschedule(customDate, customTime, true)}
-                  >
-                    {rescheduleMutation.isPending ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Validando...
-                      </>
-                    ) : (
-                      "Salvar reagendamento"
-                    )}
-                  </Button>
                 </div>
               </div>
             ) : (
@@ -779,6 +764,25 @@ export function ScheduleDetailsDialog({
               </>
             )}
           </div>
+
+          {mode === "reschedule" ? (
+            <DialogFooter className="px-6 pb-6 pt-0 max-sm:px-5 max-sm:pb-[calc(env(safe-area-inset-bottom)+1.25rem)]">
+              <Button
+                type="button"
+                disabled={rescheduleMutation.isPending || !customDate || !customTime}
+                onClick={() => submitReschedule(customDate, customTime, true)}
+              >
+                {rescheduleMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Validando...
+                  </>
+                ) : (
+                  "Salvar reagendamento"
+                )}
+              </Button>
+            </DialogFooter>
+          ) : null}
 
           {showAttendanceAction && isMobile && mode === "details" ? (
             <div className="shrink-0 space-y-3 bg-background px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-4">
