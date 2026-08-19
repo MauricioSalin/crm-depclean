@@ -33,6 +33,7 @@ import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { TimeInput } from "@/components/ui/time-input"
 import { listClients, type ClientRecord, type ClientUnitRecord } from "@/lib/api/clients"
 import { listContracts, type ContractRecord } from "@/lib/api/contracts"
 import { listEmployees } from "@/lib/api/employees"
@@ -127,6 +128,7 @@ type TemplateFormState = {
   watermarkFileName: string
   watermarkFileUrl: string
   informativeSendDaysBefore: number
+  informativeSendTime: string
   certificateValidityMonths: number
 }
 
@@ -143,6 +145,7 @@ function createEmptyTemplateFormState(): TemplateFormState {
     watermarkFileName: "",
     watermarkFileUrl: "",
     informativeSendDaysBefore: 1,
+    informativeSendTime: "08:00",
     certificateValidityMonths: 6,
   }
 }
@@ -160,6 +163,7 @@ function createTemplateFormState(template: TemplateRecord): TemplateFormState {
     watermarkFileName: template.watermarkFileName || "",
     watermarkFileUrl: template.watermarkFileUrl || "",
     informativeSendDaysBefore: template.informativeSendDaysBefore ?? 1,
+    informativeSendTime: template.informativeSendTime || "08:00",
     certificateValidityMonths: template.certificateValidityMonths ?? 6,
   }
 }
@@ -905,6 +909,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
         isActive: formData.isActive,
         watermarkFileName: formData.watermarkFileName,
         informativeSendDaysBefore: kind === "informative" ? formData.informativeSendDaysBefore : 0,
+        informativeSendTime: kind === "informative" ? formData.informativeSendTime : "08:00",
         certificateValidityMonths: kind === "certificate" ? formData.certificateValidityMonths : 6,
       }
 
@@ -931,6 +936,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
           ...createTemplateFormState(savedTemplate),
           baseFileName: savedTemplate.baseFileName || current.baseFileName,
           informativeSendDaysBefore: savedTemplate.informativeSendDaysBefore ?? current.informativeSendDaysBefore,
+          informativeSendTime: savedTemplate.informativeSendTime || current.informativeSendTime,
           certificateValidityMonths: savedTemplate.certificateValidityMonths ?? current.certificateValidityMonths,
         }
         initialFormSnapshotRef.current = serializeTemplateFormState(nextFormData)
@@ -1106,6 +1112,15 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
       notify({
         title: "Prazo de envio inválido",
         description: "Informe uma quantidade inteira de dias, igual ou maior que zero.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (kind === "informative" && !/^([01]\d|2[0-3]):[0-5]\d$/.test(formData.informativeSendTime)) {
+      notify({
+        title: "Horário de envio inválido",
+        description: "Informe um horário válido para o envio do informativo.",
         variant: "destructive",
       })
       return
@@ -1564,19 +1579,32 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
               </div>
 
               {kind === "informative" ? (
-                <div className="space-y-2">
-                  <Label htmlFor="tpl-informative-days">Enviar informativo quantos dias antes?</Label>
-                  <NumericInput
-                    id="tpl-informative-days"
-                    min={0}
-                    value={formData.informativeSendDaysBefore}
-                    onValueChange={(value) =>
-                      setFormData((current) => ({
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="tpl-informative-days">Enviar informativo quantos dias antes?</Label>
+                    <NumericInput
+                      id="tpl-informative-days"
+                      min={0}
+                      value={formData.informativeSendDaysBefore}
+                      onValueChange={(value) =>
+                        setFormData((current) => ({
+                          ...current,
+                          informativeSendDaysBefore: value,
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="tpl-informative-time">Horário de envio</Label>
+                    <TimeInput
+                      id="tpl-informative-time"
+                      value={formData.informativeSendTime}
+                      onChange={(event) => setFormData((current) => ({
                         ...current,
-                        informativeSendDaysBefore: value,
-                      }))
-                    }
-                  />
+                        informativeSendTime: event.target.value,
+                      }))}
+                    />
+                  </div>
                 </div>
               ) : null}
 
@@ -1781,19 +1809,32 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
             </div>
 
             {kind === "informative" ? (
-              <div className="space-y-2">
-                <Label htmlFor="import-informative-days">Enviar informativo quantos dias antes?</Label>
-                <NumericInput
-                  id="import-informative-days"
-                  min={0}
-                  value={formData.informativeSendDaysBefore}
-                  onValueChange={(value) =>
-                    setFormData((current) => ({
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="import-informative-days">Enviar informativo quantos dias antes?</Label>
+                  <NumericInput
+                    id="import-informative-days"
+                    min={0}
+                    value={formData.informativeSendDaysBefore}
+                    onValueChange={(value) =>
+                      setFormData((current) => ({
+                        ...current,
+                        informativeSendDaysBefore: value,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="import-informative-time">Horário de envio</Label>
+                  <TimeInput
+                    id="import-informative-time"
+                    value={formData.informativeSendTime}
+                    onChange={(event) => setFormData((current) => ({
                       ...current,
-                      informativeSendDaysBefore: value,
-                    }))
-                  }
-                />
+                      informativeSendTime: event.target.value,
+                    }))}
+                  />
+                </div>
               </div>
             ) : null}
 

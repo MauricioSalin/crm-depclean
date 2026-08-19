@@ -890,7 +890,7 @@ export function ClientAttachmentsBrowser({
             <DialogTitle>Enviar e classificar arquivos</DialogTitle>
             <DialogDescription>Escolha o tipo para que cada documento fique na pasta correta.</DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-2 sm:grid-cols-2">
+          <div className="grid gap-3 py-2 sm:grid-cols-[13rem_minmax(0,1fr)]">
             <div className="space-y-2">
               <Label>Tipo do arquivo</Label>
               <Select value={uploadType} onValueChange={(value) => setUploadType(value as ClientAttachmentType)}>
@@ -905,11 +905,11 @@ export function ClientAttachmentsBrowser({
                 value={uploadDestinationPath.join(" / ")}
                 readOnly
                 title={uploadDestinationPath.join(" / ")}
-                className="font-medium"
+                className="font-normal"
               />
             </div>
             {uploadType === "schedule" && !currentFolder?.scheduledServiceId ? (
-              <div className="space-y-2">
+              <div className="space-y-2 sm:col-span-2">
                 <Label>Agendamento</Label>
                 <Select value={uploadScheduleId} onValueChange={setUploadScheduleId}>
                   <SelectTrigger><SelectValue placeholder="Selecione o agendamento" /></SelectTrigger>
@@ -962,12 +962,15 @@ export function ClientAttachmentsBrowser({
       <Dialog open={isCreateFolderOpen} onOpenChange={setIsCreateFolderOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader><DialogTitle>Nova pasta</DialogTitle><DialogDescription>A pasta será criada no local atual.</DialogDescription></DialogHeader>
-          <div data-create-folder-destination className="flex items-center gap-3 rounded-xl border bg-muted/35 px-4 py-3">
-            <FolderOpen className="h-5 w-5 shrink-0 text-primary" />
-            <div className="min-w-0">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Criar em</p>
-              <p className="truncate text-sm font-medium">{currentDestinationPath.join(" / ")}</p>
-            </div>
+          <div data-create-folder-destination className="min-w-0 space-y-2">
+            <Label htmlFor="create-folder-destination">Destino</Label>
+            <Input
+              id="create-folder-destination"
+              value={currentDestinationPath.join(" / ")}
+              readOnly
+              title={currentDestinationPath.join(" / ")}
+              className="font-normal"
+            />
           </div>
           <div className="space-y-2"><Label htmlFor="new-folder-name">Nome</Label><Input id="new-folder-name" value={newFolderName} onChange={(event) => setNewFolderName(event.target.value)} autoFocus /></div>
           <DialogFooter className="gap-2 sm:gap-2"><Button type="button" variant="outline" onClick={() => setIsCreateFolderOpen(false)}>Cancelar</Button><Button type="button" onClick={() => void submitCreateFolder()} disabled={!newFolderName.trim() || isBusy}>Criar pasta</Button></DialogFooter>
