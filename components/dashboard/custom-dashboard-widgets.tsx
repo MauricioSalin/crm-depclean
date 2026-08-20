@@ -132,7 +132,7 @@ export function LiveServicesWidget({ storageKey, enabled = true, onScheduleOpen 
               type="button"
               key={schedule.id}
               aria-label={`Abrir agendamento de ${schedule.clientName}`}
-              className="block w-full rounded-xl border p-3 text-left transition-colors hover:border-primary/40 hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              className="block w-full cursor-pointer rounded-xl border p-3 text-left transition-colors hover:border-primary/40 hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               onClick={() => onScheduleOpen?.(schedule)}
             >
               <div className="flex items-start justify-between gap-3">

@@ -66,6 +66,10 @@ test("editor cancela atendimento em andamento pelo rodapé responsivo", async ({
   await expect(cancelButton).toHaveClass(/text-red-600/)
 
   await page.setViewportSize({ width: 390, height: 844 })
+  const attachmentsDialog = page.getByRole("dialog", { name: "Anexos do atendimento" })
+  await expect.poll(() => attachmentsDialog.locator('[data-slot="dialog-header"]').evaluate((header) => (
+    getComputedStyle(header).textAlign
+  ))).toBe("left")
   await expect.poll(async () => {
     const [cancelBox, finishBox] = await Promise.all([
       cancelButton.boundingBox(),

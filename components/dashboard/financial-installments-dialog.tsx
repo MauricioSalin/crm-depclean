@@ -65,25 +65,28 @@ export function FinancialInstallmentsDialog({
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
-      <DialogContent className="max-h-[80dvh] w-[80vw] max-w-[80vw] gap-4 p-4 sm:p-6 xl:max-w-[1500px]">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[80dvh] w-[80vw] max-w-[80vw] min-w-0 flex-col gap-0 overflow-hidden p-0 max-sm:left-0 max-sm:top-0 max-sm:h-[100dvh] max-sm:max-h-none max-sm:w-screen max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none max-sm:border-0 max-sm:[&_[data-slot=dialog-close]]:right-5 max-sm:[&_[data-slot=dialog-close]]:top-[calc(env(safe-area-inset-top)+1rem)] xl:max-w-[1500px]">
+        <DialogHeader className="px-4 pb-4 pt-[calc(env(safe-area-inset-top)+1.25rem)] text-left sm:px-6 sm:pt-6">
           <DialogTitle>Parcelas do período</DialogTitle>
           <DialogDescription>
             {periodLabel}{statusLabel ? ` · ${statusLabel}` : ""}
           </DialogDescription>
         </DialogHeader>
 
-        <FinancialInstallmentsTable
-          installments={periodInstallments}
-          isLoading={false}
-          viewMode="table"
-          searchTerm=""
-          onSearchTermChange={ignoreFilterChange}
-          statusFilter={selection.status}
-          onStatusFilterChange={ignoreFilterChange}
-          collapseByClient={false}
-          showFilters={false}
-        />
+        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] sm:px-6 sm:pb-6">
+          <FinancialInstallmentsTable
+            installments={periodInstallments}
+            isLoading={false}
+            viewMode="table"
+            searchTerm=""
+            onSearchTermChange={ignoreFilterChange}
+            statusFilter={selection.status}
+            onStatusFilterChange={ignoreFilterChange}
+            collapseByClient={false}
+            showFilters={false}
+            preserveColumnsOnMobile
+          />
+        </div>
       </DialogContent>
     </Dialog>
   )

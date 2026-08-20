@@ -75,6 +75,45 @@ const workspace = {
   ],
 }
 
+const overflowWorkspace = {
+  ...workspace,
+  folders: [
+    ...workspace.folders,
+    { id: "folder-cleaning-1", parentId: null, name: "04/06/2027 · Visita de rotina", createdAt: "2026-08-18T12:00:00.000Z" },
+    { id: "folder-cleaning-2", parentId: null, name: "04/03/2027 · Visita de rotina", createdAt: "2026-08-18T12:00:00.000Z" },
+    { id: "folder-cleaning-3", parentId: null, name: "17/12/2026 · Limpeza de rede", createdAt: "2026-08-18T12:00:00.000Z" },
+    { id: "folder-cleaning-4", parentId: null, name: "16/12/2026 · Limpeza de rede", createdAt: "2026-08-18T12:00:00.000Z" },
+    { id: "folder-cleaning-5", parentId: null, name: "15/12/2026 · Limpeza de rede", createdAt: "2026-08-18T12:00:00.000Z" },
+  ],
+}
+
+const longDestinationFolderId = "folder-long-destination"
+const longDestinationWorkspace = {
+  ...workspace,
+  folders: [
+    ...workspace.folders,
+    {
+      id: longDestinationFolderId,
+      parentId: scheduleAttachmentsFolderId,
+      name: "Documentos complementares da visita técnica e comprovantes enviados pelo cliente",
+      createdAt: "2026-08-18T12:00:00.000Z",
+    },
+  ],
+}
+
+const paginationWorkspace = {
+  ...workspace,
+  folders: [
+    ...workspace.folders,
+    ...Array.from({ length: 12 }, (_, index) => ({
+      id: `folder-pagination-${String(index + 1).padStart(2, "0")}`,
+      parentId: null,
+      name: `Pasta paginada ${String(index + 1).padStart(2, "0")}`,
+      createdAt: "2026-08-18T12:00:00.000Z",
+    })),
+  ],
+}
+
 test("mostra o carregamento no mesmo formato da lista de anexos", async ({ page }) => {
   await installAuthenticatedSession(page)
   await installApiMock(page)
@@ -99,6 +138,273 @@ test("mostra o carregamento no mesmo formato da lista de anexos", async ({ page 
 
   releaseWorkspace?.()
   await expect(skeletonList).toBeHidden()
+})
+
+test("mantém o submenu de mover afastado do fim da tela", async ({ page }) => {
+  await installAuthenticatedSession(page)
+  await installApiMock(page)
+  await page.route(`**/api/v1/clients/${clientFixture.id}/attachments/workspace`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json; charset=utf-8",
+      body: JSON.stringify({ success: true, data: overflowWorkspace }),
+    })
+  })
+
+  await page.goto(`/clientes/${clientFixture.id}?tab=anexos`)
+
+  const contractActions = page.getByRole("tabpanel", { name: /Anexos/ })
+    .getByRole("button", { name: "Ações do arquivo Contrato 0001", exact: true })
+  await contractActions.evaluate((button) => {
+    button.style.position = "fixed"
+    button.style.right = "0"
+    button.style.bottom = "0"
+    button.style.zIndex = "250"
+  })
+  await contractActions.click()
+  await page.getByRole("menuitem", { name: "Mover", exact: true }).hover()
+
+  const moveSubmenu = page.locator('[data-slot="dropdown-menu-sub-content"]')
+  await expect(moveSubmenu).toBeVisible()
+  await expect.poll(async () => {
+    const submenuBox = await moveSubmenu.boundingBox()
+    const viewport = page.viewportSize()
+    if (!submenuBox || !viewport) return -1
+    return viewport.height - submenuBox.y - submenuBox.height
+  }).toBeGreaterThanOrEqual(20)
+  await expect(page.getByRole("menuitem", { name: "Anexos", exact: true })).toBeVisible()
+})
+
+test("alinha à esquerda os cabeçalhos das modais de anexos no mobile", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await installAuthenticatedSession(page)
+  await installApiMock(page)
+  await page.route(`**/api/v1/clients/${clientFixture.id}/attachments/workspace`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json; charset=utf-8",
+      body: JSON.stringify({ success: true, data: workspace }),
+    })
+  })
+
+  await page.goto(`/clientes/${clientFixture.id}?tab=anexos`)
+
+  const toolbar = page.getByRole("tabpanel", { name: /Anexos/ }).locator("[data-client-attachments-toolbar]")
+  await toolbar.getByRole("button", { name: "Upload", exact: true }).click()
+  const uploadDialog = page.getByRole("dialog", { name: "Enviar e classificar arquivos" })
+  await expect.poll(() => uploadDialog.locator('[data-slot="dialog-header"]').evaluate((header) => (
+    getComputedStyle(header).textAlign
+  ))).toBe("left")
+  await page.keyboard.press("Escape")
+  await expect(uploadDialog).toBeHidden()
+
+  await toolbar.getByRole("button", { name: "Nova pasta", exact: true }).click()
+  const folderDialog = page.getByRole("dialog", { name: "Nova pasta" })
+  await expect.poll(() => folderDialog.locator('[data-slot="dialog-header"]').evaluate((header) => (
+    getComputedStyle(header).textAlign
+  ))).toBe("left")
+})
+
+test("pagina a lista de anexos e permite alterar a quantidade por página", async ({ page }) => {
+  await installAuthenticatedSession(page)
+  await installApiMock(page)
+  await page.route(`**/api/v1/clients/${clientFixture.id}/attachments/workspace`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json; charset=utf-8",
+      body: JSON.stringify({ success: true, data: paginationWorkspace }),
+    })
+  })
+
+  await page.goto(`/clientes/${clientFixture.id}?tab=anexos`)
+
+  const browser = page.getByRole("tabpanel", { name: /Anexos/ })
+  const pageSize = browser.getByRole("combobox", { name: "Itens por página", exact: true })
+  await expect(pageSize).toHaveText("10")
+  await expect(browser.getByText("1-10 de 16", { exact: true })).toBeVisible()
+  await expect(browser.locator('[data-workspace-item-id="folder-pagination-07"]')).toBeVisible()
+  await expect(browser.locator('[data-workspace-item-id="folder-pagination-08"]')).toHaveCount(0)
+  await expect(browser.locator('[data-workspace-item-id="contract-contract-e2e"]')).toHaveCount(0)
+
+  await browser.getByRole("button", { name: "Ir para a próxima página", exact: true }).click()
+  await expect(browser.getByText("2 / 2", { exact: true })).toBeVisible()
+  await expect(browser.getByText("11-16 de 16", { exact: true })).toBeVisible()
+  await expect(browser.locator('[data-workspace-item-id="folder-pagination-08"]')).toBeVisible()
+  await expect(browser.locator('[data-workspace-item-id="folder-meeting-minutes"]')).toHaveCount(0)
+  await expect(browser.locator('[data-workspace-item-id="contract-contract-e2e"]')).toBeVisible()
+
+  await pageSize.click()
+  await page.getByRole("option", { name: "20", exact: true }).dispatchEvent("click")
+  await expect(browser.getByText("1 / 1", { exact: true })).toBeVisible()
+  await expect(browser.getByText("1-16 de 16", { exact: true })).toBeVisible()
+  await expect(browser.locator('[data-workspace-item-id="folder-meeting-minutes"]')).toBeVisible()
+  await expect(browser.locator('[data-workspace-item-id="contract-contract-e2e"]')).toBeVisible()
+})
+
+test("divide a largura mobile entre nova pasta e upload", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await installAuthenticatedSession(page)
+  await installApiMock(page)
+  await page.route(`**/api/v1/clients/${clientFixture.id}/attachments/workspace`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json; charset=utf-8",
+      body: JSON.stringify({ success: true, data: workspace }),
+    })
+  })
+
+  await page.goto(`/clientes/${clientFixture.id}?tab=anexos`)
+
+  const toolbar = page.getByRole("tabpanel", { name: /Anexos/ }).locator("[data-client-attachments-toolbar]")
+  const actions = toolbar.locator("[data-client-attachments-actions]")
+  const createFolderButton = actions.getByRole("button", { name: "Nova pasta", exact: true })
+  const uploadButton = actions.getByRole("button", { name: "Upload", exact: true })
+  await expect(actions).toBeVisible()
+  await expect.poll(async () => {
+    const toolbarBox = await toolbar.boundingBox()
+    const actionsBox = await actions.boundingBox()
+    if (!toolbarBox || !actionsBox) return -1
+    return Math.round(Math.abs(toolbarBox.width - actionsBox.width))
+  }).toBeLessThanOrEqual(1)
+  await expect.poll(async () => {
+    const createFolderBox = await createFolderButton.boundingBox()
+    const uploadBox = await uploadButton.boundingBox()
+    if (!createFolderBox || !uploadBox) return -1
+    return Math.round(Math.abs(createFolderBox.width - uploadBox.width))
+  }).toBeLessThanOrEqual(1)
+})
+
+test("expande o tipo do arquivo pela largura da modal no mobile", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await installAuthenticatedSession(page)
+  await installApiMock(page)
+  await page.route(`**/api/v1/clients/${clientFixture.id}/attachments/workspace`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json; charset=utf-8",
+      body: JSON.stringify({ success: true, data: workspace }),
+    })
+  })
+
+  await page.goto(`/clientes/${clientFixture.id}?tab=anexos`)
+
+  await page.getByRole("tabpanel", { name: /Anexos/ })
+    .getByRole("button", { name: "Upload", exact: true })
+    .click()
+  const dialog = page.getByRole("dialog", { name: "Enviar e classificar arquivos" })
+  const fileType = dialog.getByRole("combobox").first()
+  const destination = dialog.getByLabel("Destino", { exact: true })
+  await expect(dialog).toBeVisible()
+  await expect.poll(async () => {
+    const fileTypeBox = await fileType.boundingBox()
+    const destinationBox = await destination.boundingBox()
+    if (!fileTypeBox || !destinationBox) return -1
+    return Math.round(Math.max(
+      Math.abs(fileTypeBox.x - destinationBox.x),
+      Math.abs(fileTypeBox.width - destinationBox.width),
+    ))
+  }).toBeLessThanOrEqual(1)
+})
+
+test("aproxima o destino do tipo do arquivo no desktop", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await installAuthenticatedSession(page)
+  await installApiMock(page)
+  await page.route(`**/api/v1/clients/${clientFixture.id}/attachments/workspace`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json; charset=utf-8",
+      body: JSON.stringify({ success: true, data: workspace }),
+    })
+  })
+
+  await page.goto(`/clientes/${clientFixture.id}?tab=anexos`)
+
+  await page.getByRole("tabpanel", { name: /Anexos/ })
+    .getByRole("button", { name: "Upload", exact: true })
+    .click()
+  const dialog = page.getByRole("dialog", { name: "Enviar e classificar arquivos" })
+  const fileType = dialog.getByRole("combobox").first()
+  const destination = dialog.getByLabel("Destino", { exact: true })
+  await expect(dialog).toBeVisible()
+  await expect.poll(async () => {
+    const fileTypeBox = await fileType.boundingBox()
+    const destinationBox = await destination.boundingBox()
+    if (!fileTypeBox || !destinationBox) return -1
+    return Math.round(destinationBox.x - fileTypeBox.x - fileTypeBox.width)
+  }).toBeGreaterThanOrEqual(10)
+  await expect.poll(async () => {
+    const fileTypeBox = await fileType.boundingBox()
+    const destinationBox = await destination.boundingBox()
+    if (!fileTypeBox || !destinationBox) return Number.POSITIVE_INFINITY
+    return Math.round(destinationBox.x - fileTypeBox.x - fileTypeBox.width)
+  }).toBeLessThanOrEqual(30)
+})
+
+for (const viewport of [
+  { name: "mobile", width: 390, height: 844 },
+  { name: "desktop", width: 1280, height: 720 },
+]) {
+  test(`mostra o final do destino ao abrir a modal no ${viewport.name}`, async ({ page }) => {
+    await page.setViewportSize({ width: viewport.width, height: viewport.height })
+    await installAuthenticatedSession(page)
+    await installApiMock(page)
+    await page.route(`**/api/v1/clients/${clientFixture.id}/attachments/workspace`, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json; charset=utf-8",
+        body: JSON.stringify({ success: true, data: longDestinationWorkspace }),
+      })
+    })
+
+    await page.goto(`/clientes/${clientFixture.id}?tab=anexos`)
+
+    const browser = page.getByRole("tabpanel", { name: /Anexos/ })
+    await browser.locator(`[data-workspace-item-id="${scheduleFolderId}"]`).click()
+    await browser.locator(`[data-workspace-item-id="${scheduleAttachmentsFolderId}"]`).click()
+    await browser.locator(`[data-workspace-item-id="${longDestinationFolderId}"]`).click()
+    await browser.getByRole("button", { name: "Upload", exact: true }).click()
+
+    const destination = page.getByRole("dialog", { name: "Enviar e classificar arquivos" })
+      .getByLabel("Destino", { exact: true })
+    await expect(destination).toBeVisible()
+    await expect.poll(() => destination.evaluate((input) => ({
+      hasOverflow: input.scrollWidth > input.clientWidth,
+      isAtEnd: Math.abs(input.scrollWidth - input.clientWidth - input.scrollLeft) <= 1,
+    }))).toEqual({ hasOverflow: true, isAtEnd: true })
+  })
+}
+
+test("abre os destinos de mover acima ou abaixo no mobile", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await installAuthenticatedSession(page)
+  await installApiMock(page)
+  await page.route(`**/api/v1/clients/${clientFixture.id}/attachments/workspace`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json; charset=utf-8",
+      body: JSON.stringify({ success: true, data: overflowWorkspace }),
+    })
+  })
+
+  await page.goto(`/clientes/${clientFixture.id}?tab=anexos`)
+
+  const browser = page.getByRole("tabpanel", { name: /Anexos/ })
+  await browser.getByRole("button", { name: "Ações do arquivo Contrato 0001", exact: true }).click()
+  await page.getByRole("menuitem", { name: "Mover", exact: true }).click()
+
+  const destinationMenu = page.locator('[data-slot="dropdown-menu-content"]:visible').filter({
+    has: page.getByRole("menuitem", { name: "Anexos", exact: true }),
+  })
+  await expect(destinationMenu).toBeVisible()
+  await expect(destinationMenu).toHaveAttribute("data-side", /^(top|bottom)$/)
+  await expect(page.locator('[data-slot="dropdown-menu-sub-content"]:visible')).toHaveCount(0)
+  await expect.poll(async () => {
+    const menuBox = await destinationMenu.boundingBox()
+    const viewport = page.viewportSize()
+    if (!menuBox || !viewport) return -1
+    return Math.round(Math.min(menuBox.x, viewport.width - menuBox.x - menuBox.width))
+  }).toBeGreaterThanOrEqual(20)
 })
 
 test("navega nas pastas e abre o upload classificado também por arrastar arquivo", async ({ page }) => {
@@ -236,7 +542,7 @@ test("navega nas pastas e abre o upload classificado também por arrastar arquiv
   await expect.poll(() => page.locator('[data-slot="dropdown-menu-sub-content"]').evaluate((submenu) => (
     submenu.closest('[data-slot="dropdown-menu-content"]') === null
   ))).toBe(true)
-  await expect(page.getByRole("menuitem", { name: "Raiz", exact: true })).toBeVisible()
+  await expect(page.getByRole("menuitem", { name: "Anexos", exact: true })).toBeVisible()
   for (const folderName of ["Atas", "Porta Iscas", "18/08/2026 · Controle de pragas"]) {
     await expect(page.getByRole("menuitem", { name: folderName, exact: true })).toBeVisible()
   }
@@ -251,7 +557,7 @@ test("navega nas pastas e abre o upload classificado também por arrastar arquiv
 
   await browser.getByRole("button", { name: "Ações da pasta Porta Iscas", exact: true }).click()
   await page.getByRole("menuitem", { name: "Mover", exact: true }).hover()
-  await expect(page.getByRole("menuitem", { name: "Raiz", exact: true })).toBeVisible()
+  await expect(page.getByRole("menuitem", { name: "Anexos", exact: true })).toBeVisible()
   await expect(page.getByRole("menuitem", { name: "Porta Iscas", exact: true })).toHaveCount(0)
   await page.getByRole("menuitem", { name: "Atas", exact: true }).dispatchEvent("click")
   await expect.poll(() => folderMoves).toEqual([{ parentId: "folder-meeting-minutes" }])
@@ -339,7 +645,7 @@ test("navega nas pastas e abre o upload classificado também por arrastar arquiv
 
   await toolbar.getByRole("button", { name: "Nova pasta", exact: true }).click()
   const createFolderDialog = page.getByRole("dialog", { name: "Nova pasta" })
-  await expect(createFolderDialog.locator("[data-create-folder-destination]")).toContainText(
+  await expect(createFolderDialog.getByLabel("Destino")).toHaveValue(
     "Anexos / 18/08/2026 · Controle de pragas / Anexos do agendamento",
   )
   await createFolderDialog.getByLabel("Nome").fill("Documentos extras")

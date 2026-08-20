@@ -282,7 +282,7 @@ export function CertificatesContent({ viewMode, viewToggle, createOpen = false, 
         }}
       >
         <DialogContent className="sm:max-w-lg">
-          <DialogHeader className="pr-6">
+          <DialogHeader className="pr-6 text-left">
             <DialogTitle>Criar certificado avulso</DialogTitle>
             <DialogDescription>
               Selecione um cliente, a data da visita e um agendamento concluído para emitir o certificado.

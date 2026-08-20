@@ -24,6 +24,28 @@ const pendingCertificate = {
   updatedAt: "2026-08-04T13:53:00.000Z",
 }
 
+test("alinha à esquerda o cabeçalho da criação de certificado no mobile", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await installAuthenticatedSession(page)
+  await installApiMock(page)
+  await page.route("**/api/v1/certificates**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json; charset=utf-8",
+      body: JSON.stringify({ success: true, data: [] }),
+    })
+  })
+
+  await page.goto("/certificados")
+  await page.getByRole("button", { name: "Criar novo", exact: true }).click()
+
+  const dialog = page.getByRole("dialog", { name: "Criar certificado avulso" })
+  await expect(dialog).toBeVisible()
+  await expect.poll(() => dialog.locator('[data-slot="dialog-header"]').evaluate((header) => (
+    getComputedStyle(header).textAlign
+  ))).toBe("left")
+})
+
 test("permite excluir uma solicitação pendente sem remover o botão Emitir", async ({ page }) => {
   let records = [pendingCertificate]
   let deletedUrl = ""

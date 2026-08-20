@@ -92,7 +92,7 @@ export function UpcomingServices({ enabled = true, onScheduleOpen }: UpcomingSer
                     type="button"
                     key={service.id}
                     aria-label={`Abrir agendamento de ${service.clientName}`}
-                    className="block w-full rounded-lg border border-border p-3 text-left transition-all duration-300 hover:border-primary/40 hover:bg-muted/30 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    className="block w-full cursor-pointer rounded-lg border border-border p-3 text-left transition-all duration-300 hover:border-primary/40 hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                     onClick={() => onScheduleOpen?.(service)}
                   >
                     <div className="mb-2 flex items-start justify-between gap-2">

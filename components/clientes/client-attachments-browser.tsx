@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   ChevronLeft,
   ChevronRight,
+  ChevronsUpDown,
   Download,
   File,
   FileCheck2,
@@ -24,6 +25,7 @@ import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
+import { DataPagination } from "@/components/ui/data-pagination"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import {
   DropdownMenu,
@@ -39,6 +41,7 @@ import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
+import { useIsMobile } from "@/hooks/use-mobile"
 import {
   clientAttachmentTypes,
   createClientAttachmentFolder,
@@ -124,7 +127,9 @@ export function ClientAttachmentsBrowser({
   isDownloadBusy = false,
 }: ClientAttachmentsBrowserProps) {
   const queryClient = useQueryClient()
+  const isMobile = useIsMobile()
   const nativeFileInputRef = useRef<HTMLInputElement | null>(null)
+  const uploadDestinationInputRef = useRef<HTMLInputElement | null>(null)
   const [folderNavigation, setFolderNavigation] = useState<{
     entries: Array<string | null>
     index: number
@@ -132,6 +137,8 @@ export function ClientAttachmentsBrowser({
   const currentFolderId = folderNavigation.entries[folderNavigation.index] ?? null
   const [search, setSearch] = useState("")
   const [typeFilter, setTypeFilter] = useState<ClientAttachmentType | "all">("all")
+  const [workspacePage, setWorkspacePage] = useState(1)
+  const [workspacePageSize, setWorkspacePageSize] = useState(10)
   const [isDragging, setIsDragging] = useState(false)
   const [operationProgress, setOperationProgress] = useState<number | null>(null)
   const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false)
@@ -256,6 +263,19 @@ export function ClientAttachmentsBrowser({
     }
     return file.parentId === currentFolderId
   })
+  const totalVisibleItems = visibleFolders.length + visibleFiles.length
+  const totalWorkspacePages = Math.max(1, Math.ceil(totalVisibleItems / workspacePageSize))
+  const currentWorkspacePage = Math.min(workspacePage, totalWorkspacePages)
+  const workspacePageStart = (currentWorkspacePage - 1) * workspacePageSize
+  const workspacePageEnd = workspacePageStart + workspacePageSize
+  const paginatedVisibleFolders = visibleFolders.slice(
+    workspacePageStart,
+    Math.min(workspacePageEnd, visibleFolders.length),
+  )
+  const paginatedVisibleFiles = visibleFiles.slice(
+    Math.max(0, workspacePageStart - visibleFolders.length),
+    Math.max(0, workspacePageEnd - visibleFolders.length),
+  )
   const scheduleFolders = folders.filter((folder) => folder.systemKind === "schedule")
   const rootFolders = folders.filter((folder) => folder.parentId === null)
   const isBusy = operationProgress !== null
@@ -286,9 +306,22 @@ export function ClientAttachmentsBrowser({
     : undefined
   const uploadDestinationFolderId = uploadScheduleAttachmentsFolder?.id ?? currentFolderId
   const uploadDestinationPath = attachmentPathForFolder(uploadDestinationFolderId)
+  const uploadDestinationValue = uploadDestinationPath.join(" / ")
   const currentDestinationPath = attachmentPathForFolder(currentFolderId)
 
+  useEffect(() => {
+    if (!isUploadOpen) return
+
+    const animationFrame = window.requestAnimationFrame(() => {
+      const input = uploadDestinationInputRef.current
+      if (input) input.scrollLeft = input.scrollWidth
+    })
+
+    return () => window.cancelAnimationFrame(animationFrame)
+  }, [isUploadOpen, uploadDestinationValue])
+
   const navigateToFolder = (folderId: string | null) => {
+    setWorkspacePage(1)
     setFolderNavigation((current) => {
       const currentFolder = current.entries[current.index] ?? null
       if (currentFolder === folderId) return current
@@ -299,6 +332,7 @@ export function ClientAttachmentsBrowser({
   }
 
   const navigateBack = () => {
+    setWorkspacePage(1)
     setFolderNavigation((current) => ({
       ...current,
       index: Math.max(0, current.index - 1),
@@ -306,6 +340,7 @@ export function ClientAttachmentsBrowser({
   }
 
   const navigateForward = () => {
+    setWorkspacePage(1)
     setFolderNavigation((current) => ({
       ...current,
       index: Math.min(current.entries.length - 1, current.index + 1),
@@ -491,32 +526,66 @@ export function ClientAttachmentsBrowser({
     }
   }
 
-  const renderMoveShortcut = (item: DraggedWorkspaceItem) => (
-    <DropdownMenuSub>
-      <DropdownMenuSubTrigger>
-        <FolderInput /> Mover
-      </DropdownMenuSubTrigger>
-      <DropdownMenuSubContent sideOffset={-2} className="z-[230] max-h-72 min-w-56 overflow-y-auto">
-        <DropdownMenuItem
-          disabled={item.parentId === null}
-          onSelect={() => void moveWorkspaceItem(item, null)}
-        >
-          Raiz
-        </DropdownMenuItem>
-        {rootFolders
-          .filter((folder) => !isInvalidFolderDestination(item, folder.id))
-          .map((folder) => (
-            <DropdownMenuItem
-              key={folder.id}
-              disabled={item.parentId === folder.id}
-              onSelect={() => void moveWorkspaceItem(item, folder.id)}
-            >
-              {folder.name}
-            </DropdownMenuItem>
-          ))}
-      </DropdownMenuSubContent>
-    </DropdownMenuSub>
+  const renderMoveDestinations = (item: DraggedWorkspaceItem) => (
+    <>
+      <DropdownMenuItem
+        disabled={item.parentId === null}
+        onSelect={() => void moveWorkspaceItem(item, null)}
+      >
+        Anexos
+      </DropdownMenuItem>
+      {rootFolders
+        .filter((folder) => !isInvalidFolderDestination(item, folder.id))
+        .map((folder) => (
+          <DropdownMenuItem
+            key={folder.id}
+            disabled={item.parentId === folder.id}
+            onSelect={() => void moveWorkspaceItem(item, folder.id)}
+          >
+            {folder.name}
+          </DropdownMenuItem>
+        ))}
+    </>
   )
+
+  const renderMoveShortcut = (item: DraggedWorkspaceItem) => {
+    if (isMobile) {
+      return (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <DropdownMenuItem onSelect={(event) => event.preventDefault()}>
+              <FolderInput /> Mover
+              <ChevronsUpDown className="ml-auto" />
+            </DropdownMenuItem>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            side="top"
+            align="end"
+            sideOffset={6}
+            collisionPadding={20}
+            className="z-[230] max-h-[min(18rem,var(--radix-dropdown-menu-content-available-height))] min-w-56 overflow-y-auto"
+          >
+            {renderMoveDestinations(item)}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )
+    }
+
+    return (
+      <DropdownMenuSub>
+        <DropdownMenuSubTrigger>
+          <FolderInput /> Mover
+        </DropdownMenuSubTrigger>
+        <DropdownMenuSubContent
+          sideOffset={-2}
+          collisionPadding={20}
+          className="z-[230] max-h-[min(18rem,var(--radix-dropdown-menu-content-available-height))] min-w-56 overflow-y-auto"
+        >
+          {renderMoveDestinations(item)}
+        </DropdownMenuSubContent>
+      </DropdownMenuSub>
+    )
+  }
 
   const handleWorkspaceDragStart = (event: React.DragEvent, item: DraggedWorkspaceItem) => {
     event.dataTransfer.effectAllowed = "move"
@@ -574,12 +643,21 @@ export function ClientAttachmentsBrowser({
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={search}
-            onChange={(event) => setSearch(event.target.value)}
+            onChange={(event) => {
+              setSearch(event.target.value)
+              setWorkspacePage(1)
+            }}
             placeholder="Pesquisar em todas as pastas..."
             className="pl-9"
           />
         </div>
-        <Select value={typeFilter} onValueChange={(value) => setTypeFilter(value as ClientAttachmentType | "all")}>
+        <Select
+          value={typeFilter}
+          onValueChange={(value) => {
+            setTypeFilter(value as ClientAttachmentType | "all")
+            setWorkspacePage(1)
+          }}
+        >
           <SelectTrigger className="w-full lg:w-52">
             <SelectValue placeholder="Filtrar por tipo" />
           </SelectTrigger>
@@ -589,11 +667,11 @@ export function ClientAttachmentsBrowser({
           </SelectContent>
         </Select>
         {canEdit ? (
-          <div className="flex shrink-0 flex-wrap justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => setIsCreateFolderOpen(true)} disabled={isBusy}>
+          <div data-client-attachments-actions className="grid w-full shrink-0 grid-cols-2 gap-2 md:flex md:w-auto md:flex-wrap md:justify-end">
+            <Button className="min-w-0 w-full md:w-auto" type="button" variant="outline" onClick={() => setIsCreateFolderOpen(true)} disabled={isBusy}>
               <FolderPlus className="mr-2 h-4 w-4" /> Nova pasta
             </Button>
-            <Button type="button" onClick={() => openUpload()} disabled={isBusy}>
+            <Button className="min-w-0 w-full md:w-auto" type="button" onClick={() => openUpload()} disabled={isBusy}>
               <Upload className="mr-2 h-4 w-4" /> Upload
             </Button>
           </div>
@@ -749,7 +827,7 @@ export function ClientAttachmentsBrowser({
 
             {!workspaceQuery.isLoading && visibleFolders.length + visibleFiles.length > 0 ? (
               <div className="divide-y">
-                {visibleFolders.map((folder) => (
+                {paginatedVisibleFolders.map((folder) => (
                   <div
                     key={folder.id}
                     data-workspace-item-id={folder.id}
@@ -815,7 +893,7 @@ export function ClientAttachmentsBrowser({
                     ) : null}
                   </div>
                 ))}
-                {visibleFiles.map((file) => (
+                {paginatedVisibleFiles.map((file) => (
                   <div
                     key={file.id}
                     data-workspace-item-id={file.id}
@@ -882,29 +960,43 @@ export function ClientAttachmentsBrowser({
               </div>
             ) : null}
         </div>
+        {!workspaceQuery.isLoading ? (
+          <DataPagination
+            currentPage={currentWorkspacePage}
+            totalPages={totalWorkspacePages}
+            pageSize={workspacePageSize}
+            totalItems={totalVisibleItems}
+            onPageChange={setWorkspacePage}
+            onPageSizeChange={(size) => {
+              setWorkspacePageSize(size)
+              setWorkspacePage(1)
+            }}
+          />
+        ) : null}
       </div>
 
       <Dialog open={isUploadOpen} onOpenChange={(open) => { if (!isBusy) setIsUploadOpen(open) }}>
         <DialogContent className="sm:max-w-2xl">
-          <DialogHeader>
+          <DialogHeader className="text-left">
             <DialogTitle>Enviar e classificar arquivos</DialogTitle>
             <DialogDescription>Escolha o tipo para que cada documento fique na pasta correta.</DialogDescription>
           </DialogHeader>
-          <div className="grid gap-3 py-2 sm:grid-cols-[13rem_minmax(0,1fr)]">
+          <div className="grid gap-3 py-2 sm:grid-cols-[max-content_minmax(0,1fr)]">
             <div className="space-y-2">
               <Label>Tipo do arquivo</Label>
               <Select value={uploadType} onValueChange={(value) => setUploadType(value as ClientAttachmentType)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger className="w-full sm:w-fit"><SelectValue /></SelectTrigger>
                 <SelectContent>{clientAttachmentTypes.map((type) => <SelectItem key={type} value={type}>{typeLabels[type]}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div data-upload-destination className="min-w-0 space-y-2">
               <Label htmlFor="upload-destination">Destino</Label>
               <Input
+                ref={uploadDestinationInputRef}
                 id="upload-destination"
-                value={uploadDestinationPath.join(" / ")}
+                value={uploadDestinationValue}
                 readOnly
-                title={uploadDestinationPath.join(" / ")}
+                title={uploadDestinationValue}
                 className="font-normal"
               />
             </div>
@@ -961,7 +1053,7 @@ export function ClientAttachmentsBrowser({
 
       <Dialog open={isCreateFolderOpen} onOpenChange={setIsCreateFolderOpen}>
         <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle>Nova pasta</DialogTitle><DialogDescription>A pasta será criada no local atual.</DialogDescription></DialogHeader>
+          <DialogHeader className="text-left"><DialogTitle>Nova pasta</DialogTitle><DialogDescription>A pasta será criada no local atual.</DialogDescription></DialogHeader>
           <div data-create-folder-destination className="min-w-0 space-y-2">
             <Label htmlFor="create-folder-destination">Destino</Label>
             <Input

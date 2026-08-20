@@ -4,9 +4,10 @@ import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { usePathname, useSearchParams } from "next/navigation"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { Calendar, DollarSign, MoreHorizontal } from "lucide-react"
+import { Calendar, DollarSign, MoreHorizontal, Pencil } from "lucide-react"
 import { toast } from "sonner"
 
+import { InstallmentEditDialog } from "@/components/contratos/installment-edit-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -31,7 +32,7 @@ import {
 import { CardSkeletonGrid, TableSkeletonRows } from "@/components/ui/table-skeleton"
 import type { FinancialInstallmentRecord } from "@/lib/api/analytics"
 import { updateClientExtraStatus } from "@/lib/api/clients"
-import { updateInstallment } from "@/lib/api/contracts"
+import { updateInstallment, type UpdateContractInstallmentPayload } from "@/lib/api/contracts"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { updateScheduleBilling } from "@/lib/api/schedules"
 import { hasAnyPermission } from "@/lib/auth/permissions"
@@ -39,7 +40,7 @@ import { getStoredUser } from "@/lib/auth/session"
 import { formatCivilDate, parseCivilDate, toCivilDateKey } from "@/lib/date-utils"
 import { buildPathWithSearchParams, withReturnTo } from "@/lib/navigation"
 import { invalidateInstallmentRelatedQueries } from "@/lib/query-invalidation"
-import { formatContractNumber } from "@/lib/utils"
+import { cn, formatContractNumber } from "@/lib/utils"
 
 export type PaymentStatusFilter = FinancialInstallmentRecord["status"] | "all"
 
@@ -54,6 +55,8 @@ interface FinancialInstallmentsTableProps {
   onStatusFilterChange: (value: PaymentStatusFilter) => void
   collapseByClient?: boolean
   showFilters?: boolean
+  enableEditing?: boolean
+  preserveColumnsOnMobile?: boolean
 }
 
 type InstallmentStatusAction = "pending" | "paid" | "overdue"
@@ -102,6 +105,8 @@ export function FinancialInstallmentsTable({
   onStatusFilterChange,
   collapseByClient = true,
   showFilters = true,
+  enableEditing = false,
+  preserveColumnsOnMobile = false,
 }: FinancialInstallmentsTableProps) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -109,8 +114,15 @@ export function FinancialInstallmentsTable({
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [currentUser, setCurrentUser] = useState<ReturnType<typeof getStoredUser>>(null)
+  const [editingInstallment, setEditingInstallment] = useState<FinancialInstallmentRecord | null>(null)
   const queryClient = useQueryClient()
   const canManageFinancial = hasAnyPermission(currentUser, ["financial_manage"])
+  const canEditContracts = enableEditing && hasAnyPermission(currentUser, ["contracts_edit"])
+
+  const canEditInstallment = (installment: FinancialInstallmentRecord) =>
+    installment.source === "contract"
+      ? canEditContracts
+      : installment.source === "schedule" && enableEditing && canManageFinancial
 
   useEffect(() => {
     const sync = () => setCurrentUser(getStoredUser())
@@ -168,8 +180,58 @@ export function FinancialInstallmentsTable({
     },
   })
 
+  const installmentEditMutation = useMutation<
+    unknown,
+    Error,
+    {
+      installment: FinancialInstallmentRecord
+      payload: UpdateContractInstallmentPayload
+      value?: number
+    },
+    { toastId: string | number }
+  >({
+    mutationFn: ({ installment, payload, value }) => {
+      const storedStatus = payload.status === installment.status
+        ? installment.storedStatus ?? payload.status
+        : payload.status
+
+      if (installment.source === "contract") {
+        if (!canEditContracts) throw new Error("Sem permissão para editar parcelas.")
+        return updateInstallment(installment.contractId, installment.id, { ...payload, status: storedStatus })
+      }
+
+      if (installment.source === "schedule") {
+        if (!canManageFinancial) throw new Error("Sem permissão para editar cobranças de agendamentos.")
+        const billingStatus = storedStatus === "late" ? "pending" : storedStatus
+        const nextValue = value ?? installment.value
+
+        return updateScheduleBilling(installment.scheduleId ?? installment.id.replace(/^schedule-/, ""), {
+          value: nextValue,
+          billingDueDate: payload.dueDate,
+          billingStatus,
+          paidDate: billingStatus === "paid" ? payload.paidDate : undefined,
+          paidValue: billingStatus === "paid" ? nextValue : undefined,
+        })
+      }
+
+      throw new Error("Este valor extra não possui edição de parcela.")
+    },
+    onMutate: () => ({ toastId: toast.loading("Salvando alterações...") }),
+    onSuccess: async (_data, variables, context) => {
+      await invalidateInstallmentRelatedQueries(queryClient)
+      setEditingInstallment(null)
+      toast.success(
+        variables.installment.source === "schedule" ? "Cobrança atualizada." : "Parcela atualizada.",
+        { id: context?.toastId },
+      )
+    },
+    onError: (error, _variables, context) => {
+      toast.error(getApiErrorMessage(error, "Não foi possível salvar as alterações."), { id: context?.toastId })
+    },
+  })
+
   const setInstallmentStatus = (installment: FinancialInstallmentRecord, status: InstallmentStatusAction) => {
-    if (!canManageFinancial || installmentStatusMutation.isPending) return
+    if (!canManageFinancial || installmentStatusMutation.isPending || installmentEditMutation.isPending) return
     installmentStatusMutation.mutate({ installment, status })
   }
 
@@ -223,27 +285,44 @@ export function FinancialInstallmentsTable({
     setCurrentPage(1)
   }
 
-  const statusActions = (installment: FinancialInstallmentRecord, card = false) => canManageFinancial ? (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant={card ? "outline" : "ghost"}
-          size={card ? "sm" : "icon"}
-          className={card ? "w-full" : undefined}
-          disabled={installmentStatusMutation.isPending}
-          aria-label={card ? undefined : "Alterar status da parcela"}
-        >
-          <MoreHorizontal className={card ? "mr-1 h-4 w-4" : "h-4 w-4"} />
-          {card ? "Alterar status" : null}
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={() => setInstallmentStatus(installment, "paid")}>Marcar como paga</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => setInstallmentStatus(installment, "overdue")}>Marcar como vencida</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => setInstallmentStatus(installment, "pending")}>Marcar como pendente</DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  ) : null
+  const statusActions = (installment: FinancialInstallmentRecord, card = false) => {
+    const canEdit = canEditInstallment(installment)
+    if (!canManageFinancial && !canEdit) return null
+
+    const isActionPending = installmentStatusMutation.isPending || installmentEditMutation.isPending
+
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant={card ? "outline" : "ghost"}
+            size={card ? "sm" : "icon"}
+            className={card ? "w-full" : undefined}
+            disabled={isActionPending}
+            aria-label={card ? undefined : canEdit ? "Abrir ações da parcela" : "Alterar status da parcela"}
+          >
+            <MoreHorizontal className={card ? "mr-1 h-4 w-4" : "h-4 w-4"} />
+            {card ? canEdit ? "Ações" : "Alterar status" : null}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {canEdit ? (
+            <DropdownMenuItem disabled={isActionPending} onClick={() => setEditingInstallment(installment)}>
+              <Pencil className="mr-2 h-4 w-4" />
+              Editar parcela
+            </DropdownMenuItem>
+          ) : null}
+          {canManageFinancial ? (
+            <>
+              <DropdownMenuItem onClick={() => setInstallmentStatus(installment, "paid")}>Marcar como paga</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setInstallmentStatus(installment, "overdue")}>Marcar como vencida</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setInstallmentStatus(installment, "pending")}>Marcar como pendente</DropdownMenuItem>
+            </>
+          ) : null}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    )
+  }
 
   return (
     <div className="space-y-4">
@@ -276,15 +355,18 @@ export function FinancialInstallmentsTable({
       ) : null}
 
       {viewMode === "table" ? (
-        <div className="overflow-x-auto rounded-md">
-          <Table onSortChange={() => setCurrentPage(1)}>
+        <div className="min-w-0 overflow-x-auto rounded-md">
+          <Table
+            className={preserveColumnsOnMobile ? "min-w-[920px]" : undefined}
+            onSortChange={() => setCurrentPage(1)}
+          >
             <TableHeader>
               <TableRow>
                 <TableHead>Cliente</TableHead>
-                <TableHead className="hidden md:table-cell">Contrato</TableHead>
-                <TableHead className="hidden sm:table-cell">Parcela</TableHead>
+                <TableHead className={preserveColumnsOnMobile ? "whitespace-nowrap" : "hidden md:table-cell"}>Contrato</TableHead>
+                <TableHead className={preserveColumnsOnMobile ? "whitespace-nowrap" : "hidden sm:table-cell"}>Parcela</TableHead>
                 <TableHead>Valor</TableHead>
-                <TableHead className="hidden sm:table-cell">Vencimento</TableHead>
+                <TableHead className={preserveColumnsOnMobile ? "whitespace-nowrap" : "hidden sm:table-cell"}>Vencimento</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Ações</TableHead>
               </TableRow>
@@ -312,10 +394,20 @@ export function FinancialInstallmentsTable({
                 <TableRow key={installment.id}>
                   <TableCell>
                     <Link href={withReturnTo(`/clientes/${installment.clientId}`, currentHref)} className="hover:text-primary">
-                      <p className="max-w-[140px] truncate font-medium sm:max-w-[280px]">{installment.clientCompanyName}</p>
+                      <p className={cn(
+                        "font-medium",
+                        preserveColumnsOnMobile
+                          ? "min-w-[220px] whitespace-nowrap"
+                          : "max-w-[140px] truncate sm:max-w-[280px]",
+                      )}>
+                        {installment.clientCompanyName}
+                      </p>
                     </Link>
                   </TableCell>
-                  <TableCell className="hidden text-muted-foreground md:table-cell">
+                  <TableCell className={cn(
+                    "whitespace-nowrap text-muted-foreground",
+                    !preserveColumnsOnMobile && "hidden md:table-cell",
+                  )}>
                     <Link
                       href={installment.source === "schedule"
                         ? "/agendamentos"
@@ -327,13 +419,19 @@ export function FinancialInstallmentsTable({
                       {formatContractNumber(installment.contractNumber)}
                     </Link>
                   </TableCell>
-                  <TableCell className="hidden sm:table-cell">
+                  <TableCell className={cn(
+                    "whitespace-nowrap",
+                    !preserveColumnsOnMobile && "hidden sm:table-cell",
+                  )}>
                     <span className="text-sm">
                       {installment.source === "schedule" ? "Avulsa" : installment.source === "extra" ? "Extra" : installment.number}
                     </span>
                   </TableCell>
-                  <TableCell className="font-medium">{formatCurrency(installment.value)}</TableCell>
-                  <TableCell className="hidden text-sm sm:table-cell">
+                  <TableCell className="whitespace-nowrap font-medium">{formatCurrency(installment.value)}</TableCell>
+                  <TableCell className={cn(
+                    "whitespace-nowrap text-sm",
+                    !preserveColumnsOnMobile && "hidden sm:table-cell",
+                  )}>
                     <div className="flex items-center gap-1">
                       <Calendar className="h-3 w-3 text-muted-foreground" />
                       {formatCivilDate(installment.dueDate)}
@@ -395,6 +493,21 @@ export function FinancialInstallmentsTable({
           className="md:static md:bottom-auto md:z-auto"
         />
       ) : null}
+
+      <InstallmentEditDialog
+        installment={editingInstallment}
+        open={Boolean(editingInstallment)}
+        isSaving={installmentEditMutation.isPending}
+        valueEditable={editingInstallment?.source === "schedule"}
+        title={editingInstallment?.source === "schedule" ? "Editar cobrança avulsa" : undefined}
+        onOpenChange={(open) => {
+          if (!open) setEditingInstallment(null)
+        }}
+        onSave={(payload, value) => {
+          if (!editingInstallment) return
+          installmentEditMutation.mutate({ installment: editingInstallment, payload, value })
+        }}
+      />
     </div>
   )
 }

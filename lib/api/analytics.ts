@@ -168,6 +168,7 @@ export type FinancialInstallmentRecord = {
   paidDate?: string
   paidValue?: number
   status: "pending" | "paid" | "late" | "overdue" | "cancelled"
+  storedStatus?: "pending" | "paid" | "late" | "overdue" | "cancelled"
 }
 
 export type FinancialSummaryRecord = {

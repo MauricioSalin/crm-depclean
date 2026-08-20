@@ -513,7 +513,7 @@ export function ScheduleShortcutDialog({
               <span className="sr-only">Editar agendamento</span>
             </button>
           ) : null}
-          <DialogHeader className="min-w-0 px-6 pb-4 pt-14 max-sm:px-5 max-sm:pt-[calc(env(safe-area-inset-top)+3.75rem)]">
+          <DialogHeader className="min-w-0 px-6 pb-4 pt-14 text-left max-sm:px-5 max-sm:pt-[calc(env(safe-area-inset-top)+3.75rem)]">
             <DialogTitle>
               {completionStep === "attachments"
                 ? "Anexos do atendimento"

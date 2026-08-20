@@ -119,6 +119,120 @@ test("edita a mesma parcela nos perfis do cliente e do contrato sem repetir o st
   await expect(page.getByRole("dialog", { name: "Editar parcela 1" })).toHaveCount(0)
 })
 
+test("edita parcelas contratuais e abre cobranças avulsas na tabela do relatório financeiro", async ({ page }) => {
+  await installAuthenticatedSession(page)
+  await installApiMock(page)
+
+  const installmentId = "e2e-report-inst-1"
+  let installmentPatch: Record<string, unknown> | null = null
+  let schedulePatch: Record<string, unknown> | null = null
+
+  await page.route("**/api/v1/analytics/financial**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json; charset=utf-8",
+      body: JSON.stringify({
+        success: true,
+        data: {
+          summary: {
+            totalPaid: 0,
+            totalReceivable: 2_366.66,
+            totalPending: 2_366.66,
+            totalLate: 0,
+            totalOverdue: 0,
+            paidCount: 0,
+            pendingCount: 2,
+            lateCount: 0,
+            overdueCount: 0,
+            totalCount: 2,
+            adherenceRate: 0,
+          },
+          installments: [
+            {
+              id: installmentId,
+              contractId: contractFixture.id,
+              contractNumber: contractFixture.contractNumber,
+              clientId: clientFixture.id,
+              clientCompanyName: clientFixture.companyName,
+              source: "contract",
+              number: 1,
+              value: 866.66,
+              dueDate: "2026-08-07T03:00:00.000Z",
+              status: "overdue",
+              storedStatus: "pending",
+            },
+            {
+              id: "schedule-e2e-report",
+              contractId: "",
+              contractNumber: "Agendamento avulso",
+              clientId: "client-report-schedule",
+              clientCompanyName: "Cliente Avulso E2E",
+              source: "schedule",
+              scheduleId: "e2e-report",
+              number: 1,
+              value: 1_500,
+              dueDate: "2026-08-28T03:00:00.000Z",
+              status: "pending",
+              storedStatus: "pending",
+            },
+          ],
+          monthlyRevenueData: [],
+          financeHealthData: [],
+        },
+      }),
+    })
+  })
+
+  await page.route(`**/api/v1/contracts/${contractFixture.id}/installments/${installmentId}`, async (route) => {
+    installmentPatch = route.request().postDataJSON() as Record<string, unknown>
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json; charset=utf-8",
+      body: JSON.stringify({ success: true, data: contractFixture }),
+    })
+  })
+
+  await page.route("**/api/v1/schedules/e2e-report/billing", async (route) => {
+    schedulePatch = route.request().postDataJSON() as Record<string, unknown>
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json; charset=utf-8",
+      body: JSON.stringify({ success: true, data: { id: "e2e-report" } }),
+    })
+  })
+
+  await page.goto("/relatorios?tab=financial")
+
+  const contractRow = page.getByRole("row").filter({ hasText: clientFixture.companyName })
+  await contractRow.getByRole("button", { name: "Abrir ações da parcela" }).click()
+  const editAction = page.getByRole("menuitem", { name: "Editar parcela" })
+  await expect(editAction.locator("svg")).toBeVisible()
+  await editAction.click()
+
+  await expect(page.getByRole("dialog", { name: "Editar parcela 1" })).toBeVisible()
+  await expect(page.getByRole("textbox", { name: "Valor", exact: true })).toBeDisabled()
+  await page.getByLabel("Vencimento da parcela").click()
+  await page.getByRole("button", { name: /29 de agosto de 2026/i }).click()
+  await page.getByRole("button", { name: "Salvar alterações" }).click()
+
+  await expect.poll(() => installmentPatch).toEqual({
+    dueDate: "2026-08-29",
+    status: "pending",
+  })
+
+  const scheduleRow = page.getByRole("row").filter({ hasText: "Cliente Avulso E2E" })
+  await scheduleRow.getByRole("button", { name: "Abrir ações da parcela" }).click()
+  await page.getByRole("menuitem", { name: "Editar parcela" }).click()
+  await expect(page.getByRole("dialog", { name: "Editar cobrança avulsa" })).toBeVisible()
+  await expect(page.getByRole("textbox", { name: "Valor", exact: true })).toBeEnabled()
+  await page.getByRole("button", { name: "Salvar alterações" }).click()
+  await expect.poll(() => schedulePatch).toEqual({
+    value: 1_500,
+    billingDueDate: "2026-08-28",
+    billingStatus: "pending",
+  })
+})
+
 test("não oferece ações de parcela sem a permissão de editar contratos", async ({ page }) => {
   await installAuthenticatedSession(page, contractViewer)
   await installApiMock(page, contractViewer)

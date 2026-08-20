@@ -174,17 +174,21 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
                     ))}
                   </Pie>
                   <Tooltip
+                    wrapperStyle={{ zIndex: 10 }}
                     contentStyle={{
                       backgroundColor: 'var(--card)',
                       border: '1px solid var(--border)',
                       borderRadius: '8px',
                       fontSize: '12px'
                     }}
-                    formatter={(value: number) => [hasFinanceHealthData ? `${value}%` : "0%", '']}
+                    formatter={(value: number, _name, item) => [
+                      hasFinanceHealthData ? `${value}%` : "0%",
+                      item.payload.name,
+                    ]}
                   />
                 </PieChart>
               </ResponsiveContainer>
-              <div className="absolute inset-0 flex flex-col items-center justify-center">
+              <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
                 <span className="text-3xl font-bold text-foreground">{summary.adherenceRate}%</span>
                 <span className="text-xs text-muted-foreground mt-1">Adimplência</span>
               </div>
@@ -213,6 +217,7 @@ export function FinanceiroContent({ viewMode, viewToggle, dateFrom, dateTo }: Fi
         onSearchTermChange={setSearchTerm}
         statusFilter={tabFilter}
         onStatusFilterChange={setTabFilter}
+        enableEditing
       />
     </div>
   )

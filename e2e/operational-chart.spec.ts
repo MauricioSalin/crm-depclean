@@ -164,6 +164,40 @@ test("limita a modal de parcelas a 80 por cento em telas menores", async ({ page
   expect(dialogBox!.y).toBeGreaterThanOrEqual(640 * 0.1 - 1)
 })
 
+test("exibe a modal de parcelas em tela cheia com tabela rolável no mobile", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto("/")
+
+  await page.getByRole("button", { name: "Ver parcelas de 04/08" }).click()
+  const periodDialog = page.getByRole("dialog")
+  await expect(periodDialog.getByRole("heading", { name: "Parcelas do período" })).toBeVisible()
+
+  await expect.poll(async () => {
+    const box = await periodDialog.boundingBox()
+    return box ? Math.round(box.x) : -1
+  }).toBe(0)
+
+  const dialogBox = await periodDialog.boundingBox()
+  expect(dialogBox).not.toBeNull()
+  expect(dialogBox!.x).toBeCloseTo(0, 0)
+  expect(dialogBox!.y).toBeCloseTo(0, 0)
+  expect(dialogBox!.width).toBeCloseTo(390, 0)
+  expect(dialogBox!.height).toBeCloseTo(844, 0)
+
+  const dialogHeader = periodDialog.locator('[data-slot="dialog-header"]')
+  await expect(dialogHeader).toHaveCSS("text-align", "left")
+
+  const tableContainer = periodDialog.locator('[data-slot="table-container"]')
+  await expect(tableContainer).toBeVisible()
+  const tableOverflow = await tableContainer.evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    scrollWidth: element.scrollWidth,
+  }))
+  expect(tableOverflow.scrollWidth).toBeGreaterThan(tableOverflow.clientWidth)
+  await expect(periodDialog.getByRole("columnheader", { name: "Contrato" })).toBeVisible()
+  await expect(periodDialog.getByRole("columnheader", { name: "Vencimento" })).toBeVisible()
+})
+
 test("explica e identifica os modos do valor global", async ({ page }) => {
   await page.goto("/")
 
