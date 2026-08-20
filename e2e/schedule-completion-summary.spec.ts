@@ -116,6 +116,84 @@ test("digitaliza uma foto e a anexa ao agendamento", async ({ page }) => {
   await expect(page.getByText("documento-digitalizado-e2e.jpg", { exact: true })).toBeVisible()
 })
 
+test.describe("digitalização no Android", () => {
+  test.use({
+    userAgent: "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36",
+  })
+
+  test("abre câmera, galeria e arquivos pelo menu de Digitalizar", async ({ page }) => {
+    const date = todayKey()
+    const scanSource = {
+      name: "nota-de-autorizacao.svg",
+      mimeType: "image/svg+xml",
+      buffer: Buffer.from(`
+        <svg xmlns="http://www.w3.org/2000/svg" width="600" height="800">
+          <rect width="600" height="800" fill="#efefef"/>
+          <rect x="30" y="20" width="540" height="760" fill="white" stroke="#111" stroke-width="4"/>
+          <text x="70" y="90" font-size="38" font-family="Arial" fill="#111">NOTA DE SERVIÇO</text>
+        </svg>
+      `),
+    }
+    const inProgressSchedule = {
+      ...scheduleFixture,
+      date,
+      status: "in_progress" as const,
+      completionStartDate: date,
+      completionStartTime: "08:00",
+      naAttachments: [] as ScheduleNaAttachmentRecord[],
+    }
+
+    await installAuthenticatedSession(page)
+    await installApiMock(page)
+    await page.route("**/api/v1/schedules**", async (route) => {
+      const request = route.request()
+      const path = new URL(request.url()).pathname
+
+      if (request.method() === "GET" && path.endsWith("/schedules")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json; charset=utf-8",
+          body: JSON.stringify({ success: true, data: [inProgressSchedule] }),
+        })
+        return
+      }
+
+      await route.fallback()
+    })
+
+    await page.goto(`/agenda?date=${date}`)
+    await page.getByRole("button", { name: /Condomínio E2E/ }).click()
+
+    const scanner = page.getByRole("dialog", { name: "Digitalizar documento" })
+    const chooseScannerSource = async (
+      option: "Câmera" | "Galeria" | "Arquivos",
+      expectedAccept: string | null,
+      expectedCapture: string | null,
+    ) => {
+      await page.getByRole("button", { name: "Digitalizar", exact: true }).click()
+      await expect(page.getByRole("menuitem", { name: "Câmera", exact: true })).toBeVisible()
+      await expect(page.getByRole("menuitem", { name: "Galeria", exact: true })).toBeVisible()
+      await expect(page.getByRole("menuitem", { name: "Arquivos", exact: true })).toBeVisible()
+
+      const chooserPromise = page.waitForEvent("filechooser")
+      await page.getByRole("menuitem", { name: option, exact: true }).click()
+      const chooser = await chooserPromise
+      expect(await chooser.element().getAttribute("accept")).toBe(expectedAccept)
+      expect(await chooser.element().getAttribute("capture")).toBe(expectedCapture)
+      await chooser.setFiles(scanSource)
+
+      await expect(scanner).toBeVisible()
+      await expect(scanner.getByRole("button", { name: /^Ajustar canto/ })).toHaveCount(4)
+      await page.keyboard.press("Escape")
+      await expect(scanner).not.toBeVisible()
+    }
+
+    await chooseScannerSource("Câmera", "image/*", "environment")
+    await chooseScannerSource("Galeria", "image/*", null)
+    await chooseScannerSource("Arquivos", null, null)
+  })
+})
+
 test("ultrapassa dez anexos acumulados no agendamento", async ({ page }) => {
   const date = todayKey()
   const files = [
@@ -335,6 +413,9 @@ test("conclui o atendimento com motorista opcional, ajudantes e observações", 
   await page.getByRole("button", { name: /Condomínio E2E/ }).click()
 
   await expect(page.getByRole("heading", { name: "Anexos do atendimento" })).toBeVisible()
+  const attachmentsDialog = page.getByRole("dialog", { name: "Anexos do atendimento" })
+  await expect(attachmentsDialog).toHaveCSS("width", "576px")
+  await expect(attachmentsDialog).toHaveCSS("height", "512px")
   await expect(page.getByText("Adicione NAs e evidências da execução. Cada arquivo é salvo no agendamento assim que for anexado.")).toBeVisible()
   await expect(page.getByText("NAs e evidências", { exact: true })).toBeVisible()
   await expect(page.getByText("Aceita fotos, PDF, Word e planilhas de até 30 MB. Cada arquivo é salvo imediatamente.")).toBeVisible()

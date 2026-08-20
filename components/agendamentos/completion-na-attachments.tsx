@@ -1,7 +1,7 @@
 "use client"
 
-import { useRef, useState } from "react"
-import { Camera, CheckCircle2, Eye, FileText, FileUp, ImageIcon, Loader2, Paperclip, Pencil, ScanLine, Trash2, X } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
+import { Camera, CheckCircle2, Eye, FileText, FileUp, FolderOpen, ImageIcon, Loader2, Paperclip, Pencil, ScanLine, Trash2, X } from "lucide-react"
 import { toast } from "sonner"
 
 import { buildApiFileUrl } from "@/lib/api/client"
@@ -17,6 +17,12 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import {
   Dialog,
   DialogContent,
@@ -105,7 +111,10 @@ export function CompletionNaAttachments({
 }: CompletionNaAttachmentsProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
+  const scannerCameraInputRef = useRef<HTMLInputElement>(null)
   const scannerGalleryInputRef = useRef<HTMLInputElement>(null)
+  const scannerFileInputRef = useRef<HTMLInputElement>(null)
+  const [isAndroid, setIsAndroid] = useState(false)
   const [scannerOpen, setScannerOpen] = useState(false)
   const [scannerSourceFile, setScannerSourceFile] = useState<File | null>(null)
   const [pendingRemoval, setPendingRemoval] = useState<{
@@ -115,6 +124,10 @@ export function CompletionNaAttachments({
   const [pendingRename, setPendingRename] = useState<ScheduleNaAttachmentRecord | null>(null)
   const [renamedFileName, setRenamedFileName] = useState("")
   const totalItems = existingAttachments.length + files.length
+
+  useEffect(() => {
+    setIsAndroid(/Android/i.test(navigator.userAgent))
+  }, [])
 
   const openRenameDialog = (attachment: ScheduleNaAttachmentRecord) => {
     setPendingRename(attachment)
@@ -145,6 +158,10 @@ export function CompletionNaAttachments({
 
   const openScannerFromFile = (file?: File) => {
     if (!file) return
+    if (!file.type.toLowerCase().startsWith("image/")) {
+      toast.error("Escolha uma imagem para digitalizar.")
+      return
+    }
     setScannerSourceFile(file)
     setScannerOpen(true)
   }
@@ -195,11 +212,35 @@ export function CompletionNaAttachments({
         }}
       />
       <input
+        ref={scannerCameraInputRef}
+        data-testid="document-scanner-camera-input"
+        type="file"
+        className="hidden"
+        accept="image/*"
+        capture="environment"
+        disabled={disabled}
+        onChange={(event) => {
+          openScannerFromFile(event.target.files?.[0])
+          event.currentTarget.value = ""
+        }}
+      />
+      <input
         ref={scannerGalleryInputRef}
         data-testid="document-scanner-gallery-input"
         type="file"
         className="hidden"
         accept="image/*"
+        disabled={disabled}
+        onChange={(event) => {
+          openScannerFromFile(event.target.files?.[0])
+          event.currentTarget.value = ""
+        }}
+      />
+      <input
+        ref={scannerFileInputRef}
+        data-testid="document-scanner-file-input"
+        type="file"
+        className="hidden"
         disabled={disabled}
         onChange={(event) => {
           openScannerFromFile(event.target.files?.[0])
@@ -228,16 +269,46 @@ export function CompletionNaAttachments({
           <Camera className="mr-2 h-4 w-4 shrink-0 text-primary" />
           <span className="truncate">Usar câmera</span>
         </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          className="min-w-0 rounded-full border border-primary/20 bg-primary/10 text-primary shadow-none hover:border-primary/35 hover:bg-primary/15 hover:text-primary"
-          disabled={disabled}
-          onClick={() => scannerGalleryInputRef.current?.click()}
-        >
-          <ScanLine className="mr-2 h-4 w-4 shrink-0 text-primary" />
-          <span className="truncate">Digitalizar</span>
-        </Button>
+        {isAndroid ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                className="min-w-0 rounded-full border border-primary/20 bg-primary/10 text-primary shadow-none hover:border-primary/35 hover:bg-primary/15 hover:text-primary"
+                disabled={disabled}
+              >
+                <ScanLine className="mr-2 h-4 w-4 shrink-0 text-primary" />
+                <span className="truncate">Digitalizar</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-44">
+              <DropdownMenuItem onSelect={() => scannerCameraInputRef.current?.click()}>
+                <Camera />
+                Câmera
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => scannerGalleryInputRef.current?.click()}>
+                <ImageIcon />
+                Galeria
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => scannerFileInputRef.current?.click()}>
+                <FolderOpen />
+                Arquivos
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : (
+          <Button
+            type="button"
+            variant="ghost"
+            className="min-w-0 rounded-full border border-primary/20 bg-primary/10 text-primary shadow-none hover:border-primary/35 hover:bg-primary/15 hover:text-primary"
+            disabled={disabled}
+            onClick={() => scannerGalleryInputRef.current?.click()}
+          >
+            <ScanLine className="mr-2 h-4 w-4 shrink-0 text-primary" />
+            <span className="truncate">Digitalizar</span>
+          </Button>
+        )}
       </div>
 
       <div className="mt-4 space-y-2">
