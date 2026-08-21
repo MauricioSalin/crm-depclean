@@ -748,7 +748,9 @@ export function AgendamentosContent({
 
       const payload = {
         clientId: formData.clientId,
-        unitId: scheduleId ? editingSchedule?.unitId ?? primaryUnit.id : primaryUnit.id,
+        unitId: scheduleId && editingSchedule?.clientId === formData.clientId
+          ? editingSchedule.unitId ?? primaryUnit.id
+          : primaryUnit.id,
         serviceTypeId: formData.serviceTypeIds[0],
         serviceTypeIds: formData.serviceTypeIds,
         serviceDocumentSettings: formData.serviceDocumentSettings,

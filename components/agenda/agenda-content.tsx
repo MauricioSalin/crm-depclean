@@ -642,7 +642,9 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
 
       const payload = {
         clientId: formData.clientId,
-        unitId: scheduleId ? editingService?.unitId ?? primaryUnit.id : primaryUnit.id,
+        unitId: scheduleId && editingService?.clientId === formData.clientId
+          ? editingService.unitId ?? primaryUnit.id
+          : primaryUnit.id,
         serviceTypeId: formData.serviceTypeIds[0],
         serviceTypeIds: formData.serviceTypeIds,
         serviceDocumentSettings: formData.serviceDocumentSettings,
