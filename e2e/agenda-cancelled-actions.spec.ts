@@ -33,6 +33,7 @@ test.beforeEach(async ({ page }) => {
 
 test("não oferece edição para agendamento cancelado no card nem nos detalhes", async ({ page }) => {
   await page.goto(`/agenda?date=${cancelledSchedule.date}`)
+  await page.getByRole("button", { name: "Mostrar detalhes do dia" }).click()
 
   const reactivateButton = page.getByRole("button", { name: "Reativar", exact: true })
   await expect(reactivateButton).toBeVisible()

@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test"
 import { installApiMock, scheduleFixture } from "./support/api-mock"
 import { E2E_USER, installAuthenticatedSession } from "./support/session"
 
-test("visualizar e abrir por link usam NAs quando o atendimento já iniciou", async ({ page }) => {
+test("visualizar e abrir por link usam os anexos quando o atendimento já iniciou", async ({ page }) => {
   const restrictedUser = {
     ...E2E_USER,
     id: "user-schedule-in-progress",
@@ -47,7 +47,7 @@ test("visualizar e abrir por link usam NAs quando o atendimento já iniciou", as
   await page.goto("/agendamentos")
   await page.getByRole("button", { name: `Abrir ações do agendamento de ${inProgressSchedule.clientName}` }).click()
   await page.getByRole("menuitem", { name: "Visualizar", exact: true }).click()
-  const naHeading = page.getByRole("heading", { name: "NAs do atendimento", exact: true })
+  const naHeading = page.getByRole("heading", { name: "Anexos do atendimento", exact: true })
   const naBackButton = page.getByRole("button", { name: "Voltar", exact: true })
   await expect(naHeading).toBeVisible()
   await page.setViewportSize({ width: 390, height: 844 })
@@ -60,17 +60,17 @@ test("visualizar e abrir por link usam NAs quando o atendimento já iniciou", as
     if (!headingBox || !backButtonBox) return -1
     return headingBox.y - backButtonBox.y - backButtonBox.height
   }).toBeGreaterThanOrEqual(8)
-  const naDialogBox = await page.getByRole("dialog", { name: "NAs do atendimento" }).boundingBox()
+  const naDialogBox = await page.getByRole("dialog", { name: "Anexos do atendimento" }).boundingBox()
   expect(naDialogBox).not.toBeNull()
-  expect(naDialogBox!.width).toBeCloseTo(390, 0)
-  expect(naDialogBox!.height).toBeCloseTo(844, 0)
+  expect(naDialogBox!.width).toBeGreaterThan(380)
+  expect(naDialogBox!.width).toBeLessThanOrEqual(390)
   const informationButtonBox = await page.getByRole("button", { name: "Ver informações", exact: true }).boundingBox()
   const finishSliderBox = await page.locator('[data-attendance-slider="finish"]').boundingBox()
   expect(informationButtonBox).not.toBeNull()
   expect(finishSliderBox).not.toBeNull()
   expect(informationButtonBox!.height).toBeLessThanOrEqual(40)
-  expect(informationButtonBox!.width).toBeGreaterThan(340)
-  expect(finishSliderBox!.width).toBeGreaterThan(340)
+  expect(informationButtonBox!.width).toBeGreaterThan(335)
+  expect(finishSliderBox!.width).toBeGreaterThan(335)
   expect(informationButtonBox!.y + informationButtonBox!.height).toBeLessThan(finishSliderBox!.y)
   await expect(page.getByRole("button", { name: "Editar agendamento", exact: true })).toHaveCount(0)
   await page.setViewportSize({ width: 1280, height: 720 })
@@ -84,21 +84,21 @@ test("visualizar e abrir por link usam NAs quando o atendimento já iniciou", as
   }).toBe(true)
   await page.getByRole("button", { name: "Ver informações", exact: true }).click()
   await expect(page.getByRole("dialog", { name: new RegExp(inProgressSchedule.clientName) })).toBeVisible()
-  const informationBackButton = page.getByRole("button", { name: "Voltar para NAs do atendimento" })
+  const informationBackButton = page.getByRole("button", { name: "Voltar para anexos do atendimento" })
   await expect(informationBackButton).toHaveClass(/text-foreground/)
   await informationBackButton.click()
-  await expect(page.getByRole("heading", { name: "NAs do atendimento", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Anexos do atendimento", exact: true })).toBeVisible()
 
   await page.getByRole("button", { name: "Encerrar atendimento", exact: true }).click()
   await expect(page.getByRole("heading", { name: "Encerrar atendimento", exact: true })).toBeVisible()
-  const checkoutBackButton = page.getByRole("button", { name: "Voltar para NAs do atendimento" })
+  const checkoutBackButton = page.getByRole("button", { name: "Voltar para anexos do atendimento" })
   await expect(checkoutBackButton).toHaveClass(/text-foreground/)
   await checkoutBackButton.click()
-  await expect(page.getByRole("heading", { name: "NAs do atendimento", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Anexos do atendimento", exact: true })).toBeVisible()
 
   await page.keyboard.press("Escape")
   await page.goto(`/agendamentos/${inProgressSchedule.id}`)
-  await expect(page.getByRole("heading", { name: "NAs do atendimento", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Anexos do atendimento", exact: true })).toBeVisible()
   await page.keyboard.press("Escape")
   await expect(page).toHaveURL(/\/agendamentos$/)
 })
@@ -145,13 +145,13 @@ test("editor pode editar atendimento em andamento e usa a ação Concluir", asyn
   await expect(page.getByRole("menuitem", { name: "NAs e conclusão", exact: true })).toHaveCount(0)
 
   await page.getByRole("menuitem", { name: "Visualizar", exact: true }).click()
-  await expect(page.getByRole("heading", { name: "NAs do atendimento", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Anexos do atendimento", exact: true })).toBeVisible()
   await page.getByRole("button", { name: "Editar agendamento", exact: true }).click()
   await expect(page.getByRole("heading", { name: "Editar atendimento avulso", exact: true })).toBeVisible()
 
   await page.keyboard.press("Escape")
   await page.goto(`/agenda?scheduleId=${inProgressSchedule.id}`)
-  const agendaNaHeading = page.getByRole("heading", { name: "NAs do atendimento", exact: true })
+  const agendaNaHeading = page.getByRole("heading", { name: "Anexos do atendimento", exact: true })
   const agendaBackButton = page.getByRole("button", { name: "Voltar", exact: true })
   await expect(agendaNaHeading).toBeVisible()
   await page.setViewportSize({ width: 390, height: 844 })

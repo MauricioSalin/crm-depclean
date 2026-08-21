@@ -170,8 +170,12 @@ test.describe("digitalização no Android", () => {
       expectedAccept: string | null,
       expectedCapture: string | null,
     ) => {
-      await page.getByRole("button", { name: "Digitalizar", exact: true }).click()
-      await expect(page.getByRole("menuitem", { name: "Câmera", exact: true })).toBeVisible()
+      const cameraOption = page.getByRole("menuitem", { name: "Câmera", exact: true })
+      await expect(cameraOption).toHaveCount(0)
+      const digitalizeButton = page.getByRole("button", { name: "Digitalizar", exact: true })
+      await expect(digitalizeButton).toBeEnabled()
+      await digitalizeButton.click()
+      await expect(cameraOption).toBeVisible()
       await expect(page.getByRole("menuitem", { name: "Galeria", exact: true })).toBeVisible()
       await expect(page.getByRole("menuitem", { name: "Arquivos", exact: true })).toBeVisible()
 
@@ -185,7 +189,7 @@ test.describe("digitalização no Android", () => {
       await expect(scanner).toBeVisible()
       await expect(scanner.getByRole("button", { name: /^Ajustar canto/ })).toHaveCount(4)
       await page.keyboard.press("Escape")
-      await expect(scanner).not.toBeVisible()
+      await expect(scanner).toHaveCount(0)
     }
 
     await chooseScannerSource("Câmera", "image/*", "environment")

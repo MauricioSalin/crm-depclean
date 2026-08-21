@@ -48,12 +48,15 @@ A aplicação roda em `http://localhost:3100`.
 npm run build
 ```
 
-## Integrações Ativas
+## Integrações ativas
 
 - Clientes, contratos, serviços, equipes, funcionários, agenda, agendamentos, relatórios com financeiro, certificados, templates e notificações usam a API.
 - Arquivos e anexos são abertos via `buildApiFileUrl`, que resolve caminhos como `/api/v1/files/...`.
-- A aba `Anexos` do cliente consolida documentos vindos de contratos, NAs, informativos, certificados e anexos manuais.
-- Anexos manuais do cliente são enviados por multipart para `POST /clients/:id/attachments`.
+- A aba `Anexos` do cliente é um workspace hierárquico: consolida contratos, cronogramas, NAs, evidências, informativos, certificados e anexos manuais, com pastas, busca, filtro, paginação, upload, arrastar e soltar, renomeação, movimentação, exclusão e download conforme a permissão.
+- Anexos manuais do cliente são enviados por multipart para `POST /clients/:id/attachments`; pastas e arquivos usam também as rotas `/clients/:id/attachments/workspace`, `/folders` e `/files`.
+- A execução de um atendimento aceita fotos, PDF, Word e planilhas com até 30 MB por arquivo, sem limite total acumulado no agendamento. No Android, `Digitalizar` oferece câmera, galeria e arquivos; o seletor geral de anexos permanece sem restrição que esconda documentos.
+- Cobranças avulsas aparecem em `Clientes > Extras` e na tabela financeira de Relatórios, com edição de valor, vencimento, status, data e valor de pagamento conforme a permissão.
+- Informativos permitem configurar antecedência e horário de envio; novos modelos começam em `08:00`.
 - O controle de acesso do frontend fica em `lib/auth/permissions.ts` e deve acompanhar o catálogo do backend em `api-depclean/src/database/constants/permissions.ts`.
 - Agenda e Agendamentos aceitam `agenda_own_view`; nesse caso, o backend retorna somente registros em que o usuário ou uma de suas equipes está mencionado.
 
@@ -72,6 +75,8 @@ Na tela inicial, os objetivos guiados ajudam o usuário a formular análises de 
 5. A DepAI confere filtros, vínculos, totais e resultados das consultas antes de responder. Diagnósticos devem separar evidência, hipótese e próxima ação.
 6. Planilhas, gráficos, documentos e diagramas são gerados apenas quando solicitados e devem respeitar exatamente o recorte pedido.
 7. A resposta, os anexos referenciados e os artefatos ficam associados à conversa. A DepAI não cria, altera ou exclui registros e não envia mensagens; quando pedirem uma mutação, ela orienta o caminho na plataforma.
+
+O manual funcional atual também documenta as regras de agendamentos multi-dia, anexos e credenciais FEPAM, notificações distintas entre criação manual e publicação contratual, informativos por horário, certificados na última ocorrência e preservação do status financeiro persistido.
 
 Ao alterar fluxo de tela, regra de permissão, envio de documento, ClickSign, WhatsApp ou anexos, atualize também:
 
@@ -92,8 +97,10 @@ lib/types.ts         Tipos compartilhados do frontend
 ## Validação
 
 ```bash
-npm run build
-npx playwright test e2e/depai-guided-analysis.spec.ts --workers=1
+pnpm exec playwright test --list
+pnpm exec playwright test --workers=1
 ```
+
+A suíte determinística intercepta a API local e não escreve em produção. O smoke read-only só roda quando `E2E_LIVE_EMAIL` e `E2E_LIVE_PASSWORD` são fornecidos. Consulte `docs/quality/e2e-coverage.md` para a matriz e o resultado de referência atualizados.
 
 O build atual pula typecheck completo por configuração do Next, então erros de contrato com a API devem ser validados também pelo build da `api-depclean`.
