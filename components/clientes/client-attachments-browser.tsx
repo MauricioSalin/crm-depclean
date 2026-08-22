@@ -983,7 +983,7 @@ export function ClientAttachmentsBrowser({
           </DialogHeader>
           <div className="grid gap-3 py-2 sm:grid-cols-[max-content_minmax(0,1fr)]">
             <div className="space-y-2">
-              <Label>Tipo do arquivo</Label>
+              <Label>Tipo</Label>
               <Select value={uploadType} onValueChange={(value) => setUploadType(value as ClientAttachmentType)}>
                 <SelectTrigger className="w-full sm:w-fit"><SelectValue /></SelectTrigger>
                 <SelectContent>{clientAttachmentTypes.map((type) => <SelectItem key={type} value={type}>{typeLabels[type]}</SelectItem>)}</SelectContent>

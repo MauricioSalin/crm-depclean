@@ -295,6 +295,8 @@ test("expande o tipo do arquivo pela largura da modal no mobile", async ({ page 
   const fileType = dialog.getByRole("combobox").first()
   const destination = dialog.getByLabel("Destino", { exact: true })
   await expect(dialog).toBeVisible()
+  await expect(dialog.getByText("Tipo", { exact: true })).toBeVisible()
+  await expect(dialog.getByText("Tipo do arquivo", { exact: true })).toHaveCount(0)
   await expect.poll(async () => {
     const fileTypeBox = await fileType.boundingBox()
     const destinationBox = await destination.boundingBox()
