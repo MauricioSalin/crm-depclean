@@ -419,7 +419,7 @@ test("conclui o atendimento com motorista opcional, ajudantes e observações", 
   await expect(page.getByRole("heading", { name: "Anexos do atendimento" })).toBeVisible()
   const attachmentsDialog = page.getByRole("dialog", { name: "Anexos do atendimento" })
   await expect(attachmentsDialog).toHaveCSS("width", "576px")
-  await expect(attachmentsDialog).toHaveCSS("height", "512px")
+  await expect(attachmentsDialog).toHaveCSS("height", "640px")
   await expect(page.getByText("Adicione NAs e evidências da execução. Cada arquivo é salvo no agendamento assim que for anexado.")).toBeVisible()
   await expect(page.getByText("NAs e evidências", { exact: true })).toBeVisible()
   await expect(page.getByText("Aceita fotos, PDF, Word e planilhas de até 30 MB. Cada arquivo é salvo imediatamente.")).toBeVisible()
