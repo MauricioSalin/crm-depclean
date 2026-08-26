@@ -63,7 +63,7 @@ export function CancelScheduleDialog({
                 id={reasonInputId}
                 value={reason}
                 onChange={(event) => setReason(event.target.value)}
-                placeholder="Ex.: cliente pediu reagendamento, acesso indisponível, equipe sem janela..."
+                placeholder="cliente pediu reagendamento, acesso indisponível, equipe sem janela..."
                 className="min-h-28"
               />
             </div>

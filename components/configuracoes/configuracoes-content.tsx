@@ -1918,7 +1918,7 @@ export function ConfiguracoesContent() {
                     id="user-role"
                     value={userForm.role}
                     onChange={(event) => setUserForm({ ...userForm, role: event.target.value })}
-                    placeholder="Ex: Gerente, Operador, Administrativo"
+                    placeholder="Gerente, Operador, Administrativo"
                   />
                 </div>
                 {shouldShowPasswordFields && (

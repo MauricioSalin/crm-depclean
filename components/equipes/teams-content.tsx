@@ -274,7 +274,7 @@ export function TeamsContent({ viewMode, openDialog, onDialogChange, viewToggle 
                 id="team-name"
                 value={formData.name}
                 onChange={(event) => setFormData((current) => ({ ...current, name: event.target.value }))}
-                placeholder="Ex: Equipe Alpha"
+                placeholder="Equipe Alpha"
                 required
               />
             </div>

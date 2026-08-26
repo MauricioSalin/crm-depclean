@@ -287,7 +287,7 @@ export function AjudaContent() {
                   <Label htmlFor="support-subject">Assunto</Label>
                   <Input
                     id="support-subject"
-                    placeholder="Ex: Bug na emissão de certificado"
+                    placeholder="Bug na emissão de certificado"
                     value={contactForm.subject}
                     onChange={(event) => setContactForm({ ...contactForm, subject: event.target.value })}
                     required

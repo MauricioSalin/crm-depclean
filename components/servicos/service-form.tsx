@@ -318,7 +318,7 @@ export function ServiceForm({ serviceId, isEditing }: ServiceFormProps) {
               id="name"
               value={formData.name}
               onChange={(event) => setFormData((current) => ({ ...current, name: event.target.value }))}
-              placeholder="Ex: Limpeza Geral"
+              placeholder="Limpeza Geral"
               required
             />
           </div>

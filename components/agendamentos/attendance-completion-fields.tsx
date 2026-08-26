@@ -179,7 +179,7 @@ export function AttendanceCompletionFields({
           id={`${idPrefix}-vehicle-plate`}
           value={vehiclePlate}
           maxLength={15}
-          placeholder="Ex.: ABC1D23"
+          placeholder="ABC1D23"
           className="uppercase"
           onChange={(event) => onVehiclePlateChange(event.target.value.toUpperCase())}
         />
@@ -194,7 +194,7 @@ export function AttendanceCompletionFields({
           pattern="[0-9]*"
           value={disposalMtrNumber}
           maxLength={30}
-          placeholder="Ex.: 001234567890"
+          placeholder="001234567890"
           onChange={(event) => onDisposalMtrNumberChange(event.target.value.replace(/\D/g, ""))}
         />
       </div>
@@ -253,7 +253,7 @@ export function AttendanceCompletionFields({
               min={0.001}
               allowDecimal
               allowEmpty
-              placeholder="Ex.: 2,5"
+              placeholder="2,5"
               onEmpty={() => onDisposalQuantityM3Change(null)}
               onValueChange={onDisposalQuantityM3Change}
             />

@@ -646,7 +646,7 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
                   id="employee-name"
                   value={formData.name}
                   onChange={(event) => setFormData({ ...formData, name: event.target.value })}
-                  placeholder="Ex: Maurício Salin"
+                  placeholder="Maurício Salin"
                   required
                 />
               </div>
@@ -679,12 +679,12 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
                   autoComplete="off"
                   value={formData.email}
                   onChange={(event) => setFormData({ ...formData, email: event.target.value })}
-                  placeholder="Ex: mauricio@depcleanrs.com.br"
+                  placeholder="mauricio@depcleanrs.com.br"
                 />
               </div>
               <div className="sm:col-span-2 space-y-2">
                 <Label htmlFor="employee-role">Cargo</Label>
-                <Input id="employee-role" value={formData.role ?? ""} onChange={(event) => setFormData({ ...formData, role: event.target.value })} placeholder="Ex: Administradora, Técnico, Assistente" />
+                <Input id="employee-role" value={formData.role ?? ""} onChange={(event) => setFormData({ ...formData, role: event.target.value })} placeholder="Administradora, Técnico, Assistente" />
               </div>
               <div className="sm:col-span-2 space-y-2">
                 <Label>Status</Label>
