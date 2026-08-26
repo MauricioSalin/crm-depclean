@@ -84,6 +84,7 @@ export function ScheduleShortcutDialog({
   const [completionHelperEmployeeIds, setCompletionHelperEmployeeIds] = useState<string[]>([])
   const [completionServiceReport, setCompletionServiceReport] = useState("")
   const [completionVehiclePlate, setCompletionVehiclePlate] = useState("")
+  const [completionDisposalMtrNumber, setCompletionDisposalMtrNumber] = useState("")
   const [completionDisposalType, setCompletionDisposalType] = useState<ScheduleDisposalType | "">("")
   const [completionDisposalStationId, setCompletionDisposalStationId] = useState("")
   const [completionDisposalQuantityM3, setCompletionDisposalQuantityM3] = useState<number | null>(null)
@@ -102,6 +103,7 @@ export function ScheduleShortcutDialog({
     setCompletionHelperEmployeeIds(target.attendanceHelpers?.map((employee) => employee.id) ?? [])
     setCompletionServiceReport(target.serviceReport || "")
     setCompletionVehiclePlate(target.attendanceVehiclePlate || "")
+    setCompletionDisposalMtrNumber(target.attendanceDisposal?.mtrNumber || "")
     setCompletionDisposalType(target.attendanceDisposal?.type || "")
     setCompletionDisposalStationId(target.attendanceDisposal?.stationId || "")
     setCompletionDisposalQuantityM3(target.attendanceDisposal?.quantityM3 ?? null)
@@ -290,6 +292,7 @@ export function ScheduleShortcutDialog({
         helperEmployeeIds: completionHelperEmployeeIds,
         serviceReport: completionServiceReport,
         vehiclePlate: completionVehiclePlate,
+        disposalMtrNumber: completionDisposalMtrNumber || undefined,
         disposalType: completionDisposalType || null,
         disposalStationId: completionDisposalStationId,
         disposalQuantityM3: completionDisposalQuantityM3 ?? undefined,
@@ -543,6 +546,7 @@ export function ScheduleShortcutDialog({
                 helperEmployeeIds={completionHelperEmployeeIds}
                 serviceReport={completionServiceReport}
                 vehiclePlate={completionVehiclePlate}
+                disposalMtrNumber={completionDisposalMtrNumber}
                 disposalType={completionDisposalType}
                 disposalStationId={completionDisposalStationId}
                 disposalQuantityM3={completionDisposalQuantityM3}
@@ -556,6 +560,7 @@ export function ScheduleShortcutDialog({
                 onHelperEmployeeIdsChange={setCompletionHelperEmployeeIds}
                 onServiceReportChange={setCompletionServiceReport}
                 onVehiclePlateChange={setCompletionVehiclePlate}
+                onDisposalMtrNumberChange={setCompletionDisposalMtrNumber}
                 onDisposalTypeChange={setCompletionDisposalType}
                 onDisposalStationIdChange={setCompletionDisposalStationId}
                 onDisposalQuantityM3Change={setCompletionDisposalQuantityM3}

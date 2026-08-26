@@ -1265,6 +1265,7 @@ export function RelatoriosContent() {
       "Ajudantes",
       "Placa do veículo",
       "Observações do atendimento",
+      "N° de MTR",
       "Tipo de descarte",
       "Quantidade do descarte (m³)",
       "Estação de descarte",
@@ -1292,6 +1293,7 @@ export function RelatoriosContent() {
       detail.attendanceHelpers?.map((employee) => employee.name).join(", ") || "Nenhum ajudante informado",
       detail.attendanceVehiclePlate || "Não informada",
       detail.serviceReport?.trim() || "Nenhuma observação registrada",
+      detail.attendanceDisposal?.mtrNumber || "Não informado",
       detail.attendanceDisposal?.type === "fossa"
         ? "Fossa"
         : detail.attendanceDisposal?.type === "gordura"

@@ -1,6 +1,7 @@
 export type ScheduleDisposalType = "fossa" | "gordura"
 
 export type ScheduleDisposalRecord = {
+  mtrNumber?: string
   type: ScheduleDisposalType
   stationId: string
   stationName: string

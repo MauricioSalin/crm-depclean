@@ -488,6 +488,7 @@ export function AgendamentosContent({
   const [completionHelperEmployeeIds, setCompletionHelperEmployeeIds] = useState<string[]>([])
   const [completionServiceReport, setCompletionServiceReport] = useState("")
   const [completionVehiclePlate, setCompletionVehiclePlate] = useState("")
+  const [completionDisposalMtrNumber, setCompletionDisposalMtrNumber] = useState("")
   const [completionDisposalType, setCompletionDisposalType] = useState<ScheduleDisposalType | "">("")
   const [completionDisposalStationId, setCompletionDisposalStationId] = useState("")
   const [completionDisposalQuantityM3, setCompletionDisposalQuantityM3] = useState<number | null>(null)
@@ -514,6 +515,7 @@ export function AgendamentosContent({
     setCompletionHelperEmployeeIds([])
     setCompletionServiceReport("")
     setCompletionVehiclePlate("")
+    setCompletionDisposalMtrNumber("")
     setCompletionDisposalType("")
     setCompletionDisposalStationId("")
     setCompletionDisposalQuantityM3(null)
@@ -541,6 +543,7 @@ export function AgendamentosContent({
     setCompletionHelperEmployeeIds(schedule.attendanceHelpers?.map((employee) => employee.id) ?? [])
     setCompletionServiceReport(schedule.serviceReport || "")
     setCompletionVehiclePlate(schedule.attendanceVehiclePlate || "")
+    setCompletionDisposalMtrNumber(schedule.attendanceDisposal?.mtrNumber || "")
     setCompletionDisposalType(schedule.attendanceDisposal?.type || "")
     setCompletionDisposalStationId(schedule.attendanceDisposal?.stationId || "")
     setCompletionDisposalQuantityM3(schedule.attendanceDisposal?.quantityM3 ?? null)
@@ -564,6 +567,7 @@ export function AgendamentosContent({
     setCompletionHelperEmployeeIds(schedule.attendanceHelpers?.map((employee) => employee.id) ?? [])
     setCompletionServiceReport(schedule.serviceReport || "")
     setCompletionVehiclePlate(schedule.attendanceVehiclePlate || "")
+    setCompletionDisposalMtrNumber(schedule.attendanceDisposal?.mtrNumber || "")
     setCompletionDisposalType(schedule.attendanceDisposal?.type || "")
     setCompletionDisposalStationId(schedule.attendanceDisposal?.stationId || "")
     setCompletionDisposalQuantityM3(schedule.attendanceDisposal?.quantityM3 ?? null)
@@ -949,6 +953,7 @@ export function AgendamentosContent({
       helperEmployeeIds,
       serviceReport,
       vehiclePlate,
+      disposalMtrNumber,
       disposalType,
       disposalStationId,
       disposalQuantityM3,
@@ -962,6 +967,7 @@ export function AgendamentosContent({
       helperEmployeeIds: string[]
       serviceReport: string
       vehiclePlate: string
+      disposalMtrNumber: string
       disposalType: ScheduleDisposalType | ""
       disposalStationId: string
       disposalQuantityM3: number | null
@@ -981,6 +987,7 @@ export function AgendamentosContent({
         helperEmployeeIds,
         serviceReport,
         vehiclePlate,
+        disposalMtrNumber: disposalMtrNumber || undefined,
         disposalType: disposalType || null,
         disposalStationId,
         disposalQuantityM3: disposalQuantityM3 ?? undefined,
@@ -1402,6 +1409,7 @@ export function AgendamentosContent({
                 helperEmployeeIds={completionHelperEmployeeIds}
                 serviceReport={completionServiceReport}
                 vehiclePlate={completionVehiclePlate}
+                disposalMtrNumber={completionDisposalMtrNumber}
                 disposalType={completionDisposalType}
                 disposalStationId={completionDisposalStationId}
                 disposalQuantityM3={completionDisposalQuantityM3}
@@ -1415,6 +1423,7 @@ export function AgendamentosContent({
                 onHelperEmployeeIdsChange={setCompletionHelperEmployeeIds}
                 onServiceReportChange={setCompletionServiceReport}
                 onVehiclePlateChange={setCompletionVehiclePlate}
+                onDisposalMtrNumberChange={setCompletionDisposalMtrNumber}
                 onDisposalTypeChange={setCompletionDisposalType}
                 onDisposalStationIdChange={setCompletionDisposalStationId}
                 onDisposalQuantityM3Change={setCompletionDisposalQuantityM3}
@@ -1546,6 +1555,7 @@ export function AgendamentosContent({
                   helperEmployeeIds: completionHelperEmployeeIds,
                   serviceReport: completionServiceReport,
                   vehiclePlate: completionVehiclePlate,
+                  disposalMtrNumber: completionDisposalMtrNumber,
                   disposalType: completionDisposalType,
                   disposalStationId: completionDisposalStationId,
                   disposalQuantityM3: completionDisposalQuantityM3,

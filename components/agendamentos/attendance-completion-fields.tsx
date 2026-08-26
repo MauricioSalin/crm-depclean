@@ -28,6 +28,7 @@ type AttendanceCompletionFieldsProps = {
   helperEmployeeIds: string[]
   serviceReport: string
   vehiclePlate: string
+  disposalMtrNumber: string
   disposalType: ScheduleDisposalType | ""
   disposalStationId: string
   disposalQuantityM3: number | null
@@ -41,6 +42,7 @@ type AttendanceCompletionFieldsProps = {
   onHelperEmployeeIdsChange: (value: string[]) => void
   onServiceReportChange: (value: string) => void
   onVehiclePlateChange: (value: string) => void
+  onDisposalMtrNumberChange: (value: string) => void
   onDisposalTypeChange: (value: ScheduleDisposalType | "") => void
   onDisposalStationIdChange: (value: string) => void
   onDisposalQuantityM3Change: (value: number | null) => void
@@ -57,6 +59,7 @@ export function AttendanceCompletionFields({
   helperEmployeeIds,
   serviceReport,
   vehiclePlate,
+  disposalMtrNumber,
   disposalType,
   disposalStationId,
   disposalQuantityM3,
@@ -70,6 +73,7 @@ export function AttendanceCompletionFields({
   onHelperEmployeeIdsChange,
   onServiceReportChange,
   onVehiclePlateChange,
+  onDisposalMtrNumberChange,
   onDisposalTypeChange,
   onDisposalStationIdChange,
   onDisposalQuantityM3Change,
@@ -182,6 +186,20 @@ export function AttendanceCompletionFields({
       </div>
 
       <div className="space-y-2">
+        <Label htmlFor={`${idPrefix}-disposal-mtr-number`}>N° de MTR</Label>
+        <Input
+          id={`${idPrefix}-disposal-mtr-number`}
+          type="tel"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          value={disposalMtrNumber}
+          maxLength={30}
+          placeholder="Ex.: 001234567890"
+          onChange={(event) => onDisposalMtrNumberChange(event.target.value.replace(/\D/g, ""))}
+        />
+      </div>
+
+      <div className="space-y-2">
         <Label htmlFor={`${idPrefix}-disposal-type`}>Descarte</Label>
         <SearchableSelect
           id={`${idPrefix}-disposal-type`}
@@ -191,6 +209,7 @@ export function AttendanceCompletionFields({
             onDisposalTypeChange(nextType)
             onDisposalStationIdChange("")
             onDisposalQuantityM3Change(null)
+            if (!nextType) onDisposalMtrNumberChange("")
           }}
           options={[
             { value: "none", label: "Sem descarte" },

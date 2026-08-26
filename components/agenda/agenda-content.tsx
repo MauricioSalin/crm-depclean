@@ -291,6 +291,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   const [completionHelperEmployeeIds, setCompletionHelperEmployeeIds] = useState<string[]>([])
   const [completionServiceReport, setCompletionServiceReport] = useState("")
   const [completionVehiclePlate, setCompletionVehiclePlate] = useState("")
+  const [completionDisposalMtrNumber, setCompletionDisposalMtrNumber] = useState("")
   const [completionDisposalType, setCompletionDisposalType] = useState<ScheduleDisposalType | "">("")
   const [completionDisposalStationId, setCompletionDisposalStationId] = useState("")
   const [completionDisposalQuantityM3, setCompletionDisposalQuantityM3] = useState<number | null>(null)
@@ -321,6 +322,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
     setCompletionHelperEmployeeIds([])
     setCompletionServiceReport("")
     setCompletionVehiclePlate("")
+    setCompletionDisposalMtrNumber("")
     setCompletionDisposalType("")
     setCompletionDisposalStationId("")
     setCompletionDisposalQuantityM3(null)
@@ -353,6 +355,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
     setCompletionHelperEmployeeIds(schedule.attendanceHelpers?.map((employee) => employee.id) ?? [])
     setCompletionServiceReport(schedule.serviceReport || "")
     setCompletionVehiclePlate(schedule.attendanceVehiclePlate || "")
+    setCompletionDisposalMtrNumber(schedule.attendanceDisposal?.mtrNumber || "")
     setCompletionDisposalType(schedule.attendanceDisposal?.type || "")
     setCompletionDisposalStationId(schedule.attendanceDisposal?.stationId || "")
     setCompletionDisposalQuantityM3(schedule.attendanceDisposal?.quantityM3 ?? null)
@@ -376,6 +379,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
     setCompletionHelperEmployeeIds(schedule.attendanceHelpers?.map((employee) => employee.id) ?? [])
     setCompletionServiceReport(schedule.serviceReport || "")
     setCompletionVehiclePlate(schedule.attendanceVehiclePlate || "")
+    setCompletionDisposalMtrNumber(schedule.attendanceDisposal?.mtrNumber || "")
     setCompletionDisposalType(schedule.attendanceDisposal?.type || "")
     setCompletionDisposalStationId(schedule.attendanceDisposal?.stationId || "")
     setCompletionDisposalQuantityM3(schedule.attendanceDisposal?.quantityM3 ?? null)
@@ -915,6 +919,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       helperEmployeeIds,
       serviceReport,
       vehiclePlate,
+      disposalMtrNumber,
       disposalType,
       disposalStationId,
       disposalQuantityM3,
@@ -928,6 +933,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       helperEmployeeIds: string[]
       serviceReport: string
       vehiclePlate: string
+      disposalMtrNumber: string
       disposalType: ScheduleDisposalType | ""
       disposalStationId: string
       disposalQuantityM3: number | null
@@ -947,6 +953,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
         helperEmployeeIds,
         serviceReport,
         vehiclePlate,
+        disposalMtrNumber: disposalMtrNumber || undefined,
         disposalType: disposalType || null,
         disposalStationId: disposalStationId || undefined,
         disposalQuantityM3: disposalQuantityM3 ?? undefined,
@@ -1515,6 +1522,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                 helperEmployeeIds={completionHelperEmployeeIds}
                 serviceReport={completionServiceReport}
                 vehiclePlate={completionVehiclePlate}
+                disposalMtrNumber={completionDisposalMtrNumber}
                 disposalType={completionDisposalType}
                 disposalStationId={completionDisposalStationId}
                 disposalQuantityM3={completionDisposalQuantityM3}
@@ -1528,6 +1536,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                 onHelperEmployeeIdsChange={setCompletionHelperEmployeeIds}
                 onServiceReportChange={setCompletionServiceReport}
                 onVehiclePlateChange={setCompletionVehiclePlate}
+                onDisposalMtrNumberChange={setCompletionDisposalMtrNumber}
                 onDisposalTypeChange={setCompletionDisposalType}
                 onDisposalStationIdChange={setCompletionDisposalStationId}
                 onDisposalQuantityM3Change={setCompletionDisposalQuantityM3}
@@ -1661,6 +1670,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                   helperEmployeeIds: completionHelperEmployeeIds,
                   serviceReport: completionServiceReport,
                   vehiclePlate: completionVehiclePlate,
+                  disposalMtrNumber: completionDisposalMtrNumber,
                   disposalType: completionDisposalType,
                   disposalStationId: completionDisposalStationId,
                   disposalQuantityM3: completionDisposalQuantityM3,

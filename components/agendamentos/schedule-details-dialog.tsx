@@ -590,6 +590,10 @@ export function ScheduleDetailsDialog({
                     </div>
                     {schedule.attendanceDisposal ? (
                       <div data-schedule-execution-disposal className="grid gap-3 sm:col-span-2 sm:grid-cols-2">
+                        <div className="sm:col-span-2">
+                          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">N° de MTR</p>
+                          <p className="mt-1 text-foreground">{schedule.attendanceDisposal.mtrNumber || "Não informado"}</p>
+                        </div>
                         <div>
                           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Descarte</p>
                           <p className="mt-1 text-foreground">

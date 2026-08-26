@@ -64,6 +64,7 @@ test("exporta o planejamento e todas as informações da execução por agendame
             attendanceHelpers: [{ id: "helper-e2e", name: "Ajudante E2E" }],
             attendanceVehiclePlate: "ABC1D23",
             attendanceDisposal: {
+              mtrNumber: "001234567890",
               type: "fossa",
               stationId: "tratho-efluentes",
               stationName: "TRATHO EFLUENTES",
@@ -123,6 +124,7 @@ test("exporta o planejamento e todas as informações da execução por agendame
     Ajudantes: "Ajudante E2E",
     "Placa do veículo": "ABC1D23",
     "Observações do atendimento": "Atendimento concluído sem intercorrências.",
+    "N° de MTR": "001234567890",
     "Tipo de descarte": "Fossa",
     "Quantidade do descarte (m³)": 32,
     "Estação de descarte": "TRATHO EFLUENTES",

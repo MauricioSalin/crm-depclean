@@ -84,6 +84,7 @@ export type ReportScheduleDetail = {
   attendanceHelpers?: Array<{ id: string; name: string }>
   attendanceVehiclePlate?: string
   attendanceDisposal?: {
+    mtrNumber?: string
     type: "fossa" | "gordura"
     stationId: string
     stationName: string

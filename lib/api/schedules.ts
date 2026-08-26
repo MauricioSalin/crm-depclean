@@ -240,6 +240,7 @@ export async function completeSchedule(
     helperEmployeeIds?: string[]
     vehiclePlate?: string
     disposalType?: ScheduleDisposalType | null
+    disposalMtrNumber?: string
     disposalStationId?: string
     disposalQuantityM3?: number
   },
