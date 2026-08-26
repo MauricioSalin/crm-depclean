@@ -283,11 +283,15 @@ export function getDailyServiceCapacityViolation(params: {
 
   for (const serviceTypeId of serviceTypeIds) {
     const requestedServiceItem = params.serviceItems?.find((item) => item.serviceTypeId === serviceTypeId)
+    const requestedServiceItemMinutes = Number(requestedServiceItem?.durationMinutes)
+    const requestedUsesScheduleDuration = !Number.isFinite(requestedServiceItemMinutes) ||
+      requestedServiceItemMinutes <= 0 ||
+      requestedServiceItemMinutes > params.durationMinutes
     const requestedMinutesByDate = dailyMinutesByDate(buildScheduleBlocks({
       date: params.date,
       time: params.time || "08:00",
-      durationMinutes: requestedServiceItem?.durationMinutes ?? params.durationMinutes,
-      durationType: requestedServiceItem?.durationType ?? params.durationType,
+      durationMinutes: requestedUsesScheduleDuration ? params.durationMinutes : requestedServiceItemMinutes,
+      durationType: requestedUsesScheduleDuration ? params.durationType : requestedServiceItem?.durationType,
       mode: params.mode ?? "manual",
     }))
     const configuredService = params.serviceTypes.find((service) => service.id === serviceTypeId)
@@ -310,11 +314,16 @@ export function getDailyServiceCapacityViolation(params: {
       if (!scheduleServiceIds.includes(serviceTypeId)) continue
 
       const scheduleServiceItem = schedule.serviceItems?.find((item) => item.serviceTypeId === serviceTypeId)
+      const scheduleDurationMinutes = getScheduleDurationMinutes(schedule)
+      const scheduleServiceItemMinutes = Number(scheduleServiceItem?.durationMinutes)
+      const scheduleUsesDisplayedDuration = !Number.isFinite(scheduleServiceItemMinutes) ||
+        scheduleServiceItemMinutes <= 0 ||
+        scheduleServiceItemMinutes > scheduleDurationMinutes
       for (const [date, minutes] of dailyMinutesByDate(buildScheduleBlocks({
         date: schedule.date,
         time: schedule.time || "08:00",
-        durationMinutes: scheduleServiceItem?.durationMinutes ?? getScheduleDurationMinutes(schedule),
-        durationType: scheduleServiceItem?.durationType ?? schedule.durationType,
+        durationMinutes: scheduleUsesDisplayedDuration ? scheduleDurationMinutes : scheduleServiceItemMinutes,
+        durationType: scheduleUsesDisplayedDuration ? schedule.durationType : scheduleServiceItem?.durationType,
         mode: params.mode ?? "manual",
       }))) {
         usedMinutesByDate.set(date, (usedMinutesByDate.get(date) ?? 0) + minutes)

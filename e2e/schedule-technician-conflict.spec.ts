@@ -127,6 +127,60 @@ const saturdayLimitSchedule = {
   durationType: "hours" as const,
 }
 
+const stalePackageDurationSchedule = {
+  ...scheduleFixture,
+  id: "schedule-stale-package-duration",
+  contractId: "contract-ubiratan",
+  clientName: "Condomínio Ubiratan",
+  serviceTypeId: serviceFixture.id,
+  serviceTypeIds: [serviceFixture.id, "service-pest"],
+  serviceTypeName: "Limpeza de rede, Controle de pragas",
+  serviceItems: [
+    {
+      contractServiceId: "contract-service-network",
+      serviceTypeId: serviceFixture.id,
+      durationMinutes: 480,
+      durationValue: 8,
+      durationType: "hours" as const,
+      countsTowardPackageDuration: true,
+    },
+    {
+      contractServiceId: "contract-service-pest",
+      serviceTypeId: "service-pest",
+      durationMinutes: 300,
+      durationValue: 5,
+      durationType: "hours" as const,
+      countsTowardPackageDuration: true,
+    },
+  ],
+  teams: [],
+  additionalEmployees: [],
+  date: "2026-08-14",
+  time: "08:00",
+  duration: 240,
+  durationValue: 4,
+  durationType: "hours" as const,
+}
+
+const rudaRetrySchedule = {
+  ...scheduleFixture,
+  id: "schedule-ruda-retry",
+  contractId: "contract-ruda",
+  clientName: "Condomínio Ruda",
+  serviceTypeId: serviceFixture.id,
+  serviceTypeIds: [serviceFixture.id],
+  serviceTypeName: "Limpeza de rede",
+  serviceItems: [],
+  teams: [],
+  additionalEmployees: [{ id: eduardo.id, name: eduardo.name }],
+  date: "2026-08-14",
+  time: "13:00",
+  duration: 240,
+  durationValue: 4,
+  durationType: "hours" as const,
+  status: "rescheduled" as const,
+}
+
 function success(data: unknown) {
   return {
     success: true,
@@ -295,6 +349,40 @@ async function installMultiDayLimitMock(page: Page) {
   return { getSavedPayload: () => savedPayload }
 }
 
+async function installStalePackageDurationMock(page: Page) {
+  let savedPayload: Record<string, unknown> | null = null
+
+  await page.route("**/api/v1/schedules**", async (route) => {
+    const request = route.request()
+    const path = new URL(request.url()).pathname.replace("/api/v1", "")
+    if (request.method() === "GET" && path === "/schedules") {
+      await fulfill(route, [stalePackageDurationSchedule, rudaRetrySchedule])
+      return
+    }
+    if (request.method() === "PATCH" && path === `/schedules/${rudaRetrySchedule.id}`) {
+      savedPayload = request.postDataJSON() as Record<string, unknown>
+      await fulfill(route, rudaRetrySchedule)
+      return
+    }
+    await route.fallback()
+  })
+
+  await page.route("**/api/v1/services**", async (route) => {
+    const path = new URL(route.request().url()).pathname.replace("/api/v1", "")
+    if (route.request().method() === "GET" && path === "/services") {
+      await fulfill(route, [{
+        ...serviceFixture,
+        name: "Limpeza de rede",
+        dailyScheduleLimitHours: 8,
+      }])
+      return
+    }
+    await route.fallback()
+  })
+
+  return { getSavedPayload: () => savedPayload }
+}
+
 test.beforeEach(async ({ page }) => {
   await page.clock.setFixedTime(FIXED_NOW)
   await installAuthenticatedSession(page)
@@ -383,6 +471,30 @@ test("edita três dias de quinta a segunda sem considerar o sábado no limite", 
   await expect(finalOccurrence).toHaveCount(1)
   await finalOccurrence.hover()
   await expect(finalOccurrence.locator('[data-schedule-reference="3/3"]')).toBeVisible()
+})
+
+test("permite salvar quatro horas quando outro pacote exibido com quatro horas tem itens antigos maiores", async ({ page }) => {
+  const mock = await installStalePackageDurationMock(page)
+
+  await page.goto("/agendamentos")
+  const scheduleRow = page.getByRole("row").filter({ hasText: rudaRetrySchedule.clientName })
+  await scheduleRow.getByRole("button", {
+    name: `Abrir ações do agendamento de ${rudaRetrySchedule.clientName}`,
+  }).click()
+  await page.getByRole("menuitem", { name: "Editar" }).click()
+
+  const editDialog = page.getByRole("dialog", { name: "Editar atendimento recorrente" })
+  await editDialog.getByRole("button", { name: "Salvar", exact: true }).click()
+
+  await expect.poll(() => mock.getSavedPayload()).toMatchObject({
+    scheduledDate: "2026-08-14",
+    scheduledTime: "13:00",
+    estimatedDuration: 240,
+    durationValue: 4,
+    durationType: "hours",
+  })
+  await expect(page.getByText(/limite de .* horas.*ultrapassado/i)).toHaveCount(0)
+  await expect(editDialog).toBeHidden()
 })
 
 test("bloqueia com toast ao vincular técnico com sobreposição de horário", async ({ page }) => {
