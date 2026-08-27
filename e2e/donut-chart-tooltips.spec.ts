@@ -8,25 +8,42 @@ test.beforeEach(async ({ page }) => {
   await installApiMock(page)
 })
 
-test("mantém o tooltip da rosquinha de contratos acima do conteúdo central", async ({ page }) => {
+test("mantém os tooltips das rosquinhas do painel acima do conteúdo central", async ({ page }) => {
   await page.goto("/")
 
-  const card = page
-    .getByRole("heading", { name: "Contratos por status", exact: true })
-    .locator("xpath=ancestor::div[contains(@class,'rounded-xl')][1]")
-  const chartSurface = card.locator("svg.recharts-surface").first()
-  const currentSlice = card.locator("path.recharts-sector").nth(3)
-  const tooltip = card.locator(".recharts-tooltip-wrapper")
+  const cases = [
+    {
+      heading: "Contratos por status",
+      sliceIndex: 3,
+      tooltipText: ["Vigentes", "90 contratos"],
+    },
+    {
+      heading: "Serviços por Período",
+      sliceIndex: 0,
+      tooltipText: ["0 serviços"],
+    },
+  ]
 
-  await expect(chartSurface).toBeVisible()
   await page.waitForTimeout(1_200)
-  await currentSlice.dispatchEvent("mouseover")
-  await currentSlice.dispatchEvent("mousemove")
+  for (const currentCase of cases) {
+    const card = page
+      .getByText(currentCase.heading, { exact: true })
+      .locator("xpath=ancestor::*[@data-slot='card'][1]")
+    const chartSurface = card.locator("svg.recharts-surface").first()
+    const currentSlice = card.locator("path.recharts-sector").nth(currentCase.sliceIndex)
+    const tooltip = card.locator(".recharts-tooltip-wrapper")
 
-  await expect(tooltip).toBeVisible()
-  await expect(tooltip).toContainText("Vigentes")
-  await expect(tooltip).toContainText("90 contratos")
-  await expect(tooltip).toHaveCSS("z-index", "10")
+    await expect(chartSurface).toBeVisible()
+    await currentSlice.dispatchEvent("mouseover")
+    await currentSlice.dispatchEvent("mousemove")
+
+    await expect(tooltip).toBeVisible()
+    for (const text of currentCase.tooltipText) {
+      await expect(tooltip).toContainText(text)
+    }
+    await expect(tooltip).toHaveCSS("z-index", "20")
+    await expect(tooltip).toHaveCSS("pointer-events", "none")
+  }
 })
 
 test("exibe em Relatórios o card de hover da Saúde Financeira acima do conteúdo central", async ({ page }) => {
@@ -79,6 +96,7 @@ test("exibe em Relatórios o card de hover da Saúde Financeira acima do conteú
   await expect(tooltip).toBeVisible()
   await expect(tooltip).toContainText("Pagas")
   await expect(tooltip).toContainText("86%")
-  await expect(tooltip).toHaveCSS("z-index", "10")
+  await expect(tooltip).toHaveCSS("z-index", "20")
+  await expect(tooltip).toHaveCSS("pointer-events", "none")
   await expect(centerContent).toHaveCSS("pointer-events", "none")
 })

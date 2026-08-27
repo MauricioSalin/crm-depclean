@@ -586,7 +586,7 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
                               <BusinessStatusBadge status="awaiting-schedules" />
                             ) : null}
                           </div>
-                          <div className="flex min-w-0 items-center gap-1.5">
+                          <div className="mt-1.5 flex min-w-0 items-center gap-1.5">
                             <p className="min-w-0 truncate text-xs text-muted-foreground">{contract.clientCompanyName}</p>
                             {contract.isClientDelinquent ? <BusinessStatusBadge status="delinquent" /> : null}
                           </div>

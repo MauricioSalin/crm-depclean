@@ -315,9 +315,9 @@ export function CertificateEditorContent({
                     <FileText className="h-4 w-4 text-primary" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="font-semibold">NAs anexadas</p>
+                    <p className="font-semibold">Anexos</p>
                     <p className="text-sm text-muted-foreground">
-                      {naAttachments.length} {naAttachments.length === 1 ? "arquivo" : "arquivos"}
+                      {naAttachments.length} {naAttachments.length === 1 ? "anexo" : "anexos"}
                     </p>
                   </div>
                 </div>

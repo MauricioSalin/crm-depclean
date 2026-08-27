@@ -104,7 +104,7 @@ export function ContractStatusChart() {
                     ))}
                   </Pie>
                   <Tooltip
-                    wrapperStyle={{ zIndex: 10 }}
+                    wrapperStyle={{ pointerEvents: "none", zIndex: 20 }}
                     contentStyle={{
                       backgroundColor: "var(--card)",
                       border: "1px solid var(--border)",

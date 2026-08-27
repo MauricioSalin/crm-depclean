@@ -55,6 +55,10 @@ function formatDate(value: string) {
   return formatCivilDate(value)
 }
 
+function formatAttachmentCount(count: number) {
+  return `${count} ${count === 1 ? "anexo" : "anexos"}`
+}
+
 function getStatusBadge(status: CertificateQueueRecord["status"]) {
   if (status === "sent") {
     return <Badge className="bg-green-100 text-green-800">Enviado</Badge>
@@ -445,10 +449,10 @@ export function CertificatesContent({ viewMode, viewToggle, createOpen = false, 
                       <TableCell className="hidden min-w-[220px] sm:table-cell">
                         <div>
                           <p>{record.serviceTypeName}</p>
-                          {record.naFileName ? (
+                          {record.naCount > 0 ? (
                             <p className="mt-1 hidden items-center gap-1 text-xs text-muted-foreground md:flex">
                               <FileText className="h-3 w-3" />
-                              {record.naCount > 1 ? `${record.naCount} NAs anexadas` : record.naFileName}
+                              {formatAttachmentCount(record.naCount)}
                             </p>
                           ) : null}
                         </div>
@@ -599,9 +603,9 @@ export function CertificatesContent({ viewMode, viewToggle, createOpen = false, 
                         <FileText className="mt-0.5 h-4 w-4 shrink-0" />
                         <div className="min-w-0">
                           <p className="font-medium text-foreground/80">{record.serviceTypeName}</p>
-                          {record.naFileName ? (
+                          {record.naCount > 0 ? (
                             <p className="truncate text-xs text-muted-foreground">
-                              {record.naCount > 1 ? `${record.naCount} NAs anexadas` : record.naFileName}
+                              {formatAttachmentCount(record.naCount)}
                             </p>
                           ) : null}
                         </div>

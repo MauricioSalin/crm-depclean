@@ -1013,6 +1013,24 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
 
                     {canShowEmployeeActions ? (
                       <div className="mt-auto grid grid-cols-2 gap-2 pt-4">
+                      {canEditEmployees ? (
+                        <Button type="button" variant="outline" size="sm" className="h-8 rounded-full" onClick={() => handleEdit(employee)}>
+                          <Edit className="mr-2 h-4 w-4" />
+                          Editar
+                        </Button>
+                      ) : null}
+                      {canEditEmployees && employee.status === "active" ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-8 rounded-full"
+                          onClick={() => setPendingAction({ kind: "deactivate", id: employee.id, label: employee.name })}
+                        >
+                          <UserX className="mr-2 h-4 w-4" />
+                          Inativar
+                        </Button>
+                      ) : null}
                       {canManageEmployeeSystemAccess && !employee.isSystemUser ? (
                         <Button
                           type="button"
@@ -1034,24 +1052,6 @@ export function EmployeesContent({ viewMode, openDialog, onDialogChange, viewTog
                         >
                           <Shield className="mr-2 h-4 w-4" />
                           Remover acesso
-                        </Button>
-                      ) : null}
-                      {canEditEmployees ? (
-                        <Button type="button" variant="outline" size="sm" className="h-8 rounded-full" onClick={() => handleEdit(employee)}>
-                          <Edit className="mr-2 h-4 w-4" />
-                          Editar
-                        </Button>
-                      ) : null}
-                      {canEditEmployees && employee.status === "active" ? (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-8 rounded-full"
-                          onClick={() => setPendingAction({ kind: "deactivate", id: employee.id, label: employee.name })}
-                        >
-                          <UserX className="mr-2 h-4 w-4" />
-                          Inativar
                         </Button>
                       ) : null}
                       {canShowDeleteEmployee ? (

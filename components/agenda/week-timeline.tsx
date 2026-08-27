@@ -676,29 +676,33 @@ export function WeekTimeline({
                   {Array.from({ length: TOTAL_HOURS }, (_, hourIndex) => {
                     const hour = START_HOUR + hourIndex
                     const time = `${String(hour).padStart(2, "0")}:00`
+                    const isLunchHour = hour === LUNCH_HOUR
+                    const isLunchBlocked = isLunchHour && mode !== "week"
 
                     return (
                       <button
                         key={`${dateStr}-${time}`}
                         type="button"
                         className={`absolute left-0 right-0 z-0 border-0 transition-colors focus-visible:outline-none ${
-                          hour === LUNCH_HOUR
+                          isLunchBlocked
                             ? "cursor-not-allowed bg-muted/45"
-                            : "cursor-pointer bg-transparent hover:bg-primary/10 focus-visible:bg-primary/10"
+                            : `cursor-pointer hover:bg-primary/10 focus-visible:bg-primary/10 ${
+                                isLunchHour ? "bg-muted/45" : "bg-transparent"
+                              }`
                         }`}
                         style={{
                           top: hourIndex * HOUR_HEIGHT,
                           height: HOUR_HEIGHT,
                         }}
-                        title={hour === LUNCH_HOUR ? "Horário de almoço" : `Novo agendamento em ${time}`}
+                        title={isLunchBlocked ? "Horário de almoço" : `Novo agendamento em ${time}`}
                         aria-label={
-                          hour === LUNCH_HOUR
+                          isLunchBlocked
                             ? "Horário de almoço"
                             : `Novo agendamento em ${dateStr} às ${time}${resource ? ` para ${resource.name}` : ""}`
                         }
                         onClick={(event) => {
                           event.stopPropagation()
-                          if (hour === LUNCH_HOUR) return
+                          if (isLunchBlocked) return
                           onDaySelect(day)
                           onSlotClick?.(day, time, resource)
                         }}

@@ -24,6 +24,42 @@ const pendingCertificate = {
   updatedAt: "2026-08-04T13:53:00.000Z",
 }
 
+test("resume os anexos pela quantidade sem exibir o nome do arquivo", async ({ page }) => {
+  const multipleAttachmentsCertificate = {
+    ...pendingCertificate,
+    id: "certificate-multiple-attachments",
+    scheduleId: "schedule-multiple-attachments",
+    clientName: "CONDOMÍNIO MÚLTIPLOS ANEXOS E2E",
+    naFileName: "primeiro-anexo.pdf",
+    naFileNames: Array.from({ length: 13 }, (_, index) => `anexo-${index + 1}.pdf`),
+    naCount: 13,
+  }
+
+  await installAuthenticatedSession(page)
+  await installApiMock(page)
+  await page.route("**/api/v1/certificates**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json; charset=utf-8",
+      body: JSON.stringify({ success: true, data: [pendingCertificate, multipleAttachmentsCertificate] }),
+    })
+  })
+
+  await page.goto("/certificados")
+
+  const expectAttachmentSummaries = async () => {
+    await expect(page.getByText("1 anexo", { exact: true })).toBeVisible()
+    await expect(page.getByText("13 anexos", { exact: true })).toBeVisible()
+    await expect(page.getByText(pendingCertificate.naFileName, { exact: true })).toHaveCount(0)
+    await expect(page.getByText(multipleAttachmentsCertificate.naFileName, { exact: true })).toHaveCount(0)
+    await expect(page.getByText(/NAs anexadas/i)).toHaveCount(0)
+  }
+
+  await expectAttachmentSummaries()
+  await page.getByRole("tab", { name: "Visualizar certificados em cartões" }).click()
+  await expectAttachmentSummaries()
+})
+
 test("alinha à esquerda o cabeçalho da criação de certificado no mobile", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await installAuthenticatedSession(page)

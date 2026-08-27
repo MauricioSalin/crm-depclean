@@ -1383,7 +1383,10 @@ function DepAIChartPreview({
               />
             ))}
           </Pie>
-          <ChartTooltip formatter={formatChartValue} />
+          <ChartTooltip
+            formatter={formatChartValue}
+            wrapperStyle={chartType === "donut" ? { pointerEvents: "none", zIndex: 20 } : undefined}
+          />
           <Legend />
         </PieChart>
       )

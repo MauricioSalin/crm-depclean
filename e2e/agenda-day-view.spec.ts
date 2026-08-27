@@ -199,6 +199,29 @@ test("mantém vermelho o indicador mensal do atendimento avulso emergencial", as
   await expect(teamDot).toHaveCSS("background-color", "rgb(132, 199, 0)")
 })
 
+test("libera o horário de almoço somente na visão semanal e mantém a faixa destacada", async ({ page }) => {
+  await page.goto(`/agenda?date=${DAY}&view=week`)
+
+  const weeklyLunchSlot = page.getByRole("button", {
+    name: `Novo agendamento em ${DAY} às 12:00`,
+  })
+  await expect(weeklyLunchSlot).toHaveClass(/cursor-pointer/)
+  await expect(weeklyLunchSlot).toHaveClass(/bg-muted\/45/)
+  await weeklyLunchSlot.click()
+
+  const dialog = page.getByRole("dialog")
+  await expect(dialog).toBeVisible()
+  await expect(dialog.locator('input[type="time"]')).toHaveValue("12:00")
+  await page.keyboard.press("Escape")
+
+  await page.goto(`/agenda?date=${DAY}&view=day`)
+
+  const dailyLunchSlot = page.getByRole("button", { name: "Horário de almoço" }).first()
+  await expect(dailyLunchSlot).toHaveClass(/cursor-not-allowed/)
+  await dailyLunchSlot.click()
+  await expect(page.getByRole("dialog")).toHaveCount(0)
+})
+
 test("abre o calendário pelo dia e mês e navega para a data escolhida", async ({ page }) => {
   await page.goto(`/agenda?date=${DAY}&view=day`)
 

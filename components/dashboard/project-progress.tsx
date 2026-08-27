@@ -87,6 +87,7 @@ export function ServiceDistribution({
                     ))}
                   </Pie>
                   <Tooltip
+                    wrapperStyle={{ pointerEvents: "none", zIndex: 20 }}
                     contentStyle={{
                       backgroundColor: "var(--card)",
                       border: "1px solid var(--border)",
