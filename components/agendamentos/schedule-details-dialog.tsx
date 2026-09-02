@@ -6,6 +6,7 @@ import { AlertTriangle, ArrowLeft, CalendarDays, Clock3, FileDown, Loader2, MapP
 import { toast } from "sonner"
 
 import { AttendanceStartSlider } from "@/components/agendamentos/attendance-start-slider"
+import { getRescheduleReasonError, RescheduleReasonFields } from "@/components/agendamentos/reschedule-reason-fields"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { DatePicker } from "@/components/ui/date-picker"
@@ -103,6 +104,8 @@ export function ScheduleDetailsDialog({
   const [mode, setMode] = useState<"details" | "reschedule">("details")
   const [customDate, setCustomDate] = useState("")
   const [customTime, setCustomTime] = useState("")
+  const [rescheduleReason, setRescheduleReason] = useState("")
+  const [rescheduleNotes, setRescheduleNotes] = useState("")
   const [rescheduleConflict, setRescheduleConflict] = useState<{
     requested: { date: string; time: string }
     suggested?: { date: string; time: string }
@@ -116,6 +119,8 @@ export function ScheduleDetailsDialog({
     setMode("details")
     setCustomDate(schedule.date)
     setCustomTime(schedule.time || "08:00")
+    setRescheduleReason("")
+    setRescheduleNotes("")
     setRescheduleConflict(null)
   }, [open, schedule?.id, schedule?.date, schedule?.time])
 
@@ -175,7 +180,7 @@ export function ScheduleDetailsDialog({
   }, [availableCustomTimes, customDate, customTime, mode, open, schedule])
 
   const rescheduleMutation = useMutation({
-    mutationFn: (payload: { scheduledDate: string; scheduledTime?: string; allowConflict?: boolean }) =>
+    mutationFn: (payload: Parameters<typeof rescheduleSchedule>[1]) =>
       rescheduleSchedule(schedule!.id, payload),
     onMutate: () => {
       const toastId = toast.loading("Reagendando atendimento...")
@@ -273,6 +278,15 @@ export function ScheduleDetailsDialog({
   const rescheduleOptions = optionsQuery.data?.data ?? []
 
   const submitReschedule = (date: string, time: string, validateAvailability = false, allowConflict = false) => {
+    const reasonError = getRescheduleReasonError(rescheduleReason, rescheduleNotes)
+    if (reasonError) {
+      toast.error(reasonError)
+      return
+    }
+    if (date === schedule.date && (time || "08:00") === (schedule.time || "08:00")) {
+      toast.error("Escolha uma nova data ou horário para reagendar.")
+      return
+    }
     if (!date) {
       toast.error("Escolha uma data para reagendar.")
       return
@@ -326,6 +340,8 @@ export function ScheduleDetailsDialog({
       scheduledDate: date,
       scheduledTime,
       allowConflict,
+      rescheduleReason,
+      rescheduleNotes: rescheduleNotes.trim(),
     })
   }
 
@@ -393,6 +409,8 @@ export function ScheduleDetailsDialog({
                   </p>
                 </div>
 
+                <RescheduleReasonFields reason={rescheduleReason} notes={rescheduleNotes} onReasonChange={setRescheduleReason} onNotesChange={setRescheduleNotes} />
+
                 {isMultiDayMainSchedule ? (
                   <p className="rounded-2xl bg-primary/5 px-4 py-3 text-sm text-foreground">
                     Este é o primeiro dia. Ao reagendar, os {multiDayTotal} dias do atendimento serão movidos juntos.
@@ -403,7 +421,7 @@ export function ScheduleDetailsDialog({
                   </p>
                 ) : null}
 
-                <div className="rounded-2xl border p-4">
+                <div>
                   <div className="mb-3 flex items-center gap-2 text-sm font-medium">
                     <CalendarDays className="h-4 w-4 text-primary" />
                     Sugestões disponíveis
@@ -434,7 +452,7 @@ export function ScheduleDetailsDialog({
                   )}
                 </div>
 
-                <div className="rounded-2xl border p-4">
+                <div>
                   <div className="mb-3 flex items-center gap-2 text-sm font-medium">
                     <Clock3 className="h-4 w-4 text-primary" />
                     Escolher manualmente
@@ -687,6 +705,19 @@ export function ScheduleDetailsDialog({
                 </div>
               ) : null}
 
+              {schedule.originalScheduledDate ? (
+                <div className="col-span-full mt-5 space-y-3 rounded-2xl border p-4">
+                  <p className="text-sm font-semibold">Histórico de reagendamentos</p>
+                  <p className="text-sm">Data original: {formatScheduleDate(schedule.originalScheduledDate)} às {schedule.originalScheduledTime || "--:--"}</p>
+                  {(schedule.rescheduleHistory ?? []).map((event, index) => (
+                    <div key={`${event.changedAt}-${index}`} className="border-t pt-3 text-sm">
+                      <p>{formatScheduleDate(event.fromDate)} {event.fromTime} → {formatScheduleDate(event.toDate)} {event.toTime}</p>
+                      <p className="font-medium">{event.reasonLabel}</p>
+                      <p className="whitespace-pre-wrap break-words text-muted-foreground">{event.notes}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
               {schedule.notes ? (
                 <div className="rounded-2xl border p-4 md:col-span-2">
                   <div className="mb-2 text-sm font-medium">Observações do agendamento</div>

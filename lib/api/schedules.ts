@@ -64,6 +64,13 @@ export type ScheduleRecord = {
   additionalEmployees: Array<{ id: string; name: string }>
   date: string
   time: string
+  originalScheduledDate?: string
+  originalScheduledTime?: string
+  rescheduleHistory?: Array<{
+    fromDate: string; fromTime: string; toDate: string; toTime: string
+    reason: string; reasonLabel: string; notes: string; changedAt: string
+    changedById: string; changedByName: string
+  }>
   duration: number
   durationValue?: number
   durationType?: "minutes" | "hours" | "shift" | "days"
@@ -72,6 +79,13 @@ export type ScheduleRecord = {
   billable: boolean
   value: number
   billingDueDate?: string
+  billingInstallmentsCount?: number
+  billingDownPaymentValue?: number
+  billingInstallments?: Array<{
+    id: string; number: number; value: number; dueDate: string
+    status: ScheduleRecord["billingStatus"]; effectiveStatus: ScheduleRecord["billingStatus"]
+    paidDate?: string; paidValue?: number; paymentMethod?: string; billingNotes?: string
+  }>
   billingStatus: "pending" | "paid" | "late" | "overdue" | "cancelled"
   effectiveBillingStatus: "pending" | "paid" | "late" | "overdue" | "cancelled"
   paidDate?: string
@@ -100,6 +114,8 @@ export type ScheduleRecord = {
 }
 
 export type SchedulePayload = {
+  rescheduleReason?: string
+  rescheduleNotes?: string
   clientId: string
   unitId: string
   contractId?: string
@@ -124,6 +140,8 @@ export type SchedulePayload = {
   allowConflict?: boolean
   billable?: boolean
   value?: number
+  billingInstallmentsCount?: number
+  billingDownPaymentValue?: number
   billingDueDate?: string
   billingStatus?: "pending" | "paid" | "late" | "overdue" | "cancelled"
   paidDate?: string
@@ -199,7 +217,7 @@ export async function updateScheduleStatus(id: string, status: ScheduleRecord["s
 
 export async function updateScheduleBilling(
   id: string,
-  payload: Pick<SchedulePayload, "value" | "billingDueDate" | "billingStatus" | "paidDate" | "paidValue" | "paymentMethod" | "billingNotes">,
+  payload: Pick<SchedulePayload, "value" | "billingDueDate" | "billingStatus" | "paidDate" | "paidValue" | "paymentMethod" | "billingNotes"> & { installmentId?: string },
 ) {
   const response = await api.patch<{ success: true; data: ScheduleRecord }>(`/schedules/${id}/billing`, payload)
   return response.data
@@ -212,7 +230,7 @@ export async function getScheduleRescheduleOptions(id: string) {
 
 export async function rescheduleSchedule(
   id: string,
-  payload: { scheduledDate: string; scheduledTime?: string; allowConflict?: boolean },
+  payload: { scheduledDate: string; scheduledTime?: string; allowConflict?: boolean; rescheduleReason: string; rescheduleNotes?: string },
 ) {
   const response = await api.patch<{ success: true; data: ScheduleRecord }>(`/schedules/${id}/reschedule`, payload)
   return response.data

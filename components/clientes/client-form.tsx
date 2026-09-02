@@ -37,6 +37,7 @@ import { getApiErrorMessage } from "@/lib/api/errors"
 import { normalizeClientCompanyName } from "@/lib/client-company-name"
 import { useHasAnyPermission } from "@/hooks/use-permissions"
 import { getColorFromClass } from "@/lib/utils"
+import type { ClientAdditionalContact } from "@/lib/api/clients"
 
 interface ClientFormProps {
   clientId?: string
@@ -160,6 +161,8 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
     syndicEmail: "",
     syndicPhone: "",
     syndicReceivesNotifications: false,
+    additionalAssessors: [] as ClientAdditionalContact[],
+    subSyndics: [] as ClientAdditionalContact[],
     responsibleReceivesNotifications: false,
     copyNotificationsToOwner: false,
     preferredServiceWeekday: "",
@@ -304,6 +307,8 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
       syndicEmail: loadedClient.syndic?.email || "",
       syndicPhone: formatPhone(loadedClient.syndic?.phone || ""),
       syndicReceivesNotifications: Boolean(loadedClient.syndic?.receivesNotifications),
+      additionalAssessors: loadedClient.additionalAssessors ?? [],
+      subSyndics: loadedClient.subSyndics ?? [],
       responsibleReceivesNotifications: Boolean(loadedClient.responsibleReceivesNotifications ?? true),
       copyNotificationsToOwner: Boolean(loadedClient.copyNotificationsToOwner),
       preferredServiceWeekday:
@@ -383,6 +388,17 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
 
   const handleInputChange = (field: string, value: string | boolean) => {
     setFormData(prev => ({ ...prev, [field]: value }))
+  }
+
+  const subSyndic = formData.subSyndics[0]
+  const handleSubSyndicChange = (field: keyof Omit<ClientAdditionalContact, "id">, value: string | boolean) => {
+    setFormData((current) => ({
+      ...current,
+      subSyndics: [{
+        ...(current.subSyndics[0] ?? { id: crypto.randomUUID(), name: "", cpf: "", email: "", phone: "", receivesNotifications: false }),
+        [field]: value,
+      }, ...current.subSyndics.slice(1)],
+    }))
   }
 
   const handleCopyResponsibleToSyndic = () => {
@@ -625,7 +641,20 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
       issues.push({ message: "Informe um CPF válido para o síndico.", label: "CPF do síndico" })
     }
 
-    if (!formData.responsibleReceivesNotifications && !formData.assessorReceivesNotifications && !formData.syndicReceivesNotifications) {
+    const additionalContacts = [...formData.additionalAssessors, ...formData.subSyndics]
+    additionalContacts.forEach((contact) => {
+      const isSubSyndic = formData.subSyndics.includes(contact)
+      if ((!isSubSyndic || contact.receivesNotifications) && (!hasText(contact.name) || !hasText(contact.phone))) {
+        issues.push({ message: isSubSyndic ? "Informe nome e telefone do subsíndico para receber notificações." : "Informe nome e telefone dos contatos adicionais." })
+      }
+      if (hasText(contact.phone) && !isValidPhone(contact.phone)) issues.push({ message: "Informe um telefone válido para o contato adicional." })
+      if (hasText(contact.email) && !isValidEmail(contact.email)) issues.push({ message: "Informe um e-mail válido para o contato adicional." })
+      if (hasText(contact.cpf) && !isValidCPF(contact.cpf)) issues.push({ message: "Informe um CPF válido para o contato adicional." })
+    })
+    if (formData.subSyndics.length > 1) {
+      issues.push({ message: "Este cadastro contém mais de um subsíndico. Regularize os contatos existentes antes de salvar; nenhum dado foi removido." })
+    }
+    if (!formData.responsibleReceivesNotifications && !formData.assessorReceivesNotifications && !formData.syndicReceivesNotifications && !additionalContacts.some((contact) => contact.receivesNotifications)) {
       issues.push({ message: "Selecione ao menos um contato para receber notificações.", label: "Contato para notificações" })
     }
 
@@ -672,6 +701,8 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
         syndicEmail: formData.syndicEmail.trim(),
         syndicPhone: formData.syndicPhone.trim(),
         syndicReceivesNotifications: formData.syndicReceivesNotifications,
+        additionalAssessors: formData.additionalAssessors,
+        subSyndics: formData.subSyndics,
         responsibleReceivesNotifications: formData.responsibleReceivesNotifications,
         copyNotificationsToOwner: formData.copyNotificationsToOwner,
         preferredServiceWeekday: formData.preferredServiceWeekday === "" ? null : Number(formData.preferredServiceWeekday),
@@ -1044,56 +1075,73 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
         </div>
       </Card>
 
-      <Card className="p-6">
+      {[null, ...formData.additionalAssessors].map((contact, index) => {
+        const signsContract = !contact && assessorSignsContract
+        const requiresContact = Boolean(contact) || signsContract
+        const fieldId = (field: string) => contact ? `assessor-${contact.id}-${field}` : `assessor${field[0].toUpperCase()}${field.slice(1)}`
+        const updateContact = (field: keyof Omit<ClientAdditionalContact, "id">, value: string | boolean) => {
+          if (!contact) {
+            handleInputChange(`assessor${field[0].toUpperCase()}${field.slice(1)}`, value)
+            return
+          }
+          setFormData((current) => ({ ...current, additionalAssessors: current.additionalAssessors.map((item) =>
+            item.id === contact.id ? { ...item, [field]: value } : item,
+          ) }))
+        }
+        return <Card key={contact ? `assessor-${contact.id}` : "primary-assessor"} className="p-6" role="group" aria-labelledby={fieldId("heading")}>
         <div className="flex items-center gap-2 mb-6">
           <Users className="w-5 h-5 text-primary" />
-          <h3 className="font-semibold text-lg">Assessor</h3>
-          {assessorSignsContract ? <ContractSignerBadge /> : null}
+          <h3 id={fieldId("heading")} className="font-semibold text-lg">Assessor</h3>
+          {signsContract ? <ContractSignerBadge /> : null}
+          {contact ? <Button type="button" variant="ghost" size="icon" className="ml-auto" aria-label="Remover assessor"
+            onClick={() => setFormData((current) => ({ ...current, additionalAssessors: current.additionalAssessors.filter((item) => item.id !== contact.id) }))}>
+            <Trash2 className="h-4 w-4" />
+          </Button> : null}
         </div>
 
         <div className="space-y-5">
           <div className="flex flex-col md:flex-row gap-3">
             <div className="space-y-2 md:w-[320px]">
-              <Label htmlFor="assessorName">Nome{assessorSignsContract ? " *" : ""}</Label>
+              <Label htmlFor={fieldId("name")}>Nome{requiresContact ? " *" : ""}</Label>
               <Input
-                id="assessorName"
-                value={formData.assessorName}
-                onChange={(e) => handleInputChange("assessorName", e.target.value)}
+                id={fieldId("name")}
+                value={contact?.name ?? formData.assessorName}
+                onChange={(e) => updateContact("name", e.target.value)}
                 placeholder="Nome do assessor"
-                required={assessorSignsContract}
+                required={requiresContact}
               />
             </div>
             <div className="space-y-2 md:w-[320px]">
-              <Label htmlFor="assessorEmail">E-mail{assessorSignsContract ? " *" : ""}</Label>
+              <Label htmlFor={fieldId("email")}>E-mail{signsContract ? " *" : ""}</Label>
               <Input
-                id="assessorEmail"
+                id={fieldId("email")}
                 type="email"
                 autoComplete="off"
-                value={formData.assessorEmail}
-                onChange={(e) => handleInputChange("assessorEmail", e.target.value)}
+                value={contact?.email ?? formData.assessorEmail}
+                onChange={(e) => updateContact("email", e.target.value)}
                 placeholder="email@empresa.com.br"
-                required={assessorSignsContract}
+                required={signsContract}
               />
             </div>
           </div>
 
           <div className="flex flex-col md:flex-row gap-3">
             <div className="space-y-2 md:w-[320px]">
-              <Label htmlFor="assessorPhone">Telefone{assessorSignsContract ? " *" : ""}</Label>
+              <Label htmlFor={fieldId("phone")}>Telefone{requiresContact ? " *" : ""}</Label>
               <Input
-                id="assessorPhone"
-                value={formData.assessorPhone}
-                onChange={(e) => handleInputChange("assessorPhone", formatPhone(e.target.value))}
+                id={fieldId("phone")}
+                value={contact?.phone ?? formData.assessorPhone}
+                onChange={(e) => updateContact("phone", formatPhone(e.target.value))}
                 placeholder="(00) 00000-0000"
-                required={assessorSignsContract}
+                required={requiresContact}
               />
             </div>
             <div className="space-y-2 md:w-[320px]">
-              <Label htmlFor="assessorCpf">CPF (opcional)</Label>
+              <Label htmlFor={fieldId("cpf")}>CPF (opcional)</Label>
               <Input
-                id="assessorCpf"
-                value={formData.assessorCpf}
-                onChange={(e) => handleInputChange("assessorCpf", formatCPF(e.target.value))}
+                id={fieldId("cpf")}
+                value={contact?.cpf ?? formData.assessorCpf}
+                onChange={(e) => updateContact("cpf", formatCPF(e.target.value))}
                 placeholder="000.000.000-00"
               />
             </div>
@@ -1102,8 +1150,8 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
           <label className="flex w-full cursor-pointer items-start gap-3 rounded-xl bg-primary/5 p-4 md:max-w-[520px]">
             <Checkbox
               className="mt-0.5 cursor-pointer bg-white"
-              checked={formData.assessorReceivesNotifications}
-              onCheckedChange={(checked) => handleInputChange("assessorReceivesNotifications", checked === true)}
+              checked={contact?.receivesNotifications ?? formData.assessorReceivesNotifications}
+              onCheckedChange={(checked) => updateContact("receivesNotifications", checked === true)}
             />
             <span className="space-y-1">
               <span className="block text-sm font-semibold text-foreground">Receber notificações do sistema</span>
@@ -1112,8 +1160,15 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
               </span>
             </span>
           </label>
+          {index === formData.additionalAssessors.length ? <Button type="button" variant="outline" className="w-fit"
+            onClick={() => setFormData((current) => ({ ...current, additionalAssessors: [...current.additionalAssessors, {
+              id: crypto.randomUUID(), name: "", cpf: "", email: "", phone: "", receivesNotifications: false,
+            }] }))}>
+            <Plus className="mr-2 h-4 w-4" />Adicionar assessor
+          </Button> : null}
         </div>
       </Card>
+      })}
 
 
       <Card className="p-6">
@@ -1196,6 +1251,51 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
             <Copy className="h-4 w-4" />
             Copiar dados do responsável
           </Button>
+        </div>
+      </Card>
+
+      <Card className="p-6" role="group" aria-labelledby="subSyndicHeading">
+        <div className="flex items-center gap-2 mb-6">
+          <Users className="w-5 h-5 text-primary" />
+          <h3 id="subSyndicHeading" className="font-semibold text-lg">Subsíndico</h3>
+        </div>
+        <div className="space-y-5">
+          <div className="flex flex-col md:flex-row gap-3">
+            <div className="space-y-2 md:w-[320px]">
+              <Label htmlFor="subSyndicName">Nome{subSyndic?.receivesNotifications ? " *" : ""}</Label>
+              <Input id="subSyndicName" value={subSyndic?.name ?? ""}
+                onChange={(event) => handleSubSyndicChange("name", event.target.value)}
+                placeholder="Nome do subsíndico" required={subSyndic?.receivesNotifications === true} />
+            </div>
+            <div className="space-y-2 md:w-[320px]">
+              <Label htmlFor="subSyndicEmail">E-mail</Label>
+              <Input id="subSyndicEmail" type="email" autoComplete="off" value={subSyndic?.email ?? ""}
+                onChange={(event) => handleSubSyndicChange("email", event.target.value)} placeholder="email@empresa.com.br" />
+            </div>
+          </div>
+          <div className="flex flex-col md:flex-row gap-3">
+            <div className="space-y-2 md:w-[320px]">
+              <Label htmlFor="subSyndicPhone">Telefone{subSyndic?.receivesNotifications ? " *" : ""}</Label>
+              <Input id="subSyndicPhone" value={subSyndic?.phone ?? ""}
+                onChange={(event) => handleSubSyndicChange("phone", formatPhone(event.target.value))}
+                placeholder="(00) 00000-0000" required={subSyndic?.receivesNotifications === true} />
+            </div>
+            <div className="space-y-2 md:w-[320px]">
+              <Label htmlFor="subSyndicCpf">CPF (opcional)</Label>
+              <Input id="subSyndicCpf" value={subSyndic?.cpf ?? ""}
+                onChange={(event) => handleSubSyndicChange("cpf", formatCPF(event.target.value))} placeholder="000.000.000-00" />
+            </div>
+          </div>
+          <label className="flex w-full cursor-pointer items-start gap-3 rounded-xl bg-primary/5 p-4 md:max-w-[520px]">
+            <Checkbox className="mt-0.5 cursor-pointer bg-white" checked={subSyndic?.receivesNotifications ?? false}
+              onCheckedChange={(checked) => handleSubSyndicChange("receivesNotifications", checked === true)} />
+            <span className="space-y-1">
+              <span className="block text-sm font-semibold text-foreground">Receber notificações do sistema</span>
+              <span className="block text-sm text-muted-foreground">
+                O subsíndico receberá avisos, informativos e atualizações deste cliente.
+              </span>
+            </span>
+          </label>
         </div>
       </Card>
 

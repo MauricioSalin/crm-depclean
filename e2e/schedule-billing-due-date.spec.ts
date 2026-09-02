@@ -13,11 +13,15 @@ test("exibe vencimento junto do valor nas criações de Agenda e Agendamentos", 
 
     const dialog = page.getByRole("dialog", { name: "Novo atendimento avulso" })
     const billingDueDate = dialog.getByRole("button", { name: "Data de vencimento" })
-    await expect(billingDueDate).toBeDisabled()
+    await expect(billingDueDate).toHaveCount(0)
+    await expect(dialog.getByLabel("Valor (R$)", { exact: true })).toHaveCount(0)
+    await expect(dialog.getByLabel("Qtd. de parcelas", { exact: true })).toHaveCount(0)
 
     await dialog.getByRole("checkbox", { name: "Gerar cobrança no financeiro" }).click()
     await expect(billingDueDate).toBeEnabled()
     await expect(dialog.getByText("Valor (R$)", { exact: true })).toBeVisible()
+    await expect(dialog.getByLabel("Qtd. de parcelas", { exact: true })).toHaveValue("1")
+    await expect(dialog.getByLabel("Valor de entrada", { exact: true })).toBeVisible()
 
     await page.keyboard.press("Escape")
   }

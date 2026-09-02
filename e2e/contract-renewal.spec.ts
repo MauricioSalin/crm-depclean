@@ -226,16 +226,15 @@ test("permite N entradas e desconta cada uma das parcelas do saldo", async ({ pa
   const firstEntryValue = page.getByLabel("Valor da entrada 1 *")
   await firstEntryValue.focus()
   await firstEntryValue.pressSequentially("100000")
-  await page.getByRole("button", { name: "Vencimento da entrada 1" }).click()
-  await page.getByRole("button", { name: /29 de julho de 2026/i }).click()
+  await expect(page.getByRole("button", { name: "Vencimento da entrada 1" })).toHaveCount(0)
 
   await addEntryButton.click()
   await expect(page.getByLabel("Valor da entrada 2 *")).toHaveValue("R$ 1.000,00")
-  await expect(page.getByRole("button", { name: "Vencimento da entrada 2" })).toContainText("29/08/2026")
+  await expect(page.getByRole("button", { name: "Vencimento da entrada 2" })).toHaveCount(0)
 
   await addEntryButton.click()
   await expect(page.getByLabel("Valor da entrada 3 *")).toHaveValue("R$ 1.000,00")
-  await expect(page.getByRole("button", { name: "Vencimento da entrada 3" })).toContainText("29/09/2026")
+  await expect(page.getByRole("button", { name: "Vencimento da entrada 3" })).toHaveCount(0)
 
   const lastEntryCard = page.getByRole("button", { name: "Remover entrada 3" }).locator("..")
   const [lastEntryBox, movedButtonBox] = await Promise.all([lastEntryCard.boundingBox(), addEntryButton.boundingBox()])
@@ -263,14 +262,9 @@ test("permite N entradas e desconta cada uma das parcelas do saldo", async ({ pa
     entryStyles.borderBottomWidth,
     entryStyles.borderLeftWidth,
   ]).toEqual(["0px", "0px", "0px", "0px"])
-  const firstEntryDueDate = page.getByRole("button", { name: "Vencimento da entrada 1" })
-  const [valueBackground, dueDateBackground] = await Promise.all([
-    firstEntryValue.evaluate((element) => getComputedStyle(element).backgroundColor),
-    firstEntryDueDate.evaluate((element) => getComputedStyle(element).backgroundColor),
-  ])
-  expect(valueBackground).toBe(dueDateBackground)
+  const valueBackground = await firstEntryValue.evaluate((element) => getComputedStyle(element).backgroundColor)
   expect(valueBackground).not.toBe("rgba(0, 0, 0, 0)")
-  await expect(page.getByText(/^Venc\. da entrada \d+ \*$/)).toHaveCount(3)
+  await expect(page.getByText(/^Venc\. da entrada \d+ \*$/)).toHaveCount(0)
   await expect(firstDueDate).toHaveCount(0)
   await expect(page.getByText("Quantidade de entradas").locator("..")).toContainText("3")
   await expect(page.getByText("Total das entradas").locator("..")).toContainText("R$ 3.000,00")

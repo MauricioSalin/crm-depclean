@@ -162,6 +162,9 @@ export type FinancialInstallmentRecord = {
   clientCompanyName: string
   source: "contract" | "schedule" | "extra"
   scheduleId?: string
+  scheduleInstallmentId?: string
+  installmentsCount?: number
+  downPaymentValue?: number
   extraId?: string
   number: number
   value: number

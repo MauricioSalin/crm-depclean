@@ -243,6 +243,8 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
         client.responsibleName.toLowerCase().includes(term) ||
         (client.assessor?.name ?? "").toLowerCase().includes(term) ||
         (client.syndic?.name ?? "").toLowerCase().includes(term) ||
+        [...(client.additionalAssessors ?? []), ...(client.subSyndics ?? [])].some((contact) =>
+          [contact.name, contact.email, contact.phone].some((value) => value.toLowerCase().includes(term))) ||
         client.cnpj.includes(term)
       const matchesType = typeFilter === "all" || client.clientTypeId === typeFilter
       return matchesSearch && matchesType

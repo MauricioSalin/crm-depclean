@@ -35,7 +35,7 @@ export type ContractPayload = {
   downPaymentValue?: number
   downPayments?: Array<{
     value: number
-    dueDate: string
+    dueDate?: string
   }>
   duration: number
   startDate: string
@@ -61,6 +61,7 @@ export type ContractInstallmentRecord = {
   number: number
   value: number
   dueDate: string
+  awaitingSignature?: boolean
   paidDate?: string
   paidValue?: number
   status: "pending" | "paid" | "late" | "overdue" | "cancelled"
@@ -80,6 +81,7 @@ export type ContractDownPaymentRecord = {
 
 export type ContractRecord = {
   id: string
+  downPaymentDueDateMode?: "signature_plus_7"
   contractNumber: string
   clientId: string
   clientCompanyName?: string | null

@@ -169,7 +169,9 @@ test("edita parcelas contratuais e abre cobranças avulsas na tabela do relatór
               clientCompanyName: "Cliente Avulso E2E",
               source: "schedule",
               scheduleId: "e2e-report",
-              number: 1,
+              scheduleInstallmentId: "report-extra-2",
+              installmentsCount: 5,
+              number: 2,
               value: 1_500,
               dueDate: "2026-08-28T03:00:00.000Z",
               status: "pending",
@@ -221,12 +223,14 @@ test("edita parcelas contratuais e abre cobranças avulsas na tabela do relatór
   })
 
   const scheduleRow = page.getByRole("row").filter({ hasText: "Cliente Avulso E2E" })
+  await expect(scheduleRow.getByText("Avulsa 2/5", { exact: true })).toBeVisible()
   await scheduleRow.getByRole("button", { name: "Abrir ações da parcela" }).click()
   await page.getByRole("menuitem", { name: "Editar parcela" }).click()
   await expect(page.getByRole("dialog", { name: "Editar cobrança avulsa" })).toBeVisible()
   await expect(page.getByRole("textbox", { name: "Valor", exact: true })).toBeEnabled()
   await page.getByRole("button", { name: "Salvar alterações" }).click()
   await expect.poll(() => schedulePatch).toEqual({
+    installmentId: "report-extra-2",
     value: 1_500,
     billingDueDate: "2026-08-28",
     billingStatus: "pending",

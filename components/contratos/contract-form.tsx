@@ -579,6 +579,7 @@ export function ContractForm({
   const totalValue = contractValue / 100
   const downPaymentValue = downPayments.reduce((sum, entry) => sum + entry.value, 0)
   const downPaymentAmount = downPaymentValue / 100
+  const signatureDownPayments = !isEditing || contract?.downPaymentDueDateMode === "signature_plus_7"
   const hasDownPayment = downPayments.length > 0
   const remainingInstallmentsCount = Math.max(installmentsCount - downPayments.length, 0)
   const remainingContractValue = Math.max(totalValue - downPaymentAmount, 0)
@@ -590,7 +591,7 @@ export function ContractForm({
     : regularInstallmentValue
   const downPaymentsText = buildDownPaymentsText(
     downPayments
-      .filter((entry) => entry.value > 0 && entry.dueDate)
+      .filter((entry) => entry.value > 0 && (signatureDownPayments || entry.dueDate))
       .map((entry, index) => ({
         number: index + 1,
         value: entry.value / 100,
@@ -1152,7 +1153,7 @@ export function ContractForm({
     downPaymentValue: downPaymentAmount,
     downPayments: downPayments.map((entry) => ({
       value: entry.value / 100,
-      dueDate: entry.dueDate,
+      dueDate: signatureDownPayments ? undefined : entry.dueDate,
     })),
     duration: installmentsCount,
     startDate,
@@ -1889,9 +1890,9 @@ export function ContractForm({
       return
     }
 
-    const incompleteDownPaymentIndex = downPayments.findIndex((entry) => entry.value <= 0 || !entry.dueDate)
+    const incompleteDownPaymentIndex = downPayments.findIndex((entry) => entry.value <= 0 || (!signatureDownPayments && !entry.dueDate))
     if (incompleteDownPaymentIndex >= 0) {
-      toast.error(`Preencha o valor e o vencimento da entrada ${incompleteDownPaymentIndex + 1}.`)
+      toast.error(signatureDownPayments ? `Preencha o valor da entrada ${incompleteDownPaymentIndex + 1}.` : `Preencha o valor e o vencimento da entrada ${incompleteDownPaymentIndex + 1}.`)
       return
     }
 
@@ -1903,7 +1904,7 @@ export function ContractForm({
     const unorderedDownPaymentIndex = downPayments.findIndex(
       (entry, index) => index > 0 && entry.dueDate <= downPayments[index - 1].dueDate,
     )
-    if (unorderedDownPaymentIndex >= 0) {
+    if (!signatureDownPayments && unorderedDownPaymentIndex >= 0) {
       toast.error("As datas das entradas devem estar em ordem crescente.")
       return
     }
@@ -3255,7 +3256,7 @@ export function ContractForm({
                 {downPayments.map((entry, index) => (
                   <div
                     key={entry.id}
-                    className="grid grid-cols-1 gap-3 rounded-lg bg-muted/30 p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end"
+                    className={signatureDownPayments ? "grid w-full max-w-[380px] grid-cols-[minmax(0,1fr)_auto] items-end gap-3 rounded-lg bg-muted/30 p-3" : "grid grid-cols-1 gap-3 rounded-lg bg-muted/30 p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end"}
                   >
                     <div className="space-y-2">
                       <Label htmlFor={`down-payment-value-${entry.id}`}>Valor da entrada {index + 1} *</Label>
@@ -3266,7 +3267,7 @@ export function ContractForm({
                         className="bg-background"
                       />
                     </div>
-                    <div className="space-y-2">
+                    {!signatureDownPayments ? <div className="space-y-2">
                       <Label>Venc. da entrada {index + 1} *</Label>
                       <DatePicker
                         ariaLabel={`Vencimento da entrada ${index + 1}`}
@@ -3275,7 +3276,7 @@ export function ContractForm({
                         placeholder="Selecionar data"
                         className="h-10 w-full bg-background hover:bg-background dark:bg-background dark:hover:bg-background"
                       />
-                    </div>
+                    </div> : null}
                     <Button
                       type="button"
                       variant="ghost"

@@ -3,6 +3,7 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
+import { getRescheduleReasonError, RescheduleReasonFields } from "@/components/agendamentos/reschedule-reason-fields"
 import { DatePicker } from "@/components/ui/date-picker"
 import { Input } from "@/components/ui/input"
 import { NumericInput } from "@/components/ui/numeric-input"
@@ -11,6 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -48,7 +50,6 @@ import {
 } from "@/lib/team-member-selection"
 import type { ClientRecord } from "@/lib/api/clients"
 import type { EmployeeRecord } from "@/lib/api/employees"
-import { shouldRequireScheduleAssignee } from "@/lib/schedule-assignee-requirement"
 import type { ServiceRecord } from "@/lib/api/services"
 import type { TeamRecord } from "@/lib/api/teams"
 import type { ScheduleDocumentSetting } from "@/lib/api/schedules"
@@ -72,6 +73,8 @@ function isValidDateKey(value: string) {
 }
 
 export interface SchedulingFormData {
+  rescheduleReason?: string
+  rescheduleNotes?: string
   clientId: string
   serviceTypeId: string
   serviceTypeIds: string[]
@@ -88,6 +91,8 @@ export interface SchedulingFormData {
   generateCertificateRequest: boolean
   value: number
   billingDueDate: string
+  billingInstallmentsCount: number
+  billingDownPaymentValue: number
   createContract: boolean
   isEmergency: boolean
   status: ScheduleManualStatus
@@ -118,6 +123,8 @@ interface EditingSchedule {
   billable?: boolean
   value?: number
   billingDueDate?: string
+  billingInstallmentsCount?: number
+  billingDownPaymentValue?: number
   isEmergency?: boolean
   status: ScheduleManualStatus
   notes?: string
@@ -156,6 +163,8 @@ const DEFAULT_FORM_DATA: SchedulingFormData = {
   generateCertificateRequest: false,
   value: 0,
   billingDueDate: "",
+  billingInstallmentsCount: 1,
+  billingDownPaymentValue: 0,
   createContract: false,
   isEmergency: false,
   status: "scheduled",
@@ -191,6 +200,7 @@ export function SchedulingFormDialog({
   const initializedFormKeyRef = useRef("")
 
   const [clientPopoverOpen, setClientPopoverOpen] = useState(false)
+  const [pendingReschedule, setPendingReschedule] = useState<SchedulingFormData | null>(null)
   const [servicesPopoverOpen, setServicesPopoverOpen] = useState(false)
   const [teamsPopoverOpen, setTeamsPopoverOpen] = useState(false)
   const [employeesPopoverOpen, setEmployeesPopoverOpen] = useState(false)
@@ -264,14 +274,12 @@ export function SchedulingFormDialog({
   )
   const selectedClient = clientById.get(formData.clientId)
   const isEditing = Boolean(editingSchedule)
-  const editingScheduleHadAssignee = Boolean(
-    editingSchedule && (
-      (editingSchedule.teamIds?.length ?? 0) > 0 ||
-      (editingSchedule.teams?.length ?? 0) > 0 ||
-      Boolean(editingSchedule.teamId) ||
-      (editingSchedule.additionalEmployees?.length ?? 0) > 0
-    ),
-  )
+  const rescheduleDateChanged = Boolean(editingSchedule &&
+    (formData.date !== editingSchedule.date || formData.time !== (editingSchedule.time || "")))
+  const needsRescheduleReason = Boolean(editingSchedule && (
+    (["scheduled", "rescheduled"].includes(editingSchedule.status) && rescheduleDateChanged) ||
+    (formData.status === "rescheduled" && editingSchedule.status !== "rescheduled")
+  ))
   const isRecurringSchedule = Boolean(editingSchedule?.contractId && !editingSchedule?.isManual)
   const scheduleTypeLabel = isRecurringSchedule ? "Atendimento recorrente" : "Atendimento avulso"
   const dialogTitle = isEditing
@@ -321,6 +329,8 @@ export function SchedulingFormDialog({
       generateCertificateRequest: serviceDocumentSettings.some((setting) => Boolean(setting.certificateTemplateId)),
       value: schedule.billable ? Number(schedule.value ?? 0) : 0,
       billingDueDate: schedule.billable ? schedule.billingDueDate ?? schedule.date : "",
+      billingInstallmentsCount: schedule.billingInstallmentsCount ?? 1,
+      billingDownPaymentValue: schedule.billingDownPaymentValue ?? 0,
       createContract: Boolean(schedule.billable),
       isEmergency: schedule.isEmergency ?? false,
       status: schedule.status,
@@ -331,6 +341,7 @@ export function SchedulingFormDialog({
   useEffect(() => {
     if (!open) {
       initializedFormKeyRef.current = ""
+      setPendingReschedule(null)
       return
     }
 
@@ -484,6 +495,11 @@ export function SchedulingFormDialog({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    if (isSubmitting) return
+    if (needsRescheduleReason && !rescheduleDateChanged) {
+      toast.error("Escolha uma nova data ou horário para reagendar.")
+      return
+    }
 
     if (!formData.clientId || !clientById.has(formData.clientId)) {
       toast.error("Selecione um cliente válido para o agendamento.")
@@ -508,18 +524,26 @@ export function SchedulingFormDialog({
       toast.error("Informe uma duração maior que zero para o agendamento.")
       return
     }
-    if (shouldRequireScheduleAssignee({
-      isEditing,
-      previouslyHadAssignee: editingScheduleHadAssignee,
-      teamIds: formData.teamIds,
-      employeeIds: formData.employeeIds,
-    })) {
-      toast.error("Selecione ao menos uma equipe ou funcionário para o agendamento.")
-      return
-    }
     if (formData.createContract && (!Number.isFinite(formData.value) || formData.value <= 0)) {
       toast.error("Informe um valor maior que zero para gerar a cobrança no financeiro.")
       return
+    }
+    if (formData.createContract) {
+      const total = Math.round(formData.value * 100)
+      const entry = Math.round(formData.billingDownPaymentValue * 100)
+      const count = formData.billingInstallmentsCount
+      if (!Number.isSafeInteger(count) || count < 1) {
+        toast.error("Informe uma quantidade inteira de parcelas maior que zero.")
+        return
+      }
+      if (!Number.isFinite(entry) || entry < 0 || entry > total || (count === 1 && entry > 0 && entry !== total)) {
+        toast.error("A entrada deve caber no valor total. Para uma única parcela, informe zero ou o valor total como entrada.")
+        return
+      }
+      if (count - (entry > 0 ? 1 : 0) > total - entry) {
+        toast.error("O saldo deve permitir ao menos R$ 0,01 por parcela restante.")
+        return
+      }
     }
     if (formData.createContract && !isValidDateKey(formData.billingDueDate)) {
       toast.error("Informe uma data de vencimento válida para gerar a cobrança no financeiro.")
@@ -536,15 +560,38 @@ export function SchedulingFormDialog({
     })
     const primarySetting = serviceDocumentSettings[0]
 
-    onSubmit({
+    const payload: SchedulingFormData = {
       ...formData,
+      status: needsRescheduleReason ? "rescheduled" : formData.status,
       serviceTypeId: formData.serviceTypeIds[0],
       serviceDocumentSettings,
       informativeTemplateId: primarySetting?.informativeTemplateId ?? "",
       certificateTemplateId: primarySetting?.certificateTemplateId ?? "",
       autoSendInformative: serviceDocumentSettings.some((setting) => Boolean(setting.informativeTemplateId)),
       generateCertificateRequest: serviceDocumentSettings.some((setting) => Boolean(setting.certificateTemplateId)),
-    }, !!editingSchedule)
+    }
+    if (needsRescheduleReason) {
+      setPendingReschedule(payload)
+      return
+    }
+    onSubmit(payload, !!editingSchedule)
+  }
+
+  const confirmReschedule = (event: React.FormEvent) => {
+    event.preventDefault()
+    event.stopPropagation()
+    if (!pendingReschedule || isSubmitting) return
+    const reasonError = getRescheduleReasonError(formData.rescheduleReason, formData.rescheduleNotes)
+    if (reasonError) {
+      toast.error(reasonError)
+      return
+    }
+    onSubmit({
+      ...pendingReschedule,
+      rescheduleReason: formData.rescheduleReason,
+      rescheduleNotes: formData.rescheduleNotes?.trim() ?? "",
+    }, true)
+    setPendingReschedule(null)
   }
 
   return (
@@ -578,7 +625,7 @@ export function SchedulingFormDialog({
                 </SelectTrigger>
                 <SelectContent>
                   {SCHEDULE_STATUS_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
+                    <SelectItem key={option.value} value={option.value} disabled={option.value === "rescheduled" && (!canEditDetails || !["scheduled", "rescheduled"].includes(editingSchedule?.status ?? ""))}>
                       {option.label}
                     </SelectItem>
                   ))}
@@ -905,35 +952,6 @@ export function SchedulingFormDialog({
             </div>
           </div>
 
-          {/* Financial charge */}
-          {!(editingSchedule && editingSchedule.contractId && !editingSchedule.isManual) && (
-          <div className="grid min-w-0 gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-            <div className="space-y-2">
-              <Label>Valor (R$)</Label>
-              <CurrencyInput
-                value={formData.createContract ? Math.round(formData.value * 100) : 0}
-                onChange={(cents) => setFormData((current) => ({ ...current, value: cents / 100 }))}
-                disabled={!formData.createContract}
-                className={!formData.createContract ? "cursor-not-allowed opacity-60" : undefined}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Data de vencimento</Label>
-              <DatePicker
-                ariaLabel="Data de vencimento"
-                value={parseCivilDate(formData.billingDueDate)}
-                onChange={(date) => setFormData((current) => ({
-                  ...current,
-                  billingDueDate: date ? toCivilDateKey(date) : "",
-                }))}
-                placeholder="Selecionar vencimento"
-                disabled={!formData.createContract}
-                className={!formData.createContract ? "cursor-not-allowed opacity-60" : undefined}
-              />
-            </div>
-          </div>
-          )}
-
           {/* Notes */}
           <div className="space-y-2">
             <Label>Observações</Label>
@@ -946,7 +964,7 @@ export function SchedulingFormDialog({
 
           {/* Create Contract Option */}
           {!(editingSchedule && editingSchedule.contractId && !editingSchedule.isManual) && (
-            <div className="space-y-2">
+            <div className="space-y-5">
               <div className="flex items-center space-x-2 p-3 bg-muted rounded-lg">
                 <Checkbox
                   id="createContract"
@@ -959,6 +977,8 @@ export function SchedulingFormDialog({
                         createContract: !!checked,
                         value: checked ? current.value || serviceType?.baseValue || 0 : 0,
                         billingDueDate: checked ? current.billingDueDate || current.date : "",
+                        billingInstallmentsCount: checked ? current.billingInstallmentsCount : 1,
+                        billingDownPaymentValue: checked ? current.billingDownPaymentValue : 0,
                       }
                     })
                   }}
@@ -968,10 +988,39 @@ export function SchedulingFormDialog({
                     Gerar cobrança no financeiro
                   </Label>
                   <p className="text-xs text-muted-foreground">
-                    Uma cobrança será criada com o valor informado
+                    As parcelas serão criadas na aba Extras do cliente
                   </p>
                 </div>
               </div>
+
+              {formData.createContract ? (
+                <div className="grid min-w-0 gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="schedule-billing-value">Valor (R$)</Label>
+                    <CurrencyInput id="schedule-billing-value" value={Math.round(formData.value * 100)}
+                      onChange={(cents) => setFormData((current) => ({ ...current, value: cents / 100 }))} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="schedule-billing-count">Qtd. de parcelas</Label>
+                    <NumericInput id="schedule-billing-count" min={1} value={formData.billingInstallmentsCount}
+                      onValueChange={(value) => setFormData((current) => ({ ...current, billingInstallmentsCount: value }))} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="schedule-billing-entry">Valor de entrada</Label>
+                    <CurrencyInput id="schedule-billing-entry" value={Math.round(formData.billingDownPaymentValue * 100)}
+                      onChange={(cents) => setFormData((current) => ({ ...current, billingDownPaymentValue: cents / 100 }))} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Data de vencimento</Label>
+                    <DatePicker ariaLabel="Data de vencimento" value={parseCivilDate(formData.billingDueDate)}
+                      onChange={(date) => setFormData((current) => ({ ...current, billingDueDate: date ? toCivilDateKey(date) : "" }))}
+                      placeholder="Selecionar vencimento" />
+                  </div>
+                  <p className="text-xs text-muted-foreground sm:col-span-2">
+                    A entrada, quando informada, conta como a primeira parcela. As demais vencem nos meses seguintes.
+                  </p>
+                </div>
+              ) : null}
 
               <div className="flex items-center space-x-2 rounded-lg border border-amber-100 bg-amber-50 p-3 dark:border-amber-900/40 dark:bg-amber-950/30">
                 <Checkbox
@@ -1080,6 +1129,29 @@ export function SchedulingFormDialog({
           </Button>
         </DialogFooter>
       </DialogContent>
+      <Dialog open={open && Boolean(pendingReschedule)} onOpenChange={(nextOpen) => {
+        if (!nextOpen && !isSubmitting) setPendingReschedule(null)
+      }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Confirmar reagendamento</DialogTitle>
+            <DialogDescription>Informe o motivo para salvar a nova data ou horário. As observações são obrigatórias apenas em Outros.</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={confirmReschedule} noValidate className="space-y-6">
+            <RescheduleReasonFields
+              showIcon={false}
+              reason={formData.rescheduleReason ?? ""}
+              notes={formData.rescheduleNotes ?? ""}
+              onReasonChange={(rescheduleReason) => setFormData((current) => ({ ...current, rescheduleReason }))}
+              onNotesChange={(rescheduleNotes) => setFormData((current) => ({ ...current, rescheduleNotes }))}
+            />
+            <DialogFooter>
+              <Button type="button" variant="outline" disabled={isSubmitting} onClick={() => setPendingReschedule(null)}>Cancelar</Button>
+              <Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Salvando..." : "Salvar reagendamento"}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   )
 }

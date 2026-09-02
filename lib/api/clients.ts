@@ -23,8 +23,19 @@ export type ClientUnitRecord = {
   createdAt: string
 }
 
+export type ClientAdditionalContact = {
+  id: string
+  name: string
+  cpf: string
+  email: string
+  phone: string
+  receivesNotifications: boolean
+}
+
 export type ClientRecord = {
   id: string
+  additionalAssessors?: ClientAdditionalContact[]
+  subSyndics?: ClientAdditionalContact[]
   companyName: string
   cnpj: string
   responsibleName: string
@@ -184,6 +195,8 @@ export type CreateClientExtraPayload = {
 }
 
 export type ClientPayload = {
+  additionalAssessors?: ClientAdditionalContact[]
+  subSyndics?: ClientAdditionalContact[]
   companyName: string
   cnpj: string
   responsibleName: string

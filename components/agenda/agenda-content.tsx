@@ -619,6 +619,8 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       const isRecurringScheduleUpdate = Boolean(scheduleId && editingService?.contractId && !editingService.isManual)
       if (scheduleId && isRecurringScheduleUpdate) {
         const response = await updateSchedule(scheduleId, {
+          rescheduleReason: formData.rescheduleReason,
+          rescheduleNotes: formData.rescheduleNotes,
           serviceTypeId: formData.serviceTypeIds[0],
           serviceTypeIds: formData.serviceTypeIds,
           serviceDocumentSettings: formData.serviceDocumentSettings,
@@ -667,12 +669,14 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
         billable: formData.createContract,
         value: formData.createContract ? formData.value : 0,
         billingDueDate: formData.createContract ? formData.billingDueDate : undefined,
+        billingInstallmentsCount: formData.createContract ? formData.billingInstallmentsCount : undefined,
+        billingDownPaymentValue: formData.createContract ? formData.billingDownPaymentValue : undefined,
         notes: formData.notes,
         allowConflict,
       }
 
       if (scheduleId) {
-        const response = await updateSchedule(scheduleId, payload)
+        const response = await updateSchedule(scheduleId, { ...payload, rescheduleReason: formData.rescheduleReason, rescheduleNotes: formData.rescheduleNotes })
         if (canManageScheduleStatus && editingService?.status !== formData.status) {
           return updateScheduleStatus(scheduleId, formData.status)
         }

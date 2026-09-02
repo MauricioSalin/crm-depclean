@@ -1391,7 +1391,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                     <TableCell className="font-medium">
                       {installment.number}/{contract.installmentsCount}
                     </TableCell>
-                    <TableCell>{formatDate(installment.dueDate)}</TableCell>
+                    <TableCell>{installment.awaitingSignature ? "Aguardando assinatura" : formatDate(installment.dueDate)}</TableCell>
                     <TableCell>{formatCurrency(installment.value)}</TableCell>
                     <TableCell>{getInstallmentStatusBadge(installment.status)}</TableCell>
                     <TableCell>{formatDate(installment.paidDate)}</TableCell>
@@ -1399,7 +1399,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                       <TableCell className="text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" disabled={installmentMutation.isPending}>
+                            <Button variant="ghost" size="icon" disabled={installmentMutation.isPending || !installment.dueDate}>
                               <MoreHorizontal className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>

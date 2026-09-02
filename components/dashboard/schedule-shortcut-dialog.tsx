@@ -331,6 +331,8 @@ export function ScheduleShortcutDialog({
       if (!canManageAgenda) throw new Error("Você não tem permissão para editar este agendamento.")
 
       const commonPayload = {
+        rescheduleReason: formData.rescheduleReason,
+        rescheduleNotes: formData.rescheduleNotes,
         serviceTypeId: formData.serviceTypeIds[0],
         serviceTypeIds: formData.serviceTypeIds,
         serviceDocumentSettings: formData.serviceDocumentSettings,
@@ -357,6 +359,8 @@ export function ScheduleShortcutDialog({
               billable: formData.createContract,
               value: formData.createContract ? formData.value : 0,
               billingDueDate: formData.createContract ? formData.billingDueDate : undefined,
+              billingInstallmentsCount: formData.createContract ? formData.billingInstallmentsCount : undefined,
+              billingDownPaymentValue: formData.createContract ? formData.billingDownPaymentValue : undefined,
             },
       )
 

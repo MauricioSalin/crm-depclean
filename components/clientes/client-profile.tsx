@@ -77,6 +77,7 @@ import {
 } from "@/lib/api/contracts"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { listSchedules, updateScheduleBilling, type ScheduleRecord } from "@/lib/api/schedules"
+import { scheduleBillingItems } from "@/lib/schedule-billing"
 import { listTemplates, type TemplateRecord } from "@/lib/api/templates"
 import {
   getClicksignContractStatusLabel,
@@ -110,10 +111,12 @@ type ClientScheduleChargeRecord = {
   source: "schedule"
   id: string
   scheduleId: string
+  scheduleInstallmentId?: string
   contractId: ""
   contractNumber: "Agendamento avulso"
-  number: 1
-  installmentsCount: 1
+  number: number
+  installmentsCount: number
+  downPaymentValue: number
   value: number
   dueDate: string
   status: ScheduleRecord["effectiveBillingStatus"]
@@ -629,10 +632,12 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
   const scheduleBillingStatusMutation = useMutation({
     mutationFn: ({
       scheduleId,
+      installmentId,
       status,
       value,
     }: {
       scheduleId: string
+      installmentId?: string
       status: "pending" | "paid" | "late" | "overdue"
       value: number
     }) => {
@@ -641,6 +646,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
       }
 
       return updateScheduleBilling(scheduleId, {
+        installmentId,
         billingStatus: status,
         paidDate: status === "paid" ? new Date().toISOString() : undefined,
         paidValue: status === "paid" ? value : undefined,
@@ -896,23 +902,25 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
   const scheduleCharges = useMemo<ClientScheduleChargeRecord[]>(
     () => (canViewFinancial ? scheduledServices : [])
       .filter((schedule) => schedule.isManual && schedule.billable && schedule.value > 0)
-      .map((schedule) => ({
+      .flatMap((schedule) => scheduleBillingItems(schedule).map((item) => ({
         source: "schedule",
-        id: `schedule-${schedule.id}`,
+        id: item.id ? `schedule-${schedule.id}-${item.id}` : `schedule-${schedule.id}`,
         scheduleId: schedule.id,
+        scheduleInstallmentId: item.id || undefined,
         contractId: "",
         contractNumber: "Agendamento avulso",
-        number: 1,
-        installmentsCount: 1,
-        value: schedule.value,
-        dueDate: schedule.billingDueDate ?? schedule.date,
-        status: schedule.status === "cancelled" ? "cancelled" : schedule.effectiveBillingStatus,
-        billingStatus: schedule.billingStatus,
-        paidDate: schedule.paidDate,
-        paidValue: schedule.paidValue,
+        number: item.number,
+        installmentsCount: schedule.billingInstallments?.length || 1,
+        downPaymentValue: schedule.billingDownPaymentValue ?? 0,
+        value: item.value,
+        dueDate: item.dueDate,
+        status: schedule.status === "cancelled" ? "cancelled" : item.effectiveStatus,
+        billingStatus: item.status,
+        paidDate: item.paidDate,
+        paidValue: item.paidValue,
         createdDate: schedule.createdAt,
         description: schedule.serviceTypeName,
-      })),
+      }))),
     [canViewFinancial, scheduledServices],
   )
   const allExtras = useMemo<ClientProfileExtraRecord[]>(
@@ -1002,6 +1010,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
       if (status !== "pending" && status !== "paid" && status !== "late" && status !== "overdue") return
       scheduleBillingStatusMutation.mutate({
         scheduleId: installment.scheduleId,
+        installmentId: installment.scheduleInstallmentId,
         status,
         value: installment.value,
       })
@@ -1420,6 +1429,10 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
               contact={client.assessor}
               emptyMessage="Nenhum assessor cadastrado."
             />
+            {(client.additionalAssessors ?? []).map((contact, index) => (
+              <ContactInfoTable key={contact.id} title={`Assessor adicional ${index + 1}`} contact={contact} emptyMessage="Dados não informados." />
+            ))}
+            <ContactInfoTable title="Subsíndico" contact={client.subSyndics?.[0]} emptyMessage="Nenhum subsíndico cadastrado." />
           </div>
         </TabsContent>
 
@@ -1533,7 +1546,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                     <TableHead>Contrato</TableHead>
                     <TableHead>Parcela</TableHead>
                     <TableHead>Valor</TableHead>
-                    <TableHead className="hidden md:table-cell">Vencimento</TableHead>
+                    <TableHead>Vencimento</TableHead>
                     <TableHead className="hidden md:table-cell">Data do pagamento</TableHead>
                     <TableHead>Status</TableHead>
                     {canManageInstallments ? <TableHead className="text-right">Ações</TableHead> : null}
@@ -1548,14 +1561,14 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                         <TableCell className="text-sm">{formatContractNumber(installment.contractNumber)}</TableCell>
                         <TableCell>{`${installment.number}/${installment.installmentsCount}`}</TableCell>
                         <TableCell className="font-medium">{formatCurrency(installment.value)}</TableCell>
-                        <TableCell className="hidden md:table-cell text-sm">{formatDate(installment.dueDate)}</TableCell>
+                        <TableCell className="text-sm">{installment.awaitingSignature ? "Aguardando assinatura" : formatDate(installment.dueDate)}</TableCell>
                         <TableCell className="hidden md:table-cell text-sm">{formatDate(installment.paidDate)}</TableCell>
                         <TableCell>{getInstallmentStatusBadge(installment.status)}</TableCell>
                         {canManageInstallments ? (
                           <TableCell className="text-right">
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon">
+                                <Button variant="ghost" size="icon" disabled={!installment.dueDate}>
                                   <MoreHorizontal className="h-4 w-4" />
                                 </Button>
                               </DropdownMenuTrigger>
@@ -1623,13 +1636,15 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
 
         <TabsContent value="extras" className="mt-4">
           <div className="space-y-3">
-            <div className="overflow-x-auto rounded-md">
+            <div className="w-0 min-w-full overflow-x-auto rounded-md">
               <Table onSortChange={() => setExtrasPage(1)}>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Data de criação</TableHead>
                     <TableHead>Descrição</TableHead>
                     <TableHead>Valor</TableHead>
+                    <TableHead>Qtd. de parcelas</TableHead>
+                    <TableHead>Valor de entrada</TableHead>
                     <TableHead>Vencimento</TableHead>
                     <TableHead>Data do pagamento</TableHead>
                     <TableHead>Status</TableHead>
@@ -1648,10 +1663,15 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                           <div>
                             <p className="font-medium">Agendamento avulso</p>
                             <p className="text-xs text-muted-foreground">{extra.description}</p>
+                            <p className="text-xs text-muted-foreground">
+                              Parcela {extra.number}/{extra.installmentsCount}{extra.number === 1 && extra.downPaymentValue > 0 ? " — Entrada" : ""}
+                            </p>
                           </div>
                         ) : extra.description || "Sem descrição"}
                       </TableCell>
                       <TableCell className="font-medium">{formatCurrency(extra.value)}</TableCell>
+                      <TableCell>{extra.source === "schedule" ? extra.installmentsCount : 1}</TableCell>
+                      <TableCell>{extra.source === "schedule" ? formatCurrency(extra.downPaymentValue) : "—"}</TableCell>
                       <TableCell className="text-sm">{formatDate(extra.dueDate)}</TableCell>
                       <TableCell className="text-sm">{formatDate(extra.paidDate)}</TableCell>
                       <TableCell>{getClientExtraStatusBadge(extra.status)}</TableCell>
@@ -1749,7 +1769,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
 
                   {!extrasQuery.isLoading && allExtras.length === 0 ? (
                     <TableEmptyState
-                      colSpan={canManageExtras ? 7 : 6}
+                      colSpan={canManageExtras ? 9 : 8}
                       icon={DollarSign}
                       title="Nenhum valor extra cadastrado para este cliente."
                     />
@@ -1761,6 +1781,8 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                       columns={[
                         { width: "w-28" },
                         { width: "w-64" },
+                        { width: "w-24" },
+                        { width: "w-24" },
                         { width: "w-24" },
                         { width: "w-28" },
                         { width: "w-28" },
@@ -1957,6 +1979,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
             scheduleBillingEditMutation.mutate({
               scheduleId: editingInstallment.scheduleId,
               payload: {
+                installmentId: editingInstallment.scheduleInstallmentId,
                 value,
                 billingDueDate: payload.dueDate,
                 billingStatus,

@@ -146,6 +146,7 @@ export function FinancialInstallmentsTable({
 
       if (installment.source === "schedule") {
         return updateScheduleBilling(installment.scheduleId ?? installment.id.replace(/^schedule-/, ""), {
+          installmentId: installment.scheduleInstallmentId,
           billingStatus: status,
           paidDate,
           paidValue: status === "paid" ? installment.value : undefined,
@@ -206,6 +207,7 @@ export function FinancialInstallmentsTable({
         const nextValue = value ?? installment.value
 
         return updateScheduleBilling(installment.scheduleId ?? installment.id.replace(/^schedule-/, ""), {
+          installmentId: installment.scheduleInstallmentId,
           value: nextValue,
           billingDueDate: payload.dueDate,
           billingStatus,
@@ -424,7 +426,9 @@ export function FinancialInstallmentsTable({
                     !preserveColumnsOnMobile && "hidden sm:table-cell",
                   )}>
                     <span className="text-sm">
-                      {installment.source === "schedule" ? "Avulsa" : installment.source === "extra" ? "Extra" : installment.number}
+                      {installment.source === "schedule"
+                        ? (installment.installmentsCount ?? 1) > 1 ? `Avulsa ${installment.number}/${installment.installmentsCount}` : "Avulsa"
+                        : installment.source === "extra" ? "Extra" : installment.number}
                     </span>
                   </TableCell>
                   <TableCell className="whitespace-nowrap font-medium">{formatCurrency(installment.value)}</TableCell>
