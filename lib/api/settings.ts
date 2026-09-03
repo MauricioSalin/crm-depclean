@@ -52,6 +52,7 @@ export type NotificationRuleRecord = {
   channels: string[]
   targetTeamIds: string[]
   targetEmployeeIds: string[]
+  hideTimeServiceTypeIds: string[]
   isActive: boolean
   isDefault: boolean
   createdAt: string

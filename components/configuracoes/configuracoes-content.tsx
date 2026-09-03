@@ -61,6 +61,7 @@ import {
   type UserRecord,
 } from "@/lib/api/settings"
 import { listTeams, type TeamRecord } from "@/lib/api/teams"
+import { listServices, type ServiceRecord } from "@/lib/api/services"
 import { getStoredUser } from "@/lib/auth/session"
 import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 import {
@@ -276,6 +277,7 @@ export function ConfiguracoesContent() {
   const [notificationRules, setNotificationRules] = useState<NotificationRuleRecord[]>([])
   const [teams, setTeams] = useState<TeamRecord[]>([])
   const [employees, setEmployees] = useState<EmployeeRecord[]>([])
+  const [services, setServices] = useState<ServiceRecord[]>([])
   const [permissionCatalog, setPermissionCatalog] = useState<Array<{ key: string; label: string; description: string }>>([])
 
   const [typeSearch, setTypeSearch] = useUrlQueryState("q-types")
@@ -334,6 +336,8 @@ export function ConfiguracoesContent() {
     channels: [] as string[],
     targetTeamIds: [] as string[],
     targetEmployeeIds: [] as string[],
+    hideTimeServiceTypeIds: [] as string[],
+    hideTimeInMessage: false,
     isActive: true,
   })
   const [pendingDelete, setPendingDelete] = useState<
@@ -360,10 +364,11 @@ export function ConfiguracoesContent() {
         userPermissions.includes("employees_delete")
       setIsAdmin(adminUser)
       setCanManageSettings(canManage)
-      const [settingsResponse, teamsResponse, employeesResponse] = await Promise.all([
+      const [settingsResponse, teamsResponse, employeesResponse, servicesResponse] = await Promise.all([
         getSettings(),
         canReadTeams ? listTeams() : Promise.resolve({ data: [] }),
         canReadEmployees ? listEmployees() : Promise.resolve({ data: [] }),
+        canManage ? listServices() : Promise.resolve({ data: [] }),
       ])
       const organizationResponse = adminUser ? await getOrganizationSettings() : null
       const response = settingsResponse
@@ -397,6 +402,7 @@ export function ConfiguracoesContent() {
       setPermissionCatalog(response.data.permissions)
       setTeams(teamsResponse.data.filter((team) => team.isActive))
       setEmployees(employeesResponse.data.filter((employee) => employee.status === "active"))
+      setServices(servicesResponse.data.filter((service) => service.isActive))
     } catch (error) {
       toast.error(getApiErrorMessage(error, "Não foi possível carregar as configurações."))
     } finally {
@@ -460,6 +466,12 @@ export function ConfiguracoesContent() {
     name: employee.name,
     subtitle: `${employee.role || "Sem cargo"} • ${formatPhone(employee.phone)}`,
   })), [employees, ruleForm.targetTeamIds, teams])
+
+  const serviceOptions = useMemo(() => services.map((service) => ({
+    id: service.id,
+    name: service.name,
+    subtitle: service.description,
+  })), [services])
 
   const settingsCards = useMemo(
     () => SETTINGS_CARDS.filter((card) => !card.adminOnly || isAdmin),
@@ -526,7 +538,7 @@ export function ConfiguracoesContent() {
 
   const resetRuleForm = () => {
     setEditingRule(null)
-    setRuleForm({ name: "", description: "", type: "new_schedule", daysBefore: 1, contractExpirationAlertDays: DEFAULT_CONTRACT_EXPIRATION_ALERT_DAYS, time: "08:00", channels: [], targetTeamIds: [], targetEmployeeIds: [], isActive: true })
+    setRuleForm({ name: "", description: "", type: "new_schedule", daysBefore: 1, contractExpirationAlertDays: DEFAULT_CONTRACT_EXPIRATION_ALERT_DAYS, time: "08:00", channels: [], targetTeamIds: [], targetEmployeeIds: [], hideTimeServiceTypeIds: [], hideTimeInMessage: false, isActive: true })
   }
 
   const closeRuleDialog = () => {
@@ -610,6 +622,8 @@ export function ConfiguracoesContent() {
         channels: [...record.channels],
         targetTeamIds: selection.teamIds,
         targetEmployeeIds: selection.employeeIds,
+        hideTimeServiceTypeIds: [...(record.hideTimeServiceTypeIds ?? [])],
+        hideTimeInMessage: (record.hideTimeServiceTypeIds?.length ?? 0) > 0,
         isActive: record.isActive,
       })
     } else {
@@ -898,6 +912,10 @@ export function ConfiguracoesContent() {
       toast.error("Informe uma quantidade válida de dias para o disparo da regra.")
       return
     }
+    if (ruleForm.type === "schedule_reminder" && ruleForm.hideTimeInMessage && ruleForm.hideTimeServiceTypeIds.length === 0) {
+      toast.error("Selecione ao menos um serviço para ocultar o horário na mensagem.")
+      return
+    }
     setSaving(true)
     const toastId = toast.loading("Salvando regra de notificação...")
     try {
@@ -919,6 +937,9 @@ export function ConfiguracoesContent() {
           contractExpirationAlertDays: ruleForm.type === "contract_expiring" ? contractExpirationAlertDays : undefined,
           time: ruleForm.time,
           channels: ruleForm.channels,
+          hideTimeServiceTypeIds: ruleForm.type === "schedule_reminder" && ruleForm.hideTimeInMessage
+            ? ruleForm.hideTimeServiceTypeIds
+            : [],
           ...(canConfigureRecipients
             ? {
               targetTeamIds: recipientSelection.teamIds,
@@ -935,6 +956,9 @@ export function ConfiguracoesContent() {
           contractExpirationAlertDays: ruleForm.type === "contract_expiring" ? contractExpirationAlertDays : undefined,
           time: ruleForm.time,
           channels: ruleForm.channels,
+          hideTimeServiceTypeIds: ruleForm.type === "schedule_reminder" && ruleForm.hideTimeInMessage
+            ? ruleForm.hideTimeServiceTypeIds
+            : [],
           targetTeamIds: recipientSelection.teamIds,
           targetEmployeeIds: recipientSelection.employeeIds,
           isActive: ruleForm.isActive,
@@ -2136,11 +2160,11 @@ export function ConfiguracoesContent() {
                   <Label htmlFor="rule-description">Descrição</Label>
                   <Textarea id="rule-description" value={ruleForm.description} onChange={(event) => setRuleForm({ ...ruleForm, description: event.target.value })} rows={3} />
                 </div>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2">
+                <div className="grid min-w-0 gap-4 sm:grid-cols-2">
+                  <div className="min-w-0 space-y-2">
                     <Label>Tipo</Label>
                     <Select value={ruleForm.type} onValueChange={(value) => setRuleForm({ ...ruleForm, type: value })} disabled={Boolean(editingRule?.isDefault)}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectTrigger className="w-full min-w-0"><SelectValue className="truncate" /></SelectTrigger>
                       <SelectContent>
                         {Object.entries(NOTIFICATION_TYPE_LABELS).map(([value, label]) => (
                           <SelectItem key={value} value={value}>{label}</SelectItem>
@@ -2148,9 +2172,9 @@ export function ConfiguracoesContent() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="space-y-2">
+                  <div className="min-w-0 space-y-2">
                     <Label htmlFor="rule-time">Horário</Label>
-                    <Input id="rule-time" type="time" value={ruleForm.time} onChange={(event) => setRuleForm({ ...ruleForm, time: event.target.value })} />
+                    <Input id="rule-time" className="w-full min-w-0" type="time" value={ruleForm.time} onChange={(event) => setRuleForm({ ...ruleForm, time: event.target.value })} />
                   </div>
                 </div>
                 {ruleForm.type === "contract_expiring" ? (
@@ -2207,6 +2231,37 @@ export function ConfiguracoesContent() {
                     ) : null}
                   </div>
                 )}
+                {ruleForm.type === "schedule_reminder" ? (
+                  <div className="space-y-3 rounded-lg border border-border p-3">
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id="rule-hide-time"
+                        checked={ruleForm.hideTimeInMessage}
+                        onCheckedChange={(checked) => setRuleForm({
+                          ...ruleForm,
+                          hideTimeInMessage: checked === true,
+                          hideTimeServiceTypeIds: checked === true ? ruleForm.hideTimeServiceTypeIds : [],
+                        })}
+                      />
+                      <Label htmlFor="rule-hide-time">Ocultar horário na mensagem</Label>
+                    </div>
+                    {ruleForm.hideTimeInMessage ? (
+                      <div className="space-y-2">
+                        <Label>Serviços sem horário específico</Label>
+                        <MultiSelect
+                          options={serviceOptions}
+                          selected={ruleForm.hideTimeServiceTypeIds}
+                          onChange={(hideTimeServiceTypeIds) => setRuleForm({ ...ruleForm, hideTimeServiceTypeIds })}
+                          placeholder="Selecionar serviços..."
+                          searchPlaceholder="Buscar serviço..."
+                          emptyMessage="Nenhum serviço encontrado."
+                          ariaLabel="Selecionar serviços sem horário específico"
+                        />
+                        <p className="text-xs text-muted-foreground">Se o agendamento tiver ao menos um serviço selecionado, a mensagem exibirá a faixa entre 08h e 18h.</p>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
                 <div className="space-y-2">
                   <Label>Canais</Label>
                   <div className="flex flex-wrap gap-2">
