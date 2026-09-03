@@ -33,7 +33,13 @@ export const api = axios.create({
 
 export function buildApiFileUrl(path: string) {
   if (!path) return ""
-  if (/^https?:\/\//i.test(path)) return path
+  if (/^https?:\/\//i.test(path)) {
+    const storedUrl = new URL(path)
+    if (!/^\/api\/v\d+\/files\//i.test(storedUrl.pathname)) return path
+    // Internal files can be recorded by jobs running on a different API host.
+    // Resolve their storage path against the API used by the current client.
+    path = `${storedUrl.pathname}${storedUrl.search}${storedUrl.hash}`
+  }
   const baseURL = resolveApiBaseUrl()
   const origin = new URL(baseURL).origin
   return `${origin}${path.startsWith("/") ? path : `/${path}`}`

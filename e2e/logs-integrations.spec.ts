@@ -8,10 +8,13 @@ test.beforeEach(async ({ page }) => {
   await installApiMock(page)
 })
 
-test("exibe detalhes e anexo do WhatsApp junto ao envio de contrato da ClickSign", async ({ page }) => {
+for (const storedOrigin of ["", "http://192.168.15.2:3333"]) {
+test(`exibe detalhes e anexo do WhatsApp junto ao envio de contrato da ClickSign (${storedOrigin || "relativo"})`, async ({ page }) => {
   let attachmentDownloads = 0
+  let attachmentRequestUrl = ""
   await page.route("**/api/v1/files/whatsapp/informativo.pdf", async (route) => {
     attachmentDownloads += 1
+    attachmentRequestUrl = route.request().url()
     await route.fulfill({
       status: 200,
       contentType: "application/pdf",
@@ -59,7 +62,7 @@ test("exibe detalhes e anexo do WhatsApp junto ao envio de contrato da ClickSign
                 deliveryAttempts: 1,
                 whatsappMessageId: "wamid.message-1",
                 messageMetadata: {
-                  documentUrl: "/api/v1/files/whatsapp/informativo.pdf",
+                  documentUrl: `${storedOrigin}/api/v1/files/whatsapp/informativo.pdf`,
                   documentFileName: "informativo.pdf",
                   documentMimeType: "application/pdf",
                   whatsappMessages: [{
@@ -147,11 +150,18 @@ test("exibe detalhes e anexo do WhatsApp junto ao envio de contrato da ClickSign
   await expect(providerResponse).toContainText("recipientId")
 
   const viewAttachment = page.getByRole("link", { name: "Visualizar informativo.pdf" })
-  await expect(viewAttachment).toHaveAttribute("href", /\/api\/v1\/files\/whatsapp\/informativo\.pdf$/)
+  const expectedApiOrigin = new URL(page.url())
+  expectedApiOrigin.port = "3333"
+  const expectedUrl = `${expectedApiOrigin.origin}/api/v1/files/whatsapp/informativo.pdf`
+  await expect(viewAttachment).toHaveAttribute("href", expectedUrl)
+  const downloadEvent = page.waitForEvent("download")
   await page.getByRole("button", { name: "Baixar informativo.pdf" }).click()
+  expect((await downloadEvent).suggestedFilename()).toBe("informativo.pdf")
   await expect.poll(() => attachmentDownloads).toBe(1)
+  expect(attachmentRequestUrl).toBe(expectedUrl)
   await expect(page.getByText("Anexo baixado.", { exact: true })).toBeVisible()
 })
+}
 
 test("simula o template exato e informa quando a mensagem não possui anexos", async ({ page }) => {
   await page.route("**/api/v1/logs**", async (route) => {
