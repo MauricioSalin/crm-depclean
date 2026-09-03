@@ -21,7 +21,16 @@ for (const path of ["/agenda", "/agendamentos"]) {
     const dialog = page.getByRole("dialog", { name: "Novo atendimento avulso" })
     await dialog.getByText("Cliente *", { exact: true }).locator("..").getByRole("combobox").click()
     await page.getByRole("option", { name: clientFixture.companyName, exact: true }).click()
-    await dialog.getByText("Serviços *", { exact: true }).locator("..").getByRole("combobox").click()
+    const serviceSelect = dialog.getByText("Serviços *", { exact: true }).locator("..").getByRole("combobox")
+    const serviceSelectBox = await serviceSelect.boundingBox()
+    await serviceSelect.click()
+    expect(serviceSelectBox).not.toBeNull()
+    await expect.poll(async () => {
+      const popoverBox = await page.locator('[data-slot="popover-content"]').boundingBox()
+      return popoverBox
+        ? Math.abs(popoverBox.width - serviceSelectBox!.width) / serviceSelectBox!.width
+        : Number.POSITIVE_INFINITY
+    }).toBeLessThanOrEqual(0.02)
     await page.getByRole("option", { name: serviceFixture.name, exact: true }).click()
     await page.keyboard.press("Escape")
     await dialog.getByText("Equipes", { exact: true }).locator("..").getByRole("button").click()

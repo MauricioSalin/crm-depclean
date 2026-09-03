@@ -87,13 +87,16 @@ export function MultiSelect({
             role="combobox"
             aria-label={ariaLabel ?? placeholder}
             aria-expanded={open}
-            className={cn("w-full justify-between font-normal", triggerClassName)}
+            className={cn("min-w-0 w-full justify-between font-normal", triggerClassName)}
           >
-            <span className="text-muted-foreground">{placeholder}</span>
+            <span className="truncate text-muted-foreground">{placeholder}</span>
             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-full p-0" align="start">
+        <PopoverContent
+          className="w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-2rem)] p-0"
+          align="start"
+        >
           <Command>
             <CommandInput
               placeholder={searchPlaceholder}
@@ -108,7 +111,7 @@ export function MultiSelect({
                     key={option.id}
                     value={option.name}
                     onSelect={() => toggleOption(option.id)}
-                    className="cursor-pointer"
+                    className="min-w-0 cursor-pointer"
                   >
                     <Check
                       className={cn(
@@ -123,10 +126,10 @@ export function MultiSelect({
                         aria-hidden="true"
                       />
                     ) : null}
-                    <div className="flex flex-col">
-                      <span>{option.name}</span>
+                    <div className="flex min-w-0 flex-1 flex-col">
+                      <span className="truncate">{option.name}</span>
                       {option.subtitle && (
-                        <span className="text-sm text-muted-foreground">
+                        <span className="whitespace-normal break-words text-sm text-muted-foreground">
                           {option.subtitle}
                         </span>
                       )}

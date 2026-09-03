@@ -389,7 +389,16 @@ test("atribui uma equipe a uma ocorrência do plano e persiste a escolha", async
     .click()
 
   const assigneeDialog = page.getByRole("dialog", { name: "Editar Equipes e Funcionários" })
-  await assigneeDialog.getByRole("combobox", { name: "Equipes do agendamento" }).click()
+  const teamSelect = assigneeDialog.getByRole("combobox", { name: "Equipes do agendamento" })
+  const teamSelectBox = await teamSelect.boundingBox()
+  await teamSelect.click()
+  expect(teamSelectBox).not.toBeNull()
+  await expect.poll(async () => {
+    const popoverBox = await page.locator('[data-slot="popover-content"]').boundingBox()
+    return popoverBox
+      ? Math.abs(popoverBox.width - teamSelectBox!.width) / teamSelectBox!.width
+      : Number.POSITIVE_INFINITY
+  }).toBeLessThanOrEqual(0.02)
   await page.getByRole("option", { name: teamFixture.name }).click()
   await page.keyboard.press("Escape")
   await assigneeDialog.getByRole("button", { name: "Concluir" }).click()

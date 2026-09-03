@@ -198,7 +198,21 @@ test("configura serviços sem horário e mantém tipo e horário sem sobreposiç
   await expect(dialog.getByLabel("Ocultar horário na mensagem")).toHaveCount(0)
   const servicesSelect = dialog.getByRole("combobox", { name: "Selecionar serviços sem horário específico" })
   await expect(servicesSelect).toBeVisible()
+  const servicesTriggerBox = await servicesSelect.boundingBox()
   await servicesSelect.click()
+  const servicesPopover = page.locator('[data-slot="popover-content"]')
+  await expect(servicesPopover).toBeVisible()
+  expect(servicesTriggerBox).not.toBeNull()
+  await expect.poll(async () => {
+    const servicesPopoverBox = await servicesPopover.boundingBox()
+    return servicesPopoverBox
+      ? Math.abs(servicesPopoverBox.width - servicesTriggerBox!.width) / servicesTriggerBox!.width
+      : Number.POSITIVE_INFINITY
+  }).toBeLessThanOrEqual(0.02)
+  await expect.poll(async () => {
+    const servicesPopoverBox = await servicesPopover.boundingBox()
+    return servicesPopoverBox ? Math.abs(servicesPopoverBox.x - servicesTriggerBox!.x) : Number.POSITIVE_INFINITY
+  }).toBeLessThanOrEqual(4)
   await page.getByRole("option", { name: /Controle de pragas E2E/ }).click()
   await page.keyboard.press("Escape")
   await dialog.getByRole("button", { name: "Salvar" }).click()

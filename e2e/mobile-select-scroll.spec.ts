@@ -90,7 +90,15 @@ test("permite rolar selects, selects pesquisáveis e multiselects no mobile", as
   await page.getByRole("button", { name: "Novo Agendamento" }).click()
   const scheduleDialog = page.getByRole("dialog")
   const servicesCombobox = page.getByRole("combobox").filter({ hasText: "Buscar e adicionar serviços" })
+  const servicesComboboxBox = await servicesCombobox.boundingBox()
   await servicesCombobox.click()
+  expect(servicesComboboxBox).not.toBeNull()
+  await expect.poll(async () => {
+    const servicesPopoverBox = await page.locator('[data-slot="popover-content"]').boundingBox()
+    return servicesPopoverBox
+      ? Math.abs(servicesPopoverBox.width - servicesComboboxBox!.width) / servicesComboboxBox!.width
+      : Number.POSITIVE_INFINITY
+  }).toBeLessThanOrEqual(0.02)
   const dialogPopoverList = page.locator('[data-slot="command-list"]')
   await expectTouchScroll(page, dialogPopoverList)
   expect(await dialogPopoverList.evaluate((element) => element.closest('[data-slot="dialog-content"]'))).toBeNull()
@@ -147,6 +155,15 @@ test("permite rolar selects, selects pesquisáveis e multiselects no mobile", as
   })
 
   await page.goto("/relatorios?tab=services")
-  await page.getByRole("combobox", { name: "Todos os serviços" }).click()
+  const reportServicesCombobox = page.getByRole("combobox", { name: "Todos os serviços" })
+  const reportServicesComboboxBox = await reportServicesCombobox.boundingBox()
+  await reportServicesCombobox.click()
+  expect(reportServicesComboboxBox).not.toBeNull()
+  await expect.poll(async () => {
+    const reportServicesPopoverBox = await page.locator('[data-slot="popover-content"]').boundingBox()
+    return reportServicesPopoverBox
+      ? Math.abs(reportServicesPopoverBox.width - reportServicesComboboxBox!.width) / reportServicesComboboxBox!.width
+      : Number.POSITIVE_INFINITY
+  }).toBeLessThanOrEqual(0.02)
   await expectTouchScroll(page, page.locator('[data-slot="command-list"]'))
 })
