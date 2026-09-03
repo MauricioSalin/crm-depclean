@@ -195,8 +195,10 @@ test("configura serviços sem horário e mantém tipo e horário sem sobreposiç
   expect(typeBox!.x + typeBox!.width).toBeLessThanOrEqual(timeBox!.x)
   expect(timeBox!.x + timeBox!.width).toBeLessThanOrEqual(dialogBox!.x + dialogBox!.width)
 
-  await dialog.getByLabel("Ocultar horário na mensagem").check()
-  await dialog.getByRole("combobox", { name: "Selecionar serviços sem horário específico" }).click()
+  await expect(dialog.getByLabel("Ocultar horário na mensagem")).toHaveCount(0)
+  const servicesSelect = dialog.getByRole("combobox", { name: "Selecionar serviços sem horário específico" })
+  await expect(servicesSelect).toBeVisible()
+  await servicesSelect.click()
   await page.getByRole("option", { name: /Controle de pragas E2E/ }).click()
   await page.keyboard.press("Escape")
   await dialog.getByRole("button", { name: "Salvar" }).click()

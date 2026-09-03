@@ -337,7 +337,6 @@ export function ConfiguracoesContent() {
     targetTeamIds: [] as string[],
     targetEmployeeIds: [] as string[],
     hideTimeServiceTypeIds: [] as string[],
-    hideTimeInMessage: false,
     isActive: true,
   })
   const [pendingDelete, setPendingDelete] = useState<
@@ -538,7 +537,7 @@ export function ConfiguracoesContent() {
 
   const resetRuleForm = () => {
     setEditingRule(null)
-    setRuleForm({ name: "", description: "", type: "new_schedule", daysBefore: 1, contractExpirationAlertDays: DEFAULT_CONTRACT_EXPIRATION_ALERT_DAYS, time: "08:00", channels: [], targetTeamIds: [], targetEmployeeIds: [], hideTimeServiceTypeIds: [], hideTimeInMessage: false, isActive: true })
+    setRuleForm({ name: "", description: "", type: "new_schedule", daysBefore: 1, contractExpirationAlertDays: DEFAULT_CONTRACT_EXPIRATION_ALERT_DAYS, time: "08:00", channels: [], targetTeamIds: [], targetEmployeeIds: [], hideTimeServiceTypeIds: [], isActive: true })
   }
 
   const closeRuleDialog = () => {
@@ -623,7 +622,6 @@ export function ConfiguracoesContent() {
         targetTeamIds: selection.teamIds,
         targetEmployeeIds: selection.employeeIds,
         hideTimeServiceTypeIds: [...(record.hideTimeServiceTypeIds ?? [])],
-        hideTimeInMessage: (record.hideTimeServiceTypeIds?.length ?? 0) > 0,
         isActive: record.isActive,
       })
     } else {
@@ -912,10 +910,6 @@ export function ConfiguracoesContent() {
       toast.error("Informe uma quantidade válida de dias para o disparo da regra.")
       return
     }
-    if (ruleForm.type === "schedule_reminder" && ruleForm.hideTimeInMessage && ruleForm.hideTimeServiceTypeIds.length === 0) {
-      toast.error("Selecione ao menos um serviço para ocultar o horário na mensagem.")
-      return
-    }
     setSaving(true)
     const toastId = toast.loading("Salvando regra de notificação...")
     try {
@@ -937,9 +931,7 @@ export function ConfiguracoesContent() {
           contractExpirationAlertDays: ruleForm.type === "contract_expiring" ? contractExpirationAlertDays : undefined,
           time: ruleForm.time,
           channels: ruleForm.channels,
-          hideTimeServiceTypeIds: ruleForm.type === "schedule_reminder" && ruleForm.hideTimeInMessage
-            ? ruleForm.hideTimeServiceTypeIds
-            : [],
+          hideTimeServiceTypeIds: ruleForm.type === "schedule_reminder" ? ruleForm.hideTimeServiceTypeIds : [],
           ...(canConfigureRecipients
             ? {
               targetTeamIds: recipientSelection.teamIds,
@@ -956,9 +948,7 @@ export function ConfiguracoesContent() {
           contractExpirationAlertDays: ruleForm.type === "contract_expiring" ? contractExpirationAlertDays : undefined,
           time: ruleForm.time,
           channels: ruleForm.channels,
-          hideTimeServiceTypeIds: ruleForm.type === "schedule_reminder" && ruleForm.hideTimeInMessage
-            ? ruleForm.hideTimeServiceTypeIds
-            : [],
+          hideTimeServiceTypeIds: ruleForm.type === "schedule_reminder" ? ruleForm.hideTimeServiceTypeIds : [],
           targetTeamIds: recipientSelection.teamIds,
           targetEmployeeIds: recipientSelection.employeeIds,
           isActive: ruleForm.isActive,
@@ -2232,34 +2222,17 @@ export function ConfiguracoesContent() {
                   </div>
                 )}
                 {ruleForm.type === "schedule_reminder" ? (
-                  <div className="space-y-3 rounded-lg border border-border p-3">
-                    <div className="flex items-center gap-2">
-                      <Checkbox
-                        id="rule-hide-time"
-                        checked={ruleForm.hideTimeInMessage}
-                        onCheckedChange={(checked) => setRuleForm({
-                          ...ruleForm,
-                          hideTimeInMessage: checked === true,
-                          hideTimeServiceTypeIds: checked === true ? ruleForm.hideTimeServiceTypeIds : [],
-                        })}
-                      />
-                      <Label htmlFor="rule-hide-time">Ocultar horário na mensagem</Label>
-                    </div>
-                    {ruleForm.hideTimeInMessage ? (
-                      <div className="space-y-2">
-                        <Label>Serviços sem horário específico</Label>
-                        <MultiSelect
-                          options={serviceOptions}
-                          selected={ruleForm.hideTimeServiceTypeIds}
-                          onChange={(hideTimeServiceTypeIds) => setRuleForm({ ...ruleForm, hideTimeServiceTypeIds })}
-                          placeholder="Selecionar serviços..."
-                          searchPlaceholder="Buscar serviço..."
-                          emptyMessage="Nenhum serviço encontrado."
-                          ariaLabel="Selecionar serviços sem horário específico"
-                        />
-                        <p className="text-xs text-muted-foreground">Se o agendamento tiver ao menos um serviço selecionado, a mensagem exibirá a faixa entre 08h e 18h.</p>
-                      </div>
-                    ) : null}
+                  <div className="space-y-2">
+                    <Label>Serviços sem horário específico</Label>
+                    <MultiSelect
+                      options={serviceOptions}
+                      selected={ruleForm.hideTimeServiceTypeIds}
+                      onChange={(hideTimeServiceTypeIds) => setRuleForm({ ...ruleForm, hideTimeServiceTypeIds })}
+                      placeholder="Selecionar serviços..."
+                      searchPlaceholder="Buscar serviço..."
+                      emptyMessage="Nenhum serviço encontrado."
+                      ariaLabel="Selecionar serviços sem horário específico"
+                    />
                   </div>
                 ) : null}
                 <div className="space-y-2">
