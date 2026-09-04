@@ -955,6 +955,9 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                 <Building2 className="h-4 w-4" />
                 <span>{contract.clientCompanyName ?? client?.companyName ?? "Cliente"}</span>
               </Link>
+              <p className="mt-1 font-mono text-sm text-muted-foreground">
+                Código financeiro: {contract.financialCode || "Não atribuído"}
+              </p>
               <div className="mt-2 space-y-1 text-sm text-muted-foreground">
                 <div className="flex items-center gap-2">
                   <Calendar className="h-4 w-4" />

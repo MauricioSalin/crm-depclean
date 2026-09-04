@@ -101,10 +101,10 @@ test("ações de excluir usam a mesma cor das demais ações nos menus", async (
   })
 })
 
-test("ações de excluir nos formulários são ghost, vermelhas e sem borda", async ({ page }) => {
+test("ações de excluir nos formulários preservam o estilo definido", async ({ page }) => {
   for (const form of [
-    { path: "/clientes/client-e2e/editar", dialogTitle: "Excluir cliente" },
-    { path: "/contratos/contract-e2e/editar", dialogTitle: "Excluir contrato" },
+    { path: "/clientes/client-e2e/editar", dialogTitle: "Excluir cliente", borderWidth: "0px" },
+    { path: "/contratos/contract-e2e/editar", dialogTitle: "Excluir contrato", borderWidth: "1px" },
   ]) {
     await page.goto(form.path)
 
@@ -112,6 +112,10 @@ test("ações de excluir nos formulários são ghost, vermelhas e sem borda", as
     await expect(deleteButton).toBeVisible()
     await expect(deleteButton).toHaveClass(/text-destructive/)
     await expect(deleteButton).toHaveClass(/hover:bg-destructive\/10/)
+
+    if (form.borderWidth === "1px") {
+      await expect(deleteButton).toHaveClass(/border-destructive/)
+    }
 
     const styles = await deleteButton.evaluate((element) => {
       const computed = getComputedStyle(element)
@@ -124,10 +128,10 @@ test("ações de excluir nos formulários são ghost, vermelhas e sem borda", as
     })
 
     expect(styles).toEqual({
-      borderTopWidth: "0px",
-      borderRightWidth: "0px",
-      borderBottomWidth: "0px",
-      borderLeftWidth: "0px",
+      borderTopWidth: form.borderWidth,
+      borderRightWidth: form.borderWidth,
+      borderBottomWidth: form.borderWidth,
+      borderLeftWidth: form.borderWidth,
     })
 
     await deleteButton.click()

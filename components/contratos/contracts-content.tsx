@@ -368,6 +368,7 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[220px] min-w-[220px]">Contrato</TableHead>
+                <TableHead className="w-[120px] min-w-[120px]">Código</TableHead>
                 <TableHead className="hidden w-[500px] min-w-[440px] sm:table-cell">Cliente</TableHead>
                 <TableHead className="hidden md:table-cell">Valor</TableHead>
                 <TableHead className="hidden lg:table-cell">Vigência</TableHead>
@@ -381,6 +382,7 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
                   rows={5}
                   columns={[
                     { withIcon: true, width: "w-32" },
+                    { width: "w-16" },
                     { className: "hidden sm:table-cell", width: "w-48" },
                     { className: "hidden md:table-cell", width: "w-24" },
                     { className: "hidden lg:table-cell", width: "w-32" },
@@ -389,7 +391,7 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
                   ]}
                 />
               ) : filteredContracts.length === 0 ? (
-                <TableEmptyState colSpan={6} icon={FileText} title="Nenhum contrato encontrado." />
+                <TableEmptyState colSpan={7} icon={FileText} title="Nenhum contrato encontrado." />
               ) : (
                 filteredContracts.map((contract) => {
                   const paidInstallments = contract.installments.filter((item) => item.status === "paid").length
@@ -425,6 +427,7 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
                           </div>
                         </div>
                       </TableCell>
+                      <TableCell className="font-mono text-sm">{contract.financialCode || "—"}</TableCell>
                       <TableCell className="hidden w-[500px] max-w-[500px] sm:table-cell">
                         <div className="flex min-w-0 items-center gap-2">
                           <Building2 className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -590,6 +593,9 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
                             <p className="min-w-0 truncate text-xs text-muted-foreground">{contract.clientCompanyName}</p>
                             {contract.isClientDelinquent ? <BusinessStatusBadge status="delinquent" /> : null}
                           </div>
+                          <p className="mt-1 font-mono text-xs text-muted-foreground">
+                            Código financeiro: {contract.financialCode || "—"}
+                          </p>
                         </div>
                       </div>
                       <div className="space-y-2 text-sm">

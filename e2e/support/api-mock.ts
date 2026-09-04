@@ -9,6 +9,7 @@ const TOMORROW = "2026-07-29"
 
 export const clientFixture = {
   id: "client-e2e",
+  financialCode: "115",
   companyName: "Condomínio E2E",
   cnpj: "00.000.000/0001-00",
   responsibleName: "Responsável E2E",
@@ -174,6 +175,7 @@ export const clientServiceFixture = {
 export const contractFixture = {
   id: "contract-e2e",
   contractNumber: "E2E-0001",
+  financialCode: clientFixture.financialCode,
   clientId: clientFixture.id,
   clientCompanyName: clientFixture.companyName,
   templateId: "",

@@ -3369,8 +3369,8 @@ export function ContractForm({
           {isEditing && contractId && canDeleteContracts ? (
             <Button
               type="button"
-              variant="ghost"
-              className="max-sm:col-span-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              variant="outline"
+              className="max-sm:col-span-2 border-destructive text-destructive hover:border-destructive hover:bg-destructive/10 hover:text-destructive hover:ring-destructive/20"
               onClick={() => setRemoveDialogOpen(true)}
               disabled={deleteMutation.isPending || updateMutation.isPending}
             >

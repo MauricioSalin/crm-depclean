@@ -34,6 +34,7 @@ export type ClientAdditionalContact = {
 
 export type ClientRecord = {
   id: string
+  financialCode?: string
   additionalAssessors?: ClientAdditionalContact[]
   subSyndics?: ClientAdditionalContact[]
   companyName: string

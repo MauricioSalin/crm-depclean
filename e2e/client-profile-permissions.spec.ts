@@ -30,13 +30,38 @@ const contractViewerUser = {
   isSystemUser: false,
 }
 
-test("não exibe o atalho Acessar contrato no cabeçalho do perfil", async ({ page }) => {
+test("exibe somente o código financeiro abaixo do CNPJ no cabeçalho do perfil", async ({ page }) => {
   await installAuthenticatedSession(page)
   await installApiMock(page)
 
   await page.goto(`/clientes/${clientFixture.id}`)
 
   await expect(page.getByRole("button", { name: "Acessar contrato", exact: true })).toHaveCount(0)
+  const profileHeader = page.locator('[data-slot="card"]').filter({
+    has: page.getByRole("heading", { name: clientFixture.companyName, exact: true }),
+  }).first()
+  const cnpj = profileHeader.getByText(clientFixture.cnpj, { exact: true })
+  const financialCode = profileHeader.getByLabel("Código financeiro", { exact: true })
+
+  await expect(financialCode).toHaveText(`Cód. ${clientFixture.financialCode}`)
+  await expect(financialCode.locator("svg")).toHaveCount(0)
+
+  const cnpjBox = await cnpj.boundingBox()
+  const financialCodeBox = await financialCode.boundingBox()
+  expect(cnpjBox).not.toBeNull()
+  expect(financialCodeBox).not.toBeNull()
+  expect(financialCodeBox!.y).toBeGreaterThanOrEqual(cnpjBox!.y + cnpjBox!.height)
+})
+
+test("exibe o código financeiro como somente leitura no cadastro", async ({ page }) => {
+  await installAuthenticatedSession(page)
+  await installApiMock(page)
+
+  await page.goto(`/clientes/${clientFixture.id}/editar`)
+
+  const financialCode = page.getByLabel("Código financeiro", { exact: true })
+  await expect(financialCode).toHaveValue(clientFixture.financialCode)
+  await expect(financialCode).toHaveAttribute("readonly", "")
 })
 
 test("exibe hífen sem ícone para equipe não definida na aba Serviços", async ({ page }) => {
@@ -84,6 +109,7 @@ test("exibe as durações e cláusulas salvas nos perfis", async ({ page }) => {
   ).toBeVisible()
 
   await page.goto(`/contratos/${contractFixture.id}?tab=agenda`)
+  await expect(page.getByText(`Código financeiro: ${contractFixture.financialCode}`, { exact: true })).toBeVisible()
   await expect(page.getByRole("columnheader", { name: "Ordenar por Duração", exact: true })).toBeVisible()
   await expect(
     page.getByRole("row").filter({ hasText: serviceFixture.name }).getByText("120 minutos", { exact: true }),

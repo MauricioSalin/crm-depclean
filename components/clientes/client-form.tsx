@@ -863,6 +863,16 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
                 required
               />
             </div>
+            <div className="space-y-2 md:w-[180px]">
+              <Label htmlFor="financialCode">Código financeiro</Label>
+              <Input
+                id="financialCode"
+                value={client?.financialCode || ""}
+                placeholder={client ? "Não atribuído" : "Gerado ao salvar"}
+                readOnly
+                aria-readonly="true"
+              />
+            </div>
           </div>
 
           {/* Linha 2: Tipo + Responsável */}

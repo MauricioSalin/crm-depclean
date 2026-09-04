@@ -33,14 +33,18 @@ test("exibe a inadimplência ao lado do cliente e amplia a coluna de nome", asyn
   await page.goto("/contratos")
 
   const contractHeader = page.getByRole("columnheader", { name: "Contrato" })
+  const financialCodeHeader = page.getByRole("columnheader", { name: "Código" })
   const clientHeader = page.getByRole("columnheader", { name: "Cliente" })
   await expect(contractHeader).toHaveClass(/w-\[220px\]/)
+  await expect(financialCodeHeader).toBeVisible()
   await expect(clientHeader).toHaveClass(/w-\[500px\]/)
 
   const contractRow = page.getByRole("link", { name: `Abrir contrato ${contractFixture.contractNumber}` })
-  const clientCell = contractRow.getByRole("cell").nth(1)
-  const statusCell = contractRow.getByRole("cell").nth(4)
+  const financialCodeCell = contractRow.getByRole("cell").nth(1)
+  const clientCell = contractRow.getByRole("cell").nth(2)
+  const statusCell = contractRow.getByRole("cell").nth(5)
 
+  await expect(financialCodeCell).toHaveText(contractFixture.financialCode)
   await expect(clientCell).toContainText(contractFixture.clientCompanyName)
   await expect(clientCell.getByText("Inadimplente", { exact: true })).toBeVisible()
   await expect(statusCell.getByText("Inadimplente", { exact: true })).toHaveCount(0)

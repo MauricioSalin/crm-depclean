@@ -1092,7 +1092,10 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                 </Badge>
                 {client.isDelinquent ? <BusinessStatusBadge status="delinquent" /> : null}
               </div>
-              <p className="font-mono text-sm text-muted-foreground">{formatCNPJ(client.cnpj)}</p>
+              <div className="space-y-1 font-mono text-sm text-muted-foreground">
+                <p>{formatCNPJ(client.cnpj)}</p>
+                <p aria-label="Código financeiro">Cód. {client.financialCode || "—"}</p>
+              </div>
 
               {hasClientDirectContact ? (
                 <div className="space-y-2 text-sm">
@@ -1285,6 +1288,10 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                   <TableRow>
                     <TableCell className="text-muted-foreground">CNPJ</TableCell>
                     <TableCell className="font-medium">{formatCNPJ(client.cnpj)}</TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell className="text-muted-foreground">Código financeiro</TableCell>
+                    <TableCell className="font-mono font-medium">{client.financialCode || "Não atribuído"}</TableCell>
                   </TableRow>
                   <TableRow>
                     <TableCell className="text-muted-foreground">Responsável</TableCell>

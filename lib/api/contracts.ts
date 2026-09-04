@@ -83,6 +83,7 @@ export type ContractRecord = {
   id: string
   downPaymentDueDateMode?: "signature_plus_7"
   contractNumber: string
+  financialCode?: string
   clientId: string
   clientCompanyName?: string | null
   templateId: string

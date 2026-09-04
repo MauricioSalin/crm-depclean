@@ -292,6 +292,7 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
           <Table containerClassName="md:h-full" onSortChange={() => setCurrentPage(1)}>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-[110px] min-w-[110px]">Código</TableHead>
                 <TableHead>Cliente</TableHead>
                 <TableHead>CNPJ</TableHead>
                 <TableHead className="hidden lg:table-cell">Responsável</TableHead>
@@ -305,6 +306,7 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
                 <TableSkeletonRows
                   rows={5}
                   columns={[
+                    { width: "w-16" },
                     { withIcon: true, width: "w-40" },
                     { width: "w-32" },
                     { className: "hidden lg:table-cell", width: "w-36" },
@@ -314,7 +316,7 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
                   ]}
                 />
               ) : filteredClients.length === 0 ? (
-                <TableEmptyState colSpan={6} icon={Building2} title="Nenhum cliente encontrado." />
+                <TableEmptyState colSpan={7} icon={Building2} title="Nenhum cliente encontrado." />
               ) : (
                 filteredClients.map((client) => {
                   const clientType = getClientTypeById(client.clientTypeId)
@@ -324,6 +326,9 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
 
                   return (
                     <TableRow key={client.id}>
+                      <TableCell className="whitespace-nowrap font-mono text-muted-foreground">
+                        Cód. {client.financialCode || "—"}
+                      </TableCell>
                       <TableCell>
                         <Link href={getClientProfileHref(client.id)} className="flex items-center gap-3">
                           <div
@@ -449,6 +454,12 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
                             </Badge>
                           </div>
                           <p className="mt-2 text-xs text-muted-foreground font-mono">{formatCNPJ(client.cnpj)}</p>
+                          <p
+                            className="mt-1 font-mono text-xs text-muted-foreground"
+                            aria-label="Código financeiro"
+                          >
+                            Cód. {client.financialCode || "—"}
+                          </p>
                         </div>
                       </div>
                       <div className="space-y-2 text-sm">
