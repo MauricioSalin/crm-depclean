@@ -58,7 +58,7 @@ test("separa nome e CNPJ e mantém o badge alinhado no mobile", async ({ page })
   const tableBadge = nameCell.getByText("Inadimplente", { exact: true })
 
   await expect(page.getByRole("columnheader").first()).toHaveText("Código")
-  await expect(financialCodeCell).toHaveText(`Cód. ${clientFixture.financialCode}`)
+  await expect(financialCodeCell).toHaveText(clientFixture.financialCode)
   await expect(nameCell).not.toContainText(clientFixture.cnpj)
   await expect(nameCell).not.toContainText("Cód.")
   await expect(cnpjCell).toHaveText(clientFixture.cnpj)

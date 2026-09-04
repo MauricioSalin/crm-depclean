@@ -327,7 +327,7 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
                   return (
                     <TableRow key={client.id}>
                       <TableCell className="whitespace-nowrap font-mono text-muted-foreground">
-                        Cód. {client.financialCode || "—"}
+                        {client.financialCode || "—"}
                       </TableCell>
                       <TableCell>
                         <Link href={getClientProfileHref(client.id)} className="flex items-center gap-3">
