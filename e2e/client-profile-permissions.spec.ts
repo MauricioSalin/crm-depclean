@@ -229,6 +229,7 @@ test("persiste o pagamento da parcela e sincroniza cliente, contrato e inadimpl�
   let clientState = { ...clientFixture, isDelinquent: true }
   let contractState = {
     ...contractFixture,
+    status: "closed" as const,
     isClientDelinquent: true,
     installmentsCount: 1,
     installments: [{
@@ -356,6 +357,7 @@ test("mantém a parcela inalterada quando a atualização falha", async ({ page 
   const installmentId = "e2e-0001-inst-1"
   const overdueContract = {
     ...contractFixture,
+    status: "closed" as const,
     installmentsCount: 1,
     installments: [{
       id: installmentId,
@@ -409,6 +411,57 @@ test("mantém a parcela inalterada quando a atualização falha", async ({ page 
   await expect(page.getByText("Falha simulada ao salvar a parcela.", { exact: true })).toBeVisible()
   await expect(installmentRow.getByText("Vencida", { exact: true })).toBeVisible()
   await expect(installmentRow.getByText("Paga", { exact: true })).toHaveCount(0)
+})
+
+test("exibe parcelas somente de contratos assinados no perfil do cliente", async ({ page }) => {
+  await installAuthenticatedSession(page)
+  await installApiMock(page)
+
+  const signedContract = {
+    ...contractFixture,
+    status: "closed" as const,
+    contractNumber: "E2E-ASSINADO",
+    installmentsCount: 1,
+    installments: [{
+      id: "signed-installment",
+      number: 1,
+      value: 4_200,
+      dueDate: "2026-10-10T03:00:00.000Z",
+      status: "pending" as const,
+      paymentMethod: "",
+      notes: "",
+      createdAt: "2026-09-01T12:00:00.000Z",
+    }],
+  }
+  const canceledContract = {
+    ...signedContract,
+    id: "contract-canceled",
+    contractNumber: "E2E-CANCELADO",
+    status: "canceled" as const,
+    installments: signedContract.installments.map((installment) => ({
+      ...installment,
+      id: "canceled-installment",
+      status: "overdue" as const,
+    })),
+  }
+
+  await page.route("**/api/v1/contracts**", async (route) => {
+    if (route.request().method() === "GET" && new URL(route.request().url()).pathname === "/api/v1/contracts") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json; charset=utf-8",
+        body: JSON.stringify({ success: true, data: [signedContract, canceledContract] }),
+      })
+      return
+    }
+    await route.fallback()
+  })
+
+  await page.goto(`/clientes/${clientFixture.id}?tab=parcelas`)
+
+  await expect(page.getByRole("tab", { name: "Parcelas (1)", exact: true })).toBeVisible()
+  await expect(page.getByText("E2E-ASSINADO", { exact: true })).toBeVisible()
+  await expect(page.getByText("E2E-CANCELADO", { exact: true })).toHaveCount(0)
 })
 
 test("o perfil do cliente respeita as permissões do menu e lista os serviços", async ({ page }) => {

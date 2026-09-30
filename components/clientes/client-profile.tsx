@@ -84,6 +84,7 @@ import {
   isClosedClicksignContractStatus,
   isContractEligibleToMarkAsRenewed,
   isContractRenewed,
+  isContractExpiredByValidity,
   isOperationallyActiveContract,
   normalizeClicksignContractStatus,
 } from "@/lib/contract-status"
@@ -303,9 +304,13 @@ const getClientExtraStatusBadge = (status: ClientExtraStatus) => {
 const getClientContractStatusBadge = (contract: {
   status: string
   renewalStatus?: "renewed"
+  endDate?: string | null
 }) => {
   if (isContractRenewed(contract)) {
     return <Badge className="shrink-0 bg-blue-100 text-blue-700 hover:bg-blue-100">Renovado</Badge>
+  }
+  if (isContractExpiredByValidity(contract)) {
+    return <Badge className="shrink-0 bg-red-100 text-red-700 hover:bg-red-100">Vencido</Badge>
   }
   const normalized = normalizeClicksignContractStatus(contract.status)
   const className =
@@ -888,7 +893,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
   }, [informativePdfJob])
 
   const allInstallments = useMemo<ClientContractInstallmentRecord[]>(
-    () => clientContracts.flatMap((contract) =>
+    () => clientContracts.filter((contract) => isClosedClicksignContractStatus(contract.status)).flatMap((contract) =>
       contract.installments.map((installment) => ({
           ...installment,
           source: "contract" as const,
@@ -1483,7 +1488,9 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                         <div>
                           <p className="font-medium">{formatCurrency(contract.totalValue)}</p>
                           <p className="text-xs text-muted-foreground">
-                            {paidInstallments}/{contract.installmentsCount} parcelas
+                            {isClosedClicksignContractStatus(contract.status)
+                              ? `${paidInstallments}/${contract.installmentsCount} parcelas`
+                              : "Sem parcelas ativas"}
                           </p>
                         </div>
                       </TableCell>
