@@ -14,6 +14,8 @@ import {
 } from "@/components/ui/dialog"
 import {
   defaultDocumentCorners,
+  documentCanvasBlob,
+  prepareDocumentScanSource,
   renderScannedDocument,
   type DocumentCorners,
   type DocumentPoint,
@@ -28,10 +30,6 @@ interface DocumentScannerDialogProps {
 
 type CornerKey = keyof DocumentCorners
 
-function canvasToBlob(canvas: HTMLCanvasElement) {
-  return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.9))
-}
-
 export function DocumentScannerDialog({
   open,
   sourceFile,
@@ -41,6 +39,9 @@ export function DocumentScannerDialog({
   const galleryInputRef = useRef<HTMLInputElement | null>(null)
   const sourceImageRef = useRef<HTMLImageElement | null>(null)
   const processedBlobRef = useRef<Blob | null>(null)
+  const loadVersionRef = useRef(0)
+  const sourceUrlRef = useRef("")
+  const processedUrlRef = useRef("")
   const [sourceUrl, setSourceUrl] = useState("")
   const [processedUrl, setProcessedUrl] = useState("")
   const [corners, setCorners] = useState<DocumentCorners>(defaultDocumentCorners)
@@ -50,37 +51,47 @@ export function DocumentScannerDialog({
   const [errorMessage, setErrorMessage] = useState("")
 
   const releaseSource = useCallback(() => {
-    setSourceUrl((current) => {
-      if (current) URL.revokeObjectURL(current)
-      return ""
-    })
+    if (sourceUrlRef.current) URL.revokeObjectURL(sourceUrlRef.current)
+    sourceUrlRef.current = ""
+    setSourceUrl("")
   }, [])
 
   const releaseProcessed = useCallback(() => {
     processedBlobRef.current = null
-    setProcessedUrl((current) => {
-      if (current) URL.revokeObjectURL(current)
-      return ""
-    })
+    if (processedUrlRef.current) URL.revokeObjectURL(processedUrlRef.current)
+    processedUrlRef.current = ""
+    setProcessedUrl("")
   }, [])
 
-  const loadSourceFile = useCallback((file: File) => {
+  const loadSourceFile = useCallback(async (file: File) => {
+    const version = ++loadVersionRef.current
     if (!file.type.startsWith("image/")) {
       setErrorMessage("Escolha uma foto válida para digitalizar.")
       return
     }
     releaseSource()
     releaseProcessed()
-    setSourceUrl(URL.createObjectURL(file))
     setCorners(defaultDocumentCorners())
     setAdjusting(true)
     setSourceReady(false)
     setErrorMessage("")
+    setProcessing(true)
+    try {
+      const blob = await prepareDocumentScanSource(file)
+      if (version !== loadVersionRef.current) return
+      sourceUrlRef.current = URL.createObjectURL(blob)
+      setSourceUrl(sourceUrlRef.current)
+    } catch {
+      if (version === loadVersionRef.current) setErrorMessage("Não foi possível abrir a foto. Tente uma foto menor ou anexe pela galeria.")
+    } finally {
+      if (version === loadVersionRef.current) setProcessing(false)
+    }
   }, [releaseProcessed, releaseSource])
 
   useEffect(() => {
-    if (open && sourceFile) loadSourceFile(sourceFile)
+    if (open && sourceFile) void loadSourceFile(sourceFile)
     if (!open) {
+      ++loadVersionRef.current
       releaseSource()
       releaseProcessed()
       setCorners(defaultDocumentCorners())
@@ -90,6 +101,13 @@ export function DocumentScannerDialog({
       setErrorMessage("")
     }
   }, [loadSourceFile, open, releaseProcessed, releaseSource, sourceFile])
+
+  useEffect(() => () => {
+    ++loadVersionRef.current
+    if (sourceUrlRef.current) URL.revokeObjectURL(sourceUrlRef.current)
+    if (processedUrlRef.current) URL.revokeObjectURL(processedUrlRef.current)
+    processedBlobRef.current = null
+  }, [])
 
   const moveCorner = (key: CornerKey, event: PointerEvent<HTMLButtonElement>) => {
     const container = event.currentTarget.parentElement
@@ -107,20 +125,28 @@ export function DocumentScannerDialog({
     const image = sourceImageRef.current
     if (!image || !image.naturalWidth || !image.naturalHeight) return
     setProcessing(true)
+    const version = loadVersionRef.current
     await new Promise<void>((resolve) => window.setTimeout(resolve, 0))
     try {
       const scanned = renderScannedDocument(image, image.naturalWidth, image.naturalHeight, corners, "document")
-      const blob = await canvasToBlob(scanned)
-      if (!blob) throw new Error("Não foi possível criar o arquivo digitalizado.")
+      let blob: Blob
+      try {
+        blob = await documentCanvasBlob(scanned)
+      } finally {
+        scanned.width = 0
+        scanned.height = 0
+      }
+      if (version !== loadVersionRef.current) return
       releaseProcessed()
       processedBlobRef.current = blob
-      setProcessedUrl(URL.createObjectURL(blob))
+      processedUrlRef.current = URL.createObjectURL(blob)
+      setProcessedUrl(processedUrlRef.current)
       setAdjusting(false)
       setErrorMessage("")
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Não foi possível processar a imagem.")
+      if (version === loadVersionRef.current) setErrorMessage(error instanceof Error ? error.message : "Não foi possível processar a imagem.")
     } finally {
-      setProcessing(false)
+      if (version === loadVersionRef.current) setProcessing(false)
     }
   }
 
@@ -150,7 +176,7 @@ export function DocumentScannerDialog({
           className="hidden"
           onChange={(event) => {
             const file = event.target.files?.[0]
-            if (file) loadSourceFile(file)
+            if (file) void loadSourceFile(file)
             event.currentTarget.value = ""
           }}
         />

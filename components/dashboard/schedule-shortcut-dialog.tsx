@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { PendingScheduleUploadError, remainingScheduleUploads } from "@/lib/schedule-upload"
 import { ArrowLeft, Pencil } from "lucide-react"
 import { toast } from "sonner"
 
@@ -210,9 +211,16 @@ export function ScheduleShortcutDialog({
   const uploadNaMutation = useMutation({
     mutationFn: async ({ target, files }: { target: ScheduleRecord; files: File[] }) => {
       let updatedSchedule = target
-      for (const file of files) {
-        const response = await uploadScheduleNa(target.id, file)
+      for (const [index, file] of files.entries()) {
+        let response
+        try {
+          response = await uploadScheduleNa(target.id, file)
+        } catch (error) {
+          throw new PendingScheduleUploadError(error, files.slice(index), updatedSchedule)
+        }
         updatedSchedule = response.data
+        onScheduleChange(updatedSchedule)
+        setCompletionFiles(files.slice(index + 1))
       }
       return updatedSchedule
     },
@@ -229,13 +237,19 @@ export function ScheduleShortcutDialog({
       })
     },
     onError: async (error, variables, context) => {
-      setCompletionFiles([])
       const refreshed = await getScheduleById(variables.target.id).catch(() => null)
+      const pendingFiles = error instanceof PendingScheduleUploadError
+        ? refreshed?.data ? remainingScheduleUploads(error, refreshed.data) : error.files
+        : variables.files
+      setCompletionFiles(pendingFiles)
       if (refreshed?.data) onScheduleChange(refreshed.data)
       await invalidateSchedules()
-      toast.error(getApiErrorMessage(error, "Não foi possível salvar o anexo."), {
+      const originalError = error instanceof PendingScheduleUploadError ? error.originalError : error
+      toast.error(getApiErrorMessage(originalError, "Não foi possível salvar o anexo."), {
         id: context?.toastId,
-        description: "Os arquivos enviados antes da falha permanecem salvos. Confira a lista antes de tentar novamente.",
+        description: pendingFiles.length
+          ? "Os anexos salvos foram preservados. Confira a lista e toque em Reenviar pendentes."
+          : "Os anexos foram confirmados no agendamento. Confira a lista de arquivos salvos.",
       })
     },
   })
@@ -579,10 +593,15 @@ export function ScheduleShortcutDialog({
                 renamingDocumentUrl={renameNaMutation.isPending ? renameNaMutation.variables?.documentUrl : undefined}
                 onAddFiles={(files) => {
                   if (!schedule || uploadNaMutation.isPending) return
-                  setCompletionFiles(files)
-                  uploadNaMutation.mutate({ target: schedule, files })
+                  const pendingFiles = [...completionFiles, ...files]
+                  setCompletionFiles(pendingFiles)
+                  uploadNaMutation.mutate({ target: schedule, files: pendingFiles })
                 }}
-                onRemoveFile={() => undefined}
+                onRetryFiles={() => {
+                  if (!schedule || uploadNaMutation.isPending || !completionFiles.length) return
+                  uploadNaMutation.mutate({ target: schedule, files: completionFiles })
+                }}
+                onRemoveFile={(index) => setCompletionFiles((current) => current.filter((_, fileIndex) => fileIndex !== index))}
                 onRemoveExistingAttachment={(attachment) => {
                   if (!schedule || deleteNaMutation.isPending) return
                   deleteNaMutation.mutate({ target: schedule, documentUrl: attachment.documentUrl })

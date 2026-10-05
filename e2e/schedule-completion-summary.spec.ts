@@ -22,7 +22,7 @@ test("digitaliza uma foto e a anexa ao agendamento", async ({ page }) => {
     name: "nota-de-autorizacao.svg",
     mimeType: "image/svg+xml",
     buffer: Buffer.from(`
-      <svg xmlns="http://www.w3.org/2000/svg" width="600" height="800">
+      <svg xmlns="http://www.w3.org/2000/svg" width="6000" height="8000">
         <rect width="600" height="800" fill="#efefef"/>
         <rect x="30" y="20" width="540" height="760" fill="white" stroke="#111" stroke-width="4"/>
         <text x="70" y="90" font-size="38" font-family="Arial" fill="#111">NOTA DE SERVIÇO</text>
@@ -88,6 +88,10 @@ test("digitaliza uma foto e a anexa ao agendamento", async ({ page }) => {
   await expect(scanner).toBeVisible()
   await expect(scanner.locator('input[type="file"]')).not.toHaveAttribute("capture")
   await expect(scanner.getByRole("button", { name: /^Ajustar canto/ })).toHaveCount(4)
+  await expect.poll(() => scanner.getByAltText("Documento capturado para ajuste").evaluate((element) => {
+    const image = element as HTMLImageElement
+    return Math.max(image.naturalWidth, image.naturalHeight)
+  })).toBe(2200)
   await expect(scanner.getByRole("button", { name: "Modificar foto", exact: true })).toBeVisible()
   await expect(scanner.getByRole("button", { name: "Escolher foto", exact: true })).toHaveCount(0)
   await expect(scanner.getByRole("button", { name: "Tirar outra", exact: true })).toHaveCount(0)
@@ -107,6 +111,10 @@ test("digitaliza uma foto e a anexa ao agendamento", async ({ page }) => {
   await expect(digitalizeButton.locator("svg")).toHaveCount(0)
   await digitalizeButton.click()
   await expect(scanner.getByAltText("Documento digitalizado")).toBeVisible()
+  expect(await scanner.getByAltText("Documento digitalizado").evaluate((element) => {
+    const image = element as HTMLImageElement
+    return Math.max(image.naturalWidth, image.naturalHeight)
+  })).toBeLessThanOrEqual(2200)
 
   const sendButton = scanner.getByRole("button", { name: "Enviar", exact: true })
   await expect(sendButton.locator("svg")).toHaveCount(0)

@@ -63,6 +63,7 @@ import {
 } from "@/lib/schedule-availability"
 import { canAccessScheduleCompletion, canStartSchedule } from "@/lib/schedule-permissions"
 import { cacheSavedSchedule } from "@/lib/schedule-query-cache"
+import { PendingScheduleUploadError, remainingScheduleUploads } from "@/lib/schedule-upload"
 import { scheduleDisposalValidationMessage, type ScheduleDisposalType } from "@/lib/schedule-disposal"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -911,9 +912,17 @@ export function AgendamentosContent({
   const uploadNaMutation = useMutation({
     mutationFn: async ({ schedule, files }: { schedule: ScheduleRecord; files: File[] }) => {
       let updatedSchedule = schedule
-      for (const file of files) {
-        const response = await uploadScheduleNa(schedule.id, file)
+      for (const [index, file] of files.entries()) {
+        let response
+        try {
+          response = await uploadScheduleNa(schedule.id, file)
+        } catch (error) {
+          throw new PendingScheduleUploadError(error, files.slice(index), updatedSchedule)
+        }
         updatedSchedule = response.data
+        setCompletionTarget((current) => current?.id === updatedSchedule.id ? updatedSchedule : current)
+        setSelectedSchedule((current) => current?.id === updatedSchedule.id ? updatedSchedule : current)
+        setCompletionFiles(files.slice(index + 1))
       }
       return updatedSchedule
     },
@@ -932,16 +941,22 @@ export function AgendamentosContent({
       })
     },
     onError: async (error, variables, context) => {
-      setCompletionFiles([])
       const refreshed = await getScheduleById(variables.schedule.id).catch(() => null)
+      const pendingFiles = error instanceof PendingScheduleUploadError
+        ? refreshed?.data ? remainingScheduleUploads(error, refreshed.data) : error.files
+        : variables.files
+      setCompletionFiles(pendingFiles)
       if (refreshed?.data) {
         setCompletionTarget((current) => current?.id === refreshed.data.id ? refreshed.data : current)
         setSelectedSchedule((current) => current?.id === refreshed.data.id ? refreshed.data : current)
       }
       await invalidateSchedules()
-      toast.error(getApiErrorMessage(error, "Não foi possível salvar o anexo."), {
+      const originalError = error instanceof PendingScheduleUploadError ? error.originalError : error
+      toast.error(getApiErrorMessage(originalError, "Não foi possível salvar o anexo."), {
         id: context?.toastId,
-        description: "Os arquivos enviados antes da falha permanecem salvos. Confira a lista antes de tentar novamente.",
+        description: pendingFiles.length
+          ? "Os anexos salvos foram preservados. Confira a lista e toque em Reenviar pendentes."
+          : "Os anexos foram confirmados no agendamento. Confira a lista de arquivos salvos.",
       })
     },
   })
@@ -1442,10 +1457,15 @@ export function AgendamentosContent({
                 renamingDocumentUrl={renameNaMutation.isPending ? renameNaMutation.variables?.documentUrl : undefined}
                 onAddFiles={(files) => {
                   if (!completionTarget || uploadNaMutation.isPending) return
-                  setCompletionFiles(files)
-                  uploadNaMutation.mutate({ schedule: completionTarget, files })
+                  const pendingFiles = [...completionFiles, ...files]
+                  setCompletionFiles(pendingFiles)
+                  uploadNaMutation.mutate({ schedule: completionTarget, files: pendingFiles })
                 }}
-                onRemoveFile={() => undefined}
+                onRetryFiles={() => {
+                  if (!completionTarget || uploadNaMutation.isPending || !completionFiles.length) return
+                  uploadNaMutation.mutate({ schedule: completionTarget, files: completionFiles })
+                }}
+                onRemoveFile={(index) => setCompletionFiles((current) => current.filter((_, fileIndex) => fileIndex !== index))}
                 onRemoveExistingAttachment={(attachment) => {
                   if (!completionTarget || deleteNaMutation.isPending) return
                   deleteNaMutation.mutate({ schedule: completionTarget, documentUrl: attachment.documentUrl })

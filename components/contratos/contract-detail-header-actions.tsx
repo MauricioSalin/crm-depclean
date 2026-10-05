@@ -56,7 +56,7 @@ export function ContractDetailHeaderActions({ contractId }: ContractDetailHeader
       {contractQuery.isLoading ? (
         <Skeleton className="h-9 flex-1 rounded-full sm:w-[150px] sm:flex-initial" />
       ) : null}
-      {canEditContracts && contract && !isContractSigned(contract) ? (
+      {canEditContracts && contract && (!isContractSigned(contract) || contract.isAwaitingSchedules) ? (
         <Link href={withReturnTo(`/contratos/${contractId}/editar`, currentHref)} className="flex-1 sm:flex-initial">
           <Button className="w-full bg-primary hover:bg-primary/90">
             <Edit className="mr-2 h-4 w-4" />

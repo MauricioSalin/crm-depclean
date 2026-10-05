@@ -43,6 +43,7 @@ interface CompletionNaAttachmentsProps {
   removingDocumentUrl?: string
   renamingDocumentUrl?: string
   onAddFiles: (files: File[]) => void
+  onRetryFiles: () => void
   onRemoveFile: (index: number) => void
   onRemoveExistingAttachment: (attachment: ScheduleNaAttachmentRecord, index: number) => void
   onRenameExistingAttachment: (attachment: ScheduleNaAttachmentRecord, fileName: string) => void
@@ -105,6 +106,7 @@ export function CompletionNaAttachments({
   removingDocumentUrl,
   renamingDocumentUrl,
   onAddFiles,
+  onRetryFiles,
   onRemoveFile,
   onRemoveExistingAttachment,
   onRenameExistingAttachment,
@@ -386,7 +388,7 @@ export function CompletionNaAttachments({
               <p className="truncate text-sm font-medium">{file.name}</p>
               <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 {uploading ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
-                {uploading ? "Salvando no agendamento" : "Aguardando envio"} • {formatFileSize(file.size)}
+                {uploading ? "Salvando no agendamento" : "Envio pendente"} • {formatFileSize(file.size)}
               </p>
             </div>
             <Button
@@ -403,6 +405,12 @@ export function CompletionNaAttachments({
           </div>
         ))}
       </div>
+
+      {files.length > 0 && !uploading ? (
+        <Button type="button" variant="outline" className="mt-3" disabled={disabled} onClick={onRetryFiles}>
+          Reenviar pendentes
+        </Button>
+      ) : null}
 
       <AlertDialog
         open={Boolean(pendingRemoval)}

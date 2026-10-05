@@ -8,6 +8,10 @@ type ApiErrorBody = {
 function normalizeTechnicalErrorMessage(message: string) {
   const normalized = message.toLowerCase()
 
+  if (normalized.includes("premature close") || normalized.includes("network error")) {
+    return "O envio foi interrompido. Confira sua conexão e tente enviar novamente."
+  }
+
   if (normalized.includes("reach files limit")) {
     return "Não foi possível enviar o arquivo porque o limite de arquivos foi atingido. Tente novamente."
   }

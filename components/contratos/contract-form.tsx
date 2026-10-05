@@ -104,6 +104,7 @@ import {
   previewContractUpdate,
   replaceContractInClicksign,
   updateContract,
+  updateContractScheduleSettings,
   updateContractFillingDraft,
   uploadContractDocument,
   type ContractFillingDraftPayload,
@@ -446,6 +447,8 @@ export function ContractForm({
   const organizationSettings = organizationSettingsQuery.data?.data ?? null
   const getClientTypeById = (id: string) => clientTypes.find((type) => type.id === id)
   const contract = contractQuery.data?.data
+  const isScheduleSettingsEditing = Boolean(isEditing && isContractSigned(contract) && contract?.isAwaitingSchedules)
+  const [confirmScheduleSettingsOpen, setConfirmScheduleSettingsOpen] = useState(false)
   const client = contract ? clients.find((c) => c.id === contract.clientId) : undefined
   const isCanceledClicksignContract =
     normalizeClicksignContractStatus(contract?.status) === "canceled" ||
@@ -1372,6 +1375,33 @@ export function ContractForm({
     },
   })
 
+  const scheduleSettingsMutation = useMutation({
+    mutationFn: () => updateContractScheduleSettings(contractId!, {
+      confirmed: true,
+      services: services.map((service) => ({
+        id: service.id,
+        recurrence: service.recurrence,
+        duration: service.duration,
+        durationType: service.durationType,
+        teamIds: service.teamIds,
+        additionalEmployeeIds: service.employeeIds,
+      })),
+    }),
+    onSuccess: async (response) => {
+      allowNavigationRef.current = true
+      setDraftBaseline(draftSnapshotRef.current)
+      setConfirmScheduleSettingsOpen(false)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["contract", response.data.id] }),
+        queryClient.invalidateQueries({ queryKey: ["contracts"] }),
+        queryClient.invalidateQueries({ queryKey: ["contract-schedule-plan", response.data.id] }),
+      ])
+      toast.success("Alterações salvas. Os agendamentos foram criados novamente para revisão.")
+      router.replace(getContractProfileHrefAfterSave(response.data.id))
+    },
+    onError: (error) => toast.error(getApiErrorMessage(error, "Não foi possível recriar os agendamentos.")),
+  })
+
   const fillingDraftMutation = useMutation({
     mutationFn: ({ id, ...payload }: ContractFillingDraftPayload & { id?: string }) => id
       ? updateContractFillingDraft(id, payload)
@@ -1823,6 +1853,10 @@ export function ContractForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isScheduleSettingsEditing) {
+      if (!scheduleSettingsMutation.isPending) setConfirmScheduleSettingsOpen(true)
+      return
+    }
     const submitter = (e.nativeEvent as SubmitEvent).submitter as HTMLElement | null
     const submitIntent = submitter?.dataset.contractAction ?? "document"
     if (
@@ -2352,7 +2386,7 @@ export function ContractForm({
     )
   }
 
-  if (isEditing && isContractSigned(contract)) {
+  if (isEditing && isContractSigned(contract) && !isScheduleSettingsEditing) {
     return (
       <Card className="p-8 text-center">
         <FileText className="mx-auto mb-3 h-8 w-8 text-primary" />
@@ -2367,6 +2401,11 @@ export function ContractForm({
 
   return (
     <form noValidate onSubmit={handleSubmit} className="space-y-6">
+      {isScheduleSettingsEditing ? (
+        <p className="text-sm text-muted-foreground">
+          Na fase de agendamentos, você pode editar a duração, a recorrência individual, as equipes e os funcionários dos serviços. Os dados do contrato assinado permanecem bloqueados.
+        </p>
+      ) : null}
       <div className="flex flex-wrap justify-end gap-2">
         <Button
           type="button"
@@ -2390,6 +2429,7 @@ export function ContractForm({
           data-contract-action={isEditing ? "save" : undefined}
           onClick={isEditing ? undefined : () => saveFillingDraft()}
           disabled={
+            scheduleSettingsMutation.isPending ||
             fillingDraftMutation.isPending ||
             previewMutation.isPending ||
             previewUpdateMutation.isPending ||
@@ -2398,7 +2438,7 @@ export function ContractForm({
           }
         >
           <Save className="mr-2 h-4 w-4" />
-          {fillingDraftMutation.isPending || updateMutation.isPending
+          {scheduleSettingsMutation.isPending || fillingDraftMutation.isPending || updateMutation.isPending
             ? "Salvando..."
             : isEditing
               ? contract?.internalStatus === "filling"
@@ -2406,7 +2446,7 @@ export function ContractForm({
                 : "Salvar"
               : "Salvar Rascunho"}
         </Button>
-        {isEditing ? (
+        {isEditing && !isScheduleSettingsEditing ? (
           <Button
             type="submit"
             data-contract-action="document"
@@ -2434,6 +2474,7 @@ export function ContractForm({
         ) : null}
       </div>
 
+      <fieldset disabled={isScheduleSettingsEditing} className="min-w-0 space-y-6">
       {/* Client Selection */}
       <Card className="p-4 sm:p-6">
         <h3 className="font-semibold mb-4 flex items-center gap-2">
@@ -2459,7 +2500,7 @@ export function ContractForm({
                   role="combobox"
                   aria-label="Selecionar cliente"
                   className="w-full justify-between font-normal"
-                  disabled={isEditing && contract?.internalStatus !== "filling"}
+                  disabled={isScheduleSettingsEditing || (isEditing && contract?.internalStatus !== "filling")}
                 >
                   {selectedClientId
                     ? selectedClient?.companyName
@@ -3012,6 +3053,8 @@ export function ContractForm({
         </div>
       </Card>
 
+      </fieldset>
+
       {/* Services */}
       <Card className="p-4 sm:p-6">
         <div className="flex items-center justify-between mb-4">
@@ -3019,7 +3062,7 @@ export function ContractForm({
             <Briefcase className="w-5 h-5 text-primary" />
             Serviços do Contrato
           </h3>
-          <Button type="button" variant="outline" size="sm" onClick={addService}>
+          <Button type="button" variant="outline" size="sm" onClick={addService} disabled={isScheduleSettingsEditing}>
             <Plus className="w-4 h-4 mr-2" />
             Adicionar Serviço
           </Button>
@@ -3049,6 +3092,7 @@ export function ContractForm({
                       <TableCell className="w-[300px] py-3 align-top">
                         <SearchableSelect
                           value={service.serviceTypeId}
+                          disabled={isScheduleSettingsEditing}
                           onValueChange={(v) => {
                             if (service.isRecurrenceService) {
                               updateRecurrenceServiceType(v)
@@ -3079,7 +3123,7 @@ export function ContractForm({
                           searchPlaceholder="Buscar informativo..."
                           emptyMessage="Nenhum informativo encontrado."
                           includeAll={false}
-                          disabled={!service.serviceTypeId}
+                          disabled={isScheduleSettingsEditing || !service.serviceTypeId}
                           className="w-full min-w-[230px]"
                         />
                       </TableCell>
@@ -3098,7 +3142,7 @@ export function ContractForm({
                           searchPlaceholder="Buscar certificado..."
                           emptyMessage="Nenhum certificado encontrado."
                           includeAll={false}
-                          disabled={!service.serviceTypeId}
+                          disabled={isScheduleSettingsEditing || !service.serviceTypeId}
                           className="w-full min-w-[230px]"
                         />
                       </TableCell>
@@ -3130,6 +3174,7 @@ export function ContractForm({
                       <TableCell className="py-3 align-top">
                         <Select
                           value={service.recurrence}
+                          disabled={isScheduleSettingsEditing && service.isRecurrenceService}
                           onValueChange={(v) => updateService(service.id, "recurrence", v)}
                         >
                           <SelectTrigger className="w-full">
@@ -3184,7 +3229,7 @@ export function ContractForm({
                           variant="ghost"
                           size="icon"
                           onClick={() => openServiceClausesDialog(service.id)}
-                          disabled={!service.serviceTypeId}
+                          disabled={isScheduleSettingsEditing || !service.serviceTypeId}
                           title="Editar cláusulas do serviço"
                         >
                           <FileText className="w-4 h-4" />
@@ -3197,7 +3242,7 @@ export function ContractForm({
                             variant="ghost"
                             size="icon"
                             onClick={() => removeService(service.id)}
-                            disabled={service.isRecurrenceService}
+                            disabled={isScheduleSettingsEditing || service.isRecurrenceService}
                             title={service.isRecurrenceService
                               ? "Altere o serviço automático na seção de recorrência"
                               : "Remover serviço"}
@@ -3225,6 +3270,7 @@ export function ContractForm({
 
       </Card>
 
+      <fieldset disabled={isScheduleSettingsEditing} className="min-w-0">
       {/* Contract Value */}
       <Card className="p-4 sm:p-6">
         <h3 className="font-semibold mb-4 flex items-center gap-2">
@@ -3363,10 +3409,12 @@ export function ContractForm({
         </div>
       </Card>
 
+      </fieldset>
+
       {/* Actions */}
       <div className="flex justify-end">
         <div className="grid w-full grid-cols-2 gap-3 sm:flex sm:w-auto sm:justify-end">
-          {isEditing && contractId && canDeleteContracts ? (
+          {isEditing && !isScheduleSettingsEditing && contractId && canDeleteContracts ? (
             <Button
               type="button"
               variant="outline"
@@ -3398,20 +3446,20 @@ export function ContractForm({
                     ? "w-full sm:w-auto"
                     : "w-full bg-primary hover:bg-primary/90 sm:w-auto"
                 }
-                disabled={fillingDraftMutation.isPending || previewMutation.isPending || previewUpdateMutation.isPending || updateMutation.isPending || createMutation.isPending || isFinalizingCreate}
+                disabled={scheduleSettingsMutation.isPending || fillingDraftMutation.isPending || previewMutation.isPending || previewUpdateMutation.isPending || updateMutation.isPending || createMutation.isPending || isFinalizingCreate}
               >
                 <Save className="mr-2 h-4 w-4" />
-                {fillingDraftMutation.isPending || updateMutation.isPending
+                {scheduleSettingsMutation.isPending || fillingDraftMutation.isPending || updateMutation.isPending
                   ? "Salvando..."
                   : contract?.internalStatus === "filling"
                     ? "Salvar Rascunho"
                     : "Salvar"}
               </Button>
-              <Button
+              {!isScheduleSettingsEditing ? <Button
                 type="submit"
                 data-contract-action="document"
                 className="w-full bg-primary hover:bg-primary/90 sm:w-auto"
-                disabled={fillingDraftMutation.isPending || previewMutation.isPending || previewUpdateMutation.isPending || updateMutation.isPending || createMutation.isPending || isFinalizingCreate}
+                disabled={scheduleSettingsMutation.isPending || fillingDraftMutation.isPending || previewMutation.isPending || previewUpdateMutation.isPending || updateMutation.isPending || createMutation.isPending || isFinalizingCreate}
               >
                 {contract?.internalStatus === "filling" ? (
                   <ArrowRight className="mr-2 h-4 w-4" />
@@ -3423,7 +3471,7 @@ export function ContractForm({
                   : contract?.internalStatus === "filling"
                     ? "Avançar"
                     : "Editar documento"}
-              </Button>
+              </Button> : null}
             </>
           ) : (
             <>
@@ -3432,7 +3480,7 @@ export function ContractForm({
                 variant="outline"
                 className="w-full sm:w-auto"
                 onClick={() => saveFillingDraft()}
-                disabled={fillingDraftMutation.isPending || previewMutation.isPending || previewUpdateMutation.isPending || updateMutation.isPending || createMutation.isPending || isFinalizingCreate}
+                disabled={scheduleSettingsMutation.isPending || fillingDraftMutation.isPending || previewMutation.isPending || previewUpdateMutation.isPending || updateMutation.isPending || createMutation.isPending || isFinalizingCreate}
               >
                 <Save className="mr-2 h-4 w-4" />
                 {fillingDraftMutation.isPending ? "Salvando..." : "Salvar Rascunho"}
@@ -3450,6 +3498,21 @@ export function ContractForm({
           )}
         </div>
       </div>
+
+      <ConfirmActionDialog
+        open={confirmScheduleSettingsOpen}
+        title="Recriar agendamentos?"
+        description="Ao salvar, os agendamentos previstos serão criados novamente com os dados atualizados. Todas as alterações já feitas nesse plano, incluindo datas, horários, serviços e responsáveis, serão perdidas. Deseja continuar?"
+        confirmLabel="Salvar e recriar agendamentos"
+        cancelLabel="Continuar editando"
+        busy={scheduleSettingsMutation.isPending}
+        onOpenChange={(open) => {
+          if (!scheduleSettingsMutation.isPending) setConfirmScheduleSettingsOpen(open)
+        }}
+        onConfirm={() => {
+          if (isScheduleSettingsEditing && !scheduleSettingsMutation.isPending) scheduleSettingsMutation.mutate()
+        }}
+      />
 
       <ConfirmActionDialog
         open={canDeleteContracts && removeDialogOpen}

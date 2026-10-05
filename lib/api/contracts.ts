@@ -325,6 +325,26 @@ export async function updateContract(id: string, payload: ContractUpdatePayload)
   return response.data
 }
 
+export type ContractScheduleSettingsPayload = {
+  confirmed: boolean
+  services: Array<{
+    id: string
+    recurrence: string
+    duration: number
+    durationType: "minutes" | "hours" | "shift" | "days"
+    teamIds: string[]
+    additionalEmployeeIds: string[]
+  }>
+}
+
+export async function updateContractScheduleSettings(id: string, payload: ContractScheduleSettingsPayload) {
+  const response = await api.patch<{ success: true; data: ContractRecord }>(
+    `/contracts/${resolveContractId(id)}/schedule-settings`,
+    payload,
+  )
+  return response.data
+}
+
 export async function markContractAsRenewed(id: string) {
   const response = await api.patch<{ success: true; data: ContractRecord }>(
     `/contracts/${resolveContractId(id)}/mark-renewed`,

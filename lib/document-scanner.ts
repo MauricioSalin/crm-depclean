@@ -20,6 +20,43 @@ export type PixelImage = {
 
 const MAX_OUTPUT_EDGE = 2200
 
+export function documentImageSize(width: number, height: number) {
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    throw new Error("Não foi possível ler as dimensões da foto.")
+  }
+  const scale = Math.min(1, MAX_OUTPUT_EDGE / Math.max(width, height))
+  return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) }
+}
+
+export function documentCanvasBlob(canvas: HTMLCanvasElement) {
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("Não foi possível preparar a foto.")), "image/jpeg", 0.9)
+  })
+}
+
+// Keep only the bounded preview while the user adjusts the document corners.
+export async function prepareDocumentScanSource(file: File) {
+  const url = URL.createObjectURL(file)
+  const image = new Image()
+  const canvas = document.createElement("canvas")
+  try {
+    image.src = url
+    await image.decode()
+    const size = documentImageSize(image.naturalWidth, image.naturalHeight)
+    canvas.width = size.width
+    canvas.height = size.height
+    const context = canvas.getContext("2d")
+    if (!context) throw new Error("Não foi possível preparar a foto.")
+    context.drawImage(image, 0, 0, size.width, size.height)
+    return await documentCanvasBlob(canvas)
+  } finally {
+    image.src = ""
+    URL.revokeObjectURL(url)
+    canvas.width = 0
+    canvas.height = 0
+  }
+}
+
 function distance(a: DocumentPoint, b: DocumentPoint) {
   return Math.hypot(a.x - b.x, a.y - b.y)
 }
@@ -175,13 +212,19 @@ export function renderScannedDocument(
   filter: DocumentScanFilter,
 ) {
   const sourceCanvas = document.createElement("canvas")
-  sourceCanvas.width = sourceWidth
-  sourceCanvas.height = sourceHeight
+  const size = documentImageSize(sourceWidth, sourceHeight)
+  sourceCanvas.width = size.width
+  sourceCanvas.height = size.height
   const sourceContext = sourceCanvas.getContext("2d", { willReadFrequently: true })
   if (!sourceContext) throw new Error("Não foi possível preparar a imagem para digitalização.")
-  sourceContext.drawImage(source, 0, 0, sourceWidth, sourceHeight)
-
-  const scanned = scanDocumentPixels(sourceContext.getImageData(0, 0, sourceWidth, sourceHeight), corners, filter)
+  let scanned: PixelImage
+  try {
+    sourceContext.drawImage(source, 0, 0, size.width, size.height)
+    scanned = scanDocumentPixels(sourceContext.getImageData(0, 0, size.width, size.height), corners, filter)
+  } finally {
+    sourceCanvas.width = 0
+    sourceCanvas.height = 0
+  }
   const outputCanvas = document.createElement("canvas")
   outputCanvas.width = scanned.width
   outputCanvas.height = scanned.height
