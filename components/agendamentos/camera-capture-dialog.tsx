@@ -10,7 +10,6 @@ interface CameraCaptureDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onCapture: (file: File) => void
-  onUseDeviceCamera: () => void
 }
 
 function cameraErrorMessage(error: unknown) {
@@ -20,10 +19,10 @@ function cameraErrorMessage(error: unknown) {
   }
   if (name === "NotFoundError") return "Nenhuma câmera foi encontrada neste aparelho."
   if (name === "NotReadableError") return "A câmera está em uso. Feche o outro aplicativo que usa a câmera e tente novamente."
-  return "Não foi possível abrir a câmera aqui. Tente novamente ou use a câmera do celular."
+  return "Não foi possível abrir a câmera aqui. Verifique a permissão da câmera ou atualize o navegador e tente novamente."
 }
 
-export function CameraCaptureDialog({ open, onOpenChange, onCapture, onUseDeviceCamera }: CameraCaptureDialogProps) {
+export function CameraCaptureDialog({ open, onOpenChange, onCapture }: CameraCaptureDialogProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const versionRef = useRef(0)
@@ -136,11 +135,6 @@ export function CameraCaptureDialog({ open, onOpenChange, onCapture, onUseDevice
         <DialogFooter className="flex-wrap gap-2">
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
           {errorMessage ? <>
-            <Button type="button" variant="outline" onClick={() => {
-              stopCamera()
-              onOpenChange(false)
-              onUseDeviceCamera()
-            }}>Usar câmera do celular</Button>
             <Button type="button" onClick={() => setAttempt((current) => current + 1)}>Tentar novamente</Button>
           </> : <Button type="button" disabled={!ready || capturing} onClick={() => void capture()}>
             {capturing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Camera className="mr-2 h-4 w-4" />}

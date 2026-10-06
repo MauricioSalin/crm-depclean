@@ -113,8 +113,6 @@ export function CompletionNaAttachments({
   onRenameExistingAttachment,
 }: CompletionNaAttachmentsProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const cameraInputRef = useRef<HTMLInputElement>(null)
-  const scannerCameraInputRef = useRef<HTMLInputElement>(null)
   const scannerGalleryInputRef = useRef<HTMLInputElement>(null)
   const scannerFileInputRef = useRef<HTMLInputElement>(null)
   const [isAndroid, setIsAndroid] = useState(false)
@@ -200,31 +198,6 @@ export function CompletionNaAttachments({
         disabled={disabled}
         onChange={(event) => {
           addFilesFromInput(event.target.files)
-          event.currentTarget.value = ""
-        }}
-      />
-      <input
-        ref={cameraInputRef}
-        type="file"
-        className="hidden"
-        accept="image/*"
-        capture="environment"
-        disabled={disabled}
-        onChange={(event) => {
-          addFilesFromInput(event.target.files)
-          event.currentTarget.value = ""
-        }}
-      />
-      <input
-        ref={scannerCameraInputRef}
-        data-testid="document-scanner-camera-input"
-        type="file"
-        className="hidden"
-        accept="image/*"
-        capture="environment"
-        disabled={disabled}
-        onChange={(event) => {
-          openScannerFromFile(event.target.files?.[0])
           event.currentTarget.value = ""
         }}
       />
@@ -510,10 +483,6 @@ export function CompletionNaAttachments({
         onCapture={(file) => {
           if (cameraMode === "scan") openScannerFromFile(file)
           else onAddFiles([file])
-        }}
-        onUseDeviceCamera={() => {
-          if (cameraMode === "scan") scannerCameraInputRef.current?.click()
-          else cameraInputRef.current?.click()
         }}
       />
     </div>

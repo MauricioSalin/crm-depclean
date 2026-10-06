@@ -75,6 +75,8 @@ test("explica permissão negada e permite repetir sem sair do atendimento", asyn
   await page.getByRole("button", { name: "Usar câmera", exact: true }).click()
   const camera = page.getByRole("dialog", { name: "Câmera do atendimento" })
   await expect(camera.getByRole("alert")).toContainText("Permita o acesso à câmera")
+  await expect(camera.getByRole("button", { name: "Usar câmera do celular", exact: true })).toHaveCount(0)
+  await expect(page.locator("input[capture]")).toHaveCount(0)
   await camera.getByRole("button", { name: "Tentar novamente", exact: true }).click()
   await expect(camera.getByRole("button", { name: "Tirar foto", exact: true })).toBeEnabled()
   await camera.getByRole("button", { name: "Cancelar", exact: true }).click()
