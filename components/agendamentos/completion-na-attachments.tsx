@@ -34,6 +34,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { DocumentScannerDialog } from "@/components/agendamentos/document-scanner-dialog"
+import { CameraCaptureDialog } from "@/components/agendamentos/camera-capture-dialog"
 
 interface CompletionNaAttachmentsProps {
   existingAttachments?: ScheduleNaAttachmentRecord[]
@@ -119,6 +120,7 @@ export function CompletionNaAttachments({
   const [isAndroid, setIsAndroid] = useState(false)
   const [scannerOpen, setScannerOpen] = useState(false)
   const [scannerSourceFile, setScannerSourceFile] = useState<File | null>(null)
+  const [cameraMode, setCameraMode] = useState<"photo" | "scan" | null>(null)
   const [pendingRemoval, setPendingRemoval] = useState<{
     attachment: ScheduleNaAttachmentRecord
     index: number
@@ -266,7 +268,7 @@ export function CompletionNaAttachments({
           variant="ghost"
           className="min-w-0 flex-1 rounded-full border border-primary/20 bg-primary/10 text-primary shadow-none hover:border-primary/35 hover:bg-primary/15 hover:text-primary"
           disabled={disabled}
-          onClick={() => cameraInputRef.current?.click()}
+          onClick={() => setCameraMode("photo")}
         >
           <Camera className="mr-2 h-4 w-4 shrink-0 text-primary" />
           <span className="truncate">Usar câmera</span>
@@ -285,7 +287,7 @@ export function CompletionNaAttachments({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="min-w-44">
-              <DropdownMenuItem onSelect={() => scannerCameraInputRef.current?.click()}>
+              <DropdownMenuItem onSelect={() => setCameraMode("scan")}>
                 <Camera />
                 Câmera
               </DropdownMenuItem>
@@ -501,6 +503,18 @@ export function CompletionNaAttachments({
           if (!open) setScannerSourceFile(null)
         }}
         onScan={(file) => onAddFiles([file])}
+      />
+      <CameraCaptureDialog
+        open={cameraMode !== null}
+        onOpenChange={(open) => { if (!open) setCameraMode(null) }}
+        onCapture={(file) => {
+          if (cameraMode === "scan") openScannerFromFile(file)
+          else onAddFiles([file])
+        }}
+        onUseDeviceCamera={() => {
+          if (cameraMode === "scan") scannerCameraInputRef.current?.click()
+          else cameraInputRef.current?.click()
+        }}
       />
     </div>
   )

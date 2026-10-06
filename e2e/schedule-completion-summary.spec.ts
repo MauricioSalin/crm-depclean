@@ -4,6 +4,8 @@ import type { ScheduleNaAttachmentRecord } from "@/lib/api/schedules"
 import { installApiMock, scheduleFixture } from "./support/api-mock"
 import { E2E_USER, installAuthenticatedSession } from "./support/session"
 
+test.use({ launchOptions: { args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"] } })
+
 function todayKey() {
   const now = new Date()
   return [now.getFullYear(), String(now.getMonth() + 1).padStart(2, "0"), String(now.getDate()).padStart(2, "0")].join("-")
@@ -187,12 +189,23 @@ test.describe("digitalização no Android", () => {
       await expect(page.getByRole("menuitem", { name: "Galeria", exact: true })).toBeVisible()
       await expect(page.getByRole("menuitem", { name: "Arquivos", exact: true })).toBeVisible()
 
-      const chooserPromise = page.waitForEvent("filechooser")
-      await page.getByRole("menuitem", { name: option, exact: true }).click()
-      const chooser = await chooserPromise
-      expect(await chooser.element().getAttribute("accept")).toBe(expectedAccept)
-      expect(await chooser.element().getAttribute("capture")).toBe(expectedCapture)
-      await chooser.setFiles(scanSource)
+      if (option === "Câmera") {
+        let openedExternalCamera = false
+        page.once("filechooser", () => { openedExternalCamera = true })
+        await page.getByRole("menuitem", { name: option, exact: true }).click()
+        const camera = page.getByRole("dialog", { name: "Câmera do atendimento" })
+        await expect(camera).toBeVisible()
+        await expect(camera.getByRole("button", { name: "Tirar foto", exact: true })).toBeEnabled()
+        await camera.getByRole("button", { name: "Tirar foto", exact: true }).click()
+        expect(openedExternalCamera).toBe(false)
+      } else {
+        const chooserPromise = page.waitForEvent("filechooser")
+        await page.getByRole("menuitem", { name: option, exact: true }).click()
+        const chooser = await chooserPromise
+        expect(await chooser.element().getAttribute("accept")).toBe(expectedAccept)
+        expect(await chooser.element().getAttribute("capture")).toBe(expectedCapture)
+        await chooser.setFiles(scanSource)
+      }
 
       await expect(scanner).toBeVisible()
       await expect(scanner.getByRole("button", { name: /^Ajustar canto/ })).toHaveCount(4)
