@@ -104,7 +104,7 @@ export function ScheduleShortcutDialog({
     setCompletionHelperEmployeeIds(target.attendanceHelpers?.map((employee) => employee.id) ?? [])
     setCompletionServiceReport(target.serviceReport || "")
     setCompletionVehiclePlate(target.attendanceVehiclePlate || "")
-    setCompletionDisposalMtrNumber(target.attendanceDisposal?.mtrNumber || "")
+    setCompletionDisposalMtrNumber(target.attendanceDisposal?.mtrNumbers?.join("\n") || target.attendanceDisposal?.mtrNumber || "")
     setCompletionDisposalType(target.attendanceDisposal?.type || "")
     setCompletionDisposalStationId(target.attendanceDisposal?.stationId || "")
     setCompletionDisposalQuantityM3(target.attendanceDisposal?.quantityM3 ?? null)
@@ -306,7 +306,7 @@ export function ScheduleShortcutDialog({
         helperEmployeeIds: completionHelperEmployeeIds,
         serviceReport: completionServiceReport,
         vehiclePlate: completionVehiclePlate,
-        disposalMtrNumber: completionDisposalMtrNumber || undefined,
+        disposalMtrNumbers: completionDisposalMtrNumber.split("\n").map((value) => value.trim()).filter(Boolean),
         disposalType: completionDisposalType || null,
         disposalStationId: completionDisposalStationId,
         disposalQuantityM3: completionDisposalQuantityM3 ?? undefined,

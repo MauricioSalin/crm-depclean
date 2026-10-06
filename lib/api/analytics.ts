@@ -85,6 +85,7 @@ export type ReportScheduleDetail = {
   attendanceVehiclePlate?: string
   attendanceDisposal?: {
     mtrNumber?: string
+  mtrNumbers?: string[]
     type: "fossa" | "gordura"
     stationId: string
     stationName: string
@@ -119,6 +120,8 @@ export type DashboardStatsRecord = {
     current: number
     expired: number
     renewed?: number
+    notRenewed?: number
+    judicial?: number
     canceled: number
   }
   currentContractsGlobalValue: number
@@ -259,7 +262,7 @@ export type ReportsAnalyticsRecord = {
     clientCompanyName: string
     totalValue: number
     status: string
-    renewalStatus?: "renewed"
+    renewalStatus?: "renewed" | "not_renewed" | "judicial"
     startDate?: string
     endDate?: string
   }>

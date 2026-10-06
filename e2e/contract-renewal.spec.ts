@@ -48,6 +48,7 @@ async function installContractMock(
       }),
     })
   })
+  return contract
 }
 
 async function installServicesMock(
@@ -772,3 +773,29 @@ test("exibe hífen sem ícone para equipe não definida no perfil do contrato", 
   await expect(emptyAssignment).toBeVisible()
   await expect(emptyAssignment.locator("xpath=ancestor::td[1]").locator("svg")).toHaveCount(0)
 })
+
+for (const [status, action, label] of [
+  ["not_renewed", "Marcar como não renovado", "Não Renovado"],
+  ["judicial", "Em Processo Judicial", "Processo Judicial"],
+] as const) {
+  test(`classifica contrato como ${label} e filtra a lista`, async ({ page }) => {
+    const contract = await installContractMock(page, { status: "closed", endDate: "2027-07-28" })
+    let marked = false
+    await page.route(`**/contracts/${contract.id}/mark-*`, async (route) => {
+      expect(route.request().method()).toBe("PATCH")
+      expect(route.request().url()).toContain(status === "judicial" ? "mark-judicial" : "mark-not-renewed")
+      marked = true
+      Object.assign(contract, { renewalStatus: status })
+      await route.fulfill({ json: { success: true, data: contract } })
+    })
+    await page.goto("/contratos")
+    await page.getByRole("button", { name: `Abrir ações do contrato ${contract.contractNumber}` }).click()
+    await page.getByRole("menuitem", { name: action, exact: true }).click()
+    const confirmation = page.getByRole("dialog", { name: `Marcar contrato como ${label.toLowerCase()}?` })
+    await confirmation.getByRole("button", { name: `Marcar como ${label.toLowerCase()}`, exact: true }).click()
+    await expect.poll(() => marked).toBe(true)
+    await expect(page.getByText(label, { exact: true }).first()).toBeVisible()
+    await page.goto(`/contratos?status=${status}`)
+    await expect(page.getByRole("button", { name: `Abrir ações do contrato ${contract.contractNumber}` })).toBeVisible()
+  })
+}

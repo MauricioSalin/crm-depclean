@@ -259,6 +259,7 @@ export async function completeSchedule(
     vehiclePlate?: string
     disposalType?: ScheduleDisposalType | null
     disposalMtrNumber?: string
+    disposalMtrNumbers?: string[]
     disposalStationId?: string
     disposalQuantityM3?: number
   },

@@ -2401,11 +2401,6 @@ export function ContractForm({
 
   return (
     <form noValidate onSubmit={handleSubmit} className="space-y-6">
-      {isScheduleSettingsEditing ? (
-        <p className="text-sm text-muted-foreground">
-          Na fase de agendamentos, você pode editar a duração, a recorrência individual, as equipes e os funcionários dos serviços. Os dados do contrato assinado permanecem bloqueados.
-        </p>
-      ) : null}
       <div className="flex flex-wrap justify-end gap-2">
         <Button
           type="button"

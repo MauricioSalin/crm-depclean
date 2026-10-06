@@ -51,7 +51,7 @@ function getClientDescription(client: ClientRecord) {
 }
 
 function getContractDescription(contract: ContractRecord) {
-  const status = isContractRenewed(contract)
+  const status = contract.renewalStatus === "not_renewed" ? "Não Renovado" : contract.renewalStatus === "judicial" ? "Processo Judicial" : isContractRenewed(contract)
     ? "Renovado"
     : getClicksignContractStatusLabel(contract.status)
   return [contract.clientCompanyName, status, formatCurrency(contract.totalValue)].filter(Boolean).join(" • ")

@@ -494,7 +494,7 @@ test("conclui o atendimento com motorista opcional, ajudantes e observações", 
   const vehiclePlateInput = page.getByLabel("Placa do veículo")
   await expect(vehiclePlateInput).toHaveAttribute("placeholder", "ABC1D23")
   await vehiclePlateInput.fill("abc1d23")
-  const mtrNumberInput = page.getByLabel("N° de MTR")
+  const mtrNumberInput = page.getByLabel("MTR", { exact: true })
   await expect(mtrNumberInput).toHaveAttribute("type", "tel")
   await expect(mtrNumberInput).toHaveAttribute("placeholder", "001234567890")
   const disposalTypeInput = page.getByRole("combobox", { name: "Selecione o tipo de descarte" })
@@ -503,6 +503,10 @@ test("conclui o atendimento com motorista opcional, ajudantes e observações", 
   expect(mtrNumberBox && disposalTypeBox && mtrNumberBox.y < disposalTypeBox.y).toBe(true)
   await mtrNumberInput.fill("MTR 001234567890")
   await expect(mtrNumberInput).toHaveValue("001234567890")
+  await page.getByRole("button", { name: "Adicionar MTR", exact: true }).click()
+  await page.getByLabel("MTR 2", { exact: true }).fill("009876543210")
+  await page.getByRole("button", { name: "Adicionar MTR", exact: true }).click()
+  await page.getByRole("button", { name: "Remover MTR 3", exact: true }).click()
   await page.getByRole("combobox", { name: "Selecione o tipo de descarte" }).click()
   await page.getByRole("option", { name: "Fossa", exact: true }).click()
   await page.getByRole("combobox", { name: "Selecione a estação" }).click()
@@ -526,7 +530,7 @@ test("conclui o atendimento com motorista opcional, ajudantes e observações", 
     helperEmployeeIds: ["employee-helper-1", "employee-helper-2"],
     serviceReport: "Atendimento concluído sem intercorrências.",
     vehiclePlate: "ABC1D23",
-    disposalMtrNumber: "001234567890",
+    disposalMtrNumbers: ["001234567890", "009876543210"],
     disposalType: "fossa",
     disposalStationId: "acqua-servicos",
     disposalQuantityM3: 2.5,
@@ -559,7 +563,8 @@ test("mostra os dados concluídos e baixa o resumo pelo botão Exportar", async 
     ],
     attendanceVehiclePlate: "ABC1D23",
     attendanceDisposal: {
-      mtrNumber: "001234567890",
+      mtrNumber: "001234567890, 009876543210",
+      mtrNumbers: ["001234567890", "009876543210"],
       type: "fossa" as const,
       stationId: "acqua-servicos",
       stationName: "ACQUA SERVIÇOS DE TRATAMENTO DE EFLUENTES",
@@ -728,7 +733,8 @@ test("mostra os dados concluídos e baixa o resumo pelo botão Exportar", async 
   await expect(page.locator('[data-slot="badge"]').filter({ hasText: "Ajudante Dois" })).toBeVisible()
   await expect(page.getByLabel("Observações")).toHaveValue("Atendimento concluído sem intercorrências.")
   await expect(page.getByLabel("Placa do veículo")).toHaveValue("ABC1D23")
-  await expect(page.getByLabel("N° de MTR")).toHaveValue("001234567890")
+  await expect(page.getByLabel("MTR 1", { exact: true })).toHaveValue("001234567890")
+  await expect(page.getByLabel("MTR 2", { exact: true })).toHaveValue("009876543210")
   await expect(page.getByText("Valor: R$ 50,00", { exact: true })).toBeVisible()
   await page.getByRole("button", { name: "Editar anexos", exact: true }).click()
   await expect(page.getByRole("heading", { name: "Anexos do atendimento" })).toBeVisible()
@@ -751,7 +757,7 @@ test("mostra os dados concluídos e baixa o resumo pelo botão Exportar", async 
     helperEmployeeIds: ["employee-helper-1", "employee-helper-2"],
     serviceReport: "Execução corrigida pelo usuário.",
     vehiclePlate: "ABC1D23",
-    disposalMtrNumber: "001234567890",
+    disposalMtrNumbers: ["001234567890", "009876543210"],
     disposalType: "fossa",
     disposalStationId: "acqua-servicos",
     disposalQuantityM3: 2.5,

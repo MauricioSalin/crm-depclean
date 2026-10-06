@@ -8,6 +8,8 @@ import { toast } from "sonner"
 import {
   AlertTriangle,
   Building2,
+  CircleX,
+  Scale,
   Calendar,
   CalendarCheck,
   CheckCircle,
@@ -303,10 +305,16 @@ const getClientExtraStatusBadge = (status: ClientExtraStatus) => {
 
 const getClientContractStatusBadge = (contract: {
   status: string
-  renewalStatus?: "renewed"
+  renewalStatus?: "renewed" | "not_renewed" | "judicial"
   endDate?: string | null
 }) => {
-  if (isContractRenewed(contract)) {
+  if (contract.renewalStatus === "not_renewed") {
+      return <Badge className="shrink-0 bg-orange-100 text-orange-800 hover:bg-orange-100">Não Renovado</Badge>
+    }
+    if (contract.renewalStatus === "judicial") {
+      return <Badge className="shrink-0 bg-purple-100 text-purple-800 hover:bg-purple-100">Processo Judicial</Badge>
+    }
+    if (isContractRenewed(contract)) {
     return <Badge className="shrink-0 bg-blue-100 text-blue-700 hover:bg-blue-100">Renovado</Badge>
   }
   if (isContractExpiredByValidity(contract)) {
@@ -432,6 +440,8 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
   } | null>(null)
   const [isGeneratingInformativePdf, setIsGeneratingInformativePdf] = useState(false)
   const [editingInstallment, setEditingInstallment] = useState<ClientInstallmentRecord | null>(null)
+  const [targetBusinessStatus, setTargetBusinessStatus] = useState<"renewed" | "not_renewed" | "judicial">("renewed")
+  const targetStatusLabel = targetBusinessStatus === "renewed" ? "Renovado" : targetBusinessStatus === "not_renewed" ? "Não Renovado" : "Processo Judicial"
   const [contractToMarkRenewed, setContractToMarkRenewed] = useState<ContractRecord | null>(null)
   const clientQuery = useQuery({
     queryKey: ["client", clientId],
@@ -475,7 +485,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
         throw new Error("Sem permissão para marcar contratos como renovados.")
       }
 
-      return markContractAsRenewed(contractId)
+      return markContractAsRenewed(contractId, targetBusinessStatus)
     },
     onSuccess: async () => {
       await Promise.all([
@@ -483,10 +493,10 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
         queryClient.invalidateQueries({ queryKey: ["analytics"] }),
       ])
       setContractToMarkRenewed(null)
-      toast.success("Contrato marcado como renovado.")
+      toast.success(`Contrato marcado como ${targetStatusLabel.toLowerCase()}.`)
     },
     onError: (error) => {
-      toast.error(getApiErrorMessage(error, "Não foi possível marcar o contrato como renovado."))
+      toast.error(getApiErrorMessage(error, "Não foi possível atualizar o status do contrato."))
     },
   })
 
@@ -1037,9 +1047,9 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
     <div className="space-y-6">
       <ConfirmActionDialog
         open={Boolean(contractToMarkRenewed)}
-        title="Marcar contrato como renovado?"
-        description="Use esta opção quando a renovação foi criada fora deste fluxo. O contrato continuará assinado e manterá suas datas de vigência, mas deixará de receber alertas de vencimento."
-        confirmLabel="Marcar como renovado"
+        title={`Marcar contrato como ${targetStatusLabel.toLowerCase()}?`}
+        description={targetBusinessStatus === "renewed" ? "Use esta opção quando a renovação foi criada fora deste fluxo. O contrato continuará assinado e manterá suas datas de vigência, mas deixará de receber alertas de vencimento." : "A classificação será atualizada. O contrato manterá sua assinatura, documentos e valores no faturamento geral."}
+        confirmLabel={`Marcar como ${targetStatusLabel.toLowerCase()}`}
         confirmVariant="default"
         confirmClassName="bg-primary hover:bg-primary/90"
         busy={markContractAsRenewedMutation.isPending}
@@ -1530,11 +1540,23 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                             {canCreateContracts && isContractEligibleToMarkAsRenewed(contract) ? (
                               <DropdownMenuItem
                                 disabled={markContractAsRenewedMutation.isPending}
-                                onSelect={() => setContractToMarkRenewed(contract)}
+                                onSelect={() => { setTargetBusinessStatus("renewed"); setContractToMarkRenewed(contract) }}
                               >
                                 <CheckCircle className="mr-2 h-4 w-4" />
                                 Marcar como renovado
                               </DropdownMenuItem>
+                            ) : null}
+                            {canCreateContracts && normalizeClicksignContractStatus(contract.status) === "closed" ? (
+                              <>
+                                <DropdownMenuItem onSelect={() => { setTargetBusinessStatus("not_renewed"); setContractToMarkRenewed(contract) }} disabled={contract.renewalStatus === "not_renewed"}>
+                                  <CircleX className="mr-2 h-4 w-4" />
+                                  Marcar como não renovado
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onSelect={() => { setTargetBusinessStatus("judicial"); setContractToMarkRenewed(contract) }} disabled={contract.renewalStatus === "judicial"}>
+                                  <Scale className="mr-2 h-4 w-4" />
+                                  Em Processo Judicial
+                                </DropdownMenuItem>
+                              </>
                             ) : null}
                           </DropdownMenuContent>
                         </DropdownMenu>

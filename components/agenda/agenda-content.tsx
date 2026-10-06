@@ -356,7 +356,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
     setCompletionHelperEmployeeIds(schedule.attendanceHelpers?.map((employee) => employee.id) ?? [])
     setCompletionServiceReport(schedule.serviceReport || "")
     setCompletionVehiclePlate(schedule.attendanceVehiclePlate || "")
-    setCompletionDisposalMtrNumber(schedule.attendanceDisposal?.mtrNumber || "")
+    setCompletionDisposalMtrNumber(schedule.attendanceDisposal?.mtrNumbers?.join("\n") || schedule.attendanceDisposal?.mtrNumber || "")
     setCompletionDisposalType(schedule.attendanceDisposal?.type || "")
     setCompletionDisposalStationId(schedule.attendanceDisposal?.stationId || "")
     setCompletionDisposalQuantityM3(schedule.attendanceDisposal?.quantityM3 ?? null)
@@ -380,7 +380,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
     setCompletionHelperEmployeeIds(schedule.attendanceHelpers?.map((employee) => employee.id) ?? [])
     setCompletionServiceReport(schedule.serviceReport || "")
     setCompletionVehiclePlate(schedule.attendanceVehiclePlate || "")
-    setCompletionDisposalMtrNumber(schedule.attendanceDisposal?.mtrNumber || "")
+    setCompletionDisposalMtrNumber(schedule.attendanceDisposal?.mtrNumbers?.join("\n") || schedule.attendanceDisposal?.mtrNumber || "")
     setCompletionDisposalType(schedule.attendanceDisposal?.type || "")
     setCompletionDisposalStationId(schedule.attendanceDisposal?.stationId || "")
     setCompletionDisposalQuantityM3(schedule.attendanceDisposal?.quantityM3 ?? null)
@@ -972,7 +972,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
         helperEmployeeIds,
         serviceReport,
         vehiclePlate,
-        disposalMtrNumber: disposalMtrNumber || undefined,
+        disposalMtrNumbers: disposalMtrNumber.split("\n").map((value) => value.trim()).filter(Boolean),
         disposalType: disposalType || null,
         disposalStationId: disposalStationId || undefined,
         disposalQuantityM3: disposalQuantityM3 ?? undefined,

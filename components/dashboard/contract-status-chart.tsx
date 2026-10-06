@@ -45,6 +45,8 @@ export function ContractStatusChart() {
     { name: "Assinados", value: statusCounts.signed, color: "#14B8A6" },
     { name: "Vigentes", value: statusCounts.current, color: "var(--primary)" },
     { name: "Vencidos", value: statusCounts.expired, color: "#EF4444" },
+    { name: "Não Renovados", value: statusCounts.notRenewed ?? 0, color: "#C2410C" },
+    { name: "Processo Judicial", value: statusCounts.judicial ?? 0, color: "#7E22CE" },
     { name: "Renovados", value: statusCounts.renewed ?? 0, color: "#6366F1" },
   ]
   const totalContracts = legendData.reduce((total, item) => total + item.value, 0)

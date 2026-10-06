@@ -137,7 +137,7 @@ export type ContractRecord = {
   status: string
   signatureUrl?: string
   signedAt?: string
-  renewalStatus?: "renewed"
+  renewalStatus?: "renewed" | "not_renewed" | "judicial"
   renewedAt?: string
   renewedContractId?: string
   renewedFromContractId?: string
@@ -345,9 +345,9 @@ export async function updateContractScheduleSettings(id: string, payload: Contra
   return response.data
 }
 
-export async function markContractAsRenewed(id: string) {
+export async function markContractAsRenewed(id: string, status: "renewed" | "not_renewed" | "judicial" = "renewed") {
   const response = await api.patch<{ success: true; data: ContractRecord }>(
-    `/contracts/${resolveContractId(id)}/mark-renewed`,
+    `/contracts/${resolveContractId(id)}/${status === "renewed" ? "mark-renewed" : status === "not_renewed" ? "mark-not-renewed" : "mark-judicial"}`,
   )
   return response.data
 }

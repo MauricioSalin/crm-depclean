@@ -76,7 +76,7 @@ export function isOperationallyActiveContract(contract: {
   endDate?: string | Date | null
 }, now = new Date()) {
   if (!isClosedClicksignContractStatus(contract.status)) return false
-  if (isContractRenewed(contract)) return false
+  if (contract.renewalStatus) return false
   if (!contract.startDate || !contract.endDate) return false
   const startDateKey = contractCivilDateKey(contract.startDate)
   const endDateKey = contractCivilDateKey(contract.endDate)
@@ -96,7 +96,7 @@ export function isContractExpiredByValidity(contract: {
 }, now = new Date()) {
   if (
     !isClosedClicksignContractStatus(contract.status) ||
-    isContractRenewed(contract) ||
+    Boolean(contract.renewalStatus) ||
     !contract.endDate
   ) return false
   const endDateKey = contractCivilDateKey(contract.endDate)
@@ -110,7 +110,7 @@ export function isContractEligibleForRenewal(contract: {
 }, now = new Date()) {
   if (
     !isClosedClicksignContractStatus(contract.status) ||
-    isContractRenewed(contract) ||
+    Boolean(contract.renewalStatus) ||
     !contract.endDate
   ) return false
   const endDateKey = contractCivilDateKey(contract.endDate)

@@ -167,11 +167,17 @@ const getRecurrenceLabel = (value: string) =>
 
 const getStatusBadge = (contract: {
   status?: string
-  renewalStatus?: "renewed"
+  renewalStatus?: "renewed" | "not_renewed" | "judicial"
   endDate?: string | null
   isAwaitingSchedules: boolean
 }) => {
-  if (isContractRenewed(contract)) {
+  if (contract.renewalStatus === "not_renewed") {
+      return <Badge className="shrink-0 bg-orange-100 text-orange-800 hover:bg-orange-100">Não Renovado</Badge>
+    }
+    if (contract.renewalStatus === "judicial") {
+      return <Badge className="shrink-0 bg-purple-100 text-purple-800 hover:bg-purple-100">Processo Judicial</Badge>
+    }
+    if (isContractRenewed(contract)) {
     return <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">Renovado</Badge>
   }
   if (isContractExpiredByValidity(contract)) {

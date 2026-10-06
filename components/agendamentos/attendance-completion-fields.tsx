@@ -1,5 +1,7 @@
 "use client"
 
+import { Button } from "@/components/ui/button"
+import { Plus, X } from "lucide-react"
 import { DatePicker } from "@/components/ui/date-picker"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -186,17 +188,23 @@ export function AttendanceCompletionFields({
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor={`${idPrefix}-disposal-mtr-number`}>N° de MTR</Label>
-        <Input
-          id={`${idPrefix}-disposal-mtr-number`}
-          type="tel"
-          inputMode="numeric"
-          pattern="[0-9]*"
-          value={disposalMtrNumber}
-          maxLength={30}
-          placeholder="001234567890"
-          onChange={(event) => onDisposalMtrNumberChange(event.target.value.replace(/\D/g, ""))}
-        />
+        {disposalMtrNumber.split("\n").map((number, index, numbers) => (
+          <div key={index} className="space-y-2">
+            <Label htmlFor={`${idPrefix}-disposal-mtr-number-${index}`}>{numbers.length > 1 ? `MTR ${index + 1}` : "MTR"}</Label>
+            <div className="flex items-center gap-2">
+              <Input id={`${idPrefix}-disposal-mtr-number-${index}`} type="tel" inputMode="numeric" pattern="[0-9]*"
+                value={number} maxLength={30} placeholder="001234567890" disabled={disabled}
+                onChange={(event) => onDisposalMtrNumberChange(numbers.map((value, position) => position === index ? event.target.value.replace(/\D/g, "") : value).join("\n"))} />
+              {index === 0 ? (
+                <Button type="button" variant="outline" size="icon" aria-label="Adicionar MTR" disabled={disabled}
+                  onClick={() => onDisposalMtrNumberChange(`${disposalMtrNumber}\n`)}><Plus className="h-4 w-4" /></Button>
+              ) : (
+                <Button type="button" variant="ghost" size="icon" aria-label={`Remover MTR ${index + 1}`} disabled={disabled}
+                  onClick={() => onDisposalMtrNumberChange(numbers.filter((_, position) => position !== index).join("\n"))}><X className="h-4 w-4" /></Button>
+              )}
+            </div>
+          </div>
+        ))}
       </div>
 
       <div className="space-y-2">
