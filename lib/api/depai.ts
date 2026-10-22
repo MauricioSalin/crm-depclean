@@ -74,7 +74,11 @@ type ApiSuccessResponse<TData> = {
 }
 
 export async function sendDepAIMessage(payload: SendDepAIMessagePayload): Promise<SendDepAIMessageResponse> {
-  const response = await api.post<ApiSuccessResponse<SendDepAIMessageResponse>>("/depai/chat", payload)
+  // Saved conversations already have their full history on the server. Sending
+  // generated reports again can exceed request validation and wastes bandwidth.
+  const requestPayload: SendDepAIMessagePayload = { ...payload }
+  if (requestPayload.conversationId?.trim()) delete requestPayload.history
+  const response = await api.post<ApiSuccessResponse<SendDepAIMessageResponse>>("/depai/chat", requestPayload)
   return response.data.data
 }
 
