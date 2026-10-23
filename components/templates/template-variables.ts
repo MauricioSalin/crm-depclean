@@ -73,6 +73,7 @@ export const TEMPLATE_VARIABLE_GROUPS: TemplateVariableGroup[] = [
       { path: "contract.remainingInstallmentsCount", label: "Quantidade de parcelas restantes", kinds: ["contract"] },
       { path: "contract.remainingInstallmentsText", label: "Resumo das parcelas subsequentes", kinds: ["contract"] },
       { path: "contract.installmentValue", label: "Valor da parcela", kinds: ["contract"] },
+      { path: "limiteEmergencias", label: "Limite de emergências", description: "Número de emergências ou ilimitado", kinds: ["contract"] },
       { path: "contract.paymentDay", label: "Dia de vencimento", kinds: ["contract"] },
       { path: "contract.firstDueDate", label: "Primeiro vencimento", kinds: ["contract"] },
       { path: "contract.firstDueDateLong", label: "Primeiro vencimento por extenso", kinds: ["contract"] },

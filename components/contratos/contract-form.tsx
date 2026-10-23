@@ -540,6 +540,7 @@ export function ContractForm({
     contract?.firstVisitDate ? String(contract.firstVisitDate).split("T")[0] : ""
   )
   const [firstVisitTime, setFirstVisitTime] = useState(contract?.firstVisitTime || "08:00")
+  const [emergencyUnlimited, setEmergencyUnlimited] = useState(contract?.emergencyUnlimited ?? false)
   const [emergencyLimitInput, setEmergencyLimitInput] = useState(String(contract?.emergencyLimit ?? 15))
   const [installmentsCountInput, setInstallmentsCountInput] = useState(
     String(contract?.installmentsCount ?? 1),
@@ -663,7 +664,8 @@ export function ContractForm({
     [activeCertificateTemplates],
   )
   const fillingDraftFormData = useMemo(() => ({
-    emergencyLimit: Number(emergencyLimitInput),
+    emergencyLimit: Number(emergencyLimitInput || 15),
+    emergencyUnlimited,
     selectedTemplateId,
     createAutomatedSchedules,
     createAutomatedInformatives,
@@ -685,6 +687,7 @@ export function ContractForm({
     })),
   }), [
     emergencyLimitInput,
+    emergencyUnlimited,
     contractRecurrenceRules,
     contractValue,
     createAutomatedInformatives,
@@ -746,11 +749,15 @@ export function ContractForm({
 
   useEffect(() => {
     if (!contract) return
-    if (!isRenewal) setEmergencyLimitInput(String(contract.emergencyLimit ?? 15))
+    if (!isRenewal) {
+      setEmergencyLimitInput(String(contract.emergencyLimit ?? 15))
+      setEmergencyUnlimited(contract.emergencyUnlimited ?? false)
+    }
 
     if (!isRenewal && contract.internalStatus === "filling") {
       const formDraft = contract.formDraft as Partial<{
         emergencyLimit: number
+        emergencyUnlimited: boolean
         selectedTemplateId: string
         createAutomatedSchedules: boolean
         createAutomatedInformatives: boolean
@@ -780,6 +787,7 @@ export function ContractForm({
 
       setSelectedClientId(contract.clientId)
       setEmergencyLimitInput(String(formDraft.emergencyLimit ?? contract.emergencyLimit ?? 15))
+      setEmergencyUnlimited(formDraft.emergencyUnlimited ?? contract.emergencyUnlimited ?? false)
       setSelectedTemplateId(formDraft.selectedTemplateId ?? "")
       setCreateAutomatedSchedules(Boolean(formDraft.createAutomatedSchedules))
       setCreateAutomatedInformatives(Boolean(formDraft.createAutomatedInformatives))
@@ -1161,7 +1169,8 @@ export function ContractForm({
     renderedHtml?: string,
     options?: { contractNumber?: string },
   ): ContractPayload => ({
-    emergencyLimit: Number(emergencyLimitInput),
+    emergencyLimit: Number(emergencyLimitInput || 15),
+    emergencyUnlimited,
     clientId: selectedClientId,
     templateId: selectedTemplateId,
     contractNumber: options?.contractNumber,
@@ -1395,7 +1404,7 @@ export function ContractForm({
   })
 
   const emergencyLimitMutation = useMutation({
-    mutationFn: () => updateContractEmergencyLimit(contractId!, Number(emergencyLimitInput)),
+    mutationFn: () => updateContractEmergencyLimit(contractId!, Number(emergencyLimitInput || 15), emergencyUnlimited),
     onSuccess: async (response) => {
       allowNavigationRef.current = true
       setDraftBaseline(draftSnapshotRef.current)
@@ -1423,8 +1432,8 @@ export function ContractForm({
           additionalEmployeeIds: service.employeeIds,
         })),
       })
-      if (Number(emergencyLimitInput) !== (contract?.emergencyLimit ?? 15)) {
-        return updateContractEmergencyLimit(contractId!, Number(emergencyLimitInput))
+      if (Number(emergencyLimitInput || 15) !== (contract?.emergencyLimit ?? 15) || emergencyUnlimited !== (contract?.emergencyUnlimited ?? false)) {
+        return updateContractEmergencyLimit(contractId!, Number(emergencyLimitInput || 15), emergencyUnlimited)
       }
       return response
     },
@@ -1895,7 +1904,7 @@ export function ContractForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (isSignedEditing && (!emergencyLimitInput.trim() || !Number.isInteger(Number(emergencyLimitInput)) || Number(emergencyLimitInput) < 0)) {
+    if (isSignedEditing && !emergencyUnlimited && (!emergencyLimitInput.trim() || !Number.isInteger(Number(emergencyLimitInput)) || Number(emergencyLimitInput) < 0)) {
       toast.error("Informe um limite inteiro de emergências maior ou igual a zero.")
       return
     }
@@ -1944,7 +1953,7 @@ export function ContractForm({
       return
     }
 
-    if (!emergencyLimitInput.trim() || !Number.isInteger(Number(emergencyLimitInput)) || Number(emergencyLimitInput) < 0) {
+    if (!emergencyUnlimited && (!emergencyLimitInput.trim() || !Number.isInteger(Number(emergencyLimitInput)) || Number(emergencyLimitInput) < 0)) {
       toast.error("Informe um limite inteiro de emergências maior ou igual a zero.")
       return
     }
@@ -2862,7 +2871,7 @@ export function ContractForm({
           <FileText className="w-5 h-5 text-primary" />
           Dados do Contrato
         </h3>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-[176px_200px_180px]">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-[176px_180px]">
           <div className="min-w-0 space-y-2">
             <Label>Data de criação *</Label>
             <DatePicker
@@ -2872,10 +2881,6 @@ export function ContractForm({
               className="h-10 w-full"
               disabled={isSignedEditing}
             />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="contract-emergency-limit-create">Número de emergências *</Label>
-            <Input id="contract-emergency-limit-create" type="number" min={0} step={1} value={emergencyLimitInput} onChange={(event) => setEmergencyLimitInput(event.target.value.replace(/\D/g, ""))} required />
           </div>
           <div className="space-y-2">
             <Label htmlFor="contract-installments-count">Nº de parcelas *</Label>
@@ -2902,6 +2907,14 @@ export function ContractForm({
               onChange={(event) => setDueDayInput(event.target.value.replace(/\D/g, "").slice(0, 2))}
               required
             />
+          </div>
+          <div className="space-y-2 sm:col-start-1">
+            <Label htmlFor="contract-emergency-limit-create">Número de emergências{!emergencyUnlimited ? " *" : ""}</Label>
+            <Input id="contract-emergency-limit-create" type="number" min={0} step={1} value={emergencyLimitInput} onChange={(event) => setEmergencyLimitInput(event.target.value.replace(/\D/g, ""))} disabled={emergencyUnlimited} required={!emergencyUnlimited} />
+          </div>
+          <div className="flex items-start gap-2 sm:col-span-2">
+            <Checkbox id="contract-emergency-unlimited" checked={emergencyUnlimited} onCheckedChange={(checked) => setEmergencyUnlimited(checked === true)} />
+            <Label htmlFor="contract-emergency-unlimited" className="cursor-pointer text-sm leading-5">Sem limite de agendamentos emergenciais</Label>
           </div>
         </div>
         <p className="mt-3 max-w-xl text-xs text-muted-foreground">

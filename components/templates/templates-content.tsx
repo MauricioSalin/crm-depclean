@@ -557,6 +557,7 @@ function buildPreviewVariables(params: {
   if (kind === "contract" && contract) {
     return {
       ...base,
+      limiteEmergencias: contract.emergencyUnlimited ? "ilimitado" : String(contract.emergencyLimit ?? 15),
       contract: {
         createdAt: formatDate(contract.createdAt),
         createdAtLong: formatLongDate(contract.createdAt),

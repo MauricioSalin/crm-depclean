@@ -232,7 +232,7 @@ test(`limite de emergências de contrato assinado é editado somente na tela de 
   page.on("request", request => { if (request.url().endsWith("/schedule-settings") && request.method() === "PATCH") scheduleSettingsRequests++ })
   await page.route(`**/api/v1/contracts/${contractFixture.id}/emergency-limit`, async route => {
     expect(route.request().method()).toBe("PATCH")
-    expect(route.request().postDataJSON()).toEqual({ emergencyLimit: 7 })
+    expect(route.request().postDataJSON()).toEqual({ emergencyLimit: 7, emergencyUnlimited: false })
     limit = route.request().postDataJSON().emergencyLimit
     await route.fulfill({ json: { success: true, data: { ...contractFixture, status: "closed", emergencyLimit: limit } } })
   })
