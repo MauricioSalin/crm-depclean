@@ -10,6 +10,8 @@ export const SCHEDULE_STATUS_FILTER_OPTIONS = [
   { value: "completed", label: "Concluído" },
   { value: "cancelled", label: "Cancelado" },
   { value: "rescheduled", label: "Reagendado" },
+  { value: "awaiting_schedule", label: "Aguardando reagendamento" },
+  { value: "not_completed", label: "Não concluído" },
 ] satisfies Array<{ value: ScheduleStatus; label: string }>
 
 const SCHEDULE_STATUS_FILTER_VALUES = new Set<string>([

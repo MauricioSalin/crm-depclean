@@ -1,4 +1,5 @@
 "use client"
+import { EmergencyExhaustedBadge, EmergencyUsageCounter } from "@/components/contratos/emergency-usage"
 
 import { useDeferredValue, useState, useMemo } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
@@ -327,7 +328,7 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
                   return (
                     <TableRow key={client.id}>
                       <TableCell className="whitespace-nowrap font-mono text-muted-foreground">
-                        {client.financialCode || "—"}
+                        {client.financialCode || "-"}
                       </TableCell>
                       <TableCell>
                         <Link href={getClientProfileHref(client.id)} className="flex items-center gap-3">
@@ -340,7 +341,9 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
                           <div className="min-w-0 flex-1">
                             <div className="flex min-w-0 flex-nowrap items-center gap-1.5">
                               <p className="min-w-0 flex-1 truncate font-semibold text-foreground">{client.companyName}</p>
-                              {client.isDelinquent ? <BusinessStatusBadge status="delinquent" /> : null}
+                              {client.withoutContract ? <Badge variant="secondary">Avulso</Badge> : null}
+                              <EmergencyExhaustedBadge clientId={client.id} />
+                {client.isDelinquent ? <BusinessStatusBadge status="delinquent" /> : null}
                             </div>
                           </div>
                         </Link>
@@ -366,8 +369,8 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
                       </TableCell>
                       <TableCell className="hidden lg:table-cell">
                         <div className="flex items-center gap-2">
-                          <FileText className="w-4 h-4 text-muted-foreground" />
-                          <span>{totalContracts} contrato(s)</span>
+                          <FileText className="w-4 h-4 shrink-0 text-muted-foreground" />
+                          <span className="whitespace-nowrap max-[360px]:whitespace-normal">{client.withoutContract ? "-" : `${totalContracts} contrato(s)`}</span>
                         </div>
                       </TableCell>
                       <TableCell className="text-right">
@@ -444,7 +447,9 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
                           <div className="flex flex-wrap items-start justify-between gap-x-2 gap-y-1">
                             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
                               <h3 className="min-w-0 break-words text-sm font-semibold text-foreground">{client.companyName}</h3>
-                              {client.isDelinquent ? <BusinessStatusBadge status="delinquent" /> : null}
+                              {client.withoutContract ? <Badge variant="secondary">Avulso</Badge> : null}
+                              <EmergencyExhaustedBadge clientId={client.id} />
+                {client.isDelinquent ? <BusinessStatusBadge status="delinquent" /> : null}
                             </div>
                             <Badge
                               style={{ backgroundColor: clientTypeColor }}
@@ -458,7 +463,7 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
                             className="mt-1 font-mono text-xs text-muted-foreground"
                             aria-label="Código financeiro"
                           >
-                            Cód. {client.financialCode || "—"}
+                            Cód. {client.financialCode || "-"}
                           </p>
                         </div>
                       </div>
@@ -477,7 +482,7 @@ export function ClientsContent({ viewMode, viewToggle, openImport = false, onImp
                         ) : null}
                         <div className="flex items-center gap-2 text-muted-foreground">
                           <FileText className="w-4 h-4 shrink-0" />
-                          <span>{totalContracts} contrato(s)</span>
+                          <span className="whitespace-nowrap max-[360px]:whitespace-normal">{client.withoutContract ? "-" : `${totalContracts} contrato(s)`}</span>
                         </div>
                       </div>
                     </Link>

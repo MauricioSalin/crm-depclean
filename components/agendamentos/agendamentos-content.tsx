@@ -1,4 +1,8 @@
 "use client"
+import { EmergencyExhaustedBadge, EmergencyUsageCounter } from "@/components/contratos/emergency-usage"
+import { requestScheduleReschedule } from "@/lib/api/schedules"
+import { getRescheduleReasonError, RescheduleReasonFields } from "@/components/agendamentos/reschedule-reason-fields"
+
 
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
@@ -115,6 +119,10 @@ interface AgendamentosContentProps {
 
 function getStatusBadge(status: ScheduleRecord["status"]) {
   switch (status) {
+    case "awaiting_schedule":
+      return <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100">Aguardando reagendamento</Badge>
+    case "not_completed":
+      return <Badge variant="destructive">Não concluído</Badge>
     case "draft":
       return <Badge className="bg-slate-100 text-slate-700">Rascunho</Badge>
     case "scheduled":
@@ -480,7 +488,7 @@ export function AgendamentosContent({
   const [attendanceCancelTarget, setAttendanceCancelTarget] = useState<ScheduleRecord | null>(null)
   const [completionTarget, setCompletionTarget] = useState<ScheduleRecord | null>(null)
   const [completionInfoOpen, setCompletionInfoOpen] = useState(false)
-  const [completionStep, setCompletionStep] = useState<"attachments" | "checkout">("attachments")
+  const [completionStep, setCompletionStep] = useState<"attachments" | "checkout" | "request">("attachments")
   const [completionStartDate, setCompletionStartDate] = useState("")
   const [completionStartTime, setCompletionStartTime] = useState("")
   const [completionEndDate, setCompletionEndDate] = useState("")
@@ -700,11 +708,20 @@ export function AgendamentosContent({
   }
 
   const invalidateSchedules = async () => {
+    await queryClient.invalidateQueries({ queryKey: ["emergency-usage"] })
     await queryClient.invalidateQueries({ queryKey: ["schedules"] })
     await queryClient.invalidateQueries({ queryKey: ["notifications"] })
     await queryClient.invalidateQueries({ queryKey: ["certificates"] })
     await queryClient.invalidateQueries({ queryKey: ["analytics"] })
   }
+
+  const [requestReason, setRequestReason] = useState("")
+  const [requestNotes, setRequestNotes] = useState("")
+  const requestRescheduleMutation = useMutation({
+    mutationFn: () => requestScheduleReschedule(completionTarget!.id, { rescheduleReason: requestReason, rescheduleNotes: requestNotes.trim() }),
+    onSuccess: async ({ data }) => { cacheSavedSchedule(queryClient, data); closeCompletionDialog(); setRequestReason(""); setRequestNotes(""); await invalidateSchedules(); toast.success("Reagendamento solicitado.") },
+    onError: (error) => toast.error(getApiErrorMessage(error, "Não foi possível solicitar reagendamento.")),
+  })
 
   const saveMutation = useMutation({
     mutationFn: async ({
@@ -715,7 +732,7 @@ export function AgendamentosContent({
       scheduleId?: string
     }) => {
       if (scheduleId && !canManageAgenda && canManageScheduleStatus) {
-        return updateScheduleStatus(scheduleId, formData.status)
+        return updateScheduleStatus(scheduleId, formData.status, formData.nonCompletionReason)
       }
 
       const client = clients.find((item) => item.id === formData.clientId)
@@ -727,7 +744,7 @@ export function AgendamentosContent({
       const isRecurringScheduleUpdate = Boolean(scheduleId && editingSchedule?.contractId && !editingSchedule.isManual)
       if (scheduleId && isRecurringScheduleUpdate) {
         const response = await updateSchedule(scheduleId, {
-          rescheduleReason: formData.rescheduleReason,
+          rescheduleReason: formData.rescheduleReason || undefined,
           rescheduleNotes: formData.rescheduleNotes,
           serviceTypeId: formData.serviceTypeIds[0],
           serviceTypeIds: formData.serviceTypeIds,
@@ -746,8 +763,8 @@ export function AgendamentosContent({
           notes: formData.notes,
         })
 
-        if (canManageScheduleStatus && editingSchedule?.status !== formData.status) {
-          return updateScheduleStatus(scheduleId, formData.status)
+        if ((canManageScheduleStatus || (canManageAgenda && formData.status === "not_completed")) && editingSchedule?.status !== formData.status) {
+          return updateScheduleStatus(scheduleId, formData.status, formData.nonCompletionReason)
         }
 
         return response
@@ -773,6 +790,7 @@ export function AgendamentosContent({
         autoSendInformative: formData.autoSendInformative,
         generateCertificateRequest: formData.generateCertificateRequest,
         isEmergency: formData.isEmergency,
+        emergencyContractId: formData.emergencyContractId,
         billable: formData.createContract,
         value: formData.createContract ? formData.value : 0,
         billingDueDate: formData.createContract ? formData.billingDueDate : undefined,
@@ -782,9 +800,9 @@ export function AgendamentosContent({
       }
 
       if (scheduleId) {
-        const response = await updateSchedule(scheduleId, { ...payload, rescheduleReason: formData.rescheduleReason, rescheduleNotes: formData.rescheduleNotes })
-        if (canManageScheduleStatus && editingSchedule?.status !== formData.status) {
-          return updateScheduleStatus(scheduleId, formData.status)
+        const response = await updateSchedule(scheduleId, { ...payload, rescheduleReason: formData.rescheduleReason || undefined, rescheduleNotes: formData.rescheduleNotes })
+        if ((canManageScheduleStatus || (canManageAgenda && formData.status === "not_completed")) && editingSchedule?.status !== formData.status) {
+          return updateScheduleStatus(scheduleId, formData.status, formData.nonCompletionReason)
         }
 
         return response
@@ -1370,6 +1388,7 @@ export function AgendamentosContent({
             }
             className="absolute left-3 top-3 z-20 gap-1.5 px-2 text-foreground hover:text-foreground max-sm:top-[calc(env(safe-area-inset-top)+0.85rem)]"
             onClick={() => {
+              if (completionStep === "request") { setCompletionStep("checkout"); return }
               if (completionStep === "checkout" && !isEditingExecution) {
                 setCompletionStep("attachments")
                 return
@@ -1401,14 +1420,14 @@ export function AgendamentosContent({
           ) : null}
           <DialogHeader className="min-w-0 px-6 pb-4 pt-14 text-left max-sm:px-5 max-sm:pt-[calc(env(safe-area-inset-top)+3.75rem)]">
             <DialogTitle>
-              {completionStep === "attachments"
+              {completionStep === "request" ? "Solicitar reagendamento" : completionStep === "attachments"
                 ? "Anexos do atendimento"
                 : isEditingExecution
                 ? "Editar execução do atendimento"
                 : "Encerrar atendimento"}
             </DialogTitle>
             <DialogDescription>
-              {completionStep === "attachments"
+              {completionStep === "request" ? "Informe o motivo para solicitar uma nova data ao responsável pelo agendamento." : completionStep === "attachments"
                 ? "Adicione NAs e evidências da execução. Cada arquivo é salvo no agendamento assim que for anexado."
                 : isEditingExecution
                 ? "Revise o período executado, a equipe de apoio e as observações antes de salvar."
@@ -1416,6 +1435,9 @@ export function AgendamentosContent({
             </DialogDescription>
           </DialogHeader>
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 pb-5 max-sm:px-5">
+            {completionStep === "request" ? (
+              <RescheduleReasonFields reason={requestReason} notes={requestNotes} onReasonChange={setRequestReason} onNotesChange={setRequestNotes} />
+            ) : null}
             {completionStep === "checkout" ? (
               <AttendanceCompletionFields
                 idPrefix="schedule-completion"
@@ -1447,7 +1469,7 @@ export function AgendamentosContent({
                 onDisposalStationIdChange={setCompletionDisposalStationId}
                 onDisposalQuantityM3Change={setCompletionDisposalQuantityM3}
               />
-            ) : (
+            ) : completionStep === "attachments" ? (
               <CompletionNaAttachments
                 existingAttachments={completionTarget?.naAttachments ?? []}
                 files={completionFiles}
@@ -1475,7 +1497,7 @@ export function AgendamentosContent({
                   renameNaMutation.mutate({ schedule: completionTarget, documentUrl: attachment.documentUrl, fileName })
                 }}
               />
-            )}
+            ) : null}
           </div>
           <div className="flex shrink-0 flex-col gap-2 bg-background px-6 pb-6 pt-3 max-sm:px-5 max-sm:pb-[calc(env(safe-area-inset-bottom)+1.25rem)] sm:flex-row sm:flex-nowrap sm:justify-end sm:[&>button]:px-2.5">
             {completionStep === "attachments" && !isEditingExecution ? (
@@ -1520,7 +1542,16 @@ export function AgendamentosContent({
                 Editar anexos
               </Button>
             ) : null}
-            <Button
+            {completionStep === "checkout" && !isEditingExecution ? (
+              <Button type="button" variant="outline" className="w-full min-w-0 sm:w-auto" onClick={() => { setRequestReason(""); setRequestNotes(""); setCompletionStep("request") }}>Solicitar reagendamento</Button>
+            ) : null}
+            {completionStep === "request" ? (
+              <Button type="button" className="w-full sm:w-auto" disabled={requestRescheduleMutation.isPending} onClick={() => {
+                const reasonError = getRescheduleReasonError(requestReason, requestNotes); if (reasonError) { toast.error(reasonError); return }
+                requestRescheduleMutation.mutate()
+              }}>{requestRescheduleMutation.isPending ? "Solicitando..." : "Confirmar solicitação"}</Button>
+            ) : null}
+            {completionStep !== "request" ? <Button
               type="button"
               className={
                 completionStep === "attachments" && !isEditingExecution
@@ -1559,6 +1590,7 @@ export function AgendamentosContent({
                   return
                 }
 
+                if (completionDisposalType && !completionDisposalMtrNumber.trim()) { toast.error("Informe o número do MTR para concluir um atendimento com descarte."); return }
                 const disposalValidationMessage = scheduleDisposalValidationMessage(
                   completionDisposalType,
                   completionDisposalStationId,
@@ -1597,7 +1629,7 @@ export function AgendamentosContent({
               ) : (
                 "Encerrar atendimento"
               )}
-            </Button>
+            </Button> : null}
           </div>
         </DialogContent>
       </Dialog>
@@ -1683,6 +1715,7 @@ export function AgendamentosContent({
                           <div className="min-w-0">
                             <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                               <p className="min-w-0 truncate font-semibold text-foreground">{schedule.clientName}</p>
+                              {schedule.isEmergency && schedule.emergencyContractId ? <EmergencyExhaustedBadge contractId={schedule.emergencyContractId} /> : null}
                               {schedule.isClientDelinquent ? <BusinessStatusBadge status="delinquent" /> : null}
                             </div>
                             <p className="text-xs text-muted-foreground sm:hidden">
@@ -1845,7 +1878,8 @@ export function AgendamentosContent({
                         <div className="min-w-0 flex-1">
                           <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                             <h4 className="min-w-0 break-words text-sm font-semibold text-foreground">{schedule.clientName}</h4>
-                            {schedule.isClientDelinquent ? <BusinessStatusBadge status="delinquent" /> : null}
+                            {schedule.isEmergency && schedule.emergencyContractId ? <EmergencyExhaustedBadge contractId={schedule.emergencyContractId} /> : null}
+                              {schedule.isClientDelinquent ? <BusinessStatusBadge status="delinquent" /> : null}
                           </div>
                           <p className="text-xs text-muted-foreground">{schedule.serviceTypeName}</p>
                         </div>

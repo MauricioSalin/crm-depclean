@@ -1,4 +1,5 @@
 "use client"
+import { EmergencyExhaustedBadge, EmergencyUsageCounter } from "@/components/contratos/emergency-usage"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
@@ -27,6 +28,8 @@ import {
   Wrench,
 } from "lucide-react"
 
+import { ScheduleShortcutDialog } from "@/components/dashboard/schedule-shortcut-dialog"
+import { getScheduleById } from "@/lib/api/schedules"
 import { Badge } from "@/components/ui/badge"
 import { BusinessStatusBadge } from "@/components/ui/business-status-badges"
 import { Button } from "@/components/ui/button"
@@ -256,6 +259,10 @@ const resolveColor = (color?: string) => {
 
 const getScheduleStatusBadge = (status: ScheduleRecord["status"]) => {
   switch (status) {
+    case "awaiting_schedule":
+      return <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100">Aguardando reagendamento</Badge>
+    case "not_completed":
+      return <Badge variant="destructive">Não concluído</Badge>
     case "draft":
       return <Badge className="bg-slate-100 text-slate-700">Rascunho</Badge>
     case "scheduled":
@@ -417,6 +424,11 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const queryClient = useQueryClient()
+  const [openedSchedule, setOpenedSchedule] = useState<ScheduleRecord | null>(null)
+  const openProfileSchedule = async (id: string) => {
+    try { const response = await getScheduleById(id); setOpenedSchedule(response.data) }
+    catch { toast.error("Não foi possível abrir o agendamento.") }
+  }
   const canEditClients = useHasAnyPermission(["clients_edit"])
   const canRevealFepamCredentials = useHasAnyPermission(["clients_create", "clients_edit"])
   const canDeleteClients = useHasAnyPermission(["clients_delete"])
@@ -1045,6 +1057,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
 
   return (
     <div className="space-y-6">
+      <ScheduleShortcutDialog schedule={openedSchedule} onClose={() => setOpenedSchedule(null)} onScheduleChange={setOpenedSchedule} />
       <ConfirmActionDialog
         open={Boolean(contractToMarkRenewed)}
         title={`Marcar contrato como ${targetStatusLabel.toLowerCase()}?`}
@@ -1088,8 +1101,8 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
       ) : null}
 
       <Card className="overflow-hidden">
-        <CardContent className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex min-w-0 items-start gap-4">
+        <CardContent className="flex flex-col gap-4 lg:flex-row lg:items-stretch lg:justify-between">
+          <div className="flex min-w-0 flex-1 items-start gap-4">
             <div
               className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl"
               style={{ backgroundColor: `${clientTypeColor}1A` }}
@@ -1099,12 +1112,14 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
             <div className="min-w-0 flex-1 space-y-3">
               <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-1">
                 <h3 className="min-w-0 break-words text-xl font-bold">{client.companyName}</h3>
+                {client.withoutContract ? <Badge variant="secondary">Avulso</Badge> : null}
                 <Badge
                   style={{ backgroundColor: clientTypeColor }}
                   className="shrink-0 border-0 text-white hover:opacity-90"
                 >
                   {clientType?.name ?? "Cliente"}
                 </Badge>
+                <EmergencyExhaustedBadge clientId={client.id} />
                 {client.isDelinquent ? <BusinessStatusBadge status="delinquent" /> : null}
               </div>
               <div className="space-y-1 font-mono text-sm text-muted-foreground">
@@ -1131,7 +1146,8 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
               ) : null}
             </div>
           </div>
-          <div className="flex w-full shrink-0 flex-wrap items-center justify-start gap-2 sm:w-auto sm:justify-end">
+          <div className="flex w-full flex-col gap-3 lg:ml-auto lg:w-[430px] lg:min-w-[430px] lg:self-stretch">
+            <div className="flex w-full flex-wrap items-center justify-end gap-2">
             {canManageExtras ? (
               <Button
                 type="button"
@@ -1146,6 +1162,10 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                 Adicionar extra
               </Button>
             ) : null}
+            </div>
+            <div className="mt-auto">
+              <EmergencyUsageCounter clientId={client.id} sideBySide />
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -1863,7 +1883,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                 </TableHeader>
                 <TableBody page={clientServices.length > 0 ? servicesPage : undefined} pageSize={clientServices.length > 0 ? servicesPageSize : undefined}>
                   {clientServices.map((service) => (
-                    <TableRow key={service.id}>
+                    <TableRow key={service.id} className={canViewAgenda ? "cursor-pointer" : undefined} tabIndex={canViewAgenda ? 0 : undefined} onClick={() => { if (canViewAgenda) void openProfileSchedule(service.id) }} onKeyDown={(event) => { if (canViewAgenda && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); void openProfileSchedule(service.id) } }}>
                       <TableCell>
                         <p className="font-medium">{service.serviceTypeName}</p>
                       </TableCell>
@@ -1927,7 +1947,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                   {scheduledServices.map((service) => {
                       const displayPeriod = resolveScheduleDisplayPeriod(service)
                       return (
-                        <TableRow key={service.id}>
+                        <TableRow key={service.id} className={canViewAgenda ? "cursor-pointer" : undefined} tabIndex={canViewAgenda ? 0 : undefined} onClick={() => { if (canViewAgenda) void openProfileSchedule(service.id) }} onKeyDown={(event) => { if (canViewAgenda && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); void openProfileSchedule(service.id) } }}>
                           <TableCell>
                             <div className="flex items-center gap-2">
                               <p className="font-medium">{service.serviceTypeName}</p>

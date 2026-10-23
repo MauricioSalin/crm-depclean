@@ -3,7 +3,7 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
-import { getRescheduleReasonError, RescheduleReasonFields } from "@/components/agendamentos/reschedule-reason-fields"
+import { getRequestedRescheduleDetails, getRescheduleReasonError, RescheduleReasonFields } from "@/components/agendamentos/reschedule-reason-fields"
 import { DatePicker } from "@/components/ui/date-picker"
 import { Input } from "@/components/ui/input"
 import { NumericInput } from "@/components/ui/numeric-input"
@@ -52,12 +52,13 @@ import type { ClientRecord } from "@/lib/api/clients"
 import type { EmployeeRecord } from "@/lib/api/employees"
 import type { ServiceRecord } from "@/lib/api/services"
 import type { TeamRecord } from "@/lib/api/teams"
-import type { ScheduleDocumentSetting } from "@/lib/api/schedules"
+import type { ScheduleDocumentSetting, ScheduleRecord } from "@/lib/api/schedules"
+import { listEmergencyContracts } from "@/lib/api/schedules"
 import { listTemplates } from "@/lib/api/templates"
 import { toast } from "sonner"
-import { parseCivilDate, toCivilDateKey } from "@/lib/date-utils"
+import { formatCivilDate, parseCivilDate, toCivilDateKey } from "@/lib/date-utils"
 
-type ScheduleManualStatus = "draft" | "scheduled" | "in_progress" | "completed" | "cancelled" | "rescheduled"
+type ScheduleManualStatus = "draft" | "scheduled" | "in_progress" | "completed" | "cancelled" | "rescheduled" | "awaiting_schedule" | "not_completed"
 
 function isValidDateKey(value: string) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
@@ -73,6 +74,7 @@ function isValidDateKey(value: string) {
 }
 
 export interface SchedulingFormData {
+  nonCompletionReason?: string
   rescheduleReason?: string
   rescheduleNotes?: string
   clientId: string
@@ -95,13 +97,16 @@ export interface SchedulingFormData {
   billingDownPaymentValue: number
   createContract: boolean
   isEmergency: boolean
+  emergencyContractId: string
   status: ScheduleManualStatus
   notes: string
 }
 
 interface EditingSchedule {
+  statusHistory?: ScheduleRecord["statusHistory"]
   id: string
   contractId?: string | null
+  emergencyContractId?: string | null
   isManual?: boolean
   clientId: string
   serviceTypeId: string
@@ -167,6 +172,7 @@ const DEFAULT_FORM_DATA: SchedulingFormData = {
   billingDownPaymentValue: 0,
   createContract: false,
   isEmergency: false,
+  emergencyContractId: "",
   status: "scheduled",
   notes: "",
 }
@@ -180,6 +186,8 @@ const SCHEDULE_STATUS_OPTIONS: Array<{ value: ScheduleManualStatus; label: strin
   { value: "completed", label: "Concluído" },
   { value: "cancelled", label: "Cancelado" },
   { value: "rescheduled", label: "Reagendado" },
+  { value: "not_completed", label: "Não concluído" },
+  { value: "awaiting_schedule", label: "Aguardando reagendamento" },
 ]
 
 export function SchedulingFormDialog({
@@ -222,6 +230,12 @@ export function SchedulingFormDialog({
     queryKey: ["templates", "schedule-form", "certificate"],
     queryFn: () => listTemplates("", "certificate"),
     staleTime: 60_000,
+  })
+
+  const emergencyContractsQuery = useQuery({
+    queryKey: ["emergency-contract-options", formData.clientId],
+    queryFn: () => listEmergencyContracts(formData.clientId),
+    enabled: open && formData.isEmergency && Boolean(formData.clientId) && canEditDetails,
   })
 
   const filteredClients = useMemo(() => {
@@ -277,7 +291,7 @@ export function SchedulingFormDialog({
   const rescheduleDateChanged = Boolean(editingSchedule &&
     (formData.date !== editingSchedule.date || formData.time !== (editingSchedule.time || "")))
   const needsRescheduleReason = Boolean(editingSchedule && (
-    (["scheduled", "rescheduled"].includes(editingSchedule.status) && rescheduleDateChanged) ||
+    (["scheduled", "rescheduled", "awaiting_schedule", "not_completed"].includes(editingSchedule.status) && rescheduleDateChanged) ||
     (formData.status === "rescheduled" && editingSchedule.status !== "rescheduled")
   ))
   const isRecurringSchedule = Boolean(editingSchedule?.contractId && !editingSchedule?.isManual)
@@ -333,7 +347,10 @@ export function SchedulingFormDialog({
       billingDownPaymentValue: schedule.billingDownPaymentValue ?? 0,
       createContract: Boolean(schedule.billable),
       isEmergency: schedule.isEmergency ?? false,
+      emergencyContractId: schedule.emergencyContractId ?? "",
       status: schedule.status,
+      rescheduleReason: getRequestedRescheduleDetails(schedule).reason,
+      rescheduleNotes: getRequestedRescheduleDetails(schedule).notes,
       notes: schedule.notes || "",
     }
   }
@@ -496,6 +513,7 @@ export function SchedulingFormDialog({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (isSubmitting) return
+    if (formData.status === "not_completed" && !formData.nonCompletionReason?.trim()) { toast.error("Informe o motivo da não conclusão."); return }
     if (needsRescheduleReason && !rescheduleDateChanged) {
       toast.error("Escolha uma nova data ou horário para reagendar.")
       return
@@ -504,6 +522,20 @@ export function SchedulingFormDialog({
     if (!formData.clientId || !clientById.has(formData.clientId)) {
       toast.error("Selecione um cliente válido para o agendamento.")
       return
+    }
+    if (formData.isEmergency && canEditDetails && !isRecurringSchedule) {
+      if (!emergencyContractsQuery.data || emergencyContractsQuery.isError || emergencyContractsQuery.isFetching) {
+        toast.error("Aguarde o carregamento dos contratos do cliente. Se necessário, tente novamente.")
+        return
+      }
+      if (emergencyContractsQuery.data.requiresContract && !formData.emergencyContractId) {
+        toast.error("Selecione o contrato vinculado ao agendamento emergencial.")
+        return
+      }
+      if (formData.emergencyContractId && !emergencyContractsQuery.data.contracts.some(contract => contract.id === formData.emergencyContractId)) {
+        toast.error("Selecione um contrato válido deste cliente para o emergencial.")
+        return
+      }
     }
     if (
       formData.serviceTypeIds.length === 0 ||
@@ -613,7 +645,7 @@ export function SchedulingFormDialog({
             ) : null}
           </div>
 
-          {isEditing && canManageStatus ? (
+          {isEditing && (canManageStatus || canEditDetails) ? (
             <div className="space-y-2">
               <Label>Status manual</Label>
               <Select
@@ -624,17 +656,21 @@ export function SchedulingFormDialog({
                   <SelectValue placeholder="Selecione o status" />
                 </SelectTrigger>
                 <SelectContent>
-                  {SCHEDULE_STATUS_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value} disabled={option.value === "rescheduled" && (!canEditDetails || !["scheduled", "rescheduled"].includes(editingSchedule?.status ?? ""))}>
+                  {SCHEDULE_STATUS_OPTIONS.filter((option) => canManageStatus || option.value === "not_completed" || option.value === formData.status).map((option) => (
+                    <SelectItem key={option.value} value={option.value} disabled={option.value === "awaiting_schedule" || (option.value === "not_completed" && !canEditDetails) || (option.value === "rescheduled" && (!canEditDetails || !["scheduled", "rescheduled", "awaiting_schedule", "not_completed"].includes(editingSchedule?.status ?? "")))}>
                       {option.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              {formData.status === "not_completed" ? <div className="space-y-2">
+                <Label htmlFor="non-completion-reason">Motivo *</Label>
+                <Textarea id="non-completion-reason" value={formData.nonCompletionReason ?? ""} maxLength={2000} onChange={(event) => setFormData((current) => ({ ...current, nonCompletionReason: event.target.value }))} />
+              </div> : null}
             </div>
           ) : null}
 
-          <fieldset disabled={!canEditDetails || isSubmitting} className="m-0 grid min-w-0 w-full max-w-full gap-5 border-0 p-0">
+          <fieldset disabled={!canEditDetails || isSubmitting} className="m-0 grid min-w-0 w-full max-w-full grid-cols-1 gap-5 border-0 p-0">
           {/* Client Selection */}
           <div className="space-y-2">
             <Label>Cliente *</Label>
@@ -670,7 +706,7 @@ export function SchedulingFormDialog({
                           key={client.id}
                           value={client.companyName}
                           onSelect={() => {
-                            setFormData((current) => ({ ...current, clientId: client.id }))
+                            setFormData((current) => ({ ...current, clientId: client.id, emergencyContractId: current.clientId === client.id ? current.emergencyContractId : "" }))
                             setClientPopoverOpen(false)
                           }}
                           className="cursor-pointer"
@@ -1026,7 +1062,7 @@ export function SchedulingFormDialog({
                 <Checkbox
                   id="isEmergency"
                   checked={formData.isEmergency}
-                  onCheckedChange={(checked) => setFormData((current) => ({ ...current, isEmergency: !!checked }))}
+                  onCheckedChange={(checked) => setFormData((current) => ({ ...current, isEmergency: !!checked, emergencyContractId: checked ? current.emergencyContractId : "" }))}
                 />
                 <div className="flex flex-col">
                   <Label htmlFor="isEmergency" className="text-sm font-medium cursor-pointer">
@@ -1039,6 +1075,27 @@ export function SchedulingFormDialog({
               </div>
             </div>
           )}
+
+          {formData.isEmergency ? (
+            <div className="min-w-0 max-w-full space-y-2">
+              <Label htmlFor="emergency-contract">Contrato vinculado{emergencyContractsQuery.data?.requiresContract ? " *" : ""}</Label>
+              <Select value={formData.emergencyContractId || "__none__"} onValueChange={value => setFormData(current => ({ ...current, emergencyContractId: value === "__none__" ? "" : value }))} disabled={!formData.clientId || emergencyContractsQuery.isPending}>
+                <SelectTrigger id="emergency-contract" className="w-full min-w-0 max-w-full [&_[data-slot=select-value]]:min-w-0 [&_[data-slot=select-value]]:truncate" aria-required={emergencyContractsQuery.data?.requiresContract}>
+                  <SelectValue placeholder="Selecione o contrato" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Selecione o contrato</SelectItem>
+                  {emergencyContractsQuery.data?.contracts.map(contract => (
+                    <SelectItem key={contract.id} value={contract.id}>
+                      {contract.contractNumber} · {formatCivilDate(contract.startDate)} a {formatCivilDate(contract.endDate)}{contract.isActive ? " · Vigente" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {emergencyContractsQuery.isError ? <p className="text-sm text-destructive">Não foi possível carregar os contratos. <button type="button" className="underline" onClick={() => void emergencyContractsQuery.refetch()}>Tentar novamente</button></p> : null}
+              {emergencyContractsQuery.data && !emergencyContractsQuery.data.requiresContract ? <p className="text-xs text-muted-foreground">Sem contrato vigente, o vínculo é opcional. Somente atendimentos concluídos e vinculados entram na contagem do contrato.</p> : null}
+            </div>
+          ) : null}
 
           <div className="space-y-2">
             <Label>Documentos por serviço</Label>

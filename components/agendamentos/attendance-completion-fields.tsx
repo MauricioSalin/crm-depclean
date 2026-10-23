@@ -1,4 +1,7 @@
 "use client"
+import { useState } from "react"
+import { useQuery } from "@tanstack/react-query"
+import { getVehicles } from "@/lib/api/vehicles"
 
 import { Button } from "@/components/ui/button"
 import { Plus, X } from "lucide-react"
@@ -80,6 +83,11 @@ export function AttendanceCompletionFields({
   onDisposalStationIdChange,
   onDisposalQuantityM3Change,
 }: AttendanceCompletionFieldsProps) {
+  const fleet = useQuery({ queryKey: ["vehicles"], queryFn: getVehicles })
+  const [selectedVehicleType, setSelectedVehicleType] = useState("")
+  const catalog = fleet.data?.data
+  const normalizedPlate = vehiclePlate.replace(/[^a-z0-9]/gi, "").toUpperCase()
+  const vehicleTypeId = selectedVehicleType || catalog?.vehicles.find((vehicle) => vehicle.plate === normalizedPlate)?.typeId || ""
   const driverOptions = [
     { value: "none", label: "Sem motorista" },
     ...employees.map((employee) => ({
@@ -175,36 +183,21 @@ export function AttendanceCompletionFields({
         />
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor={`${idPrefix}-vehicle-plate`}>Placa do veículo</Label>
-        <Input
-          id={`${idPrefix}-vehicle-plate`}
-          value={vehiclePlate}
-          maxLength={15}
-          placeholder="ABC1D23"
-          className="uppercase"
-          onChange={(event) => onVehiclePlateChange(event.target.value.toUpperCase())}
-        />
-      </div>
-
-      <div className="space-y-2">
-        {disposalMtrNumber.split("\n").map((number, index, numbers) => (
-          <div key={index} className="space-y-2">
-            <Label htmlFor={`${idPrefix}-disposal-mtr-number-${index}`}>{numbers.length > 1 ? `MTR ${index + 1}` : "MTR"}</Label>
-            <div className="flex items-center gap-2">
-              <Input id={`${idPrefix}-disposal-mtr-number-${index}`} type="tel" inputMode="numeric" pattern="[0-9]*"
-                value={number} maxLength={30} placeholder="001234567890" disabled={disabled}
-                onChange={(event) => onDisposalMtrNumberChange(numbers.map((value, position) => position === index ? event.target.value.replace(/\D/g, "") : value).join("\n"))} />
-              {index === 0 ? (
-                <Button type="button" variant="outline" size="icon" aria-label="Adicionar MTR" disabled={disabled}
-                  onClick={() => onDisposalMtrNumberChange(`${disposalMtrNumber}\n`)}><Plus className="h-4 w-4" /></Button>
-              ) : (
-                <Button type="button" variant="ghost" size="icon" aria-label={`Remover MTR ${index + 1}`} disabled={disabled}
-                  onClick={() => onDisposalMtrNumberChange(numbers.filter((_, position) => position !== index).join("\n"))}><X className="h-4 w-4" /></Button>
-              )}
-            </div>
-          </div>
-        ))}
+      <div className="grid min-w-0 gap-4 sm:grid-cols-2">
+        <div className="min-w-0 space-y-2">
+          <Label htmlFor={`${idPrefix}-vehicle-type`}>Tipo de veículo</Label>
+          <SearchableSelect id={`${idPrefix}-vehicle-type`} value={vehicleTypeId || "none"}
+            options={[{ value: "none", label: "Sem veículo" }, ...(catalog?.types ?? []).map((type) => ({ value: type.id, label: type.name }))]}
+            onValueChange={(value) => { setSelectedVehicleType(value === "none" ? "" : value); onVehiclePlateChange("") }}
+            includeAll={false} placeholder="Selecione o tipo" className="w-full" disabled={disabled || fleet.isLoading} />
+          {fleet.isError ? <p className="text-sm text-destructive">Não foi possível carregar os veículos cadastrados.</p> : null}
+        </div>
+        {vehicleTypeId ? <div className="min-w-0 space-y-2">
+          <Label htmlFor={`${idPrefix}-vehicle-plate`}>Placa do veículo</Label>
+          <SearchableSelect id={`${idPrefix}-vehicle-plate`} value={normalizedPlate}
+            options={(catalog?.vehicles ?? []).filter((vehicle) => vehicle.typeId === vehicleTypeId).map((vehicle) => ({ value: vehicle.plate, label: vehicle.plate }))}
+            onValueChange={onVehiclePlateChange} includeAll={false} placeholder="Selecione a placa" searchPlaceholder="Buscar placa..." className="w-full" disabled={disabled} />
+        </div> : null}
       </div>
 
       <div className="space-y-2">
@@ -231,6 +224,26 @@ export function AttendanceCompletionFields({
           className="w-full"
           disabled={disabled}
         />
+      </div>
+
+      <div className="space-y-2">
+        {disposalMtrNumber.split("\n").map((number, index, numbers) => (
+          <div key={index} className="space-y-2">
+            <Label htmlFor={`${idPrefix}-disposal-mtr-number-${index}`}>{numbers.length > 1 ? `MTR ${index + 1}` : "MTR"}{disposalType ? " *" : ""}</Label>
+            <div className="flex items-center gap-2">
+              <Input id={`${idPrefix}-disposal-mtr-number-${index}`} type="tel" inputMode="numeric" pattern="[0-9]*"
+                value={number} required={Boolean(disposalType) && index === 0} aria-required={Boolean(disposalType) && index === 0} maxLength={30} placeholder="001234567890" disabled={disabled}
+                onChange={(event) => onDisposalMtrNumberChange(numbers.map((value, position) => position === index ? event.target.value.replace(/\D/g, "") : value).join("\n"))} />
+              {index === 0 ? (
+                <Button type="button" variant="outline" size="icon" aria-label="Adicionar MTR" disabled={disabled}
+                  onClick={() => onDisposalMtrNumberChange(`${disposalMtrNumber}\n`)}><Plus className="h-4 w-4" /></Button>
+              ) : (
+                <Button type="button" variant="ghost" size="icon" aria-label={`Remover MTR ${index + 1}`} disabled={disabled}
+                  onClick={() => onDisposalMtrNumberChange(numbers.filter((_, position) => position !== index).join("\n"))}><X className="h-4 w-4" /></Button>
+              )}
+            </div>
+          </div>
+        ))}
       </div>
 
       {disposalType ? (

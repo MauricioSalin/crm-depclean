@@ -5,6 +5,7 @@ import { MessageSquareText } from "lucide-react"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import type { ScheduleRecord } from "@/lib/api/schedules"
 
 export const RESCHEDULE_REASONS = [
   { value: "full_water_tanks", label: "Caixas d'água cheias" },
@@ -18,6 +19,15 @@ export function getRescheduleReasonError(reason?: string, notes?: string) {
   if (!reason) return "Selecione o motivo do reagendamento."
   if (reason === "other" && !notes?.trim()) return "Preencha as observações ao selecionar Outros."
   return ""
+}
+
+export function getRequestedRescheduleDetails(schedule: Pick<ScheduleRecord, "status" | "statusHistory">) {
+  if (schedule.status !== "awaiting_schedule") return { reason: "", notes: "" }
+  const event = schedule.statusHistory?.at(-1)
+  if (event?.status !== "awaiting_schedule") return { reason: "", notes: "" }
+  return event.rescheduleReason
+    ? { reason: event.rescheduleReason, notes: event.rescheduleNotes ?? "" }
+    : { reason: "other", notes: event.reason }
 }
 
 export function RescheduleReasonFields({ reason, notes, onReasonChange, onNotesChange, showIcon = true }: {

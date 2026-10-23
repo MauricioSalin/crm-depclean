@@ -37,6 +37,8 @@ export type ScheduleRecord = {
   id: string
   contractId: string | null
   contractNumber?: string
+  emergencyContractId?: string | null
+  emergencyContractNumber?: string
   contractServiceId: string | null
   contractServiceIds: string[]
   multiDayGroupId?: string
@@ -66,6 +68,7 @@ export type ScheduleRecord = {
   time: string
   originalScheduledDate?: string
   originalScheduledTime?: string
+  statusHistory?: Array<{ status: string; reason: string; rescheduleReason?: string; rescheduleNotes?: string; changedAt: string; changedById: string; changedByName: string }>
   rescheduleHistory?: Array<{
     fromDate: string; fromTime: string; toDate: string; toTime: string
     reason: string; reasonLabel: string; notes: string; changedAt: string
@@ -74,7 +77,7 @@ export type ScheduleRecord = {
   duration: number
   durationValue?: number
   durationType?: "minutes" | "hours" | "shift" | "days"
-  status: "draft" | "scheduled" | "in_progress" | "completed" | "cancelled" | "rescheduled"
+  status: "draft" | "scheduled" | "in_progress" | "completed" | "cancelled" | "rescheduled" | "awaiting_schedule" | "not_completed"
   recurrence: { type: "none"; daysOfWeek: number[]; interval: number }
   billable: boolean
   value: number
@@ -119,6 +122,7 @@ export type SchedulePayload = {
   clientId: string
   unitId: string
   contractId?: string
+  emergencyContractId?: string
   contractServiceId?: string
   contractServiceIds?: string[]
   serviceTypeId: string
@@ -200,6 +204,15 @@ export async function exportScheduleSummaryPdf(id: string) {
   return { blob: response.data, fileName }
 }
 
+export type EmergencyContractOptions = {
+  requiresContract: boolean
+  contracts: Array<{ id: string; contractNumber: string; startDate: string; endDate: string; isActive: boolean }>
+}
+
+export async function listEmergencyContracts(clientId: string) {
+  return (await api.get<{ success: true; data: EmergencyContractOptions }>("/schedules/emergency-contracts", { params: { clientId } })).data.data
+}
+
 export async function createSchedule(payload: SchedulePayload) {
   const response = await api.post<{ success: true; data: ScheduleRecord }>("/schedules", payload)
   return response.data
@@ -210,8 +223,8 @@ export async function updateSchedule(id: string, payload: Partial<SchedulePayloa
   return response.data
 }
 
-export async function updateScheduleStatus(id: string, status: ScheduleRecord["status"]) {
-  const response = await api.patch<{ success: true; data: ScheduleRecord }>(`/schedules/${id}/status`, { status })
+export async function updateScheduleStatus(id: string, status: ScheduleRecord["status"], reason?: string) {
+  const response = await api.patch<{ success: true; data: ScheduleRecord }>(`/schedules/${id}/status`, { status, reason })
   return response.data
 }
 
@@ -306,5 +319,10 @@ export async function deleteScheduleNa(id: string, documentUrl: string) {
   const response = await api.delete<{ success: true; data: ScheduleRecord }>(`/schedules/${id}/na`, {
     params: { documentUrl },
   })
+  return response.data
+}
+
+export async function requestScheduleReschedule(id: string, payload: { rescheduleReason: string; rescheduleNotes?: string }) {
+  const response = await api.patch<{ success: true; data: ScheduleRecord }>(`/schedules/${id}/request-reschedule`, payload)
   return response.data
 }

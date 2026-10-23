@@ -150,6 +150,7 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
     fepamPassword: "",
     phone: client?.phone || "",
     email: client?.email || "",
+    withoutContract: client?.withoutContract ?? false,
     clientTypeId: client?.clientTypeId || "",
     assessorName: "",
     assessorCpf: "",
@@ -171,9 +172,9 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
   const [fepamVisibility, setFepamVisibility] = useState({ cpf: false, password: false })
   const selectedClientType = clientTypes.find((type) => type.id === formData.clientTypeId)
   const contractSignerRole = selectedClientType?.contractSignerRole ?? "owner"
-  const ownerSignsContract = contractSignerRole === "owner"
-  const assessorSignsContract = contractSignerRole === "assessor"
-  const syndicSignsContract = contractSignerRole === "syndic"
+  const ownerSignsContract = !formData.withoutContract && contractSignerRole === "owner"
+  const assessorSignsContract = !formData.withoutContract && contractSignerRole === "assessor"
+  const syndicSignsContract = !formData.withoutContract && contractSignerRole === "syndic"
 
   const [units, setUnits] = useState<ClientUnitForm[]>(
     client?.units || [
@@ -296,6 +297,7 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
       fepamPassword: prev.fepamPassword,
       phone: formatPhone(loadedClient.phone || ""),
       email: loadedClient.email || "",
+      withoutContract: loadedClient.withoutContract ?? false,
       clientTypeId: loadedClient.clientTypeId || "",
       assessorName: loadedClient.assessor?.name || "",
       assessorCpf: formatCPF(loadedClient.assessor?.cpf || ""),
@@ -690,6 +692,7 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
         responsibleCpf: formData.responsibleCpf.trim(),
         phone: formData.phone.trim(),
         email: formData.email.trim(),
+        withoutContract: formData.withoutContract,
         clientTypeId: formData.clientTypeId,
         assessorName: formData.assessorName.trim(),
         assessorCpf: formData.assessorCpf.trim(),
@@ -863,16 +866,6 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
                 required
               />
             </div>
-            <div className="space-y-2 md:w-[180px]">
-              <Label htmlFor="financialCode">Código financeiro</Label>
-              <Input
-                id="financialCode"
-                value={client?.financialCode || ""}
-                placeholder={client ? "Não atribuído" : "Gerado ao salvar"}
-                readOnly
-                aria-readonly="true"
-              />
-            </div>
           </div>
 
           {/* Linha 2: Tipo + Responsável */}
@@ -975,6 +968,13 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
               <span className="block text-sm text-muted-foreground">
                 O responsável receberá avisos, informativos e atualizações deste cliente.
               </span>
+            </span>
+          </label>
+          <label className="flex w-full cursor-pointer items-start gap-3 rounded-xl bg-blue-50 p-4 dark:bg-blue-950/30 md:max-w-[520px]">
+            <Checkbox className="mt-0.5 cursor-pointer bg-background" disabled={client?.hasActiveContract === true} checked={formData.withoutContract} onCheckedChange={(checked) => handleInputChange("withoutContract", checked === true)} />
+            <span className="space-y-1">
+              <span className="block text-sm font-semibold text-foreground">Cliente sem contrato</span>
+              <span className="block text-sm text-muted-foreground">Cadastro para serviços avulsos.</span>
             </span>
           </label>
         </div>

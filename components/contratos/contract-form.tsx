@@ -104,6 +104,7 @@ import {
   previewContractUpdate,
   replaceContractInClicksign,
   updateContract,
+  updateContractEmergencyLimit,
   updateContractScheduleSettings,
   updateContractFillingDraft,
   uploadContractDocument,
@@ -316,6 +317,15 @@ const normalizeContractServiceForForm = (
   }
 }
 
+const scheduleSettingsFingerprint = (items: ContractService[]) => JSON.stringify(items.map((service) => ({
+  id: service.id,
+  recurrence: service.recurrence,
+  duration: service.duration,
+  durationType: service.durationType,
+  teamIds: [...service.teamIds].sort(),
+  employeeIds: [...service.employeeIds].sort(),
+})))
+
 const formatServiceDuration = (service?: { defaultDuration?: number; durationType?: ServiceDurationType }) => {
   if (!service) return "-"
   const duration = Number(service.defaultDuration ?? 0)
@@ -447,7 +457,9 @@ export function ContractForm({
   const organizationSettings = organizationSettingsQuery.data?.data ?? null
   const getClientTypeById = (id: string) => clientTypes.find((type) => type.id === id)
   const contract = contractQuery.data?.data
-  const isScheduleSettingsEditing = Boolean(isEditing && isContractSigned(contract) && contract?.isAwaitingSchedules)
+  const isSignedEditing = Boolean(isEditing && isContractSigned(contract))
+  const isScheduleSettingsEditing = Boolean(isSignedEditing && contract?.isAwaitingSchedules)
+  const isEmergencyLimitOnlyEditing = isSignedEditing && !isScheduleSettingsEditing
   const [confirmScheduleSettingsOpen, setConfirmScheduleSettingsOpen] = useState(false)
   const client = contract ? clients.find((c) => c.id === contract.clientId) : undefined
   const isCanceledClicksignContract =
@@ -528,6 +540,7 @@ export function ContractForm({
     contract?.firstVisitDate ? String(contract.firstVisitDate).split("T")[0] : ""
   )
   const [firstVisitTime, setFirstVisitTime] = useState(contract?.firstVisitTime || "08:00")
+  const [emergencyLimitInput, setEmergencyLimitInput] = useState(String(contract?.emergencyLimit ?? 15))
   const [installmentsCountInput, setInstallmentsCountInput] = useState(
     String(contract?.installmentsCount ?? 1),
   )
@@ -650,6 +663,7 @@ export function ContractForm({
     [activeCertificateTemplates],
   )
   const fillingDraftFormData = useMemo(() => ({
+    emergencyLimit: Number(emergencyLimitInput),
     selectedTemplateId,
     createAutomatedSchedules,
     createAutomatedInformatives,
@@ -670,6 +684,7 @@ export function ContractForm({
       maxUnits: Number.isFinite(rule.maxUnits) ? rule.maxUnits : Number.MAX_SAFE_INTEGER,
     })),
   }), [
+    emergencyLimitInput,
     contractRecurrenceRules,
     contractValue,
     createAutomatedInformatives,
@@ -731,9 +746,11 @@ export function ContractForm({
 
   useEffect(() => {
     if (!contract) return
+    if (!isRenewal) setEmergencyLimitInput(String(contract.emergencyLimit ?? 15))
 
     if (!isRenewal && contract.internalStatus === "filling") {
       const formDraft = contract.formDraft as Partial<{
+        emergencyLimit: number
         selectedTemplateId: string
         createAutomatedSchedules: boolean
         createAutomatedInformatives: boolean
@@ -762,6 +779,7 @@ export function ContractForm({
       }
 
       setSelectedClientId(contract.clientId)
+      setEmergencyLimitInput(String(formDraft.emergencyLimit ?? contract.emergencyLimit ?? 15))
       setSelectedTemplateId(formDraft.selectedTemplateId ?? "")
       setCreateAutomatedSchedules(Boolean(formDraft.createAutomatedSchedules))
       setCreateAutomatedInformatives(Boolean(formDraft.createAutomatedInformatives))
@@ -1143,6 +1161,7 @@ export function ContractForm({
     renderedHtml?: string,
     options?: { contractNumber?: string },
   ): ContractPayload => ({
+    emergencyLimit: Number(emergencyLimitInput),
     clientId: selectedClientId,
     templateId: selectedTemplateId,
     contractNumber: options?.contractNumber,
@@ -1375,18 +1394,40 @@ export function ContractForm({
     },
   })
 
+  const emergencyLimitMutation = useMutation({
+    mutationFn: () => updateContractEmergencyLimit(contractId!, Number(emergencyLimitInput)),
+    onSuccess: async (response) => {
+      allowNavigationRef.current = true
+      setDraftBaseline(draftSnapshotRef.current)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["contract", response.data.id] }),
+        queryClient.invalidateQueries({ queryKey: ["contracts"] }),
+        queryClient.invalidateQueries({ queryKey: ["emergency-usage"] }),
+      ])
+      toast.success("Limite de emergências atualizado.")
+      router.replace(getContractProfileHrefAfterSave(response.data.id))
+    },
+    onError: (error) => toast.error(getApiErrorMessage(error, "Não foi possível atualizar o limite.")),
+  })
+
   const scheduleSettingsMutation = useMutation({
-    mutationFn: () => updateContractScheduleSettings(contractId!, {
-      confirmed: true,
-      services: services.map((service) => ({
-        id: service.id,
-        recurrence: service.recurrence,
-        duration: service.duration,
-        durationType: service.durationType,
-        teamIds: service.teamIds,
-        additionalEmployeeIds: service.employeeIds,
-      })),
-    }),
+    mutationFn: async () => {
+      const response = await updateContractScheduleSettings(contractId!, {
+        confirmed: true,
+        services: services.map((service) => ({
+          id: service.id,
+          recurrence: service.recurrence,
+          duration: service.duration,
+          durationType: service.durationType,
+          teamIds: service.teamIds,
+          additionalEmployeeIds: service.employeeIds,
+        })),
+      })
+      if (Number(emergencyLimitInput) !== (contract?.emergencyLimit ?? 15)) {
+        return updateContractEmergencyLimit(contractId!, Number(emergencyLimitInput))
+      }
+      return response
+    },
     onSuccess: async (response) => {
       allowNavigationRef.current = true
       setDraftBaseline(draftSnapshotRef.current)
@@ -1394,6 +1435,7 @@ export function ContractForm({
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["contract", response.data.id] }),
         queryClient.invalidateQueries({ queryKey: ["contracts"] }),
+        queryClient.invalidateQueries({ queryKey: ["emergency-usage"] }),
         queryClient.invalidateQueries({ queryKey: ["contract-schedule-plan", response.data.id] }),
       ])
       toast.success("Alterações salvas. Os agendamentos foram criados novamente para revisão.")
@@ -1853,7 +1895,20 @@ export function ContractForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isSignedEditing && (!emergencyLimitInput.trim() || !Number.isInteger(Number(emergencyLimitInput)) || Number(emergencyLimitInput) < 0)) {
+      toast.error("Informe um limite inteiro de emergências maior ou igual a zero.")
+      return
+    }
+    if (isEmergencyLimitOnlyEditing) {
+      if (!emergencyLimitMutation.isPending) emergencyLimitMutation.mutate()
+      return
+    }
     if (isScheduleSettingsEditing) {
+      const persistedServices = (contract?.services ?? []).map((service) => normalizeContractServiceForForm(service, contract))
+      if (scheduleSettingsFingerprint(services) === scheduleSettingsFingerprint(persistedServices)) {
+        if (!emergencyLimitMutation.isPending) emergencyLimitMutation.mutate()
+        return
+      }
       if (!scheduleSettingsMutation.isPending) setConfirmScheduleSettingsOpen(true)
       return
     }
@@ -1867,11 +1922,6 @@ export function ContractForm({
       fillingDraftMutation.isPending ||
       isFinalizingCreate
     ) return
-
-    if (isEditing && isContractSigned(contract)) {
-      toast.error("Contratos assinados não podem ser editados.")
-      return
-    }
 
     if (isEditing && submitIntent === "save" && contract?.internalStatus === "filling") {
       await saveFillingDraft()
@@ -1894,6 +1944,10 @@ export function ContractForm({
       return
     }
 
+    if (!emergencyLimitInput.trim() || !Number.isInteger(Number(emergencyLimitInput)) || Number(emergencyLimitInput) < 0) {
+      toast.error("Informe um limite inteiro de emergências maior ou igual a zero.")
+      return
+    }
     if (!Number.isInteger(installmentsCount) || installmentsCount < 1) {
       toast.error("Informe uma quantidade de parcelas inteira e maior que zero.")
       return
@@ -2386,19 +2440,6 @@ export function ContractForm({
     )
   }
 
-  if (isEditing && isContractSigned(contract) && !isScheduleSettingsEditing) {
-    return (
-      <Card className="p-8 text-center">
-        <FileText className="mx-auto mb-3 h-8 w-8 text-primary" />
-        <h2 className="text-lg font-semibold">Contrato assinado</h2>
-        <p className="mt-1 text-sm text-muted-foreground">Contratos assinados não podem ser editados.</p>
-        <Button className="mt-4" variant="outline" onClick={() => router.push(formBackHref)}>
-          Voltar para o contrato
-        </Button>
-      </Card>
-    )
-  }
-
   return (
     <form noValidate onSubmit={handleSubmit} className="space-y-6">
       <div className="flex flex-wrap justify-end gap-2">
@@ -2424,7 +2465,7 @@ export function ContractForm({
           data-contract-action={isEditing ? "save" : undefined}
           onClick={isEditing ? undefined : () => saveFillingDraft()}
           disabled={
-            scheduleSettingsMutation.isPending ||
+            emergencyLimitMutation.isPending || scheduleSettingsMutation.isPending ||
             fillingDraftMutation.isPending ||
             previewMutation.isPending ||
             previewUpdateMutation.isPending ||
@@ -2433,7 +2474,7 @@ export function ContractForm({
           }
         >
           <Save className="mr-2 h-4 w-4" />
-          {scheduleSettingsMutation.isPending || fillingDraftMutation.isPending || updateMutation.isPending
+          {emergencyLimitMutation.isPending || scheduleSettingsMutation.isPending || fillingDraftMutation.isPending || updateMutation.isPending
             ? "Salvando..."
             : isEditing
               ? contract?.internalStatus === "filling"
@@ -2441,7 +2482,7 @@ export function ContractForm({
                 : "Salvar"
               : "Salvar Rascunho"}
         </Button>
-        {isEditing && !isScheduleSettingsEditing ? (
+        {isEditing && !isSignedEditing ? (
           <Button
             type="submit"
             data-contract-action="document"
@@ -2469,7 +2510,7 @@ export function ContractForm({
         ) : null}
       </div>
 
-      <fieldset disabled={isScheduleSettingsEditing} className="min-w-0 space-y-6">
+      <fieldset disabled={isSignedEditing} className="min-w-0 space-y-6">
       {/* Client Selection */}
       <Card className="p-4 sm:p-6">
         <h3 className="font-semibold mb-4 flex items-center gap-2">
@@ -2813,13 +2854,15 @@ export function ContractForm({
         </div>
       </Card>
 
+      </fieldset>
+
       {/* Contract Details */}
       <Card className="p-4 sm:p-6">
         <h3 className="font-semibold mb-4 flex items-center gap-2">
           <FileText className="w-5 h-5 text-primary" />
           Dados do Contrato
         </h3>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-[176px_160px_180px]">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-[176px_200px_180px]">
           <div className="min-w-0 space-y-2">
             <Label>Data de criação *</Label>
             <DatePicker
@@ -2827,12 +2870,18 @@ export function ContractForm({
               onChange={(date) => setStartDate(date ? toCivilDateKey(date) : "")}
               placeholder="Selecionar data"
               className="h-10 w-full"
+              disabled={isSignedEditing}
             />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="contract-emergency-limit-create">Número de emergências *</Label>
+            <Input id="contract-emergency-limit-create" type="number" min={0} step={1} value={emergencyLimitInput} onChange={(event) => setEmergencyLimitInput(event.target.value.replace(/\D/g, ""))} required />
           </div>
           <div className="space-y-2">
             <Label htmlFor="contract-installments-count">Nº de parcelas *</Label>
             <Input
               id="contract-installments-count"
+              disabled={isSignedEditing}
               type="tel"
               inputMode="numeric"
               maxLength={2}
@@ -2845,6 +2894,7 @@ export function ContractForm({
             <Label htmlFor="contract-payment-day">Dia de vencimento *</Label>
             <Input
               id="contract-payment-day"
+              disabled={isSignedEditing}
               type="tel"
               inputMode="numeric"
               maxLength={2}
@@ -2864,6 +2914,7 @@ export function ContractForm({
         )}
       </Card>
 
+      <fieldset disabled={isSignedEditing} className="min-w-0">
       {/* Contract-level recurrence */}
       <Card className="p-4 sm:p-6">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -3051,6 +3102,7 @@ export function ContractForm({
       </fieldset>
 
       {/* Services */}
+      <fieldset disabled={isEmergencyLimitOnlyEditing} className="min-w-0">
       <Card className="p-4 sm:p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-semibold flex items-center gap-2">
@@ -3265,7 +3317,9 @@ export function ContractForm({
 
       </Card>
 
-      <fieldset disabled={isScheduleSettingsEditing} className="min-w-0">
+      </fieldset>
+
+      <fieldset disabled={isSignedEditing} className="min-w-0">
       {/* Contract Value */}
       <Card className="p-4 sm:p-6">
         <h3 className="font-semibold mb-4 flex items-center gap-2">
@@ -3409,7 +3463,7 @@ export function ContractForm({
       {/* Actions */}
       <div className="flex justify-end">
         <div className="grid w-full grid-cols-2 gap-3 sm:flex sm:w-auto sm:justify-end">
-          {isEditing && !isScheduleSettingsEditing && contractId && canDeleteContracts ? (
+          {isEditing && !isSignedEditing && contractId && canDeleteContracts ? (
             <Button
               type="button"
               variant="outline"
@@ -3441,20 +3495,20 @@ export function ContractForm({
                     ? "w-full sm:w-auto"
                     : "w-full bg-primary hover:bg-primary/90 sm:w-auto"
                 }
-                disabled={scheduleSettingsMutation.isPending || fillingDraftMutation.isPending || previewMutation.isPending || previewUpdateMutation.isPending || updateMutation.isPending || createMutation.isPending || isFinalizingCreate}
+                disabled={emergencyLimitMutation.isPending || scheduleSettingsMutation.isPending || fillingDraftMutation.isPending || previewMutation.isPending || previewUpdateMutation.isPending || updateMutation.isPending || createMutation.isPending || isFinalizingCreate}
               >
                 <Save className="mr-2 h-4 w-4" />
-                {scheduleSettingsMutation.isPending || fillingDraftMutation.isPending || updateMutation.isPending
+                {emergencyLimitMutation.isPending || scheduleSettingsMutation.isPending || fillingDraftMutation.isPending || updateMutation.isPending
                   ? "Salvando..."
                   : contract?.internalStatus === "filling"
                     ? "Salvar Rascunho"
                     : "Salvar"}
               </Button>
-              {!isScheduleSettingsEditing ? <Button
+              {!isSignedEditing ? <Button
                 type="submit"
                 data-contract-action="document"
                 className="w-full bg-primary hover:bg-primary/90 sm:w-auto"
-                disabled={scheduleSettingsMutation.isPending || fillingDraftMutation.isPending || previewMutation.isPending || previewUpdateMutation.isPending || updateMutation.isPending || createMutation.isPending || isFinalizingCreate}
+                disabled={emergencyLimitMutation.isPending || scheduleSettingsMutation.isPending || fillingDraftMutation.isPending || previewMutation.isPending || previewUpdateMutation.isPending || updateMutation.isPending || createMutation.isPending || isFinalizingCreate}
               >
                 {contract?.internalStatus === "filling" ? (
                   <ArrowRight className="mr-2 h-4 w-4" />
@@ -3475,7 +3529,7 @@ export function ContractForm({
                 variant="outline"
                 className="w-full sm:w-auto"
                 onClick={() => saveFillingDraft()}
-                disabled={scheduleSettingsMutation.isPending || fillingDraftMutation.isPending || previewMutation.isPending || previewUpdateMutation.isPending || updateMutation.isPending || createMutation.isPending || isFinalizingCreate}
+                disabled={emergencyLimitMutation.isPending || scheduleSettingsMutation.isPending || fillingDraftMutation.isPending || previewMutation.isPending || previewUpdateMutation.isPending || updateMutation.isPending || createMutation.isPending || isFinalizingCreate}
               >
                 <Save className="mr-2 h-4 w-4" />
                 {fillingDraftMutation.isPending ? "Salvando..." : "Salvar Rascunho"}

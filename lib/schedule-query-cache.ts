@@ -7,6 +7,7 @@ type ScheduleListResponse = {
 }
 
 export function cacheSavedSchedule(queryClient: QueryClient, savedSchedule: ScheduleRecord) {
+  void queryClient.invalidateQueries({ queryKey: ["emergency-usage"] })
   queryClient.setQueriesData<ScheduleListResponse>(
     { queryKey: ["schedules"] },
     (current) => {

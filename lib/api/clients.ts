@@ -35,6 +35,8 @@ export type ClientAdditionalContact = {
 export type ClientRecord = {
   id: string
   financialCode?: string
+  withoutContract?: boolean
+  hasActiveContract?: boolean
   additionalAssessors?: ClientAdditionalContact[]
   subSyndics?: ClientAdditionalContact[]
   companyName: string
@@ -154,7 +156,7 @@ export type ClientServiceRecord = {
   duration: number
   durationValue?: number
   durationType?: "minutes" | "hours" | "shift" | "days"
-  status: "scheduled" | "in_progress" | "completed" | "cancelled" | "rescheduled"
+  status: "scheduled" | "in_progress" | "completed" | "cancelled" | "rescheduled" | "awaiting_schedule" | "not_completed"
 }
 
 export const clientAttachmentTypes = [
@@ -196,6 +198,7 @@ export type CreateClientExtraPayload = {
 }
 
 export type ClientPayload = {
+  withoutContract?: boolean
   additionalAssessors?: ClientAdditionalContact[]
   subSyndics?: ClientAdditionalContact[]
   companyName: string

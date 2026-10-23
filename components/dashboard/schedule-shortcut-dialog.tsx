@@ -11,6 +11,8 @@ import { AttendanceStartSlider } from "@/components/agendamentos/attendance-star
 import { CompletionNaAttachments } from "@/components/agendamentos/completion-na-attachments"
 import { ScheduleDetailsDialog } from "@/components/agendamentos/schedule-details-dialog"
 import { SchedulingFormDialog, type SchedulingFormData } from "@/components/agendamentos/scheduling-form-dialog"
+import { requestScheduleReschedule } from "@/lib/api/schedules"
+import { getRescheduleReasonError, RescheduleReasonFields } from "@/components/agendamentos/reschedule-reason-fields"
 import { Button } from "@/components/ui/button"
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog"
 import {
@@ -46,7 +48,7 @@ import { canAccessScheduleCompletion, canStartSchedule } from "@/lib/schedule-pe
 import { cacheSavedSchedule } from "@/lib/schedule-query-cache"
 import { scheduleDisposalValidationMessage, type ScheduleDisposalType } from "@/lib/schedule-disposal"
 
-type CompletionStep = "attachments" | "checkout"
+type CompletionStep = "attachments" | "checkout" | "request"
 
 type ScheduleShortcutDialogProps = {
   schedule: ScheduleRecord | null
@@ -120,6 +122,7 @@ export function ScheduleShortcutDialog({
   }, [prepareCompletion, schedule?.id])
 
   const invalidateSchedules = async () => {
+    await queryClient.invalidateQueries({ queryKey: ["emergency-usage"] })
     await queryClient.invalidateQueries({ queryKey: ["schedules"] })
     await queryClient.invalidateQueries({ queryKey: ["analytics"] })
   }
@@ -337,15 +340,22 @@ export function ScheduleShortcutDialog({
     },
   })
 
+  const [requestReason, setRequestReason] = useState("")
+  const [requestNotes, setRequestNotes] = useState("")
+  const requestMutation = useMutation({
+    mutationFn: () => requestScheduleReschedule(schedule!.id, { rescheduleReason: requestReason, rescheduleNotes: requestNotes.trim() }),
+    onSuccess: async ({ data }) => { onScheduleChange(data); onClose(); setRequestReason(""); setRequestNotes(""); await invalidateSchedules(); toast.success("Reagendamento solicitado.") },
+    onError: (error) => toast.error(getApiErrorMessage(error, "Não foi possível solicitar reagendamento.")),
+  })
   const saveMutation = useMutation({
     mutationFn: async ({ target, formData }: { target: ScheduleRecord; formData: SchedulingFormData }) => {
       if (!canManageAgenda && canManageScheduleStatus) {
-        return updateScheduleStatus(target.id, formData.status)
+        return updateScheduleStatus(target.id, formData.status, formData.nonCompletionReason)
       }
       if (!canManageAgenda) throw new Error("Você não tem permissão para editar este agendamento.")
 
       const commonPayload = {
-        rescheduleReason: formData.rescheduleReason,
+        rescheduleReason: formData.rescheduleReason || undefined,
         rescheduleNotes: formData.rescheduleNotes,
         serviceTypeId: formData.serviceTypeIds[0],
         serviceTypeIds: formData.serviceTypeIds,
@@ -370,6 +380,7 @@ export function ScheduleShortcutDialog({
           : {
               ...commonPayload,
               isEmergency: formData.isEmergency,
+              emergencyContractId: formData.emergencyContractId,
               billable: formData.createContract,
               value: formData.createContract ? formData.value : 0,
               billingDueDate: formData.createContract ? formData.billingDueDate : undefined,
@@ -378,8 +389,8 @@ export function ScheduleShortcutDialog({
             },
       )
 
-      if (canManageScheduleStatus && target.status !== formData.status) {
-        return updateScheduleStatus(target.id, formData.status)
+      if ((canManageScheduleStatus || (canManageAgenda && formData.status === "not_completed")) && target.status !== formData.status) {
+        return updateScheduleStatus(target.id, formData.status, formData.nonCompletionReason)
       }
       return response
     },
@@ -413,6 +424,7 @@ export function ScheduleShortcutDialog({
       return
     }
 
+    if (completionDisposalType && !completionDisposalMtrNumber.trim()) { toast.error("Informe o número do MTR para concluir um atendimento com descarte."); return }
     const disposalValidationMessage = scheduleDisposalValidationMessage(
       completionDisposalType,
       completionDisposalStationId,
@@ -505,6 +517,7 @@ export function ScheduleShortcutDialog({
             }
             className="absolute left-3 top-3 z-20 gap-1.5 px-2 text-foreground hover:text-foreground max-sm:top-[calc(env(safe-area-inset-top)+0.85rem)]"
             onClick={() => {
+              if (completionStep === "request") { setCompletionStep("checkout"); return }
               if (isEditingExecution && completionStep === "attachments") {
                 setCompletionStep("checkout")
                 return
@@ -536,14 +549,14 @@ export function ScheduleShortcutDialog({
           ) : null}
           <DialogHeader className="min-w-0 px-6 pb-4 pt-14 text-left max-sm:px-5 max-sm:pt-[calc(env(safe-area-inset-top)+3.75rem)]">
             <DialogTitle>
-              {completionStep === "attachments"
+              {completionStep === "request" ? "Solicitar reagendamento" : completionStep === "attachments"
                 ? "Anexos do atendimento"
                 : isEditingExecution
                 ? "Editar execução do atendimento"
                 : "Encerrar atendimento"}
             </DialogTitle>
             <DialogDescription>
-              {completionStep === "attachments"
+              {completionStep === "request" ? "Informe o motivo para solicitar uma nova data ao responsável pelo agendamento." : completionStep === "attachments"
                 ? "Adicione NAs e evidências da execução. Cada arquivo é salvo no agendamento assim que for anexado."
                 : isEditingExecution
                 ? "Revise o período executado, a equipe de apoio e as observações antes de salvar."
@@ -552,6 +565,7 @@ export function ScheduleShortcutDialog({
           </DialogHeader>
 
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 pb-5 max-sm:px-5">
+            {completionStep === "request" ? <RescheduleReasonFields reason={requestReason} notes={requestNotes} onReasonChange={setRequestReason} onNotesChange={setRequestNotes} /> : null}
             {completionStep === "checkout" ? (
               <AttendanceCompletionFields
                 idPrefix="dashboard-schedule-completion"
@@ -583,7 +597,7 @@ export function ScheduleShortcutDialog({
                 onDisposalStationIdChange={setCompletionDisposalStationId}
                 onDisposalQuantityM3Change={setCompletionDisposalQuantityM3}
               />
-            ) : (
+            ) : completionStep === "attachments" ? (
               <CompletionNaAttachments
                 existingAttachments={schedule?.naAttachments ?? []}
                 files={completionFiles}
@@ -611,7 +625,7 @@ export function ScheduleShortcutDialog({
                   renameNaMutation.mutate({ target: schedule, documentUrl: attachment.documentUrl, fileName })
                 }}
               />
-            )}
+            ) : null}
           </div>
 
           <div className="flex shrink-0 flex-col gap-2 bg-background px-6 pb-6 pt-3 max-sm:px-5 max-sm:pb-[calc(env(safe-area-inset-bottom)+1.25rem)] sm:flex-row sm:flex-nowrap sm:justify-end sm:[&>button]:px-2.5">
@@ -657,7 +671,9 @@ export function ScheduleShortcutDialog({
                 Editar anexos
               </Button>
             ) : null}
-            <Button
+            {completionStep === "checkout" && !isEditingExecution ? <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => { setRequestReason(""); setRequestNotes(""); setCompletionStep("request") }}>Solicitar reagendamento</Button> : null}
+            {completionStep === "request" ? <Button type="button" disabled={requestMutation.isPending} onClick={() => { const reasonError = getRescheduleReasonError(requestReason, requestNotes); if (reasonError) { toast.error(reasonError); return } requestMutation.mutate() }}>{requestMutation.isPending ? "Solicitando..." : "Confirmar solicitação"}</Button> : null}
+            {completionStep !== "request" ? <Button
               type="button"
               className={
                 completionStep === "attachments" && !isEditingExecution
@@ -694,7 +710,7 @@ export function ScheduleShortcutDialog({
               ) : (
                 "Encerrar atendimento"
               )}
-            </Button>
+            </Button> : null}
           </div>
         </DialogContent>
       </Dialog>

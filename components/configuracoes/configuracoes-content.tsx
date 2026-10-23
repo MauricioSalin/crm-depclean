@@ -1,4 +1,5 @@
 "use client"
+import { VehiclesSettings } from "@/components/configuracoes/vehicles-settings"
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react"
 import { Bell, Building, Copy, Edit, Eye, EyeOff, Mail, MessageCircle, MoreHorizontal, RefreshCcw, Save, Search, Settings2, Shield, Trash2, Users } from "lucide-react"
@@ -85,6 +86,7 @@ const SETTINGS_CARDS = [
 ]
 
 const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
+  reschedule_requested: "Solicitação de reagendamento",
   new_schedule: "Novo Agendamento",
   schedule_assigned: "Agendamento Atribuído",
   schedule_unassigned: "Remoção de Agendamento",
@@ -108,7 +110,11 @@ const CHANNELS = [
   { value: "whatsapp", label: "WhatsApp", icon: MessageCircle },
 ] as const
 
-const DEFAULT_RULES_WITH_CONFIGURABLE_RECIPIENTS = new Set(["certificate_ready"])
+const DEFAULT_RULES_WITH_CONFIGURABLE_RECIPIENTS = new Set(["certificate_ready", "reschedule_requested"])
+const CLIENT_SCHEDULE_TIME_TYPES = new Set([
+  "new_schedule", "schedule_confirmed", "schedule_change", "schedule_cancel",
+  "schedule_reminder", "informative", "certificate",
+])
 
 const DEFAULT_COLOR = "#84CC16"
 const DEFAULT_CONTRACT_SIGNER_ROLE: ClientTypeRecord["contractSignerRole"] = "owner"
@@ -337,6 +343,7 @@ export function ConfiguracoesContent() {
     targetTeamIds: [] as string[],
     targetEmployeeIds: [] as string[],
     hideTimeServiceTypeIds: [] as string[],
+    hideTimeForAllServices: true,
     isActive: true,
   })
   const [pendingDelete, setPendingDelete] = useState<
@@ -478,10 +485,10 @@ export function ConfiguracoesContent() {
   )
 
   useEffect(() => {
-    if (!isAdmin && activeSection === "empresa") {
+    if (!loading && !isAdmin && activeSection === "empresa") {
       setActiveSection("tipos-cliente")
     }
-  }, [activeSection, isAdmin, setActiveSection])
+  }, [activeSection, isAdmin, loading, setActiveSection])
 
   const paginatedRules = useMemo(() => filteredRules.slice((rulePage - 1) * rulePageSize, rulePage * rulePageSize), [filteredRules, rulePage, rulePageSize])
 
@@ -537,7 +544,7 @@ export function ConfiguracoesContent() {
 
   const resetRuleForm = () => {
     setEditingRule(null)
-    setRuleForm({ name: "", description: "", type: "new_schedule", daysBefore: 1, contractExpirationAlertDays: DEFAULT_CONTRACT_EXPIRATION_ALERT_DAYS, time: "08:00", channels: [], targetTeamIds: [], targetEmployeeIds: [], hideTimeServiceTypeIds: [], isActive: true })
+    setRuleForm({ name: "", description: "", type: "new_schedule", daysBefore: 1, contractExpirationAlertDays: DEFAULT_CONTRACT_EXPIRATION_ALERT_DAYS, time: "08:00", channels: [], targetTeamIds: [], targetEmployeeIds: [], hideTimeServiceTypeIds: [], hideTimeForAllServices: true, isActive: true })
   }
 
   const closeRuleDialog = () => {
@@ -622,6 +629,7 @@ export function ConfiguracoesContent() {
         targetTeamIds: selection.teamIds,
         targetEmployeeIds: selection.employeeIds,
         hideTimeServiceTypeIds: [...(record.hideTimeServiceTypeIds ?? [])],
+        hideTimeForAllServices: record.hideTimeForAllServices ?? true,
         isActive: record.isActive,
       })
     } else {
@@ -931,7 +939,10 @@ export function ConfiguracoesContent() {
           contractExpirationAlertDays: ruleForm.type === "contract_expiring" ? contractExpirationAlertDays : undefined,
           time: ruleForm.time,
           channels: ruleForm.channels,
-          hideTimeServiceTypeIds: ruleForm.type === "schedule_reminder" ? ruleForm.hideTimeServiceTypeIds : [],
+          ...(CLIENT_SCHEDULE_TIME_TYPES.has(ruleForm.type) ? {
+            hideTimeServiceTypeIds: ruleForm.hideTimeServiceTypeIds,
+            hideTimeForAllServices: ruleForm.hideTimeForAllServices,
+          } : {}),
           ...(canConfigureRecipients
             ? {
               targetTeamIds: recipientSelection.teamIds,
@@ -948,7 +959,10 @@ export function ConfiguracoesContent() {
           contractExpirationAlertDays: ruleForm.type === "contract_expiring" ? contractExpirationAlertDays : undefined,
           time: ruleForm.time,
           channels: ruleForm.channels,
-          hideTimeServiceTypeIds: ruleForm.type === "schedule_reminder" ? ruleForm.hideTimeServiceTypeIds : [],
+          ...(CLIENT_SCHEDULE_TIME_TYPES.has(ruleForm.type) ? {
+            hideTimeServiceTypeIds: ruleForm.hideTimeServiceTypeIds,
+            hideTimeForAllServices: ruleForm.hideTimeForAllServices,
+          } : {}),
           targetTeamIds: recipientSelection.teamIds,
           targetEmployeeIds: recipientSelection.employeeIds,
           isActive: ruleForm.isActive,
@@ -1537,6 +1551,8 @@ export function ConfiguracoesContent() {
         </div>
       )}
 
+      {activeSection === "empresa" && isAdmin && canManageSettings ? <VehiclesSettings /> : null}
+
       {activeSection === "tipos-cliente" && (
         <div className="space-y-4">
           <div className="hidden flex-col gap-3 overflow-visible p-1 sm:flex sm:flex-row sm:items-center">
@@ -2061,7 +2077,7 @@ export function ConfiguracoesContent() {
                                 }
                               }}
                             />
-                            <Button variant="ghost" size="icon" onClick={() => openRuleDialog(item)}><Edit className="h-4 w-4" /></Button>
+                            <Button variant="ghost" size="icon" aria-label={`Editar notificação ${item.name}`} onClick={() => openRuleDialog(item)}><Edit className="h-4 w-4" /></Button>
                             {!item.isDefault ? (
                               <Button variant="ghost" size="icon" onClick={() => setPendingDelete({ kind: "rule", id: item.id, label: item.name })}><Trash2 className="h-4 w-4" /></Button>
                             ) : null}
@@ -2221,18 +2237,31 @@ export function ConfiguracoesContent() {
                     ) : null}
                   </div>
                 )}
-                {ruleForm.type === "schedule_reminder" ? (
+                {CLIENT_SCHEDULE_TIME_TYPES.has(ruleForm.type) ? (
                   <div className="space-y-2">
-                    <Label>Serviços sem horário específico</Label>
-                    <MultiSelect
-                      options={serviceOptions}
-                      selected={ruleForm.hideTimeServiceTypeIds}
-                      onChange={(hideTimeServiceTypeIds) => setRuleForm({ ...ruleForm, hideTimeServiceTypeIds })}
-                      placeholder="Selecionar serviços..."
-                      searchPlaceholder="Buscar serviço..."
-                      emptyMessage="Nenhum serviço encontrado."
-                      ariaLabel="Selecionar serviços sem horário específico"
-                    />
+                    <div className="flex items-center justify-between gap-3">
+                      <Label htmlFor="rule-time-window-all">Entre 08h e 18h para todos os serviços</Label>
+                      <Switch
+                        id="rule-time-window-all"
+                        checked={ruleForm.hideTimeForAllServices}
+                        onCheckedChange={(hideTimeForAllServices) => setRuleForm({ ...ruleForm, hideTimeForAllServices })}
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground">Vale apenas para a mensagem ao cliente. Desative para escolher serviços específicos; sem seleção, será informado o horário exato.</p>
+                    {!ruleForm.hideTimeForAllServices ? (
+                      <>
+                        <Label>Serviços sem horário específico</Label>
+                        <MultiSelect
+                          options={serviceOptions}
+                          selected={ruleForm.hideTimeServiceTypeIds}
+                          onChange={(hideTimeServiceTypeIds) => setRuleForm({ ...ruleForm, hideTimeServiceTypeIds })}
+                          placeholder="Selecionar serviços..."
+                          searchPlaceholder="Buscar serviço..."
+                          emptyMessage="Nenhum serviço encontrado."
+                          ariaLabel="Selecionar serviços sem horário específico"
+                        />
+                      </>
+                    ) : null}
                   </div>
                 ) : null}
                 <div className="space-y-2">

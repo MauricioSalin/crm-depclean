@@ -110,10 +110,6 @@ const CONTRACT_IMPORT_FIELDS: CsvImportField[] = [
   { key: "notes", label: "Observações" },
 ]
 
-const isContractSigned = (contract: Pick<ContractRecord, "status" | "clicksign">) => {
-  return isClosedClicksignContractStatus(contract.status)
-}
-
 const CONTRACT_STATUS_FILTER_VALUES = new Set([
   "all",
   "filling",
@@ -519,7 +515,7 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
                                 </Link>
                               </DropdownMenuItem>
                             ) : null}
-                            {canEditContracts && !isContractSigned(contract) ? (
+                            {canEditContracts ? (
                               <DropdownMenuItem asChild>
                                 <Link href={contract.internalStatus === "filling"
                                   ? getContractPrimaryHref(contract)
@@ -662,7 +658,7 @@ export function ContractsContent({ viewMode, viewToggle, openImport = false, onI
                         onClick={(event) => event.stopPropagation()}
                         onKeyDown={(event) => event.stopPropagation()}
                       >
-                        {canEditContracts && !isContractSigned(contract) ? (
+                        {canEditContracts ? (
                           <Button variant="outline" size="sm" className="flex-1" asChild>
                             <Link href={contract.internalStatus === "filling"
                               ? getContractPrimaryHref(contract)

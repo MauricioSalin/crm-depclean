@@ -1,4 +1,5 @@
 "use client"
+import { EmergencyExhaustedBadge, EmergencyUsageCounter } from "@/components/contratos/emergency-usage"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
@@ -29,6 +30,8 @@ import {
 } from "lucide-react"
 
 import { AssignmentBadges } from "@/components/ui/assignment-badges"
+import { ScheduleShortcutDialog } from "@/components/dashboard/schedule-shortcut-dialog"
+import { getScheduleById, type ScheduleRecord } from "@/lib/api/schedules"
 import { Badge } from "@/components/ui/badge"
 import {
   BusinessStatusBadge,
@@ -216,6 +219,10 @@ const getInstallmentStatusBadge = (status: string) => {
 
 const getScheduleStatusBadge = (status: string) => {
   switch (status) {
+    case "awaiting_schedule":
+      return <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100">Aguardando reagendamento</Badge>
+    case "not_completed":
+      return <Badge variant="destructive">Não concluído</Badge>
     case "draft":
       return <Badge variant="secondary">Rascunho</Badge>
     case "scheduled":
@@ -435,6 +442,11 @@ function ContractDetailLoading() {
 
 export function ContractDetail({ contractId }: ContractDetailProps) {
   const queryClient = useQueryClient()
+  const [openedSchedule, setOpenedSchedule] = useState<ScheduleRecord | null>(null)
+  const openProfileSchedule = async (id: string) => {
+    try { const response = await getScheduleById(id); setOpenedSchedule(response.data) }
+    catch { sonnerToast.error("Não foi possível abrir o agendamento.") }
+  }
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -939,6 +951,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
 
   return (
     <div className="space-y-6">
+      <ScheduleShortcutDialog schedule={openedSchedule} onClose={() => setOpenedSchedule(null)} onScheduleChange={setOpenedSchedule} />
       <Card className="p-6">
         <div className="flex flex-col justify-between gap-4 lg:min-h-[104px] lg:flex-row lg:items-stretch">
           <div className="flex items-start gap-4">
@@ -1035,16 +1048,27 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                     : isCanceledClicksignContract ? "Reenviar ClickSign" : "Enviar ClickSign"}
                 </Button>
               ) : null}
+              {canEditContracts ? (
+                <Link href={withReturnTo(`/contratos/${resolvedContractId}/editar`, currentHref)} className="flex-1 sm:flex-none">
+                  <Button variant="outline" size="sm" className="w-full">
+                    <Pencil className="mr-2 h-4 w-4" />
+                    Editar
+                  </Button>
+                </Link>
+              ) : null}
             </div>
 
-            <div className="mt-auto">
-              <div className="mb-1 flex justify-between text-xs">
-                <span className="text-muted-foreground">
-                  {paidInstallments.length}/{contract.installmentsCount} parcelas pagas
-                </span>
-                <span className="font-medium">{Math.round(progress)}%</span>
+            <div className="mt-auto grid grid-cols-2 items-end gap-4">
+              <EmergencyUsageCounter contractId={contract.id} />
+              <div>
+                <div className="mb-1 flex justify-between gap-3 text-xs">
+                  <span className="text-muted-foreground">
+                    {paidInstallments.length}/{contract.installmentsCount} parcelas pagas
+                  </span>
+                  <span className="font-medium">{Math.round(progress)}%</span>
+                </div>
+                <Progress value={progress} className="h-2" />
               </div>
-              <Progress value={progress} className="h-2" />
             </div>
           </div>
         </div>
@@ -1532,7 +1556,7 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
                           : []
 
                     return (
-                      <TableRow key={schedule.id}>
+                      <TableRow key={schedule.id} className="cursor-pointer" tabIndex={0} onClick={() => void openProfileSchedule(schedule.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); void openProfileSchedule(schedule.id) } }}>
                         <TableCell className="font-medium">{schedule.serviceTypeName}</TableCell>
                         <TableCell>{schedule.unitName}</TableCell>
                         <TableCell>
@@ -1639,7 +1663,10 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
               <Button
                 variant={contract.automationSchedulePlanSavedAt ? "outline" : "default"}
                 size="sm"
-                className="h-9 flex-1 text-sm sm:flex-none"
+                className={cn(
+                  "h-9 flex-1 text-sm sm:flex-none",
+                  !contract.automationSchedulePlanSavedAt && "bg-amber-600 text-white hover:bg-amber-700 focus-visible:ring-amber-600/30",
+                )}
                 onClick={() => setSchedulePlanOpen(true)}
               >
                 <CalendarClock className="mr-2 h-4 w-4" />

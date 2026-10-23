@@ -280,6 +280,7 @@ export interface ServiceHistory {
 
 // Notification Type
 export type NotificationType = 
+  | "reschedule_requested"
   | "new_schedule" 
   | "schedule_assigned"
   | "schedule_unassigned"

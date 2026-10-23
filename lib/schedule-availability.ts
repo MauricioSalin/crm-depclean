@@ -85,7 +85,7 @@ export function checkScheduleAvailability(params: {
   ]))
   const conflicts = params.schedules
     .filter((schedule) => !ignoredScheduleIds.has(schedule.id))
-    .filter((schedule) => !["cancelled", "completed"].includes(schedule.status))
+    .filter((schedule) => !["cancelled", "completed", "awaiting_schedule", "not_completed"].includes(schedule.status))
     .flatMap((schedule) => {
       const resource = expandResource({
         teamIds: schedule.teams.map((team) => team.id),
@@ -307,7 +307,7 @@ export function getDailyServiceCapacityViolation(params: {
       ...(params.ignoreScheduleIds ?? []),
     ]))
     for (const schedule of params.schedules) {
-      if (ignoredScheduleIds.has(schedule.id) || ["cancelled", "completed"].includes(schedule.status)) continue
+      if (ignoredScheduleIds.has(schedule.id) || ["cancelled", "completed", "awaiting_schedule", "not_completed"].includes(schedule.status)) continue
       const scheduleServiceIds = schedule.serviceTypeIds?.length
         ? schedule.serviceTypeIds
         : [schedule.serviceTypeId]

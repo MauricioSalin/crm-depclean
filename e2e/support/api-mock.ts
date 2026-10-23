@@ -420,6 +420,11 @@ function analyticsResponse(path: string) {
 }
 
 function resolveGet(path: string, url: URL, currentUser = E2E_USER): unknown {
+  if (path === "/emergencies") return []
+  if (path === "/vehicles") return {
+    types: [{ id: "truck", name: "Caminhão" }, { id: "car", name: "Carro" }],
+    vehicles: [{ id: "vehicle-test", typeId: "truck", plate: "ABC1D23" }, { id: "vehicle-car", typeId: "car", plate: "CAR1A23" }],
+  }
   if (path === "/profile/me") return { ...currentUser, profileDescription: "Perfil dos testes E2E." }
   if (path === "/support/contact") {
     return { name: "Suporte Depclean", whatsapp: "51999999999", email: "suporte@depclean.test" }
@@ -453,6 +458,7 @@ function resolveGet(path: string, url: URL, currentUser = E2E_USER): unknown {
   }
   if (path === "/contracts/contract-e2e") return contractFixture
   if (path === "/contracts") return [contractFixture]
+  if (path === "/schedules/emergency-contracts") return { requiresContract: true, contracts: [{ id: contractFixture.id, contractNumber: contractFixture.contractNumber, startDate: contractFixture.startDate, endDate: contractFixture.endDate, isActive: true }] }
   if (path === "/schedules/schedule-e2e/reschedule-options") {
     return [{ date: TODAY, time: "10:00" }]
   }

@@ -1,4 +1,7 @@
 "use client"
+import { requestScheduleReschedule } from "@/lib/api/schedules"
+import { getRescheduleReasonError, RescheduleReasonFields } from "@/components/agendamentos/reschedule-reason-fields"
+import { EmergencyExhaustedBadge } from "@/components/contratos/emergency-usage"
 
 import { useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
@@ -283,7 +286,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   const [attendanceCancelTarget, setAttendanceCancelTarget] = useState<AgendaScheduledServiceRow | null>(null)
   const [completionTarget, setCompletionTarget] = useState<AgendaScheduledServiceRow | null>(null)
   const [completionInfoOpen, setCompletionInfoOpen] = useState(false)
-  const [completionStep, setCompletionStep] = useState<"attachments" | "checkout">("attachments")
+  const [completionStep, setCompletionStep] = useState<"attachments" | "checkout" | "request">("attachments")
   const [completionStartDate, setCompletionStartDate] = useState("")
   const [completionStartTime, setCompletionStartTime] = useState("")
   const [completionEndDate, setCompletionEndDate] = useState("")
@@ -581,6 +584,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   }
 
   const invalidateSchedules = () => Promise.all([
+    queryClient.invalidateQueries({ queryKey: ["emergency-usage"] }),
     queryClient.invalidateQueries({ queryKey: ["schedules"] }),
     queryClient.invalidateQueries({ queryKey: ["agendamentos"] }),
     queryClient.invalidateQueries({ queryKey: ["notifications"] }),
@@ -593,6 +597,13 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
     void invalidateSchedules().catch(() => undefined)
   }
 
+  const [requestReason, setRequestReason] = useState("")
+  const [requestNotes, setRequestNotes] = useState("")
+  const requestRescheduleMutation = useMutation({
+    mutationFn: () => requestScheduleReschedule(completionTarget!.id, { rescheduleReason: requestReason, rescheduleNotes: requestNotes.trim() }),
+    onSuccess: async ({ data }) => { reflectScheduleUpdate(data); closeCompletionDialog(); setRequestReason(""); setRequestNotes(""); await invalidateSchedules(); toast.success("Reagendamento solicitado.") },
+    onError: (error) => toast.error(getApiErrorMessage(error, "Não foi possível solicitar reagendamento.")),
+  })
   const saveMutation = useMutation({
     meta: { skipGlobalInvalidation: true },
     mutationFn: async ({
@@ -605,7 +616,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       allowConflict?: boolean
     }) => {
       if (scheduleId && !canManageAgenda && canManageScheduleStatus) {
-        return updateScheduleStatus(scheduleId, formData.status)
+        return updateScheduleStatus(scheduleId, formData.status, formData.nonCompletionReason)
       }
 
       const client = clients.find((item) => item.id === formData.clientId)
@@ -620,7 +631,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       const isRecurringScheduleUpdate = Boolean(scheduleId && editingService?.contractId && !editingService.isManual)
       if (scheduleId && isRecurringScheduleUpdate) {
         const response = await updateSchedule(scheduleId, {
-          rescheduleReason: formData.rescheduleReason,
+          rescheduleReason: formData.rescheduleReason || undefined,
           rescheduleNotes: formData.rescheduleNotes,
           serviceTypeId: formData.serviceTypeIds[0],
           serviceTypeIds: formData.serviceTypeIds,
@@ -640,8 +651,8 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
           allowConflict,
         })
 
-        if (canManageScheduleStatus && editingService?.status !== formData.status) {
-          return updateScheduleStatus(scheduleId, formData.status)
+        if ((canManageScheduleStatus || (canManageAgenda && formData.status === "not_completed")) && editingService?.status !== formData.status) {
+          return updateScheduleStatus(scheduleId, formData.status, formData.nonCompletionReason)
         }
 
         return response
@@ -667,6 +678,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
         autoSendInformative: formData.autoSendInformative,
         generateCertificateRequest: formData.generateCertificateRequest,
         isEmergency: formData.isEmergency,
+        emergencyContractId: formData.emergencyContractId,
         billable: formData.createContract,
         value: formData.createContract ? formData.value : 0,
         billingDueDate: formData.createContract ? formData.billingDueDate : undefined,
@@ -677,9 +689,9 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       }
 
       if (scheduleId) {
-        const response = await updateSchedule(scheduleId, { ...payload, rescheduleReason: formData.rescheduleReason, rescheduleNotes: formData.rescheduleNotes })
-        if (canManageScheduleStatus && editingService?.status !== formData.status) {
-          return updateScheduleStatus(scheduleId, formData.status)
+        const response = await updateSchedule(scheduleId, { ...payload, rescheduleReason: formData.rescheduleReason || undefined, rescheduleNotes: formData.rescheduleNotes })
+        if ((canManageScheduleStatus || (canManageAgenda && formData.status === "not_completed")) && editingService?.status !== formData.status) {
+          return updateScheduleStatus(scheduleId, formData.status, formData.nonCompletionReason)
         }
 
         return response
@@ -1157,6 +1169,8 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
 
   const getStatusBadge = (status: AgendaScheduledServiceRow["status"]) => {
     switch (status) {
+      case "awaiting_schedule": return <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100">Aguardando reagendamento</Badge>
+      case "not_completed": return <Badge variant="destructive">Não concluído</Badge>
       case "draft":
         return <Badge className="bg-slate-100 text-slate-700 hover:bg-slate-100">Rascunho</Badge>
       case "scheduled":
@@ -1478,6 +1492,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
             }
             className="absolute left-3 top-3 z-20 gap-1.5 px-2 text-foreground hover:text-foreground max-sm:top-[calc(env(safe-area-inset-top)+0.85rem)]"
             onClick={() => {
+              if (completionStep === "request") { setCompletionStep("checkout"); return }
               if (completionStep === "checkout" && !isEditingExecution) {
                 setCompletionStep("attachments")
                 return
@@ -1513,14 +1528,14 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
           ) : null}
           <DialogHeader className="min-w-0 px-6 pb-4 pt-14 text-left max-sm:px-5 max-sm:pt-[calc(env(safe-area-inset-top)+3.75rem)]">
             <DialogTitle>
-              {completionStep === "attachments"
+              {completionStep === "request" ? "Solicitar reagendamento" : completionStep === "attachments"
                 ? "Anexos do atendimento"
                 : isEditingExecution
                 ? "Editar execução do atendimento"
                 : "Encerrar atendimento"}
             </DialogTitle>
             <DialogDescription>
-              {completionStep === "attachments"
+              {completionStep === "request" ? "Informe o motivo para solicitar uma nova data ao responsável pelo agendamento." : completionStep === "attachments"
                 ? "Adicione NAs e evidências da execução. Cada arquivo é salvo no agendamento assim que for anexado."
                 : isEditingExecution
                 ? "Revise o período executado, a equipe de apoio e as observações antes de salvar."
@@ -1529,6 +1544,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
           </DialogHeader>
 
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 pb-5 max-sm:px-5">
+            {completionStep === "request" ? <RescheduleReasonFields reason={requestReason} notes={requestNotes} onReasonChange={setRequestReason} onNotesChange={setRequestNotes} /> : null}
             {completionStep === "checkout" ? (
               <AttendanceCompletionFields
                 idPrefix="agenda-completion"
@@ -1560,7 +1576,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                 onDisposalStationIdChange={setCompletionDisposalStationId}
                 onDisposalQuantityM3Change={setCompletionDisposalQuantityM3}
               />
-            ) : (
+            ) : completionStep === "attachments" ? (
               <CompletionNaAttachments
                 existingAttachments={completionTarget?.naAttachments ?? []}
                 files={completionFiles}
@@ -1588,7 +1604,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                   renameNaMutation.mutate({ schedule: completionTarget, documentUrl: attachment.documentUrl, fileName })
                 }}
               />
-            )}
+            ) : null}
           </div>
 
           <DialogFooter className="flex-col gap-2 px-6 pb-6 pt-3 max-sm:px-5 max-sm:pb-[calc(env(safe-area-inset-bottom)+1.25rem)] sm:flex-row sm:flex-nowrap sm:gap-2 sm:[&>button]:px-2.5">
@@ -1634,7 +1650,9 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                 Editar anexos
               </Button>
             ) : null}
-            <Button
+            {completionStep === "checkout" && !isEditingExecution ? <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => { setRequestReason(""); setRequestNotes(""); setCompletionStep("request") }}>Solicitar reagendamento</Button> : null}
+            {completionStep === "request" ? <Button type="button" disabled={requestRescheduleMutation.isPending} onClick={() => { const reasonError = getRescheduleReasonError(requestReason, requestNotes); if (reasonError) { toast.error(reasonError); return } requestRescheduleMutation.mutate() }}>{requestRescheduleMutation.isPending ? "Solicitando..." : "Confirmar solicitação"}</Button> : null}
+            {completionStep !== "request" ? <Button
               type="button"
               className={
                 completionStep === "attachments" && !isEditingExecution
@@ -1674,6 +1692,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                   return
                 }
 
+                if (completionDisposalType && !completionDisposalMtrNumber.trim()) { toast.error("Informe o número do MTR para concluir um atendimento com descarte."); return }
                 const disposalValidationMessage = scheduleDisposalValidationMessage(
                   completionDisposalType,
                   completionDisposalStationId,
@@ -1715,7 +1734,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
               ) : (
                 "Encerrar atendimento"
               )}
-            </Button>
+            </Button> : null}
           </DialogFooter>
         </DialogContent>
       </Dialog>

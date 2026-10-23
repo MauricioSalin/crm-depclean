@@ -1,12 +1,15 @@
 "use client"
+import { EmergencyExhaustedBadge, EmergencyUsageCounter } from "@/components/contratos/emergency-usage"
 
 import { useEffect, useMemo, useState } from "react"
+import Link from "next/link"
+import { usePathname, useSearchParams } from "next/navigation"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { AlertTriangle, ArrowLeft, CalendarDays, Clock3, FileDown, Loader2, MapPin, OctagonX, Pencil, Sparkles, Users } from "lucide-react"
 import { toast } from "sonner"
 
 import { AttendanceStartSlider } from "@/components/agendamentos/attendance-start-slider"
-import { getRescheduleReasonError, RescheduleReasonFields } from "@/components/agendamentos/reschedule-reason-fields"
+import { getRequestedRescheduleDetails, getRescheduleReasonError, RescheduleReasonFields } from "@/components/agendamentos/reschedule-reason-fields"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { DatePicker } from "@/components/ui/date-picker"
@@ -14,11 +17,14 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useIsMobile } from "@/hooks/use-mobile"
+import { useCurrentUser } from "@/hooks/use-permissions"
+import { canAccessPath } from "@/lib/auth/permissions"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { exportScheduleSummaryPdf, getScheduleRescheduleOptions, rescheduleSchedule, type ScheduleRecord } from "@/lib/api/schedules"
 import type { ServiceRecord } from "@/lib/api/services"
 import type { TeamRecord } from "@/lib/api/teams"
 import { formatCivilDate, parseCivilDate, toCivilDateKey } from "@/lib/date-utils"
+import { buildPathWithSearchParams, withReturnTo } from "@/lib/navigation"
 import {
   checkScheduleAvailability,
   formatDailyServiceCapacityViolation,
@@ -58,6 +64,8 @@ interface ScheduleDetailsDialogProps {
 
 function getStatusLabel(status: ScheduleRecord["status"]) {
   switch (status) {
+    case "awaiting_schedule": return "Aguardando reagendamento"
+    case "not_completed": return "Não concluído"
     case "draft":
       return "Rascunho"
     case "scheduled":
@@ -100,6 +108,13 @@ export function ScheduleDetailsDialog({
   backLabel = "Voltar",
 }: ScheduleDetailsDialogProps) {
   const isMobile = useIsMobile()
+  const currentUser = useCurrentUser()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const clientProfilePath = schedule?.clientId ? `/clientes/${encodeURIComponent(schedule.clientId)}` : null
+  const clientProfileHref = clientProfilePath && canAccessPath(clientProfilePath, currentUser)
+    ? withReturnTo(clientProfilePath, buildPathWithSearchParams(pathname, searchParams))
+    : null
   const queryClient = useQueryClient()
   const [mode, setMode] = useState<"details" | "reschedule">("details")
   const [customDate, setCustomDate] = useState("")
@@ -119,10 +134,11 @@ export function ScheduleDetailsDialog({
     setMode("details")
     setCustomDate(schedule.date)
     setCustomTime(schedule.time || "08:00")
-    setRescheduleReason("")
-    setRescheduleNotes("")
+    const requested = getRequestedRescheduleDetails(schedule)
+    setRescheduleReason(requested.reason)
+    setRescheduleNotes(requested.notes)
     setRescheduleConflict(null)
-  }, [open, schedule?.id, schedule?.date, schedule?.time])
+  }, [open, schedule?.id, schedule?.date, schedule?.time, schedule?.status, schedule?.statusHistory])
 
   const optionsQuery = useQuery({
     queryKey: ["schedule", "reschedule-options", schedule?.id],
@@ -264,7 +280,7 @@ export function ScheduleDetailsDialog({
   const isBlockedByScheduleDate =
     canStartAction && hasStartableStatus && !isScheduledForToday && !canStartOutsideScheduledDate
   const hasDelinquencyWarning = Boolean(schedule.isClientDelinquent && hasStartableStatus)
-  const canRescheduleSchedule = canRescheduleAction && ["draft", "scheduled", "rescheduled"].includes(schedule.status)
+  const canRescheduleSchedule = canRescheduleAction && ["draft", "scheduled", "rescheduled", "awaiting_schedule", "not_completed"].includes(schedule.status)
   const multiDayTotal = Math.trunc(Number(schedule.multiDayTotal) || 0)
   const isMultiDayMainSchedule = Number(schedule.multiDayIndex) === 1 && multiDayTotal > 1
   const isMultiDayChildSchedule = Number(schedule.multiDayIndex) > 1 && multiDayTotal > 1
@@ -558,6 +574,7 @@ export function ScheduleDetailsDialog({
               <Badge variant={isRecurringSchedule ? "secondary" : "outline"}>
                 {isRecurringSchedule ? "Atendimento recorrente" : "Atendimento avulso"}
               </Badge>
+              {schedule.isEmergency && schedule.emergencyContractId ? <EmergencyExhaustedBadge contractId={schedule.emergencyContractId} /> : null}
               {schedule.isClientDelinquent ? (
                 <Badge className="bg-red-100 text-red-700 hover:bg-red-100">Inadimplente</Badge>
               ) : null}
@@ -679,9 +696,24 @@ export function ScheduleDetailsDialog({
                   <MapPin className="h-4 w-4 text-primary" />
                   Local
                 </div>
-                {schedule.clientName ? <p className="text-sm font-semibold text-foreground">{schedule.clientName}</p> : null}
+                {schedule.clientName ? (
+                  <p className="text-sm font-semibold text-foreground">
+                    {clientProfileHref ? (
+                      <Link href={clientProfileHref} onClick={() => onOpenChange(false)} className="rounded-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                        {schedule.clientName}
+                      </Link>
+                    ) : schedule.clientName}
+                  </p>
+                ) : null}
                 <p className="text-sm text-muted-foreground">{schedule.address || "Endereço não informado"}</p>
               </div>
+
+              {schedule.isEmergency ? (
+                <div className="rounded-2xl border p-4 md:col-span-2">
+                  <p className="mb-2 text-sm font-medium">Contrato vinculado</p>
+                  <p className="text-sm text-foreground">{schedule.emergencyContractNumber || (schedule.emergencyContractId ? "Contrato não disponível" : "Sem vínculo")}</p>
+                </div>
+              ) : null}
 
               <div className="rounded-2xl border p-4 md:col-span-2">
                 <div className="mb-2 flex items-center gap-2 text-sm font-medium">
@@ -705,6 +737,19 @@ export function ScheduleDetailsDialog({
                 </div>
               ) : null}
 
+              {schedule.statusHistory?.length ? (
+                <div className="col-span-full space-y-3 rounded-2xl border p-4">
+                  <p className="text-sm font-semibold">Histórico do atendimento</p>
+                  {schedule.statusHistory.map((event, index) => (
+                    <div key={event.changedAt + index} className="border-t pt-3 text-sm">
+                      <p className="font-medium">{getStatusLabel(event.status as ScheduleRecord["status"])}</p>
+                      <p className="whitespace-pre-wrap break-words">{event.reason}</p>
+                      {event.rescheduleNotes ? <p className="whitespace-pre-wrap break-words">{event.rescheduleNotes}</p> : null}
+                      <p className="text-muted-foreground">{new Date(event.changedAt).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })} · {event.changedByName}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
               {schedule.originalScheduledDate ? (
                 <div className="col-span-full mt-5 space-y-3 rounded-2xl border p-4">
                   <p className="text-sm font-semibold">Histórico de reagendamentos</p>

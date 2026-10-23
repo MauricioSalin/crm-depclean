@@ -22,6 +22,7 @@ export type ContractServicePayload = {
 }
 
 export type ContractPayload = {
+  emergencyLimit?: number
   clientId: string
   templateId: string
   automationCreateSchedules?: boolean
@@ -80,6 +81,7 @@ export type ContractDownPaymentRecord = {
 }
 
 export type ContractRecord = {
+  emergencyLimit?: number
   id: string
   downPaymentDueDateMode?: "signature_plus_7"
   contractNumber: string
@@ -341,6 +343,14 @@ export async function updateContractScheduleSettings(id: string, payload: Contra
   const response = await api.patch<{ success: true; data: ContractRecord }>(
     `/contracts/${resolveContractId(id)}/schedule-settings`,
     payload,
+  )
+  return response.data
+}
+
+export async function updateContractEmergencyLimit(id: string, emergencyLimit: number) {
+  const response = await api.patch<{ success: true; data: ContractRecord }>(
+    `/contracts/${resolveContractId(id)}/emergency-limit`,
+    { emergencyLimit },
   )
   return response.data
 }

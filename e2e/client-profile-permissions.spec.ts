@@ -53,15 +53,14 @@ test("exibe somente o código financeiro abaixo do CNPJ no cabeçalho do perfil"
   expect(financialCodeBox!.y).toBeGreaterThanOrEqual(cnpjBox!.y + cnpjBox!.height)
 })
 
-test("exibe o código financeiro como somente leitura no cadastro", async ({ page }) => {
+test("omite o código financeiro automático no formulário do cliente", async ({ page }) => {
   await installAuthenticatedSession(page)
   await installApiMock(page)
 
   await page.goto(`/clientes/${clientFixture.id}/editar`)
 
   const financialCode = page.getByLabel("Código financeiro", { exact: true })
-  await expect(financialCode).toHaveValue(clientFixture.financialCode)
-  await expect(financialCode).toHaveAttribute("readonly", "")
+  await expect(financialCode).toHaveCount(0)
 })
 
 test("exibe hífen sem ícone para equipe não definida na aba Serviços", async ({ page }) => {

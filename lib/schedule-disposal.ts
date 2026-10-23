@@ -44,8 +44,10 @@ export function scheduleDisposalValidationMessage(
   type: ScheduleDisposalType | "",
   stationId: string,
   quantityM3: number | null,
+  mtrNumber?: string,
 ) {
   if (!type) return null
+  if (mtrNumber !== undefined && !mtrNumber.split("\n").some((number) => number.trim())) return "Informe o número do MTR para concluir um atendimento com descarte."
   if (!stationId) return "Selecione a estação de descarte."
   if (!quantityM3 || quantityM3 <= 0) return "Informe uma quantidade de descarte maior que zero."
   return null

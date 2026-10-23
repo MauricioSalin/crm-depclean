@@ -25,7 +25,7 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
       await route.fulfill({ json: { success: true, data: { ...contract, services: saved.services } } })
     })
     await page.goto("/contratos/contract-e2e")
-    await page.getByRole("button", { name: "Editar Contrato", exact: true }).click()
+    await page.getByRole("button", { name: "Editar", exact: true }).click()
     await expect(page.getByRole("combobox", { name: "Selecionar cliente" })).toBeDisabled()
     await expect(page.getByRole("combobox", { name: "Selecionar template do contrato" })).toBeDisabled()
     await expect(page.locator("#contract-installments-count")).toBeDisabled()
@@ -59,14 +59,20 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
   })
 }
 
-test("mantém edição bloqueada após enviar agendamentos à agenda", async ({ page }) => {
+test("habilita editar após enviar agendamentos e libera somente o limite de emergências", async ({ page }) => {
   await installAuthenticatedSession(page)
   await installApiMock(page)
   await page.route("**/api/v1/contracts/contract-e2e", (route) => route.fulfill({ json: {
     success: true, data: { ...contractFixture, status: "closed", isAwaitingSchedules: false, automationSchedulePlanPublishedAt: "2026-07-29T12:00:00Z" },
   } }))
   await page.goto("/contratos/contract-e2e")
-  await expect(page.getByRole("button", { name: "Editar Contrato", exact: true })).toHaveCount(0)
-  await page.goto("/contratos/contract-e2e/editar")
-  await expect(page.getByText("Contratos assinados não podem ser editados.")).toBeVisible()
+  await page.getByRole("button", { name: "Editar", exact: true }).click()
+  await expect(page.getByLabel("Número de emergências *", { exact: true })).toBeEnabled()
+  await expect(page.getByRole("combobox", { name: "Selecionar cliente" })).toBeDisabled()
+  await expect(page.getByRole("combobox", { name: "Selecionar template do contrato" })).toBeDisabled()
+  await expect(page.locator("#contract-installments-count")).toBeDisabled()
+  await expect(page.locator("#contract-total-value")).toBeDisabled()
+  await expect(page.getByRole("button", { name: "Adicionar regra" })).toBeDisabled()
+  await expect(page.getByRole("button", { name: "Adicionar equipes e funcionários" })).toBeDisabled()
+  await expect(page.getByRole("button", { name: "Editar documento", exact: true })).toHaveCount(0)
 })

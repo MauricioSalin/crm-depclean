@@ -548,7 +548,7 @@ test("não trata Renovado como ativo mesmo antes ou depois do fim da vigência a
   }
 })
 
-test("deixa Renovar e Marcar como renovado por último no menu e confirma a ação manual", async ({ page }) => {
+test("mantém as ações de renovação e situação no final do menu e confirma a ação manual", async ({ page }) => {
   let markRenewedRequests = 0
   await installContractMock(page, {
     status: "closed",
@@ -579,7 +579,7 @@ test("deixa Renovar e Marcar como renovado por último no menu e confirma a aç�
 
   const menuItems = page.getByRole("menuitem")
   const itemLabels = await menuItems.allTextContents()
-  expect(itemLabels.slice(-2)).toEqual(["Renovar", "Marcar como renovado"])
+  expect(itemLabels.slice(-4)).toEqual(["Renovar", "Marcar como renovado", "Marcar como não renovado", "Em Processo Judicial"])
 
   await page.getByRole("menuitem", { name: "Marcar como renovado" }).click()
   await expect(page.getByRole("dialog")).toContainText("Marcar contrato como renovado?")
@@ -698,7 +698,7 @@ test("permite editar e reenviar um contrato cancelado em um novo envelope", asyn
   await page.goto(`/contratos/${contractFixture.id}`)
 
   await expect(page.getByText("Cancelado", { exact: true }).first()).toBeVisible()
-  await expect(page.getByRole("link", { name: "Editar Contrato" })).toBeVisible()
+  await expect(page.getByRole("link", { name: "Editar" })).toBeVisible()
   await page.getByRole("button", { name: "Reenviar ClickSign" }).click()
 
   await expect(page.getByText("O novo envio para assinatura no ClickSign foi iniciado em segundo plano.")).toBeVisible()
