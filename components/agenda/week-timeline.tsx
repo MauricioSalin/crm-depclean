@@ -13,6 +13,7 @@ import { createPortal } from "react-dom"
 import { CircleHelp, ChevronLeft, ChevronRight, UserRound, Users, UsersRound } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { addCivilDaysKey, BRASILIA_TIME_ZONE, minutesFromBrasiliaDate, parseCivilDate, toCivilDateKey } from "@/lib/date-utils"
+import { SCHEDULE_STATUS_FILTER_OPTIONS } from "@/lib/schedule-status"
 import { AgendaPeriodSelector } from "./agenda-period-selector"
 import { TimelineItemSkeleton } from "./timeline-item-skeleton"
 
@@ -32,6 +33,7 @@ interface TimelineEvent {
   resourceIds?: string[]
   isEmergency?: boolean
   status: string
+  statusReason?: string
 }
 
 export type TimelineResource = {
@@ -116,16 +118,7 @@ function formatTimelineDate(date: string) {
 }
 
 function formatTimelineStatus(status: string) {
-  const labels: Record<string, string> = {
-    draft: "Rascunho",
-    scheduled: "Agendado",
-    in_progress: "Em andamento",
-    completed: "Concluído",
-    cancelled: "Cancelado",
-    rescheduled: "Reagendado",
-  }
-
-  return labels[status] ?? status
+  return SCHEDULE_STATUS_FILTER_OPTIONS.find((option) => option.value === status)?.label ?? "Status indisponível"
 }
 
 function positionDayEvents(events: TimelineEvent[]): PositionedTimelineEvent[] {
@@ -714,7 +707,7 @@ export function WeekTimeline({
                       ? "#edd66b"
                       : ev.teamColor || "#9CA3AF" // gray for no team
                     const isOverlapping = ev.columnCount > 1
-                    const isInactive = ev.status === "completed" || ev.status === "cancelled"
+                    const isInactive = ["completed", "cancelled", "not_completed"].includes(ev.status)
                     const color = isInactive
                       ? `color-mix(in srgb, ${baseColor} 45%, white)`
                       : baseColor
@@ -852,6 +845,9 @@ export function WeekTimeline({
                   <p>Referência: {pointerTooltipEvent.referenceLabel}</p>
                 ) : null}
                 <p>Status: {formatTimelineStatus(pointerTooltipEvent.status)}</p>
+                {pointerTooltipEvent.status === "not_completed" && pointerTooltipEvent.statusReason ? (
+                  <p className="whitespace-pre-wrap break-words">Motivo: {pointerTooltipEvent.statusReason}</p>
+                ) : null}
                 {pointerTooltipEvent.teamNames?.length ? (
                   <p>Equipe: {pointerTooltipEvent.teamNames.join(", ")}</p>
                 ) : null}

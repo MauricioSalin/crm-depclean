@@ -199,6 +199,58 @@ test("mantém vermelho o indicador mensal do atendimento avulso emergencial", as
   await expect(teamDot).toHaveCSS("background-color", "rgb(132, 199, 0)")
 })
 
+for (const view of ["day", "week"] as const) {
+  test(`mostra Não concluído apagado com motivo e traduz a espera na visão ${view}`, async ({ page }, testInfo) => {
+    const reason = "Cliente não permitiu acesso ao local."
+    const notCompleted = {
+      ...teamSchedule,
+      id: "schedule-not-completed",
+      clientName: "Atendimento não concluído",
+      status: "not_completed",
+      time: "10:00",
+      statusHistory: [
+        { status: "not_completed", reason: "Justificativa anterior.", changedAt: `${DAY}T12:00:00Z`, changedById: "user-e2e", changedByName: "Operador" },
+        { status: "not_completed", reason, changedAt: `${DAY}T13:00:00Z`, changedById: "user-e2e", changedByName: "Operador" },
+      ],
+    }
+    const scheduled = { ...teamSchedule, id: "schedule-open", status: "scheduled", time: "14:00" }
+    const waiting = { ...teamSchedule, id: "schedule-waiting", status: "awaiting_schedule", time: "16:00" }
+    await page.route("**/api/v1/schedules**", async (route) => {
+      const url = new URL(route.request().url())
+      if (route.request().method() !== "GET" || url.pathname !== "/api/v1/schedules") return route.fallback()
+      await route.fulfill({ json: { success: true, data: [teamSchedule, notCompleted, scheduled, waiting] } })
+    })
+    await page.goto(`/agenda?date=${DAY}&view=${view}`)
+    const card = page.locator('[data-schedule-id="schedule-not-completed"]')
+    const completed = page.locator(`[data-schedule-id="${teamSchedule.id}"]`)
+    await expect(card).toHaveAttribute("data-schedule-status", "not_completed")
+    await expect(card).toHaveAttribute("style", /background-color: color-mix\(in srgb, .* 6%, white\)/)
+    await expect(card).toHaveAttribute("style", /border-color: color-mix\(in srgb, .* 45%, white\)/)
+    expect(await card.evaluate((node) => getComputedStyle(node).backgroundColor)).toBe(
+      await completed.evaluate((node) => getComputedStyle(node).backgroundColor),
+    )
+    await expect(card.locator("p").first()).toHaveClass(/text-muted-foreground/)
+    await expect(page.locator('[data-schedule-id="schedule-open"]')).toHaveAttribute("style", /background-color: color-mix\(in srgb, .* 10%, white\)/)
+    await card.hover()
+    const tooltip = page.getByRole("tooltip")
+    await expect(tooltip).toContainText("Status: Não concluído")
+    await expect(tooltip).toContainText(`Motivo: ${reason}`)
+    await expect(tooltip).not.toContainText("not_completed")
+    await expect(tooltip).not.toContainText("Justificativa anterior.")
+    await page.screenshot({ path: testInfo.outputPath("nao-concluido.png") })
+    const waitingCard = page.locator('[data-schedule-id="schedule-waiting"]')
+    await waitingCard.scrollIntoViewIfNeeded()
+    await page.mouse.move(0, 0)
+    await waitingCard.hover()
+    await expect(tooltip).toContainText("Status: Aguardando reagendamento")
+    await expect(tooltip).not.toContainText("awaiting_schedule")
+    await expect(tooltip).not.toContainText("Motivo:")
+    await card.click()
+    const dialog = page.getByRole("dialog")
+    await expect(dialog.getByText(reason, { exact: true })).toBeVisible()
+  })
+}
+
 test("libera o horário de almoço somente na visão semanal e mantém a faixa destacada", async ({ page }) => {
   await page.goto(`/agenda?date=${DAY}&view=week`)
 

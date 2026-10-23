@@ -1226,6 +1226,9 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
         resourceIds: resourceIdsForSchedule(service),
         isEmergency: service.isEmergency,
         status: service.status,
+        statusReason: service.status === "not_completed"
+          ? service.statusHistory?.findLast((entry) => entry.status === "not_completed")?.reason
+          : undefined,
       }
 
       const displayPeriod = resolveScheduleDisplayPeriod(service)
@@ -1273,6 +1276,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
         resourceIds?: string[]
         isEmergency?: boolean
         status: string
+        statusReason?: string
       }> = []
       let currentDate = service.date
 
