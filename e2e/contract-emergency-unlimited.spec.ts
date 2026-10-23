@@ -29,13 +29,14 @@ for (const width of [1440, 390]) {
   })
 }
 
-test("salva e reabre sem limite no contrato assinado e não mostra alerta esgotado", async ({ page }) => {
+for (const used of [1, 20]) {
+test(`salva e reabre sem limite no contrato assinado e não mostra alerta esgotado (${used} utilizadas)`, async ({ page }) => {
   await installAuthenticatedSession(page)
   await installApiMock(page)
   let unlimited = false
   const contract = () => ({ ...contractFixture, status: "closed", emergencyLimit: 15, emergencyUnlimited: unlimited, isAwaitingSchedules: false })
   await page.route(`**/api/v1/contracts/${contractFixture.id}`, route => route.fulfill({ json: { success: true, data: contract() } }))
-  await page.route("**/api/v1/emergencies**", route => route.fulfill({ json: { success: true, data: [{ contractId: contractFixture.id, clientId: contractFixture.clientId, limit: 15, used: 20, unlimited, remaining: unlimited ? null : 0, exhausted: !unlimited }] } }))
+  await page.route("**/api/v1/emergencies**", route => route.fulfill({ json: { success: true, data: [{ contractId: contractFixture.id, clientId: contractFixture.clientId, limit: 15, used, unlimited, remaining: unlimited ? null : 0, exhausted: !unlimited }] } }))
   await page.route(`**/api/v1/contracts/${contractFixture.id}/emergency-limit`, async route => {
     expect(route.request().postDataJSON()).toEqual({ emergencyLimit: 15, emergencyUnlimited: true })
     unlimited = true
@@ -46,8 +47,9 @@ test("salva e reabre sem limite no contrato assinado e não mostra alerta esgota
   await expect(page.locator("#contract-emergency-limit-create")).toBeDisabled()
   await page.getByRole("button", { name: "Salvar", exact: true }).first().click()
   await page.waitForURL(url => url.pathname === `/contratos/${contractFixture.id}`)
-  const counter = page.getByText("20/Ilimitado emergências utilizadas", { exact: true })
+  const counter = page.getByText(used === 1 ? "1 emergência utilizada" : "20 emergências utilizadas", { exact: true })
   await expect(counter).toBeVisible()
+  await expect(page.getByText(/\/Ilimitado/)).toHaveCount(0)
   const progress = counter.locator("xpath=../..").locator('[data-slot="progress"]')
   await expect(progress.locator('[data-slot="progress-indicator"]')).toHaveCSS("transform", "matrix(1, 0, 0, 1, 0, 0)")
   await expect(progress).toHaveClass(/bg-amber-200/)
@@ -56,3 +58,4 @@ test("salva e reabre sem limite no contrato assinado e não mostra alerta esgota
   await expect(page.getByRole("checkbox", { name: "Sem limite de agendamentos emergenciais", exact: true })).toBeChecked()
   await expect(page.locator("#contract-emergency-limit-create")).toHaveValue("15")
 })
+}
