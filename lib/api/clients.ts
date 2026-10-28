@@ -198,6 +198,7 @@ export type CreateClientExtraPayload = {
 }
 
 export type ClientPayload = {
+  financialCode?: string
   withoutContract?: boolean
   additionalAssessors?: ClientAdditionalContact[]
   subSyndics?: ClientAdditionalContact[]

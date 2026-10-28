@@ -142,6 +142,7 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
   const clientTypes = clientTypesQuery.data?.data ?? []
   
   const [formData, setFormData] = useState({
+    financialCode: "",
     companyName: normalizeClientCompanyName(client?.companyName || ""),
     cnpj: client?.cnpj || "",
     responsibleName: client?.responsibleName || "",
@@ -289,6 +290,7 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
     if (!loadedClient) return
 
     setFormData((prev) => ({
+      financialCode: loadedClient.financialCode || "",
       companyName: normalizeClientCompanyName(loadedClient.companyName || ""),
       cnpj: formatCNPJ(loadedClient.cnpj || ""),
       responsibleName: loadedClient.responsibleName || "",
@@ -522,6 +524,14 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
   const validateClientForm = (): ClientFormIssue[] => {
     const issues: ClientFormIssue[] = []
 
+    if (!isEditing && !formData.withoutContract && formData.financialCode && (
+      !/^\d+$/.test(formData.financialCode) ||
+      !Number.isSafeInteger(Number(formData.financialCode)) ||
+      Number(formData.financialCode) < 1
+    )) {
+      issues.push({ message: "Informe um código válido, com um número inteiro maior que zero.", label: "Código" })
+    }
+
     if (!hasText(formData.cnpj)) {
       issues.push({ message: "Informe o CNPJ.", label: "CNPJ" })
     } else if (!isValidCNPJ(formData.cnpj)) {
@@ -686,6 +696,9 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
   const saveMutation = useMutation({
     mutationFn: async () => {
       const payload: ClientPayload = {
+        ...(!isEditing && !formData.withoutContract && formData.financialCode.trim()
+          ? { financialCode: formData.financialCode.trim() }
+          : {}),
         companyName: normalizeClientCompanyName(formData.companyName.trim()),
         cnpj: formData.cnpj.trim(),
         responsibleName: formData.responsibleName.trim(),
@@ -814,7 +827,7 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
         </div>
 
         <div className="space-y-5">
-          {/* Linha 1: CNPJ + Razão Social */}
+          {/* Linha 1: CNPJ + Razão Social + Código */}
           <div className="flex flex-col md:flex-row gap-3">
             <div className="space-y-2 md:w-[220px] shrink-0">
               <Label htmlFor="cnpj">CNPJ *</Label>
@@ -866,6 +879,24 @@ export function ClientForm({ clientId, isEditing = false, returnTo }: ClientForm
                 required
               />
             </div>
+            {!isEditing && (
+              <div className="space-y-2 md:w-[160px] shrink-0">
+                <Label htmlFor="financialCode">Código</Label>
+                <Input
+                  id="financialCode"
+                  type="tel"
+                  inputMode="numeric"
+                  value={formData.financialCode}
+                  onChange={(e) => handleInputChange("financialCode", onlyDigits(e.target.value))}
+                  placeholder="Automático"
+                  disabled={formData.withoutContract}
+                  aria-describedby="financialCodeHelp"
+                />
+                <p id="financialCodeHelp" className="text-xs text-muted-foreground">
+                  {formData.withoutContract ? "Clientes sem contrato não recebem código." : "Deixe vazio para gerar automaticamente."}
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Linha 2: Tipo + Responsável */}
