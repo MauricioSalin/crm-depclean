@@ -69,7 +69,7 @@ export type ReportScheduleDetail = {
   estimatedDuration: number
   durationValue: number
   durationType: "minutes" | "hours" | "shift" | "days"
-  status: "scheduled" | "in_progress" | "completed" | "cancelled" | "rescheduled"
+  status: "scheduled" | "in_progress" | "completed" | "cancelled" | "rescheduled" | "partially_completed"
   isEmergency: boolean
   isManual: boolean
   billable: boolean

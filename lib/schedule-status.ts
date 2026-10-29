@@ -8,6 +8,7 @@ export const SCHEDULE_STATUS_FILTER_OPTIONS = [
   { value: "scheduled", label: "Agendado" },
   { value: "in_progress", label: "Em andamento" },
   { value: "completed", label: "Concluído" },
+  { value: "partially_completed", label: "Concluído Parcial" },
   { value: "cancelled", label: "Cancelado" },
   { value: "rescheduled", label: "Reagendado" },
   { value: "awaiting_schedule", label: "Aguardando reagendamento" },

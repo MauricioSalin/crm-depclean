@@ -128,3 +128,44 @@ test("mantém os marcadores de sequência sem sombra recortada nos cards estreit
   await expect(firstReference).toHaveCSS("box-shadow", "none")
   await expect(secondReference).toHaveCSS("box-shadow", "none")
 })
+
+test("dias não consecutivos aparecem nas datas e horários próprios com hover do grupo inteiro", async ({ page }) => {
+  const dates = ["2026-07-27", "2026-07-29", "2026-07-31"]
+  const times = ["08:00", "13:30", "09:00"]
+  const schedules = dates.map((date, index) => ({
+    ...scheduleFixture, id: `schedule-nonconsecutive-${index + 1}`, date, time: times[index],
+    duration: 480, durationType: "days", durationValue: 1,
+    multiDayGroupId: "nonconsecutive-group", multiDayIndex: index + 1, multiDayTotal: 3,
+    multiDayDates: index === 0 ? dates : [], multiDayTimes: index === 0 ? times : [],
+  }))
+  const other = { ...scheduleFixture, id: "schedule-independent", date: "2026-07-28", time: "08:00" }
+  await page.route("**/api/v1/schedules", async (route) => {
+    if (route.request().method() !== "GET") return route.fallback()
+    await route.fulfill({ json: { success: true, data: [...schedules, other] } })
+  })
+  await page.goto(`/agenda?date=${dates[0]}&view=week`)
+  const timeline = page.locator("[data-agenda-timeline-scroll]")
+  const occurrences = timeline.locator('button[data-schedule-id^="schedule-nonconsecutive-"]')
+  await expect(occurrences).toHaveCount(3)
+  const first = timeline.locator('[data-schedule-id="schedule-nonconsecutive-1"]')
+  const second = timeline.locator('[data-schedule-id="schedule-nonconsecutive-2"]')
+  const third = timeline.locator('[data-schedule-id="schedule-nonconsecutive-3"]')
+  const firstBounds = await first.boundingBox()
+  const secondBounds = await second.boundingBox()
+  const thirdBounds = await third.boundingBox()
+  expect(secondBounds!.x).toBeGreaterThan(firstBounds!.x + firstBounds!.width * 1.5)
+  expect(thirdBounds!.x).toBeGreaterThan(secondBounds!.x + secondBounds!.width * 1.5)
+  expect(await second.evaluate((element) => parseFloat((element as HTMLElement).style.top)))
+    .toBeGreaterThan(await first.evaluate((element) => parseFloat((element as HTMLElement).style.top)))
+  await second.hover()
+  await expect(second).toContainText("13:30 - 21:30")
+  for (let index = 0; index < 3; index++) {
+    await expect(occurrences.nth(index)).toHaveClass(/(?:^|\s)-translate-y-0\.5(?:\s|$)/)
+    await expect(occurrences.nth(index).locator(`[data-schedule-reference="${index + 1}/3"]`)).toBeVisible()
+  }
+  await expect(timeline.locator('[data-schedule-id="schedule-independent"]')).not.toHaveClass(/(?:^|\s)-translate-y-0\.5(?:\s|$)/)
+  await page.locator("[data-agenda-period-navigation]").hover()
+  for (let index = 0; index < 3; index++) {
+    await expect(occurrences.nth(index)).not.toHaveClass(/(?:^|\s)-translate-y-0\.5(?:\s|$)/)
+  }
+})

@@ -1,4 +1,6 @@
 "use client"
+import { multiDayDateValues, multiDayTimeValues } from "@/components/agendamentos/multi-day-date-fields"
+import { PartialCompletionAction } from "@/components/agendamentos/partial-completion-action"
 
 import { useCallback, useEffect, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
@@ -105,7 +107,7 @@ export function ScheduleShortcutDialog({
     setCompletionDriverEmployeeId(target.attendanceDriver?.id || "")
     setCompletionHelperEmployeeIds(target.attendanceHelpers?.map((employee) => employee.id) ?? [])
     setCompletionServiceReport(target.serviceReport || "")
-    setCompletionVehiclePlate(target.attendanceVehiclePlate || "")
+    setCompletionVehiclePlate(target.attendanceVehiclePlates?.join("\n") || target.attendanceVehiclePlate || "")
     setCompletionDisposalMtrNumber(target.attendanceDisposal?.mtrNumbers?.join("\n") || target.attendanceDisposal?.mtrNumber || "")
     setCompletionDisposalType(target.attendanceDisposal?.type || "")
     setCompletionDisposalStationId(target.attendanceDisposal?.stationId || "")
@@ -308,7 +310,7 @@ export function ScheduleShortcutDialog({
         driverEmployeeId: completionDriverEmployeeId,
         helperEmployeeIds: completionHelperEmployeeIds,
         serviceReport: completionServiceReport,
-        vehiclePlate: completionVehiclePlate,
+        vehiclePlates: completionVehiclePlate.split(/[\n,;]+/).map((value) => value.trim()).filter(Boolean),
         disposalMtrNumbers: completionDisposalMtrNumber.split("\n").map((value) => value.trim()).filter(Boolean),
         disposalType: completionDisposalType || null,
         disposalStationId: completionDisposalStationId,
@@ -362,6 +364,8 @@ export function ScheduleShortcutDialog({
         serviceDocumentSettings: formData.serviceDocumentSettings,
         teamIds: formData.teamIds,
         additionalEmployeeIds: formData.employeeIds,
+        multiDayDates: formData.durationType === "days" && formData.duration > 1 ? multiDayDateValues(formData.date, formData.duration, formData.multiDayDates) : formData.multiDayDates?.length ? [formData.date] : undefined,
+        multiDayTimes: formData.durationType === "days" && formData.duration > 1 ? multiDayTimeValues(formData.time, formData.duration, formData.multiDayTimes) : formData.multiDayDates?.length ? [formData.time] : undefined,
         scheduledDate: formData.date,
         scheduledTime: formData.time,
         estimatedDuration: scheduleDurationToMinutes(formData.duration, formData.durationType),
@@ -628,7 +632,7 @@ export function ScheduleShortcutDialog({
             ) : null}
           </div>
 
-          <div className="flex shrink-0 flex-col gap-2 bg-background px-6 pb-6 pt-3 max-sm:px-5 max-sm:pb-[calc(env(safe-area-inset-bottom)+1.25rem)] sm:flex-row sm:flex-nowrap sm:justify-end sm:[&>button]:px-2.5">
+          <div className="flex shrink-0 flex-col gap-2 bg-background px-6 pb-6 pt-3 max-sm:px-5 max-sm:pb-[calc(env(safe-area-inset-bottom)+1.25rem)] sm:flex-row sm:flex-wrap sm:justify-end sm:[&>button]:px-2.5">
             {completionStep === "attachments" && !isEditingExecution ? (
               <Button
                 type="button"
@@ -671,6 +675,13 @@ export function ScheduleShortcutDialog({
                 Editar anexos
               </Button>
             ) : null}
+            {completionStep === "checkout" && !isEditingExecution ? <PartialCompletionAction schedule={schedule} disabled={completeMutation.isPending || uploadNaMutation.isPending || completionEmployeesQuery.isLoading}
+              payload={{ startDate: completionStartDate, startTime: completionStartTime, endDate: completionEndDate, endTime: completionEndTime,
+                driverEmployeeId: completionDriverEmployeeId, helperEmployeeIds: completionHelperEmployeeIds, serviceReport: completionServiceReport,
+                vehiclePlates: completionVehiclePlate.split(/[\n,;]+/).map((value) => value.trim()).filter(Boolean),
+                disposalMtrNumbers: completionDisposalMtrNumber.split("\n").map((value) => value.trim()).filter(Boolean),
+                disposalType: completionDisposalType || null, disposalStationId: completionDisposalStationId, disposalQuantityM3: completionDisposalQuantityM3 ?? undefined }}
+              onSuccess={(data) => { onScheduleChange(data); onClose() }} /> : null}
             {completionStep === "checkout" && !isEditingExecution ? <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => { setRequestReason(""); setRequestNotes(""); setCompletionStep("request") }}>Solicitar reagendamento</Button> : null}
             {completionStep === "request" ? <Button type="button" disabled={requestMutation.isPending} onClick={() => { const reasonError = getRescheduleReasonError(requestReason, requestNotes); if (reasonError) { toast.error(reasonError); return } requestMutation.mutate() }}>{requestMutation.isPending ? "Solicitando..." : "Confirmar solicitação"}</Button> : null}
             {completionStep !== "request" ? <Button
@@ -682,7 +693,7 @@ export function ScheduleShortcutDialog({
               }
               disabled={
                 !schedule ||
-                (!isEditingExecution && !schedule.naAttachments?.length && !schedule.naDocumentUrl) ||
+                (completionStep === "checkout" && !isEditingExecution && !schedule.naAttachments?.length && !schedule.naDocumentUrl) ||
                 uploadNaMutation.isPending ||
                 deleteNaMutation.isPending ||
                 completeMutation.isPending ||

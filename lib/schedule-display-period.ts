@@ -14,6 +14,7 @@ type ScheduleDisplaySource = Pick<
   | "completionStartTime"
   | "completionEndDate"
   | "completionEndTime"
+  | "executionDurationMinutes"
 >
 
 export type ScheduleDisplayPeriod = {
@@ -113,6 +114,7 @@ export function getScheduleDisplaySegments(schedule: ScheduleDisplaySource): Sch
 }
 
 export function formatScheduleDisplayDuration(schedule: ScheduleDisplaySource, preserveConfiguredType = true) {
+  if (schedule.status === "completed" && schedule.executionDurationMinutes !== undefined) return formatExactScheduleDuration(schedule.executionDurationMinutes)
   const period = resolveScheduleDisplayPeriod(schedule)
   if (period.usesExecutionPeriod) return formatExactScheduleDuration(period.durationMinutes)
   return formatConfiguredScheduleDuration(schedule, preserveConfiguredType)

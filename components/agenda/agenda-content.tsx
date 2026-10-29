@@ -1,4 +1,6 @@
 "use client"
+import { multiDayDateValues, multiDayTimeValues } from "@/components/agendamentos/multi-day-date-fields"
+import { PartialCompletionAction } from "@/components/agendamentos/partial-completion-action"
 import { requestScheduleReschedule } from "@/lib/api/schedules"
 import { getRescheduleReasonError, RescheduleReasonFields } from "@/components/agendamentos/reschedule-reason-fields"
 import { EmergencyExhaustedBadge } from "@/components/contratos/emergency-usage"
@@ -358,7 +360,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
     setCompletionDriverEmployeeId(schedule.attendanceDriver?.id || "")
     setCompletionHelperEmployeeIds(schedule.attendanceHelpers?.map((employee) => employee.id) ?? [])
     setCompletionServiceReport(schedule.serviceReport || "")
-    setCompletionVehiclePlate(schedule.attendanceVehiclePlate || "")
+    setCompletionVehiclePlate(schedule.attendanceVehiclePlates?.join("\n") || schedule.attendanceVehiclePlate || "")
     setCompletionDisposalMtrNumber(schedule.attendanceDisposal?.mtrNumbers?.join("\n") || schedule.attendanceDisposal?.mtrNumber || "")
     setCompletionDisposalType(schedule.attendanceDisposal?.type || "")
     setCompletionDisposalStationId(schedule.attendanceDisposal?.stationId || "")
@@ -382,7 +384,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
     setCompletionDriverEmployeeId(schedule.attendanceDriver?.id || "")
     setCompletionHelperEmployeeIds(schedule.attendanceHelpers?.map((employee) => employee.id) ?? [])
     setCompletionServiceReport(schedule.serviceReport || "")
-    setCompletionVehiclePlate(schedule.attendanceVehiclePlate || "")
+    setCompletionVehiclePlate(schedule.attendanceVehiclePlates?.join("\n") || schedule.attendanceVehiclePlate || "")
     setCompletionDisposalMtrNumber(schedule.attendanceDisposal?.mtrNumbers?.join("\n") || schedule.attendanceDisposal?.mtrNumber || "")
     setCompletionDisposalType(schedule.attendanceDisposal?.type || "")
     setCompletionDisposalStationId(schedule.attendanceDisposal?.stationId || "")
@@ -638,7 +640,9 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
           serviceDocumentSettings: formData.serviceDocumentSettings,
           teamIds: formData.teamIds,
           additionalEmployeeIds: formData.employeeIds,
-          scheduledDate: formData.date,
+          multiDayDates: formData.durationType === "days" && formData.duration > 1 ? multiDayDateValues(formData.date, formData.duration, formData.multiDayDates) : formData.multiDayDates?.length ? [formData.date] : undefined,
+          multiDayTimes: formData.durationType === "days" && formData.duration > 1 ? multiDayTimeValues(formData.time, formData.duration, formData.multiDayTimes) : formData.multiDayDates?.length ? [formData.time] : undefined,
+        scheduledDate: formData.date,
           scheduledTime: formData.time,
           estimatedDuration: scheduleDurationToMinutes(formData.duration, formData.durationType),
           durationValue: formData.duration,
@@ -668,6 +672,8 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
         serviceDocumentSettings: formData.serviceDocumentSettings,
         teamIds: formData.teamIds,
         additionalEmployeeIds: formData.employeeIds,
+        multiDayDates: formData.durationType === "days" && formData.duration > 1 ? multiDayDateValues(formData.date, formData.duration, formData.multiDayDates) : formData.multiDayDates?.length ? [formData.date] : undefined,
+        multiDayTimes: formData.durationType === "days" && formData.duration > 1 ? multiDayTimeValues(formData.time, formData.duration, formData.multiDayTimes) : formData.multiDayDates?.length ? [formData.time] : undefined,
         scheduledDate: formData.date,
         scheduledTime: formData.time,
         estimatedDuration: scheduleDurationToMinutes(formData.duration, formData.durationType),
@@ -983,7 +989,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
         driverEmployeeId,
         helperEmployeeIds,
         serviceReport,
-        vehiclePlate,
+        vehiclePlates: vehiclePlate.split(/[\n,;]+/).map((value) => value.trim()).filter(Boolean),
         disposalMtrNumbers: disposalMtrNumber.split("\n").map((value) => value.trim()).filter(Boolean),
         disposalType: disposalType || null,
         disposalStationId: disposalStationId || undefined,
@@ -1088,12 +1094,14 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
     }
 
     const capacityViolation = getDailyServiceCapacityViolation({
-      schedules,
+      schedules: editingService?.multiDayGroupId ? schedules.filter((item) => item.multiDayGroupId !== editingService.multiDayGroupId) : schedules,
       ignoreScheduleId: scheduleId,
       serviceTypeIds: formData.serviceTypeIds,
       serviceTypes,
       date: formData.date,
       time: formData.time,
+      multiDayDates: formData.durationType === "days" && formData.duration > 1 ? multiDayDateValues(formData.date, formData.duration, formData.multiDayDates) : undefined,
+      multiDayTimes: formData.durationType === "days" && formData.duration > 1 ? multiDayTimeValues(formData.time, formData.duration, formData.multiDayTimes) : undefined,
       durationMinutes: scheduleDurationToMinutes(formData.duration, formData.durationType),
       durationType: formData.durationType,
     })
@@ -1103,9 +1111,9 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
     }
 
     const availability = checkScheduleAvailability({
-      schedules,
+      schedules: editingService?.multiDayGroupId ? schedules.filter((item) => item.multiDayGroupId !== editingService.multiDayGroupId) : schedules,
       teams,
-      formData,
+      formData: { ...formData, multiDayDates: formData.durationType === "days" && formData.duration > 1 ? multiDayDateValues(formData.date, formData.duration, formData.multiDayDates) : undefined, multiDayTimes: formData.durationType === "days" && formData.duration > 1 ? multiDayTimeValues(formData.time, formData.duration, formData.multiDayTimes) : undefined },
       ignoreScheduleId: scheduleId,
       mode: "manual",
     })
@@ -1175,7 +1183,9 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
         return <Badge className="bg-slate-100 text-slate-700 hover:bg-slate-100">Rascunho</Badge>
       case "scheduled":
         return <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">Agendado</Badge>
-      case "in_progress":
+      case "partially_completed":
+      return <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">Concluído Parcial</Badge>
+    case "in_progress":
         return <Badge className="bg-yellow-100 text-yellow-700 hover:bg-yellow-100">Em andamento</Badge>
       case "completed":
         return <Badge className="bg-green-100 text-green-700 hover:bg-green-100">Concluído</Badge>
@@ -1287,7 +1297,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
           subtitle: days > 1 ? `${service.serviceTypeName} (${index + 1}/${days})` : baseEvent.subtitle,
           referenceLabel: days > 1 ? `${index + 1}/${days}` : baseEvent.referenceLabel,
           date: currentDate,
-          time: AGENDA_WORKDAY_START_TIME,
+          time: service.time || AGENDA_WORKDAY_START_TIME,
           duration: AGENDA_DAY_DURATION_MINUTES,
           totalDays: Math.max(days, linkedTotalDays),
         })
@@ -1654,6 +1664,13 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                 Editar anexos
               </Button>
             ) : null}
+            {completionStep === "checkout" && !isEditingExecution ? <PartialCompletionAction schedule={completionTarget} disabled={completeMutation.isPending || uploadNaMutation.isPending || completionEmployeesQuery.isLoading}
+              payload={{ startDate: completionStartDate, startTime: completionStartTime, endDate: completionEndDate, endTime: completionEndTime,
+                driverEmployeeId: completionDriverEmployeeId, helperEmployeeIds: completionHelperEmployeeIds, serviceReport: completionServiceReport,
+                vehiclePlates: completionVehiclePlate.split(/[\n,;]+/).map((value) => value.trim()).filter(Boolean),
+                disposalMtrNumbers: completionDisposalMtrNumber.split("\n").map((value) => value.trim()).filter(Boolean),
+                disposalType: completionDisposalType || null, disposalStationId: completionDisposalStationId, disposalQuantityM3: completionDisposalQuantityM3 ?? undefined }}
+              onSuccess={(data) => { reflectScheduleUpdate(data); closeCompletionDialog() }} /> : null}
             {completionStep === "checkout" && !isEditingExecution ? <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => { setRequestReason(""); setRequestNotes(""); setCompletionStep("request") }}>Solicitar reagendamento</Button> : null}
             {completionStep === "request" ? <Button type="button" disabled={requestRescheduleMutation.isPending} onClick={() => { const reasonError = getRescheduleReasonError(requestReason, requestNotes); if (reasonError) { toast.error(reasonError); return } requestRescheduleMutation.mutate() }}>{requestRescheduleMutation.isPending ? "Solicitando..." : "Confirmar solicitação"}</Button> : null}
             {completionStep !== "request" ? <Button
@@ -1665,7 +1682,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
               }
               disabled={
                 !completionTarget ||
-                (!isEditingExecution && !completionTarget.naAttachments?.length && !completionTarget.naDocumentUrl) ||
+                (completionStep === "checkout" && !isEditingExecution && !completionTarget.naAttachments?.length && !completionTarget.naDocumentUrl) ||
                 uploadNaMutation.isPending ||
                 deleteNaMutation.isPending ||
                 (completionStep === "checkout" && (

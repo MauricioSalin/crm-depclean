@@ -76,8 +76,10 @@ export type ScheduleRecord = {
   }>
   duration: number
   durationValue?: number
+  multiDayDates?: string[]
+  multiDayTimes?: string[]
   durationType?: "minutes" | "hours" | "shift" | "days"
-  status: "draft" | "scheduled" | "in_progress" | "completed" | "cancelled" | "rescheduled" | "awaiting_schedule" | "not_completed"
+  status: "draft" | "scheduled" | "in_progress" | "completed" | "cancelled" | "rescheduled" | "awaiting_schedule" | "not_completed" | "partially_completed"
   recurrence: { type: "none"; daysOfWeek: number[]; interval: number }
   billable: boolean
   value: number
@@ -105,6 +107,9 @@ export type ScheduleRecord = {
   serviceReport?: string
   attendanceDriver?: { id: string; name: string } | null
   attendanceHelpers?: Array<{ id: string; name: string }>
+  attendanceVehiclePlates?: string[]
+  executionDurationMinutes?: number
+  executionPeriods?: Array<{ startDate: string; startTime: string; endDate: string; endTime: string }>
   attendanceVehiclePlate?: string
   attendanceDisposal?: ScheduleDisposalRecord | null
   naFileName?: string
@@ -138,6 +143,8 @@ export type SchedulePayload = {
   scheduledTime?: string
   estimatedDuration: number
   durationValue?: number
+  multiDayDates?: string[]
+  multiDayTimes?: string[]
   durationType?: "minutes" | "hours" | "shift" | "days"
   isEmergency?: boolean
   isLegacyImport?: boolean
@@ -269,6 +276,8 @@ export async function completeSchedule(
     serviceReport?: string
     driverEmployeeId?: string
     helperEmployeeIds?: string[]
+    partialReason?: string
+    vehiclePlates?: string[]
     vehiclePlate?: string
     disposalType?: ScheduleDisposalType | null
     disposalMtrNumber?: string

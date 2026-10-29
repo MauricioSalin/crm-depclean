@@ -1,4 +1,5 @@
 "use client"
+import { MultiDayDateFields, multiDayDateValues } from "@/components/agendamentos/multi-day-date-fields"
 
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
@@ -58,7 +59,7 @@ import { listTemplates } from "@/lib/api/templates"
 import { toast } from "sonner"
 import { formatCivilDate, parseCivilDate, toCivilDateKey } from "@/lib/date-utils"
 
-type ScheduleManualStatus = "draft" | "scheduled" | "in_progress" | "completed" | "cancelled" | "rescheduled" | "awaiting_schedule" | "not_completed"
+type ScheduleManualStatus = "draft" | "scheduled" | "in_progress" | "completed" | "cancelled" | "rescheduled" | "awaiting_schedule" | "not_completed" | "partially_completed"
 
 function isValidDateKey(value: string) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
@@ -74,6 +75,8 @@ function isValidDateKey(value: string) {
 }
 
 export interface SchedulingFormData {
+  multiDayDates?: string[]
+  multiDayTimes?: string[]
   nonCompletionReason?: string
   rescheduleReason?: string
   rescheduleNotes?: string
@@ -103,6 +106,11 @@ export interface SchedulingFormData {
 }
 
 interface EditingSchedule {
+  multiDayGroupId?: string
+  multiDayDates?: string[]
+  multiDayTimes?: string[]
+  multiDayTotal?: number
+  multiDayIndex?: number
   statusHistory?: ScheduleRecord["statusHistory"]
   id: string
   contractId?: string | null
@@ -184,6 +192,7 @@ const SCHEDULE_STATUS_OPTIONS: Array<{ value: ScheduleManualStatus; label: strin
   { value: "scheduled", label: "Agendado" },
   { value: "in_progress", label: "Em andamento" },
   { value: "completed", label: "Concluído" },
+  { value: "partially_completed", label: "Concluído Parcial" },
   { value: "cancelled", label: "Cancelado" },
   { value: "rescheduled", label: "Reagendado" },
   { value: "not_completed", label: "Não concluído" },
@@ -289,9 +298,10 @@ export function SchedulingFormDialog({
   const selectedClient = clientById.get(formData.clientId)
   const isEditing = Boolean(editingSchedule)
   const rescheduleDateChanged = Boolean(editingSchedule &&
+    !(editingSchedule.multiDayGroupId && Number(editingSchedule.multiDayIndex) > 1) &&
     (formData.date !== editingSchedule.date || formData.time !== (editingSchedule.time || "")))
   const needsRescheduleReason = Boolean(editingSchedule && (
-    (["scheduled", "rescheduled", "awaiting_schedule", "not_completed"].includes(editingSchedule.status) && rescheduleDateChanged) ||
+    (["scheduled", "rescheduled", "awaiting_schedule", "not_completed", "partially_completed"].includes(editingSchedule.status) && rescheduleDateChanged) ||
     (formData.status === "rescheduled" && editingSchedule.status !== "rescheduled")
   ))
   const isRecurringSchedule = Boolean(editingSchedule?.contractId && !editingSchedule?.isManual)
@@ -335,8 +345,10 @@ export function SchedulingFormDialog({
       employeeIds: selection.employeeIds,
       date: schedule.date,
       time: schedule.time ?? "",
+      multiDayDates: schedule.multiDayDates,
+      multiDayTimes: schedule.multiDayTimes,
       durationType: durationFields.durationType,
-      duration: durationFields.duration,
+      duration: Number(schedule.multiDayIndex) === 1 && Number(schedule.multiDayTotal) > 1 ? Number(schedule.multiDayTotal) : durationFields.duration,
       informativeTemplateId: serviceDocumentSettings[0]?.informativeTemplateId ?? "",
       certificateTemplateId: serviceDocumentSettings[0]?.certificateTemplateId ?? "",
       autoSendInformative: serviceDocumentSettings.some((setting) => Boolean(setting.informativeTemplateId)),
@@ -552,6 +564,13 @@ export function SchedulingFormDialog({
       toast.error("Informe um horário válido entre 00:00 e 23:59.")
       return
     }
+    if (formData.durationType === "days" && formData.duration > 1) {
+      const dates = multiDayDateValues(formData.date, formData.duration, formData.multiDayDates)
+      if (dates.some((date, index) => !isValidDateKey(date) || index > 0 && date <= dates[index - 1]!)) {
+        toast.error("Selecione as datas dos demais dias em ordem crescente, sem repetição.")
+        return
+      }
+    }
     if (!Number.isFinite(formData.duration) || formData.duration <= 0) {
       toast.error("Informe uma duração maior que zero para o agendamento.")
       return
@@ -657,7 +676,7 @@ export function SchedulingFormDialog({
                 </SelectTrigger>
                 <SelectContent>
                   {SCHEDULE_STATUS_OPTIONS.filter((option) => canManageStatus || option.value === "not_completed" || option.value === formData.status).map((option) => (
-                    <SelectItem key={option.value} value={option.value} disabled={option.value === "awaiting_schedule" || (option.value === "not_completed" && !canEditDetails) || (option.value === "rescheduled" && (!canEditDetails || !["scheduled", "rescheduled", "awaiting_schedule", "not_completed"].includes(editingSchedule?.status ?? "")))}>
+                    <SelectItem key={option.value} value={option.value} disabled={option.value === "partially_completed" || option.value === "awaiting_schedule" || (option.value === "not_completed" && !canEditDetails) || (option.value === "rescheduled" && (!canEditDetails || !["scheduled", "rescheduled", "awaiting_schedule", "not_completed", "partially_completed"].includes(editingSchedule?.status ?? "")))}>
                       {option.label}
                     </SelectItem>
                   ))}
@@ -977,8 +996,9 @@ export function SchedulingFormDialog({
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Duração</Label>
+              <Label htmlFor="schedule-duration">Duração</Label>
               <NumericInput
+                id="schedule-duration"
                 value={formData.duration}
                 onValueChange={(duration) => setFormData((current) => ({ ...current, duration }))}
                 min={1}
@@ -987,6 +1007,9 @@ export function SchedulingFormDialog({
               />
             </div>
           </div>
+
+          <MultiDayDateFields firstDate={formData.date} firstTime={formData.time} times={formData.multiDayTimes} onTimesChange={(multiDayTimes) => setFormData((current) => ({ ...current, multiDayTimes }))} totalDays={formData.durationType === "days" ? formData.duration : 1}
+            dates={formData.multiDayDates} onChange={(multiDayDates) => setFormData((current) => ({ ...current, multiDayDates }))} />
 
           {/* Notes */}
           <div className="space-y-2">

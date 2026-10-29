@@ -1,6 +1,7 @@
 "use client"
+import { MultiDayDateFields, multiDayDateValues, multiDayTimeValues } from "@/components/agendamentos/multi-day-date-fields"
 
-import { useEffect, useMemo, useState } from "react"
+import { Fragment, useEffect, useMemo, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { CalendarClock, Clock3, Download, Loader2, Plus, RotateCcw, Save, Trash2 } from "lucide-react"
 import { toast } from "sonner"
@@ -94,6 +95,8 @@ const toPayload = (items: ScheduleRecord[]) => ({
     id: item.id,
     contractServiceId: item.contractServiceId ?? "",
     contractServiceIds: item.contractServiceIds,
+    multiDayDates: item.durationType === "days" && Number(item.durationValue) > 1 ? multiDayDateValues(item.date, Number(item.durationValue), item.multiDayDates) : [],
+    multiDayTimes: item.durationType === "days" && Number(item.durationValue) > 1 ? multiDayTimeValues(item.time, Number(item.durationValue), item.multiDayTimes) : [],
     date: item.date,
     time: item.time,
     durationValue: Number(item.durationValue ?? 1),
@@ -128,6 +131,7 @@ export function ContractSchedulePlanDialog({
   const [generatedItems, setGeneratedItems] = useState<ScheduleRecord[]>([])
   const [editingAssigneeId, setEditingAssigneeId] = useState<string | null>(null)
   const [editingServicesId, setEditingServicesId] = useState<string | null>(null)
+  const initializedPlanKeyRef = useRef<string | null>(null)
 
   const planQuery = useQuery({
     queryKey: ["contract-schedule-plan", contract.id],
@@ -137,10 +141,17 @@ export function ContractSchedulePlanDialog({
   })
 
   useEffect(() => {
-    if (!open || !planQuery.data?.data.items) return
+    if (!open) {
+      initializedPlanKeyRef.current = null
+      setEditingAssigneeId(null)
+      setEditingServicesId(null)
+      return
+    }
+    if (!planQuery.data?.data.items || initializedPlanKeyRef.current === contract.id) return
+    initializedPlanKeyRef.current = contract.id
     setItems(cloneItems(planQuery.data.data.items))
     setGeneratedItems(cloneItems(planQuery.data.data.generatedItems))
-  }, [open, planQuery.data])
+  }, [open, contract.id, planQuery.data])
 
   const actualSchedules = useMemo(
     () => schedules.filter((item) => item.contractId !== contract.id),
@@ -196,10 +207,12 @@ export function ContractSchedulePlanDialog({
         employeeIds,
         date: item.date,
         time: item.time,
+        multiDayDates: item.durationType === "days" && Number(item.durationValue) > 1 ? multiDayDateValues(item.date, Number(item.durationValue), item.multiDayDates) : undefined,
+        multiDayTimes: item.durationType === "days" && Number(item.durationValue) > 1 ? multiDayTimeValues(item.time, Number(item.durationValue), item.multiDayTimes) : undefined,
         duration: Number(item.durationValue ?? 1),
         durationType: item.durationType ?? "hours",
       },
-      mode: "automation",
+      mode: item.durationType === "days" && Number(item.durationValue) > 1 ? "manual" : "automation",
     })
     if (availability.available || availability.conflict?.reason !== "resource") return true
 
@@ -256,6 +269,8 @@ export function ContractSchedulePlanDialog({
       serviceTypes,
       date,
       time: item.time || "08:00",
+      multiDayDates: item.durationType === "days" ? multiDayDateValues(date, Number(item.durationValue), item.multiDayDates) : undefined,
+      multiDayTimes: item.durationType === "days" ? multiDayTimeValues(item.time, Number(item.durationValue), item.multiDayTimes) : undefined,
       durationMinutes: durationToMinutes(Number(item.durationValue ?? 1), item.durationType ?? "hours"),
       durationType: item.durationType,
       serviceItems: item.serviceItems,
@@ -275,7 +290,7 @@ export function ContractSchedulePlanDialog({
     getAvailableRescheduleTimes({
       schedules: availabilitySchedules,
       teams,
-      schedule: item,
+      schedule: item.durationType === "days" && Number(item.durationValue) > 1 ? { ...item, duration: WORKDAY_DURATION_MINUTES, durationValue: 1, multiDayDates: [], multiDayTimes: [] } : item,
       date,
     })
 
@@ -419,7 +434,8 @@ export function ContractSchedulePlanDialog({
   const busy = saveMutation.isPending || exportMutation.isPending
   const isPublished = Boolean(planQuery.data?.data.isPublished)
   const editingDisabled = busy || isPublished
-  const hasIncompleteItems = items.some((item) => !item.date || !item.time)
+  const hasIncompleteItems = items.some((item) => !item.date || !item.time ||
+    (item.durationType === "days" && Number(item.durationValue) > 1 && multiDayDateValues(item.date, Number(item.durationValue), item.multiDayDates).some((date, index, dates) => !date || (index > 0 && date <= dates[index - 1]))))
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !busy && onOpenChange(nextOpen)}>
       <DialogContent className="flex max-h-[92dvh] w-[min(96vw,1560px)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-[min(96vw,1560px)]">
@@ -488,7 +504,7 @@ export function ContractSchedulePlanDialog({
                   {items.map((item) => {
                     const times = availableTimes(item, item.date)
                     return (
-                      <TableRow key={item.id} data-schedule-id={item.id} className="hover:bg-transparent">
+                      <Fragment key={item.id}><TableRow data-schedule-id={item.id} className={item.durationType === "days" && Number(item.durationValue) > 1 ? "border-b-0 hover:bg-transparent" : "hover:bg-transparent"}>
                         <TableCell className="align-top">
                           <DatePicker
                             value={parseCivilDate(item.date)}
@@ -653,6 +669,10 @@ export function ContractSchedulePlanDialog({
                           </Button>
                         </TableCell>
                       </TableRow>
+                      {item.durationType === "days" && Number(item.durationValue) > 1 ? <TableRow data-schedule-extra-days={item.id} className="hover:bg-transparent"><TableCell colSpan={6} className="px-0 pb-3 pt-0">
+                        <MultiDayDateFields firstDate={item.date} firstTime={item.time} times={item.multiDayTimes} onTimesChange={(multiDayTimes) => updateItem(item.id, { multiDayTimes })} totalDays={Number(item.durationValue)} dates={item.multiDayDates}
+                          onChange={(multiDayDates) => updateItem(item.id, { multiDayDates })} disabled={editingDisabled} maxDate={planEndDate} />
+                      </TableCell></TableRow> : null}</Fragment>
                     )
                   })}
                   </TableBody>

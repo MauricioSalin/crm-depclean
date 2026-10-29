@@ -1,4 +1,5 @@
 "use client"
+import { formatExactScheduleDuration } from "@/lib/schedule-duration"
 import { EmergencyExhaustedBadge, EmergencyUsageCounter } from "@/components/contratos/emergency-usage"
 
 import { useEffect, useMemo, useState } from "react"
@@ -70,6 +71,8 @@ function getStatusLabel(status: ScheduleRecord["status"]) {
       return "Rascunho"
     case "scheduled":
       return "Agendado"
+    case "partially_completed":
+      return "Concluído Parcial"
     case "in_progress":
       return "Em andamento"
     case "completed":
@@ -81,6 +84,18 @@ function getStatusLabel(status: ScheduleRecord["status"]) {
     default:
       return status
   }
+}
+
+const STATUS_BADGE_CLASSES: Record<ScheduleRecord["status"], string> = {
+  awaiting_schedule: "bg-orange-100 text-orange-700 hover:bg-orange-100",
+  not_completed: "bg-red-100 text-red-800 hover:bg-red-100",
+  draft: "bg-slate-100 text-slate-700 hover:bg-slate-100",
+  scheduled: "bg-blue-100 text-blue-800 hover:bg-blue-100",
+  partially_completed: "bg-amber-100 text-amber-800 hover:bg-amber-100",
+  in_progress: "bg-yellow-100 text-yellow-800 hover:bg-yellow-100",
+  completed: "bg-green-100 text-green-800 hover:bg-green-100",
+  cancelled: "bg-red-100 text-red-800 hover:bg-red-100",
+  rescheduled: "bg-purple-100 text-purple-800 hover:bg-purple-100",
 }
 
 function formatScheduleDate(date: string) {
@@ -280,7 +295,7 @@ export function ScheduleDetailsDialog({
   const isBlockedByScheduleDate =
     canStartAction && hasStartableStatus && !isScheduledForToday && !canStartOutsideScheduledDate
   const hasDelinquencyWarning = Boolean(schedule.isClientDelinquent && hasStartableStatus)
-  const canRescheduleSchedule = canRescheduleAction && ["draft", "scheduled", "rescheduled", "awaiting_schedule", "not_completed"].includes(schedule.status)
+  const canRescheduleSchedule = canRescheduleAction && ["draft", "scheduled", "rescheduled", "awaiting_schedule", "not_completed", "partially_completed"].includes(schedule.status)
   const multiDayTotal = Math.trunc(Number(schedule.multiDayTotal) || 0)
   const isMultiDayMainSchedule = Number(schedule.multiDayIndex) === 1 && multiDayTotal > 1
   const isMultiDayChildSchedule = Number(schedule.multiDayIndex) > 1 && multiDayTotal > 1
@@ -570,10 +585,11 @@ export function ScheduleDetailsDialog({
               </div>
             ) : (
               <>
-            <div className={cn("flex flex-wrap justify-center gap-2", isMobile ? "mt-2" : "mt-4")}>
+            <div data-schedule-detail-badges className={cn("flex flex-wrap justify-center gap-2", isMobile ? "mt-2" : "mt-4")}>
               <Badge variant={isRecurringSchedule ? "secondary" : "outline"}>
                 {isRecurringSchedule ? "Atendimento recorrente" : "Atendimento avulso"}
               </Badge>
+              <Badge className={STATUS_BADGE_CLASSES[schedule.status]}>{getStatusLabel(schedule.status)}</Badge>
               {schedule.isEmergency && schedule.emergencyContractId ? <EmergencyExhaustedBadge contractId={schedule.emergencyContractId} /> : null}
               {schedule.isClientDelinquent ? (
                 <Badge className="bg-red-100 text-red-700 hover:bg-red-100">Inadimplente</Badge>
@@ -581,7 +597,7 @@ export function ScheduleDetailsDialog({
             </div>
 
             <div className="mt-3 grid gap-3 md:grid-cols-2">
-              {schedule.status === "completed" ? (
+              {(schedule.status === "completed" || schedule.status === "partially_completed" || schedule.executionDurationMinutes !== undefined) ? (
                 <div data-schedule-detail-card="execution" className="rounded-2xl border border-primary/20 bg-primary/[0.03] p-4 md:col-span-2">
                   <div className="mb-3 flex items-center gap-1.5 text-sm font-medium">
                     <Clock3 className="h-4 w-4 text-primary" />
@@ -600,23 +616,27 @@ export function ScheduleDetailsDialog({
                   </div>
                   <div className="grid gap-3 text-sm sm:grid-cols-2">
                     <div>
-                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Período executado</p>
+                      <p className="text-xs font-medium uppercase tracking-wide text-foreground/75">Período executado</p>
                       <p className="mt-1 text-foreground">
-                        {formatScheduleDate(schedule.completionStartDate || schedule.date)} às {schedule.completionStartTime || "--:--"}
+                        {schedule.executionPeriods?.length ? schedule.executionPeriods.map((period, index) => <span key={index} className="block">{formatScheduleDate(period.startDate)} às {period.startTime} até {formatScheduleDate(period.endDate)} às {period.endTime}</span>) : <>{formatScheduleDate(schedule.completionStartDate || schedule.date)} às {schedule.completionStartTime || "--:--"}
                         {" até "}
-                        {formatScheduleDate(schedule.completionEndDate || schedule.completionStartDate || schedule.date)} às {schedule.completionEndTime || "--:--"}
+                        {formatScheduleDate(schedule.completionEndDate || schedule.completionStartDate || schedule.date)} às {schedule.completionEndTime || "--:--"}</>}
                       </p>
                     </div>
                     <div>
-                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Motorista</p>
+                      <p className="text-xs font-medium uppercase tracking-wide text-foreground/75">Duração</p>
+                      <p className="mt-1 text-foreground">{schedule.executionDurationMinutes !== undefined ? formatExactScheduleDuration(schedule.executionDurationMinutes) : "Não informada"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium uppercase tracking-wide text-foreground/75">Motorista</p>
                       <p className="mt-1 text-foreground">{schedule.attendanceDriver?.name || "Não informado"}</p>
                     </div>
                     <div>
-                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Placa do veículo</p>
+                      <p className="text-xs font-medium uppercase tracking-wide text-foreground/75">Placa do veículo</p>
                       <p className="mt-1 text-foreground">{schedule.attendanceVehiclePlate || "Não informada"}</p>
                     </div>
                     <div className="sm:col-span-2">
-                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Ajudantes</p>
+                      <p className="text-xs font-medium uppercase tracking-wide text-foreground/75">Ajudantes</p>
                       <p className="mt-1 text-foreground">
                         {schedule.attendanceHelpers?.length
                           ? schedule.attendanceHelpers.map((employee) => employee.name).join(" • ")
@@ -626,27 +646,27 @@ export function ScheduleDetailsDialog({
                     {schedule.attendanceDisposal ? (
                       <div data-schedule-execution-disposal className="grid gap-3 sm:col-span-2 sm:grid-cols-2">
                         <div className="sm:col-span-2">
-                          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">MTR</p>
+                          <p className="text-xs font-medium uppercase tracking-wide text-foreground/75">MTR</p>
                           <p className="mt-1 text-foreground">{(schedule.attendanceDisposal.mtrNumbers?.length ? schedule.attendanceDisposal.mtrNumbers : [schedule.attendanceDisposal.mtrNumber || "Não informado"]).map((number, index, numbers) => <span key={index} className="block">{numbers.length > 1 ? `MTR ${index + 1}: ` : ""}{number}</span>)}</p>
                         </div>
                         <div>
-                          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Descarte</p>
+                          <p className="text-xs font-medium uppercase tracking-wide text-foreground/75">Descarte</p>
                           <p className="mt-1 text-foreground">
                             {schedule.attendanceDisposal.type === "fossa" ? "Fossa" : "Gordura"}
                           </p>
                         </div>
                         <div>
-                          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Quantidade</p>
+                          <p className="text-xs font-medium uppercase tracking-wide text-foreground/75">Quantidade</p>
                           <p className="mt-1 text-foreground">
                             {schedule.attendanceDisposal.quantityM3.toLocaleString("pt-BR", { maximumFractionDigits: 3 })} m³
                           </p>
                         </div>
                         <div className="sm:col-span-2">
-                          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Estação</p>
+                          <p className="text-xs font-medium uppercase tracking-wide text-foreground/75">Estação</p>
                           <p className="mt-1 text-foreground">{schedule.attendanceDisposal.stationName}</p>
                         </div>
                         <div data-schedule-execution-disposal-value className="sm:col-span-2">
-                          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Valor</p>
+                          <p className="text-xs font-medium uppercase tracking-wide text-foreground/75">Valor</p>
                           <p className="mt-1 text-foreground">
                             {formatScheduleDisposalCurrency(schedule.attendanceDisposal.totalValue)}
                           </p>
@@ -654,7 +674,7 @@ export function ScheduleDetailsDialog({
                       </div>
                     ) : null}
                     <div data-schedule-execution-notes className="pt-3 sm:col-span-2">
-                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      <p className="text-xs font-medium uppercase tracking-wide text-foreground/75">
                         Observações do atendimento
                       </p>
                       <p className="mt-1 whitespace-pre-wrap text-foreground">
@@ -738,11 +758,10 @@ export function ScheduleDetailsDialog({
               ) : null}
 
               {schedule.statusHistory?.length ? (
-                <div className="col-span-full space-y-3 rounded-2xl border p-4">
+                <div data-schedule-detail-card="history" className="col-span-full space-y-3 rounded-2xl border p-4">
                   <p className="text-sm font-semibold">Histórico do atendimento</p>
                   {schedule.statusHistory.map((event, index) => (
                     <div key={event.changedAt + index} className="border-t pt-3 text-sm">
-                      <p className="font-medium">{getStatusLabel(event.status as ScheduleRecord["status"])}</p>
                       <p className="whitespace-pre-wrap break-words">{event.reason}</p>
                       {event.rescheduleNotes ? <p className="whitespace-pre-wrap break-words">{event.rescheduleNotes}</p> : null}
                       <p className="text-muted-foreground">{new Date(event.changedAt).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })} · {event.changedByName}</p>
@@ -751,12 +770,12 @@ export function ScheduleDetailsDialog({
                 </div>
               ) : null}
               {schedule.originalScheduledDate ? (
-                <div className="col-span-full mt-5 space-y-3 rounded-2xl border p-4">
+                <div data-schedule-detail-card="reschedule-history" className="col-span-full mt-5 space-y-3 rounded-2xl border p-4">
                   <p className="text-sm font-semibold">Histórico de reagendamentos</p>
-                  <p className="text-sm">Data original: {formatScheduleDate(schedule.originalScheduledDate)} às {schedule.originalScheduledTime || "--:--"}</p>
+                  <p className="text-xs text-muted-foreground/80">Data original: {formatScheduleDate(schedule.originalScheduledDate)} às {schedule.originalScheduledTime || "--:--"}</p>
                   {(schedule.rescheduleHistory ?? []).map((event, index) => (
                     <div key={`${event.changedAt}-${index}`} className="border-t pt-3 text-sm">
-                      <p>{formatScheduleDate(event.fromDate)} {event.fromTime} → {formatScheduleDate(event.toDate)} {event.toTime}</p>
+                      <p className="mb-1 text-xs text-muted-foreground/80">{formatScheduleDate(event.fromDate)} {event.fromTime} → {formatScheduleDate(event.toDate)} {event.toTime}</p>
                       <p className="font-medium">{event.reasonLabel}</p>
                       <p className="whitespace-pre-wrap break-words text-muted-foreground">{event.notes}</p>
                     </div>

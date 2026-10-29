@@ -206,6 +206,8 @@ export type PublishedContractSchedulePlanRecord = {
 
 export type ContractSchedulePlanPayload = {
   items: Array<{
+    multiDayDates?: string[]
+    multiDayTimes?: string[]
     id: string
     contractServiceId: string
     contractServiceIds: string[]

@@ -216,6 +216,7 @@ function formatReportExecutionDuration(detail: ReportsAnalyticsRecord["scheduleD
 }
 
 function reportStatusLabel(status: ReportsAnalyticsRecord["scheduleDetails"][number]["status"]) {
+  if (status === "partially_completed") return "Concluído Parcial"
   if (status === "completed") return "Concluído"
   if (status === "cancelled") return "Cancelado"
   if (status === "in_progress") return "Em andamento"

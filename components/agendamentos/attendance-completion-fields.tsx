@@ -84,10 +84,9 @@ export function AttendanceCompletionFields({
   onDisposalQuantityM3Change,
 }: AttendanceCompletionFieldsProps) {
   const fleet = useQuery({ queryKey: ["vehicles"], queryFn: getVehicles })
-  const [selectedVehicleType, setSelectedVehicleType] = useState("")
+  const [selectedVehicleTypes, setSelectedVehicleTypes] = useState<Record<number, string>>({})
   const catalog = fleet.data?.data
-  const normalizedPlate = vehiclePlate.replace(/[^a-z0-9]/gi, "").toUpperCase()
-  const vehicleTypeId = selectedVehicleType || catalog?.vehicles.find((vehicle) => vehicle.plate === normalizedPlate)?.typeId || ""
+  const plates = vehiclePlate.split(/[\n,;]/).map((plate) => plate.replace(/[^a-z0-9]/gi, "").toUpperCase())
   const driverOptions = [
     { value: "none", label: "Sem motorista" },
     ...employees.map((employee) => ({
@@ -183,21 +182,33 @@ export function AttendanceCompletionFields({
         />
       </div>
 
-      <div className="grid min-w-0 gap-4 sm:grid-cols-2">
-        <div className="min-w-0 space-y-2">
-          <Label htmlFor={`${idPrefix}-vehicle-type`}>Tipo de veículo</Label>
-          <SearchableSelect id={`${idPrefix}-vehicle-type`} value={vehicleTypeId || "none"}
-            options={[{ value: "none", label: "Sem veículo" }, ...(catalog?.types ?? []).map((type) => ({ value: type.id, label: type.name }))]}
-            onValueChange={(value) => { setSelectedVehicleType(value === "none" ? "" : value); onVehiclePlateChange("") }}
-            includeAll={false} placeholder="Selecione o tipo" className="w-full" disabled={disabled || fleet.isLoading} />
-          {fleet.isError ? <p className="text-sm text-destructive">Não foi possível carregar os veículos cadastrados.</p> : null}
-        </div>
-        {vehicleTypeId ? <div className="min-w-0 space-y-2">
-          <Label htmlFor={`${idPrefix}-vehicle-plate`}>Placa do veículo</Label>
-          <SearchableSelect id={`${idPrefix}-vehicle-plate`} value={normalizedPlate}
-            options={(catalog?.vehicles ?? []).filter((vehicle) => vehicle.typeId === vehicleTypeId).map((vehicle) => ({ value: vehicle.plate, label: vehicle.plate }))}
-            onValueChange={onVehiclePlateChange} includeAll={false} placeholder="Selecione a placa" searchPlaceholder="Buscar placa..." className="w-full" disabled={disabled} />
-        </div> : null}
+      <div className="space-y-3">
+        {plates.map((plate, index) => {
+          const vehicleTypeId = selectedVehicleTypes[index] ?? catalog?.vehicles.find((vehicle) => vehicle.plate === plate)?.typeId ?? ""
+          const updatePlate = (value: string) => onVehiclePlateChange(plates.map((current, position) => position === index ? value : current).join("\n"))
+          return <div key={index} className="flex items-end gap-2">
+            <div className="grid min-w-0 flex-1 grid-cols-2 gap-3">
+              <div className="min-w-0 space-y-2">
+                <Label htmlFor={index === 0 ? idPrefix + "-vehicle-type" : idPrefix + "-vehicle-type-" + index}>Tipo de veículo{plates.length > 1 ? " " + (index + 1) : ""}</Label>
+                <SearchableSelect id={index === 0 ? idPrefix + "-vehicle-type" : idPrefix + "-vehicle-type-" + index} value={vehicleTypeId || "none"}
+                  options={[{ value: "none", label: "Sem veículo" }, ...(catalog?.types ?? []).map((type) => ({ value: type.id, label: type.name }))]}
+                  onValueChange={(value) => { setSelectedVehicleTypes((current) => ({ ...current, [index]: value === "none" ? "" : value })); updatePlate("") }}
+                  includeAll={false} placeholder="Selecione o tipo" className="w-full" disabled={disabled || fleet.isLoading} />
+              </div>
+              <div className="min-w-0 space-y-2">
+                <Label htmlFor={index === 0 ? idPrefix + "-vehicle-plate" : idPrefix + "-vehicle-plate-" + index}>Placa{plates.length > 1 ? " " + (index + 1) : " do veículo"}</Label>
+                <SearchableSelect id={index === 0 ? idPrefix + "-vehicle-plate" : idPrefix + "-vehicle-plate-" + index} value={plate}
+                  options={(catalog?.vehicles ?? []).filter((vehicle) => vehicle.typeId === vehicleTypeId && (!plates.includes(vehicle.plate) || vehicle.plate === plate)).map((vehicle) => ({ value: vehicle.plate, label: vehicle.plate }))}
+                  onValueChange={updatePlate} includeAll={false} placeholder="Selecione a placa" searchPlaceholder="Buscar placa..." className="w-full" disabled={disabled || !vehicleTypeId || fleet.isLoading} />
+              </div>
+            </div>
+            {index === 0 ? <Button type="button" variant="outline" size="icon" aria-label="Adicionar veículo" disabled={disabled}
+              onClick={() => onVehiclePlateChange(plates.join("\n") + "\n")}><Plus className="h-4 w-4" /></Button>
+              : <Button type="button" variant="ghost" size="icon" aria-label={"Remover veículo " + (index + 1)} disabled={disabled}
+                onClick={() => { setSelectedVehicleTypes({}); onVehiclePlateChange(plates.filter((_, position) => position !== index).join("\n")) }}><X className="h-4 w-4" /></Button>}
+          </div>
+        })}
+        {fleet.isError ? <p className="text-sm text-destructive">Não foi possível carregar os veículos cadastrados.</p> : null}
       </div>
 
       <div className="space-y-2">

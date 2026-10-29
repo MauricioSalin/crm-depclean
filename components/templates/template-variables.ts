@@ -98,6 +98,7 @@ export const TEMPLATE_VARIABLE_GROUPS: TemplateVariableGroup[] = [
     label: "Agendamento",
     variables: [
       { path: "schedule.date", label: "Data da visita", kinds: ["informative", "certificate"] },
+      { path: "schedule.datesText", label: "Todas as datas e horários do atendimento", kinds: ["informative"] },
       { path: "schedule.time", label: "Horário da visita", kinds: ["informative", "certificate"] },
       { path: "schedule.duration", label: "Duração da visita", kinds: ["informative", "certificate"] },
     ],

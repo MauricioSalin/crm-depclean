@@ -703,7 +703,7 @@ export function WeekTimeline({
                     )
                   })}
                   {dayEvents.map((ev) => {
-                    const baseColor = ev.status === "in_progress" && !ev.isEmergency
+                    const baseColor = ["in_progress", "partially_completed"].includes(ev.status) && !ev.isEmergency
                       ? "#edd66b"
                       : ev.teamColor || "#9CA3AF" // gray for no team
                     const isOverlapping = ev.columnCount > 1
