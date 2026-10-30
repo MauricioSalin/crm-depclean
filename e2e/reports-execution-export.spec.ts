@@ -133,3 +133,45 @@ test("exporta o planejamento e todas as informações da execução por agendame
   })
   expect(headers).not.toContain("Anexos da execução")
 })
+
+for (const tab of ["services", "teams", "employees"]) {
+  test(`exporta os status reais dos atendimentos no relatório de ${tab}`, async ({ page }) => {
+    test.setTimeout(90_000)
+    const statuses = [
+      ["scheduled", "Agendado"], ["in_progress", "Em andamento"], ["completed", "Concluído"],
+      ["partially_completed", "Concluído Parcial"], ["cancelled", "Cancelado"], ["rescheduled", "Reagendado"],
+      ["awaiting_schedule", "Aguardando reagendamento"], ["not_completed", "Não concluído"], ["draft", "Rascunho"],
+    ]
+    await page.route("**/api/v1/analytics/reports**", route => route.fulfill({ json: { success: true, data: {
+      dashboardStats: { completedServices: 1, scheduledServices: 3, cancelledServices: 1, emergencyServices: 0, completionRate: 10, teamProductivity: [], employeeProductivity: [] },
+      servicesByPeriodData: [], servicesSummaryData: [], servicesParticipationData: [], serviceClientSummary: [], servicesByTeamData: [],
+      services: [],
+      scheduleDetails: statuses.map(([status], index) => ({
+        id: `status-${index}`, scheduledDate: "2026-10-29", scheduledTime: "08:00", clientId: `client-${index}`, clientName: `Condomínio Status ${index}`,
+        unitId: "unit-e2e", unitName: "Matriz", contractId: "contract-e2e", contractNumber: "LEG-000123", serviceIds: ["service-e2e"], serviceNames: ["Limpeza de caixa d'água"],
+        teamIds: [], teamNames: [], employeeIds: [], employeeNames: [], estimatedDuration: 480, durationValue: 1, durationType: "days", status,
+        isEmergency: false, isManual: false, billable: false, value: 0,
+      })),
+    } } }))
+    await page.addInitScript(() => {
+      const original = URL.createObjectURL.bind(URL)
+      URL.createObjectURL = ((object: Blob | MediaSource) => object instanceof Blob && object.type.startsWith("image/svg+xml")
+        ? "data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='1'%20height='1'%3E%3C/svg%3E"
+        : original(object)) as typeof URL.createObjectURL
+    })
+    await page.goto(`/relatorios?tab=${tab}`)
+    const pending = page.waitForEvent("download")
+    await page.getByRole("button", { name: "Gerar relatório" }).click()
+    const download = await pending
+    const workbook = new ExcelJS.Workbook()
+    await workbook.xlsx.readFile((await download.path())!)
+    const sheet = workbook.getWorksheet("Dados")!
+    let headerRow = 0
+    sheet.eachRow(row => { if (row.getCell(1).value === "Data agendada") headerRow = row.number })
+    expect(headerRow).toBeGreaterThan(0)
+    const headers = Array.from(sheet.getRow(headerRow).values as ExcelJS.CellValue[]).slice(1).map(String)
+    const statusColumn = headers.indexOf("Status") + 1
+    expect(statusColumn).toBeGreaterThan(0)
+    for (const [index, [, label]] of statuses.entries()) expect(sheet.getRow(headerRow + 1 + index).getCell(statusColumn).value).toBe(label)
+  })
+}

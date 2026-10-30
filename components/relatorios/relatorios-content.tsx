@@ -36,6 +36,7 @@ import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 import { useUrlDateRangeState } from "@/lib/hooks/use-url-date-range-state"
 import { addCivilDaysKey, addCivilMonthsKey, parseCivilDate, toCivilDateKey } from "@/lib/date-utils"
 import { formatExactScheduleDuration, formatScheduleDurationValue } from "@/lib/schedule-duration"
+import { SCHEDULE_STATUS_FILTER_OPTIONS } from "@/lib/schedule-status"
 import { cn, formatContractNumber } from "@/lib/utils"
 import {
   BarChart,
@@ -216,12 +217,7 @@ function formatReportExecutionDuration(detail: ReportsAnalyticsRecord["scheduleD
 }
 
 function reportStatusLabel(status: ReportsAnalyticsRecord["scheduleDetails"][number]["status"]) {
-  if (status === "partially_completed") return "Concluído Parcial"
-  if (status === "completed") return "Concluído"
-  if (status === "cancelled") return "Cancelado"
-  if (status === "in_progress") return "Em andamento"
-  if (status === "rescheduled") return "Reagendado"
-  return "Agendado"
+  return SCHEDULE_STATUS_FILTER_OPTIONS.find((option) => option.value === status)?.label ?? "Não informado"
 }
 
 function ReportContentSkeleton({ reportId }: { reportId: ReportId }) {

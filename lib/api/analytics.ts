@@ -1,4 +1,5 @@
 import { api } from "@/lib/api/client"
+import type { ScheduleRecord } from "@/lib/api/schedules"
 
 export type MonthlyRevenuePoint = {
   month: string
@@ -69,7 +70,7 @@ export type ReportScheduleDetail = {
   estimatedDuration: number
   durationValue: number
   durationType: "minutes" | "hours" | "shift" | "days"
-  status: "scheduled" | "in_progress" | "completed" | "cancelled" | "rescheduled" | "partially_completed"
+  status: ScheduleRecord["status"]
   isEmergency: boolean
   isManual: boolean
   billable: boolean
