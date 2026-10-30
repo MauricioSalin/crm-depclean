@@ -166,7 +166,8 @@ function isFullDaySchedule(schedule: Pick<AgendaScheduledServiceRow, "duration" 
   return schedule.durationType === "days" || (!schedule.durationType && Number(schedule.duration) > AGENDA_DAY_DURATION_MINUTES)
 }
 
-function scheduleDaySpan(schedule: Pick<AgendaScheduledServiceRow, "duration" | "durationValue" | "durationType">) {
+function scheduleDaySpan(schedule: Pick<AgendaScheduledServiceRow, "duration" | "durationValue" | "durationType" | "multiDayGroupId" | "multiDayTotal">) {
+  if (schedule.multiDayGroupId && Number(schedule.multiDayTotal) > 1) return 1
   if (!isFullDaySchedule(schedule)) return 1
 
   if (schedule.durationType === "days") {

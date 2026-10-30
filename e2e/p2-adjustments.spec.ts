@@ -218,3 +218,49 @@ for (const editChildDirectly of [false, true]) {
     await expect(page.getByRole("button", { name: "Salvar reagendamento", exact: true })).toHaveCount(0)
   })
 }
+
+test("P2: plano legado salvo mantém 12 e 18 ativos sem criar card fantasma no dia 13", async ({ page }) => {
+  await installAuthenticatedSession(page)
+  await installApiMock(page)
+  const dates = ["2026-11-12", "2026-11-18"]
+  const parent = { ...scheduleFixture, id: "legacy-plan", date: dates[0], time: "08:00", status: "rescheduled", duration: 960, durationType: "days", durationValue: 2, multiDayGroupId: "legacy-plan", multiDayIndex: 1, multiDayTotal: 2, multiDayDates: dates, multiDayTimes: ["08:00", "13:00"] }
+  const child = { ...parent, id: "legacy-plan-day-2", date: dates[1], time: "13:00", status: "cancelled", duration: 480, durationValue: 1, multiDayIndex: 2, multiDayDates: [], multiDayTimes: [] }
+  let records = [parent, child]
+  let saves = 0
+  await page.route("**/api/v1/schedules**", async route => {
+    const request = route.request(), pathname = new URL(request.url()).pathname
+    if (request.method() === "GET" && pathname.endsWith("/schedules")) return route.fulfill({ json: { success: true, data: records } })
+    if (request.method() === "PATCH" && pathname.endsWith("/legacy-plan")) {
+      const payload = request.postDataJSON()
+      expect(payload.multiDayDates).toEqual(dates)
+      expect(payload.multiDayTimes).toEqual(["08:00", "13:00"])
+      records = [{ ...parent, duration: 480, durationValue: 1 }, { ...child, status: "rescheduled" }]
+      saves++
+      return route.fulfill({ json: { success: true, data: records[0] } })
+    }
+    await route.fallback()
+  })
+  await page.goto("/agenda?date=2026-11-12&view=week")
+  const initial = page.locator('button[data-schedule-id="legacy-plan"]')
+  await expect(initial).toHaveCount(1)
+  await page.goto("/agendamentos")
+  const row = page.getByRole("row").filter({ hasText: "12/11/2026" })
+  await row.getByRole("button", { name: /Abrir ações do agendamento/ }).click()
+  await page.getByRole("menuitem", { name: "Editar", exact: true }).click()
+  const dialog = page.getByRole("dialog", { name: /Editar atendimento/ })
+  await expect(dialog.getByRole("button", { name: "Dia 2", exact: true })).toHaveText("18/11/2026")
+  await expect(dialog.getByLabel("Horário do Dia 2")).toHaveValue("13:00")
+  await dialog.getByRole("button", { name: "Salvar", exact: true }).click()
+  await expect.poll(() => saves).toBe(1)
+  await page.reload()
+  await expect(page.getByRole("row").filter({ hasText: "18/11/2026" }).getByText("Reagendado", { exact: true })).toBeVisible()
+  await page.goto("/agenda?date=2026-11-12&view=week")
+  await expect(page.locator('button[data-schedule-id="legacy-plan"]')).toHaveCount(1)
+  await expect(page.locator('button[data-schedule-id="legacy-plan-day-2"]')).toHaveCount(0)
+  await page.goto("/agenda?date=2026-11-18&view=week")
+  const second = page.locator('button[data-schedule-id="legacy-plan-day-2"]')
+  await expect(second).toHaveCount(1)
+  await expect(second).toContainText("13:00")
+  await expect(second).not.toHaveClass(/opacity-50|line-through/)
+  await second.screenshot({ path: "../output/p2-fixed-day-18-timeline.png" })
+})
