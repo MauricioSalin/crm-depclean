@@ -271,6 +271,8 @@ const getScheduleStatusBadge = (status: ScheduleRecord["status"]) => {
       return <Badge className="bg-yellow-100 text-yellow-800">Em andamento</Badge>
     case "completed":
       return <Badge className="bg-green-100 text-green-800">Concluído</Badge>
+    case "partially_completed":
+      return <Badge className="bg-amber-100 text-amber-800">Concluído Parcial</Badge>
     case "cancelled":
       return <Badge className="bg-red-100 text-red-800">Cancelado</Badge>
     case "rescheduled":

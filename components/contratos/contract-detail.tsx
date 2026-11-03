@@ -231,6 +231,8 @@ const getScheduleStatusBadge = (status: string) => {
       return <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">Em andamento</Badge>
     case "completed":
       return <Badge className="bg-primary/10 text-primary hover:bg-primary/10">Concluído</Badge>
+    case "partially_completed":
+      return <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">Concluído Parcial</Badge>
     case "cancelled":
       return <Badge className="bg-red-100 text-red-700 hover:bg-red-100">Cancelado</Badge>
     case "rescheduled":

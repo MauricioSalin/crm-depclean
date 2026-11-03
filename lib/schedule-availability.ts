@@ -241,6 +241,8 @@ export function getScheduleDailyServiceCapacityViolation(params: {
     serviceTypes: params.serviceTypes,
     date: params.date,
     time: params.time || params.schedule.time || "08:00",
+    multiDayDates: isWholeGroup && params.schedule.multiDayDates?.length ? params.schedule.multiDayDates.map(day => addCivilDaysKey(params.date, Math.round((Date.parse(day + "T00:00:00Z") - Date.parse(params.schedule.date + "T00:00:00Z")) / 86400000))) : undefined,
+    multiDayTimes: isWholeGroup ? params.schedule.multiDayTimes : undefined,
     durationMinutes: scheduleDurationToMinutes(durationConfig.duration, durationConfig.durationType),
     durationType: durationConfig.durationType,
     serviceItems: isWholeGroup ? undefined : params.schedule.serviceItems,
