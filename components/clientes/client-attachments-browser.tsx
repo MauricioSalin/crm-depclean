@@ -887,7 +887,7 @@ export function ClientAttachmentsBrowser({
                             parentId: folder.parentId,
                           }) : null}
                           {canEdit ? <DropdownMenuItem onSelect={() => openEditor({ kind: "folder", folder })}><Pencil /> Renomear</DropdownMenuItem> : null}
-                          {canDelete ? <DropdownMenuItem variant="destructive" onSelect={() => setDeleteTarget({ kind: "folder", id: folder.id, name: folder.name })}><Trash2 /> Remover</DropdownMenuItem> : null}
+                          {canDelete ? <DropdownMenuItem onSelect={() => setDeleteTarget({ kind: "folder", id: folder.id, name: folder.name })}><Trash2 /> Remover</DropdownMenuItem> : null}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     ) : null}
@@ -951,7 +951,7 @@ export function ClientAttachmentsBrowser({
                             parentId: file.parentId ?? null,
                           }) : null}
                           {canEdit ? <DropdownMenuItem onSelect={() => openEditor({ kind: "file", file })}><Pencil /> Editar</DropdownMenuItem> : null}
-                          {canDelete ? <DropdownMenuItem variant="destructive" onSelect={() => setDeleteTarget({ kind: "file", id: file.id, name: displayFileName(file) })}><Trash2 /> Remover</DropdownMenuItem> : null}
+                          {canDelete ? <DropdownMenuItem onSelect={() => setDeleteTarget({ kind: "file", id: file.id, name: displayFileName(file) })}><Trash2 /> Remover</DropdownMenuItem> : null}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     ) : null}
