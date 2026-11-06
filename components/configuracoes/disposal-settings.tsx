@@ -103,11 +103,11 @@ export function DisposalSettings() {
           <TableHeader><TableRow>
             <TableHead>Tipo</TableHead>
             <TableHead>Itens vinculados</TableHead>
-            <TableHead>Ações</TableHead>
+            <TableHead className="w-px text-right">Ações</TableHead>
           </TableRow></TableHeader><TableBody>
           {types.map((type) => <TableRow key={type.id}>
             <TableCell>{type.name}</TableCell><TableCell>{type.items.length}</TableCell>
-            <TableCell>
+            <TableCell className="text-right">
               <DisposalRowActions label={`Ações do tipo ${type.name}`} disabled={save.isPending}
                 onEdit={() => openEditor({ kind: "type", id: type.id }, type.name)}
                 onRemove={() => {
@@ -142,13 +142,13 @@ export function DisposalSettings() {
             <TableHead>Tipo</TableHead>
             <TableHead>Estação / item</TableHead>
             <TableHead>Valor por m³</TableHead>
-            <TableHead>Ações</TableHead>
+            <TableHead className="w-px text-right">Ações</TableHead>
           </TableRow></TableHeader><TableBody>
           {types.flatMap((type) => type.items.map((item) => <TableRow key={`${type.id}-${item.id}`}>
             <TableCell>{type.name}</TableCell>
             <TableCell>{item.name}</TableCell>
             <TableCell>{formatScheduleDisposalCurrency(item.unitPrice)}</TableCell>
-            <TableCell>
+            <TableCell className="text-right">
               <DisposalRowActions label={`Ações de ${item.name} de ${type.name}`} disabled={save.isPending}
                 onEdit={() => openEditor({ kind: "item", id: item.id, originalTypeId: type.id }, item.name, item.unitPrice.toFixed(2).replace(".", ","))}
                 onRemove={() => setRemoving({ kind: "item", id: item.id, originalTypeId: type.id })} />

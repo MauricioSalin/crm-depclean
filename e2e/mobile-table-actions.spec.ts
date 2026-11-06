@@ -25,6 +25,12 @@ test("a coluna de ações acompanha a rolagem lateral da tabela no celular", asy
     const position = (await action.boundingBox())!
     return position.x >= bounds.x && position.x + position.width <= bounds.x + bounds.width + 1
   }).toBe(true)
+  const rightInset = await action.evaluate((button) => {
+    const cell = button.closest("td")!
+    return cell.getBoundingClientRect().right - button.getBoundingClientRect().right
+      - parseFloat(getComputedStyle(cell).paddingRight)
+  })
+  expect(rightInset).toBeCloseTo(0)
   await action.tap()
   await expect(page.getByRole("menuitem", { name: "Editar", exact: true })).toBeVisible()
 })
