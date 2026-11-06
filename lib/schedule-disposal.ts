@@ -1,9 +1,12 @@
-export type ScheduleDisposalType = "fossa" | "gordura"
+export type ScheduleDisposalType = string
+export type DisposalStation = { id: string; name: string; unitPrice: number }
+export type DisposalType = { id: string; name: string; items: DisposalStation[] }
 
 export type ScheduleDisposalRecord = {
   mtrNumber?: string
   mtrNumbers?: string[]
   type: ScheduleDisposalType
+  typeName?: string
   stationId: string
   stationName: string
   unitPrice: number
@@ -22,7 +25,7 @@ export const SCHEDULE_DISPOSAL_STATIONS = {
     { id: "green-service", name: "GREEN SERVICE TRATAMENTO DE RESIDUOS", unitPrice: 90 },
     { id: "tratho-efluentes", name: "TRATHO EFLUENTES", unitPrice: 19 },
     { id: "acqua-servicos", name: "ACQUA SERVIÇOS DE TRATAMENTO DE EFLUENTES", unitPrice: 50 },
-    { id: "bio-c-centram", name: "BIO-C CENTRAM DE COMPOSTAGEM", unitPrice: 100 },
+    { id: "bio-c-centram", name: "BIO-C CENTRAM DE COMPOSTAGEM", unitPrice: 90 },
   ],
 } as const
 
@@ -30,9 +33,11 @@ export function scheduleDisposalTotal(
   type: ScheduleDisposalType | "",
   stationId: string,
   quantityM3: number | null,
+  catalog?: DisposalType[],
 ) {
   if (!type || !stationId || !quantityM3) return 0
-  const station = SCHEDULE_DISPOSAL_STATIONS[type].find((item) => item.id === stationId)
+  const items = catalog ? catalog.find((item) => item.id === type)?.items : SCHEDULE_DISPOSAL_STATIONS[type as keyof typeof SCHEDULE_DISPOSAL_STATIONS]
+  const station = items?.find((item) => item.id === stationId)
   return station ? Math.round(station.unitPrice * quantityM3 * 100) / 100 : 0
 }
 

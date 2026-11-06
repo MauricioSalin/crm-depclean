@@ -2,6 +2,7 @@
 import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { getVehicles } from "@/lib/api/vehicles"
+import { getDisposalCatalog } from "@/lib/api/schedules"
 
 import { Button } from "@/components/ui/button"
 import { Plus, X } from "lucide-react"
@@ -17,12 +18,13 @@ import type { ScheduleCompletionEmployee } from "@/lib/api/schedules"
 import { parseCivilDate, toCivilDateKey } from "@/lib/date-utils"
 import {
   formatScheduleDisposalCurrency,
-  SCHEDULE_DISPOSAL_STATIONS,
   scheduleDisposalTotal,
   type ScheduleDisposalType,
+  type ScheduleDisposalRecord,
 } from "@/lib/schedule-disposal"
 
 type AttendanceCompletionFieldsProps = {
+  disposalSnapshot?: ScheduleDisposalRecord | null
   idPrefix: string
   startDate: string
   startTime: string
@@ -54,6 +56,7 @@ type AttendanceCompletionFieldsProps = {
 }
 
 export function AttendanceCompletionFields({
+  disposalSnapshot,
   idPrefix,
   startDate,
   startTime,
@@ -84,6 +87,7 @@ export function AttendanceCompletionFields({
   onDisposalQuantityM3Change,
 }: AttendanceCompletionFieldsProps) {
   const fleet = useQuery({ queryKey: ["vehicles"], queryFn: getVehicles })
+  const disposals = useQuery({ queryKey: ["disposal-catalog"], queryFn: getDisposalCatalog })
   const [selectedVehicleTypes, setSelectedVehicleTypes] = useState<Record<number, string>>({})
   const catalog = fleet.data?.data
   const plates = vehiclePlate.split(/[\n,;]/).map((plate) => plate.replace(/[^a-z0-9]/gi, "").toUpperCase())
@@ -100,8 +104,18 @@ export function AttendanceCompletionFields({
       id: employee.id,
       name: employee.name,
     }))
-  const disposalStations = disposalType ? SCHEDULE_DISPOSAL_STATIONS[disposalType] : []
-  const disposalTotal = scheduleDisposalTotal(disposalType, disposalStationId, disposalQuantityM3)
+  const disposalTypes = (disposals.data?.data.types ?? []).map((type) => ({ ...type, items: [...type.items] }))
+  if (disposalSnapshot) {
+    let storedType = disposalTypes.find((type) => type.id === disposalSnapshot.type)
+    if (!storedType) {
+      storedType = { id: disposalSnapshot.type, name: disposalSnapshot.typeName ?? disposalSnapshot.type, items: [] }
+      disposalTypes.push(storedType)
+    }
+    if (!storedType.items.some((item) => item.id === disposalSnapshot.stationId)) storedType.items.push({ id: disposalSnapshot.stationId, name: disposalSnapshot.stationName, unitPrice: disposalSnapshot.unitPrice })
+  }
+  const keepsRecordedDisposal = disposalSnapshot?.type === disposalType && disposalSnapshot.stationId === disposalStationId && disposalSnapshot.quantityM3 === disposalQuantityM3
+  const disposalStations = (disposalTypes.find((type) => type.id === disposalType)?.items ?? []).map((item) => keepsRecordedDisposal && item.id === disposalSnapshot.stationId ? { ...item, unitPrice: disposalSnapshot.unitPrice } : item)
+  const disposalTotal = keepsRecordedDisposal ? disposalSnapshot.totalValue : scheduleDisposalTotal(disposalType, disposalStationId, disposalQuantityM3, disposalTypes)
 
   return (
     <fieldset className="min-w-0 space-y-5" disabled={disabled}>
@@ -225,16 +239,16 @@ export function AttendanceCompletionFields({
           }}
           options={[
             { value: "none", label: "Sem descarte" },
-            { value: "fossa", label: "Fossa" },
-            { value: "gordura", label: "Gordura" },
+            ...disposalTypes.map((type) => ({ value: type.id, label: type.name })),
           ]}
           includeAll={false}
           placeholder="Selecione o tipo de descarte"
           searchPlaceholder="Buscar tipo..."
           emptyMessage="Nenhum tipo encontrado."
           className="w-full"
-          disabled={disabled}
+          disabled={disabled || disposals.isLoading || disposals.isError}
         />
+        {disposals.isError ? <p role="alert" className="text-sm text-destructive">Não foi possível carregar os descartes. <button type="button" className="underline" onClick={() => void disposals.refetch()}>Tentar novamente</button></p> : null}
       </div>
 
       <div className="space-y-2">

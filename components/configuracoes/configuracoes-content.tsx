@@ -1,5 +1,6 @@
 "use client"
 import { VehiclesSettings } from "@/components/configuracoes/vehicles-settings"
+import { DisposalSettings } from "@/components/configuracoes/disposal-settings"
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react"
 import { Bell, Building, Copy, Edit, Eye, EyeOff, Mail, MessageCircle, MoreHorizontal, RefreshCcw, Save, Search, Settings2, Shield, Trash2, Users } from "lucide-react"
@@ -1552,6 +1553,7 @@ export function ConfiguracoesContent() {
       )}
 
       {activeSection === "empresa" && isAdmin && canManageSettings ? <VehiclesSettings /> : null}
+      {activeSection === "empresa" && isAdmin && canManageSettings ? <DisposalSettings /> : null}
 
       {activeSection === "tipos-cliente" && (
         <div className="space-y-4">

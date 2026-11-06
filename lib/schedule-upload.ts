@@ -1,4 +1,8 @@
-import type { ScheduleRecord } from "@/lib/api/schedules"
+import { getScheduleById, type ScheduleRecord } from "@/lib/api/schedules"
+
+export function getScheduleForUploadRecovery(id: string) {
+  return getScheduleById(id, { timeout: 10_000 }).catch(() => null)
+}
 
 export class PendingScheduleUploadError extends Error {
   constructor(readonly originalError: unknown, readonly files: File[], readonly confirmedSchedule: ScheduleRecord) {

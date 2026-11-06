@@ -414,7 +414,7 @@ test("edita horas quebradas em minutos e mantém horas e minutos na lista", asyn
 
   const editDialog = page.getByRole("dialog", { name: "Editar atendimento recorrente" })
   const durationType = editDialog.getByText("Tipo de Duração", { exact: true }).locator("..").getByRole("combobox")
-  const durationInput = editDialog.getByText("Duração", { exact: true }).locator("..").locator("input")
+  const durationInput = editDialog.getByLabel("Duração do agendamento", { exact: true })
   await expect(durationType).toContainText("Minutos")
   await expect(durationInput).toHaveValue("110")
   await durationInput.pressSequentially(",")

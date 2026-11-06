@@ -1,10 +1,10 @@
 "use client"
-import { multiDayDateValues, multiDayTimeValues } from "@/components/agendamentos/multi-day-date-fields"
+import { multiDayDateValues, multiDayTimeValues, multiDayDurationValues } from "@/components/agendamentos/multi-day-date-fields"
 import { PartialCompletionAction } from "@/components/agendamentos/partial-completion-action"
 
 import { useCallback, useEffect, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { PendingScheduleUploadError, remainingScheduleUploads } from "@/lib/schedule-upload"
+import { getScheduleForUploadRecovery, PendingScheduleUploadError, remainingScheduleUploads } from "@/lib/schedule-upload"
 import { ArrowLeft, Pencil } from "lucide-react"
 import { toast } from "sonner"
 
@@ -232,23 +232,23 @@ export function ScheduleShortcutDialog({
     onMutate: ({ files }) => ({
       toastId: toast.loading(files.length === 1 ? "Salvando anexo..." : `Salvando ${files.length} anexos...`),
     }),
-    onSuccess: async (updatedSchedule, _variables, context) => {
+    onSuccess: (updatedSchedule, _variables, context) => {
       setCompletionFiles([])
       onScheduleChange(updatedSchedule)
-      await invalidateSchedules()
+      void invalidateSchedules().catch(() => undefined)
       toast.success("Anexo salvo no agendamento.", {
         id: context?.toastId,
         description: "O arquivo já está seguro e continuará disponível mesmo sem concluir o atendimento.",
       })
     },
     onError: async (error, variables, context) => {
-      const refreshed = await getScheduleById(variables.target.id).catch(() => null)
+      const refreshed = await getScheduleForUploadRecovery(variables.target.id)
       const pendingFiles = error instanceof PendingScheduleUploadError
         ? refreshed?.data ? remainingScheduleUploads(error, refreshed.data) : error.files
         : variables.files
       setCompletionFiles(pendingFiles)
       if (refreshed?.data) onScheduleChange(refreshed.data)
-      await invalidateSchedules()
+      void invalidateSchedules().catch(() => undefined)
       const originalError = error instanceof PendingScheduleUploadError ? error.originalError : error
       toast.error(getApiErrorMessage(originalError, "Não foi possível salvar o anexo."), {
         id: context?.toastId,
@@ -365,6 +365,7 @@ export function ScheduleShortcutDialog({
         teamIds: formData.teamIds,
         additionalEmployeeIds: formData.employeeIds,
         multiDayDates: formData.durationType === "days" && formData.duration > 1 ? multiDayDateValues(formData.date, formData.duration, formData.multiDayDates) : formData.multiDayDates?.length ? [formData.date] : undefined,
+        multiDayDurations: formData.durationType === "days" && formData.duration > 1 ? multiDayDurationValues(formData.duration, formData.multiDayDurations) : undefined,
         multiDayTimes: formData.durationType === "days" && formData.duration > 1 ? multiDayTimeValues(formData.time, formData.duration, formData.multiDayTimes) : formData.multiDayDates?.length ? [formData.time] : undefined,
         scheduledDate: formData.date,
         scheduledTime: formData.time,
@@ -572,6 +573,7 @@ export function ScheduleShortcutDialog({
             {completionStep === "request" ? <RescheduleReasonFields reason={requestReason} notes={requestNotes} onReasonChange={setRequestReason} onNotesChange={setRequestNotes} /> : null}
             {completionStep === "checkout" ? (
               <AttendanceCompletionFields
+                disposalSnapshot={schedule?.attendanceDisposal}
                 idPrefix="dashboard-schedule-completion"
                 startDate={completionStartDate}
                 startTime={completionStartTime}

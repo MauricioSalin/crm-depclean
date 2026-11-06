@@ -7,6 +7,7 @@ import { resolveDailyScheduleLimitHours } from "@/lib/service-daily-capacity"
 type AvailabilityFormData = {
   multiDayDates?: string[]
   multiDayTimes?: string[]
+  multiDayDurations?: number[]
   teamIds: string[]
   employeeIds: string[]
   date: string
@@ -97,6 +98,7 @@ export function checkScheduleAvailability(params: {
       return buildScheduleBlocks({
         multiDayDates: !schedule.multiDayGroupId ? schedule.multiDayDates : undefined,
         multiDayTimes: !schedule.multiDayGroupId ? schedule.multiDayTimes : undefined,
+        multiDayDurations: !schedule.multiDayGroupId ? schedule.multiDayDurations : undefined,
         date: schedule.date,
         time: schedule.time || "08:00",
         durationMinutes: getScheduleDurationMinutes(schedule),
@@ -111,6 +113,7 @@ export function checkScheduleAvailability(params: {
   const requestedBlocks = buildScheduleBlocks({
     multiDayDates: params.formData.multiDayDates,
     multiDayTimes: params.formData.multiDayTimes,
+    multiDayDurations: params.formData.multiDayDurations,
     date: requested.date,
     time: requested.time,
     durationMinutes: requested.durationMinutes,
@@ -222,6 +225,15 @@ export function hasScheduleDailyServiceCapacity(params: {
   return getScheduleDailyServiceCapacityViolation(params) === null
 }
 
+export function getScheduleRescheduleVisitFields(schedule: ScheduleRecord, firstDate: string) {
+  if (Number(schedule.multiDayIndex) !== 1 || Number(schedule.multiDayTotal) <= 1) return {}
+  return {
+    multiDayDates: schedule.multiDayDates?.map((date) => addCivilDaysKey(firstDate, Math.round((Date.parse(date + "T00:00:00Z") - Date.parse(schedule.date + "T00:00:00Z")) / 86400000))),
+    multiDayTimes: schedule.multiDayTimes,
+    multiDayDurations: schedule.multiDayDurations,
+  }
+}
+
 export function getScheduleDailyServiceCapacityViolation(params: {
   schedules: ScheduleRecord[]
   schedule: ScheduleRecord
@@ -243,6 +255,7 @@ export function getScheduleDailyServiceCapacityViolation(params: {
     time: params.time || params.schedule.time || "08:00",
     multiDayDates: isWholeGroup && params.schedule.multiDayDates?.length ? params.schedule.multiDayDates.map(day => addCivilDaysKey(params.date, Math.round((Date.parse(day + "T00:00:00Z") - Date.parse(params.schedule.date + "T00:00:00Z")) / 86400000))) : undefined,
     multiDayTimes: isWholeGroup ? params.schedule.multiDayTimes : undefined,
+    multiDayDurations: isWholeGroup ? params.schedule.multiDayDurations : undefined,
     durationMinutes: scheduleDurationToMinutes(durationConfig.duration, durationConfig.durationType),
     durationType: durationConfig.durationType,
     serviceItems: isWholeGroup ? undefined : params.schedule.serviceItems,
@@ -260,6 +273,7 @@ export function hasDailyServiceCapacity(params: {
   durationMinutes: number
   multiDayDates?: string[]
   multiDayTimes?: string[]
+  multiDayDurations?: number[]
   durationType?: ScheduleDurationType
   serviceItems?: ScheduleRecord["serviceItems"]
   mode?: AvailabilityMode
@@ -286,6 +300,7 @@ export function getDailyServiceCapacityViolation(params: {
   durationMinutes: number
   multiDayDates?: string[]
   multiDayTimes?: string[]
+  multiDayDurations?: number[]
   durationType?: ScheduleDurationType
   serviceItems?: ScheduleRecord["serviceItems"]
   mode?: AvailabilityMode
@@ -302,6 +317,7 @@ export function getDailyServiceCapacityViolation(params: {
     const requestedMinutesByDate = dailyMinutesByDate(buildScheduleBlocks({
       multiDayDates: params.multiDayDates,
       multiDayTimes: params.multiDayTimes,
+      multiDayDurations: params.multiDayDurations,
       date: params.date,
       time: params.time || "08:00",
       durationMinutes: requestedUsesScheduleDuration ? params.durationMinutes : requestedServiceItemMinutes,
@@ -336,6 +352,7 @@ export function getDailyServiceCapacityViolation(params: {
       for (const [date, minutes] of dailyMinutesByDate(buildScheduleBlocks({
         multiDayDates: !schedule.multiDayGroupId ? schedule.multiDayDates : undefined,
         multiDayTimes: !schedule.multiDayGroupId ? schedule.multiDayTimes : undefined,
+        multiDayDurations: !schedule.multiDayGroupId ? schedule.multiDayDurations : undefined,
         date: schedule.date,
         time: schedule.time || "08:00",
         durationMinutes: scheduleUsesDisplayedDuration ? scheduleDurationMinutes : scheduleServiceItemMinutes,
@@ -412,6 +429,7 @@ export function getAvailableRescheduleTimes(params: {
   const slots: string[] = []
   const baseFormData = {
     multiDayTimes: schedule.multiDayTimes,
+    multiDayDurations: Number(schedule.multiDayIndex) === 1 ? schedule.multiDayDurations : undefined,
     multiDayDates: schedule.multiDayDates?.length ? schedule.multiDayDates.map((day) => addCivilDaysKey(date, Math.round((Date.parse(day + "T00:00:00Z") - Date.parse(schedule.date + "T00:00:00Z")) / 86400000))) : undefined,
     teamIds: schedule.teams.map((team) => team.id),
     employeeIds: schedule.additionalEmployees.map((employee) => employee.id),
@@ -482,6 +500,7 @@ function findNextAvailableSlot(params: {
   durationMinutes: number
   multiDayDates?: string[]
   multiDayTimes?: string[]
+  multiDayDurations?: number[]
   durationType?: ScheduleDurationType
   conflicts: Array<{ date: string; startMinutes: number; endMinutes: number }>
   isEmergency?: boolean
@@ -560,6 +579,7 @@ function findNextAvailableFullDaySlot(params: {
   durationMinutes: number
   multiDayDates?: string[]
   multiDayTimes?: string[]
+  multiDayDurations?: number[]
   durationType?: ScheduleDurationType
   conflicts: Array<{ date: string; startMinutes: number; endMinutes: number }>
   allowWeekends?: boolean
@@ -598,12 +618,13 @@ function buildScheduleBlocks(params: {
   durationMinutes: number
   multiDayDates?: string[]
   multiDayTimes?: string[]
+  multiDayDurations?: number[]
   durationType?: ScheduleDurationType
   allowWeekends?: boolean
   mode?: AvailabilityMode
 }): Array<{ date: string; startMinutes: number; endMinutes: number }> {
   if (params.multiDayDates?.length && params.durationType === "days") {
-    return params.multiDayDates.filter(Boolean).flatMap((date, index) => buildScheduleBlocks({ ...params, multiDayDates: undefined, multiDayTimes: undefined, time: index === 0 ? params.time : params.multiDayTimes?.[index] || params.time, date, durationMinutes: Math.min(DAY_DURATION_MINUTES, params.durationMinutes / params.multiDayDates!.length), mode: "manual" }))
+    return params.multiDayDates.filter(Boolean).flatMap((date, index) => buildScheduleBlocks({ ...params, multiDayDates: undefined, multiDayTimes: undefined, time: index === 0 ? params.time : params.multiDayTimes?.[index] || params.time, date, durationMinutes: params.multiDayDurations?.[index] ?? Math.min(DAY_DURATION_MINUTES, params.durationMinutes / params.multiDayDates!.length), durationType: params.multiDayDurations?.length ? "minutes" : params.durationType, multiDayDurations: undefined, mode: "manual" }))
   }
   const durationMinutes = Math.max(1, Number(params.durationMinutes || 60))
   const mode = params.mode ?? "automation"

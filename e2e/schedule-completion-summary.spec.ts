@@ -43,6 +43,15 @@ test("digitaliza uma foto e a anexa ao agendamento", async ({ page }) => {
 
   await installAuthenticatedSession(page)
   await installApiMock(page)
+  await page.addInitScript(() => {
+    const decode = HTMLImageElement.prototype.decode
+    const decodedSources: string[] = []
+    Object.assign(window, { decodedSources })
+    HTMLImageElement.prototype.decode = function () {
+      if (this.src.startsWith("blob:")) decodedSources.push(this.src)
+      return decode.call(this)
+    }
+  })
   await page.route("**/api/v1/schedules**", async (route) => {
     const request = route.request()
     const path = new URL(request.url()).pathname
@@ -84,11 +93,24 @@ test("digitaliza uma foto e a anexa ao agendamento", async ({ page }) => {
   const nativeChooser = await nativeChooserPromise
   expect(await nativeChooser.element().getAttribute("accept")).toBe("image/*")
   expect(await nativeChooser.element().getAttribute("capture")).toBeNull()
-  await nativeChooser.setFiles(scanSource)
+  await nativeChooser.setFiles({
+    name: "foto-48mp.jpg",
+    mimeType: "image/jpeg",
+    // JPEG header declaring 8000 × 6000. No pixel data is needed to reject it.
+    buffer: Buffer.from("ffd8ffe000040000ffc000110817701f4003011100021101031101ffd9", "hex"),
+  })
 
   const scanner = page.getByRole("dialog", { name: "Digitalizar documento" })
   await expect(scanner).toBeVisible()
   await expect(scanner.locator('input[type="file"]')).not.toHaveAttribute("capture")
+  await expect(scanner.getByRole("alert")).toContainText("A foto excede 16 megapixels")
+  await expect(scanner.getByRole("button", { name: "Digitalizar", exact: true })).toBeDisabled()
+  expect(await page.evaluate(() => (window as Window & { decodedSources?: string[] }).decodedSources)).toEqual([])
+
+  const validChooserPromise = page.waitForEvent("filechooser")
+  await scanner.getByRole("button", { name: "Modificar foto", exact: true }).click()
+  await (await validChooserPromise).setFiles(scanSource)
+  await expect(scanner.getByRole("alert")).toHaveCount(0)
   await expect(scanner.getByRole("button", { name: /^Ajustar canto/ })).toHaveCount(4)
   await expect.poll(() => scanner.getByAltText("Documento capturado para ajuste").evaluate((element) => {
     const image = element as HTMLImageElement

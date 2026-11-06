@@ -1,3 +1,5 @@
+import { imageSize } from "image-size"
+
 export type DocumentPoint = {
   x: number
   y: number
@@ -19,6 +21,29 @@ export type PixelImage = {
 }
 
 const MAX_OUTPUT_EDGE = 2200
+const MAX_SCAN_SOURCE_PIXELS = 16_000_000
+const SCAN_HEADER_BYTES = 2 * 1024 * 1024
+
+export class DocumentScanSourceError extends Error {}
+
+async function validateScanSource(file: File) {
+  const unreadable = "Não foi possível verificar a resolução. Escolha outra foto ou use Anexar arquivos."
+  let dimensions: ReturnType<typeof imageSize>
+  try {
+    const header = new Uint8Array(await file.slice(0, SCAN_HEADER_BYTES).arrayBuffer())
+    dimensions = imageSize(header)
+  } catch {
+    throw new DocumentScanSourceError(unreadable)
+  }
+
+  const { width, height, type } = dimensions
+  if (!width || !height) {
+    throw new DocumentScanSourceError(unreadable)
+  }
+  if (type !== "svg" && width * height > MAX_SCAN_SOURCE_PIXELS) {
+    throw new DocumentScanSourceError("A foto excede 16 megapixels. Para digitalizar, escolha uma foto menor. Você também pode anexar a foto original em Anexar arquivos.")
+  }
+}
 
 export function documentImageSize(width: number, height: number) {
   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
@@ -36,6 +61,7 @@ export function documentCanvasBlob(canvas: HTMLCanvasElement) {
 
 // Keep only the bounded preview while the user adjusts the document corners.
 export async function prepareDocumentScanSource(file: File) {
+  await validateScanSource(file)
   const url = URL.createObjectURL(file)
   const image = new Image()
   const canvas = document.createElement("canvas")
@@ -92,16 +118,23 @@ function resolveOutputSize(width: number, height: number, corners: DocumentCorne
   }
 }
 
-function sampleBilinear(source: PixelImage, x: number, y: number, channel: number) {
+function writeBilinearRgb(source: PixelImage, x: number, y: number, target: Uint8ClampedArray, offset: number) {
   const x0 = clamp(Math.floor(x), 0, source.width - 1)
   const y0 = clamp(Math.floor(y), 0, source.height - 1)
   const x1 = Math.min(x0 + 1, source.width - 1)
   const y1 = Math.min(y0 + 1, source.height - 1)
   const fx = x - x0
   const fy = y - y0
-  const top = source.data[(y0 * source.width + x0) * 4 + channel] * (1 - fx) + source.data[(y0 * source.width + x1) * 4 + channel] * fx
-  const bottom = source.data[(y1 * source.width + x0) * 4 + channel] * (1 - fx) + source.data[(y1 * source.width + x1) * 4 + channel] * fx
-  return top * (1 - fy) + bottom * fy
+  const topLeft = (y0 * source.width + x0) * 4
+  const topRight = (y0 * source.width + x1) * 4
+  const bottomLeft = (y1 * source.width + x0) * 4
+  const bottomRight = (y1 * source.width + x1) * 4
+
+  for (let channel = 0; channel < 3; channel += 1) {
+    const top = source.data[topLeft + channel] * (1 - fx) + source.data[topRight + channel] * fx
+    const bottom = source.data[bottomLeft + channel] * (1 - fx) + source.data[bottomRight + channel] * fx
+    target[offset + channel] = top * (1 - fy) + bottom * fy
+  }
 }
 
 function createPerspectiveMapper(corners: DocumentCorners) {
@@ -137,7 +170,8 @@ function createPerspectiveMapper(corners: DocumentCorners) {
 function normalizeLighting(image: PixelImage, filter: Exclude<DocumentScanFilter, "original">) {
   const { data, width, height } = image
   const luminance = new Uint8ClampedArray(width * height)
-  const integral = new Float64Array((width + 1) * (height + 1))
+  // The output is capped at 2200² pixels, so even the largest luminance sum fits in 32 bits.
+  const integral = new Uint32Array((width + 1) * (height + 1))
 
   for (let y = 0; y < height; y += 1) {
     let rowSum = 0
@@ -181,7 +215,7 @@ function normalizeLighting(image: PixelImage, filter: Exclude<DocumentScanFilter
   }
 }
 
-export function scanDocumentPixels(source: PixelImage, corners: DocumentCorners, filter: DocumentScanFilter): PixelImage {
+export function scanDocumentPixels(source: PixelImage, corners: DocumentCorners, filter: DocumentScanFilter) {
   const output = resolveOutputSize(source.width, source.height, corners)
   const data = new Uint8ClampedArray(output.width * output.height * 4)
   const mapPoint = createPerspectiveMapper(output.corners)
@@ -192,9 +226,7 @@ export function scanDocumentPixels(source: PixelImage, corners: DocumentCorners,
       const u = output.width === 1 ? 0 : x / (output.width - 1)
       const sourcePoint = mapPoint(u, v)
       const offset = (y * output.width + x) * 4
-      data[offset] = sampleBilinear(source, sourcePoint.x, sourcePoint.y, 0)
-      data[offset + 1] = sampleBilinear(source, sourcePoint.x, sourcePoint.y, 1)
-      data[offset + 2] = sampleBilinear(source, sourcePoint.x, sourcePoint.y, 2)
+      writeBilinearRgb(source, sourcePoint.x, sourcePoint.y, data, offset)
       data[offset + 3] = 255
     }
   }
@@ -217,7 +249,7 @@ export function renderScannedDocument(
   sourceCanvas.height = size.height
   const sourceContext = sourceCanvas.getContext("2d", { willReadFrequently: true })
   if (!sourceContext) throw new Error("Não foi possível preparar a imagem para digitalização.")
-  let scanned: PixelImage
+  let scanned: ReturnType<typeof scanDocumentPixels>
   try {
     sourceContext.drawImage(source, 0, 0, size.width, size.height)
     scanned = scanDocumentPixels(sourceContext.getImageData(0, 0, size.width, size.height), corners, filter)
@@ -230,6 +262,6 @@ export function renderScannedDocument(
   outputCanvas.height = scanned.height
   const outputContext = outputCanvas.getContext("2d")
   if (!outputContext) throw new Error("Não foi possível gerar a imagem digitalizada.")
-  outputContext.putImageData(new ImageData(new Uint8ClampedArray(scanned.data), scanned.width, scanned.height), 0, 0)
+  outputContext.putImageData(new ImageData(scanned.data, scanned.width, scanned.height), 0, 0)
   return outputCanvas
 }

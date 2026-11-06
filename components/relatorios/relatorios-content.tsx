@@ -1291,11 +1291,11 @@ export function RelatoriosContent() {
       detail.attendanceVehiclePlate || "Não informada",
       detail.serviceReport?.trim() || "Nenhuma observação registrada",
       detail.attendanceDisposal?.mtrNumber || "Não informado",
-      detail.attendanceDisposal?.type === "fossa"
+      detail.attendanceDisposal?.typeName ?? (detail.attendanceDisposal?.type === "fossa"
         ? "Fossa"
         : detail.attendanceDisposal?.type === "gordura"
           ? "Gordura"
-          : "Não informado",
+          : detail.attendanceDisposal?.type || "Não informado"),
       detail.attendanceDisposal?.quantityM3 ?? "",
       detail.attendanceDisposal?.stationName || "Não informada",
       detail.attendanceDisposal?.unitPrice ?? "",

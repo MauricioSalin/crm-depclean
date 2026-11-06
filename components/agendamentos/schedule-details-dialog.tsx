@@ -35,6 +35,7 @@ import {
   getScheduleConflictResourceNames,
   getScheduleDailyServiceCapacityViolation,
   getScheduleRescheduleDurationConfig,
+  getScheduleRescheduleVisitFields,
   getScheduleRescheduleIgnoredIds,
   isScheduleConflictErrorMessage,
 } from "@/lib/schedule-availability"
@@ -344,6 +345,7 @@ export function ScheduleDetailsDialog({
         ignoreScheduleIds: getScheduleRescheduleIgnoredIds(schedules, schedule),
         mode: "manual",
         formData: {
+          ...getScheduleRescheduleVisitFields(schedule, date),
           teamIds: schedule.teams.map((team) => team.id),
           employeeIds: schedule.additionalEmployees.map((employee) => employee.id),
           date,
@@ -652,7 +654,7 @@ export function ScheduleDetailsDialog({
                         <div>
                           <p className="text-xs font-medium uppercase tracking-wide text-foreground/75">Descarte</p>
                           <p className="mt-1 text-foreground">
-                            {schedule.attendanceDisposal.type === "fossa" ? "Fossa" : "Gordura"}
+                            {schedule.attendanceDisposal.typeName ?? (schedule.attendanceDisposal.type === "fossa" ? "Fossa" : schedule.attendanceDisposal.type === "gordura" ? "Gordura" : schedule.attendanceDisposal.type)}
                           </p>
                         </div>
                         <div>

@@ -15,6 +15,7 @@ import {
 import {
   defaultDocumentCorners,
   documentCanvasBlob,
+  DocumentScanSourceError,
   prepareDocumentScanSource,
   renderScannedDocument,
   type DocumentCorners,
@@ -81,8 +82,10 @@ export function DocumentScannerDialog({
       if (version !== loadVersionRef.current) return
       sourceUrlRef.current = URL.createObjectURL(blob)
       setSourceUrl(sourceUrlRef.current)
-    } catch {
-      if (version === loadVersionRef.current) setErrorMessage("Não foi possível abrir a foto. Tente uma foto menor ou anexe pela galeria.")
+    } catch (error) {
+      if (version === loadVersionRef.current) {
+        setErrorMessage(error instanceof DocumentScanSourceError ? error.message : "Não foi possível abrir a foto. Tente uma foto menor ou use Anexar arquivos.")
+      }
     } finally {
       if (version === loadVersionRef.current) setProcessing(false)
     }
@@ -219,7 +222,7 @@ export function DocumentScannerDialog({
           )}
         </div>
 
-        {errorMessage ? <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{errorMessage}</p> : null}
+        {errorMessage ? <p role="alert" className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{errorMessage}</p> : null}
 
         <DialogFooter className="gap-2">
           <Button type="button" variant="outline" onClick={() => galleryInputRef.current?.click()} disabled={processing}>

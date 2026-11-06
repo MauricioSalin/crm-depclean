@@ -1,6 +1,7 @@
 import type { Page, Route } from "@playwright/test"
 
 import { E2E_USER } from "./session"
+import { SCHEDULE_DISPOSAL_STATIONS } from "../../lib/schedule-disposal"
 
 const API_PREFIX = "/api/v1"
 const NOW = "2026-07-28T12:00:00.000Z"
@@ -480,6 +481,10 @@ function resolveGet(path: string, url: URL, currentUser = E2E_USER): unknown {
       },
     }
   }
+  if (path === "/schedules/disposal-catalog") return { types: [
+    { id: "fossa", name: "Fossa", items: SCHEDULE_DISPOSAL_STATIONS.fossa },
+    { id: "gordura", name: "Gordura", items: SCHEDULE_DISPOSAL_STATIONS.gordura },
+  ] }
   if (path === "/certificates") return [certificateFixture]
   if (path === "/templates") return []
   if (path === "/notifications/push/public-key") return { enabled: false, publicKey: "" }

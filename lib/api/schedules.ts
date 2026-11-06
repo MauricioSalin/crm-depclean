@@ -1,5 +1,11 @@
 import { api } from "@/lib/api/client"
 import type { ScheduleDisposalRecord, ScheduleDisposalType } from "@/lib/schedule-disposal"
+import type { DisposalType } from "@/lib/schedule-disposal"
+
+export async function getDisposalCatalog() {
+  const response = await api.get<{ success: true; data: { types: DisposalType[] } }>("/schedules/disposal-catalog")
+  return response.data
+}
 
 export type ScheduleNaAttachmentRecord = {
   type?: string
@@ -78,6 +84,7 @@ export type ScheduleRecord = {
   durationValue?: number
   multiDayDates?: string[]
   multiDayTimes?: string[]
+  multiDayDurations?: number[]
   durationType?: "minutes" | "hours" | "shift" | "days"
   status: "draft" | "scheduled" | "in_progress" | "completed" | "cancelled" | "rescheduled" | "awaiting_schedule" | "not_completed" | "partially_completed"
   recurrence: { type: "none"; daysOfWeek: number[]; interval: number }
@@ -145,6 +152,7 @@ export type SchedulePayload = {
   durationValue?: number
   multiDayDates?: string[]
   multiDayTimes?: string[]
+  multiDayDurations?: number[]
   durationType?: "minutes" | "hours" | "shift" | "days"
   isEmergency?: boolean
   isLegacyImport?: boolean
@@ -192,8 +200,8 @@ export async function exportSchedules(params?: {
   return response.data
 }
 
-export async function getScheduleById(id: string) {
-  const response = await api.get<{ success: true; data: ScheduleRecord }>(`/schedules/${id}`)
+export async function getScheduleById(id: string, options?: { timeout: number }) {
+  const response = await api.get<{ success: true; data: ScheduleRecord }>(`/schedules/${id}`, options)
   return response.data
 }
 
@@ -308,12 +316,33 @@ export async function deleteSchedule(id: string) {
 export async function uploadScheduleNa(id: string, file: File) {
   const formData = new FormData()
   formData.append("file", file)
-  const response = await api.post<{ success: true; data: ScheduleRecord }>(`/schedules/${id}/na`, formData, {
-    headers: {
-      "Content-Type": "multipart/form-data",
-    },
-  })
-  return response.data
+
+  const controller = new AbortController()
+  const startInactivityTimer = () => setTimeout(() => controller.abort(), 60_000)
+  let timer: ReturnType<typeof setTimeout> | undefined = startInactivityTimer()
+  let uploadedBytes = 0
+
+  try {
+    const response = await api.post<{ success: true; data: ScheduleRecord }>(`/schedules/${id}/na`, formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+      signal: controller.signal,
+      onUploadProgress: ({ loaded }) => {
+        if (timer === undefined || controller.signal.aborted || loaded <= uploadedBytes) return
+        uploadedBytes = loaded
+        clearTimeout(timer)
+        timer = startInactivityTimer()
+      },
+    })
+    return response.data
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error("O envio ficou sem resposta. Confira sua conexão e tente enviar novamente.")
+    }
+    throw error
+  } finally {
+    clearTimeout(timer)
+    timer = undefined
+  }
 }
 
 export async function renameScheduleNa(id: string, documentUrl: string, fileName: string) {

@@ -99,7 +99,7 @@ test("P2: seção fixa permite data e horário por dia sem campos vazios", async
   await page.getByRole("button", { name: /terça-feira, 10 de novembro de 2026/i }).click()
   await page.keyboard.press("Escape")
   await expect(section.getByRole("button", { name: "Dia 2", exact: true })).toHaveText("10/11/2026")
-  await page.getByLabel("Duração", { exact: true }).fill("4")
+  await page.getByLabel("Duração do agendamento", { exact: true }).fill("4")
   const expanded = section
   await expect(expanded.getByRole("button", { name: "Dia 4", exact: true })).toHaveText("14/11/2026")
   await expect(expanded.getByLabel("Horário do Dia 4")).toHaveValue("09:00")

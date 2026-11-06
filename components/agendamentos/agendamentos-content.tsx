@@ -1,5 +1,5 @@
 "use client"
-import { multiDayDateValues, multiDayTimeValues } from "@/components/agendamentos/multi-day-date-fields"
+import { multiDayDateValues, multiDayTimeValues, multiDayDurationValues } from "@/components/agendamentos/multi-day-date-fields"
 import { PartialCompletionAction } from "@/components/agendamentos/partial-completion-action"
 import { EmergencyExhaustedBadge, EmergencyUsageCounter } from "@/components/contratos/emergency-usage"
 import { requestScheduleReschedule } from "@/lib/api/schedules"
@@ -69,7 +69,7 @@ import {
 } from "@/lib/schedule-availability"
 import { canAccessScheduleCompletion, canStartSchedule } from "@/lib/schedule-permissions"
 import { cacheSavedSchedule } from "@/lib/schedule-query-cache"
-import { PendingScheduleUploadError, remainingScheduleUploads } from "@/lib/schedule-upload"
+import { getScheduleForUploadRecovery, PendingScheduleUploadError, remainingScheduleUploads } from "@/lib/schedule-upload"
 import { scheduleDisposalValidationMessage, type ScheduleDisposalType } from "@/lib/schedule-disposal"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -756,6 +756,7 @@ export function AgendamentosContent({
           teamIds: formData.teamIds,
           additionalEmployeeIds: formData.employeeIds,
           multiDayDates: formData.durationType === "days" && formData.duration > 1 ? multiDayDateValues(formData.date, formData.duration, formData.multiDayDates) : formData.multiDayDates?.length ? [formData.date] : undefined,
+          multiDayDurations: formData.durationType === "days" && formData.duration > 1 ? multiDayDurationValues(formData.duration, formData.multiDayDurations) : undefined,
           multiDayTimes: formData.durationType === "days" && formData.duration > 1 ? multiDayTimeValues(formData.time, formData.duration, formData.multiDayTimes) : formData.multiDayDates?.length ? [formData.time] : undefined,
         scheduledDate: formData.date,
           scheduledTime: formData.time,
@@ -787,6 +788,7 @@ export function AgendamentosContent({
         teamIds: formData.teamIds,
         additionalEmployeeIds: formData.employeeIds,
         multiDayDates: formData.durationType === "days" && formData.duration > 1 ? multiDayDateValues(formData.date, formData.duration, formData.multiDayDates) : formData.multiDayDates?.length ? [formData.date] : undefined,
+        multiDayDurations: formData.durationType === "days" && formData.duration > 1 ? multiDayDurationValues(formData.duration, formData.multiDayDurations) : undefined,
         multiDayTimes: formData.durationType === "days" && formData.duration > 1 ? multiDayTimeValues(formData.time, formData.duration, formData.multiDayTimes) : formData.multiDayDates?.length ? [formData.time] : undefined,
         scheduledDate: formData.date,
         scheduledTime: formData.time,
@@ -956,18 +958,18 @@ export function AgendamentosContent({
       const toastId = toast.loading(files.length === 1 ? "Salvando anexo..." : `Salvando ${files.length} anexos...`)
       return { toastId }
     },
-    onSuccess: async (updatedSchedule, _variables, context) => {
+    onSuccess: (updatedSchedule, _variables, context) => {
       setCompletionTarget((current) => current?.id === updatedSchedule.id ? updatedSchedule : current)
       setSelectedSchedule((current) => current?.id === updatedSchedule.id ? updatedSchedule : current)
       setCompletionFiles([])
-      await invalidateSchedules()
+      void invalidateSchedules().catch(() => undefined)
       toast.success("Anexo salvo no agendamento.", {
         id: context?.toastId,
         description: "O arquivo já está seguro e continuará disponível mesmo sem concluir o atendimento.",
       })
     },
     onError: async (error, variables, context) => {
-      const refreshed = await getScheduleById(variables.schedule.id).catch(() => null)
+      const refreshed = await getScheduleForUploadRecovery(variables.schedule.id)
       const pendingFiles = error instanceof PendingScheduleUploadError
         ? refreshed?.data ? remainingScheduleUploads(error, refreshed.data) : error.files
         : variables.files
@@ -976,7 +978,7 @@ export function AgendamentosContent({
         setCompletionTarget((current) => current?.id === refreshed.data.id ? refreshed.data : current)
         setSelectedSchedule((current) => current?.id === refreshed.data.id ? refreshed.data : current)
       }
-      await invalidateSchedules()
+      void invalidateSchedules().catch(() => undefined)
       const originalError = error instanceof PendingScheduleUploadError ? error.originalError : error
       toast.error(getApiErrorMessage(originalError, "Não foi possível salvar o anexo."), {
         id: context?.toastId,
@@ -1209,7 +1211,7 @@ export function AgendamentosContent({
     if (!canManageAgenda && !statusOnlyChange) return
     if (!canManageAgenda && statusOnlyChange) {
       saveMutation.mutate({
-        formData: { ...formData, multiDayDates: formData.durationType === "days" && formData.duration > 1 ? multiDayDateValues(formData.date, formData.duration, formData.multiDayDates) : undefined, multiDayTimes: formData.durationType === "days" && formData.duration > 1 ? multiDayTimeValues(formData.time, formData.duration, formData.multiDayTimes) : undefined },
+        formData: { ...formData, multiDayDates: formData.durationType === "days" && formData.duration > 1 ? multiDayDateValues(formData.date, formData.duration, formData.multiDayDates) : undefined, multiDayDurations: formData.durationType === "days" && formData.duration > 1 ? multiDayDurationValues(formData.duration, formData.multiDayDurations) : undefined, multiDayTimes: formData.durationType === "days" && formData.duration > 1 ? multiDayTimeValues(formData.time, formData.duration, formData.multiDayTimes) : undefined },
         scheduleId,
       })
       return
@@ -1223,6 +1225,7 @@ export function AgendamentosContent({
       date: formData.date,
       time: formData.time,
       multiDayDates: formData.durationType === "days" && formData.duration > 1 ? multiDayDateValues(formData.date, formData.duration, formData.multiDayDates) : undefined,
+      multiDayDurations: formData.durationType === "days" && formData.duration > 1 ? multiDayDurationValues(formData.duration, formData.multiDayDurations) : undefined,
       multiDayTimes: formData.durationType === "days" && formData.duration > 1 ? multiDayTimeValues(formData.time, formData.duration, formData.multiDayTimes) : undefined,
       durationMinutes: scheduleDurationToMinutes(formData.duration, formData.durationType),
       durationType: formData.durationType,
@@ -1235,7 +1238,7 @@ export function AgendamentosContent({
     const availability = checkScheduleAvailability({
       schedules: editingSchedule?.multiDayGroupId ? schedules.filter((item) => item.multiDayGroupId !== editingSchedule.multiDayGroupId) : schedules,
       teams,
-      formData: { ...formData, multiDayDates: formData.durationType === "days" && formData.duration > 1 ? multiDayDateValues(formData.date, formData.duration, formData.multiDayDates) : undefined, multiDayTimes: formData.durationType === "days" && formData.duration > 1 ? multiDayTimeValues(formData.time, formData.duration, formData.multiDayTimes) : undefined },
+      formData: { ...formData, multiDayDates: formData.durationType === "days" && formData.duration > 1 ? multiDayDateValues(formData.date, formData.duration, formData.multiDayDates) : undefined, multiDayDurations: formData.durationType === "days" && formData.duration > 1 ? multiDayDurationValues(formData.duration, formData.multiDayDurations) : undefined, multiDayTimes: formData.durationType === "days" && formData.duration > 1 ? multiDayTimeValues(formData.time, formData.duration, formData.multiDayTimes) : undefined },
       ignoreScheduleId: scheduleId,
       mode: "manual",
     })
@@ -1450,6 +1453,7 @@ export function AgendamentosContent({
             ) : null}
             {completionStep === "checkout" ? (
               <AttendanceCompletionFields
+                disposalSnapshot={completionTarget?.attendanceDisposal}
                 idPrefix="schedule-completion"
                 startDate={completionStartDate}
                 startTime={completionStartTime}
@@ -1722,6 +1726,7 @@ export function AgendamentosContent({
                     <TableRow
                       key={schedule.id}
                       className="cursor-pointer"
+                      data-pull-to-refresh="disabled"
                       onClick={() => openSchedule(schedule)}
                     >
                       <TableCell>
@@ -1885,7 +1890,7 @@ export function AgendamentosContent({
               ) : paginatedSchedules.length === 0 ? (
                 <EmptyState icon={Calendar} title="Nenhum agendamento encontrado." className="sm:col-span-2" />
               ) : paginatedSchedules.map((schedule) => (
-                <Card key={schedule.id} className="h-full cursor-pointer" onClick={() => openSchedule(schedule)}>
+                <Card key={schedule.id} className="h-full cursor-pointer" data-pull-to-refresh="disabled" onClick={() => openSchedule(schedule)}>
                   <CardContent className="flex flex-1 flex-col">
                     <div className="mb-2 flex min-w-0 items-start justify-between gap-2">
                       <div className="flex min-w-0 flex-1 items-center gap-2">

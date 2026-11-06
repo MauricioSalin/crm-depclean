@@ -1,5 +1,9 @@
 import { parseCivilDate, toCivilDateKey } from "./date-utils"
 
+export function multiDayDurationValues(totalDays: number, durations?: number[]) {
+  return Array.from({ length: Math.max(1, Math.ceil(totalDays)) }, (_, index) => durations?.[index] ?? 480)
+}
+
 function nextDay(value: string) {
   const date = parseCivilDate(value)
   if (!date) return ""

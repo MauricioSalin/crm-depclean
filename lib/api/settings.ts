@@ -1,5 +1,6 @@
 import { api } from "@/lib/api/client"
 import type { AuthenticatedUser } from "@/lib/auth/types"
+import type { DisposalType } from "@/lib/schedule-disposal"
 
 export type ClientTypeRecord = {
   id: string
@@ -61,6 +62,7 @@ export type NotificationRuleRecord = {
 }
 
 export type OrganizationSettingsRecord = {
+  disposalTypes: DisposalType[]
   id: string
   legalName: string
   cnpj: string
@@ -223,7 +225,7 @@ export async function getOrganizationSettings() {
   return response.data
 }
 
-export async function updateOrganizationSettings(payload: Partial<Pick<OrganizationSettingsRecord, "legalName" | "cnpj" | "address" | "phone" | "email" | "financialSettings">>) {
+export async function updateOrganizationSettings(payload: Partial<Pick<OrganizationSettingsRecord, "legalName" | "cnpj" | "address" | "phone" | "email" | "financialSettings" | "disposalTypes">>) {
   const response = await api.patch<{ success: true; data: OrganizationSettingsRecord }>("/settings/organization", payload)
   return response.data
 }

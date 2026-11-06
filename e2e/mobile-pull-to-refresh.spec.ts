@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test"
 
-import { installApiMock } from "./support/api-mock"
-import { installAuthenticatedSession } from "./support/session"
+import { installApiMock, scheduleFixture } from "./support/api-mock"
+import { E2E_USER, installAuthenticatedSession } from "./support/session"
 
 test.use({
   viewport: { width: 390, height: 844 },
@@ -43,4 +43,44 @@ test("pulling a mobile list from the top refetches its active data", async ({ pa
   await expect(refreshIndicator).toBeVisible()
   await expect.poll(() => clientListRequests).toBeGreaterThan(requestsBeforePull)
   await expect(refreshIndicator).toBeHidden()
+})
+
+test("a touch on a schedule shortcut stays out of pull-to-refresh", async ({ page }) => {
+  await page.clock.setFixedTime(new Date("2026-11-03T15:00:00Z"))
+  const user = { ...E2E_USER, permissions: ["agenda_own_view"] }
+  const schedule = { ...scheduleFixture, date: "2026-11-03", status: "in_progress", canAttachNa: true }
+  await installAuthenticatedSession(page, user)
+  await installApiMock(page, user)
+  await page.route("**/api/v1/schedules**", async (route) => {
+    const pathname = new URL(route.request().url()).pathname
+    if (route.request().method() === "GET" && pathname.endsWith("/schedules")) {
+      return route.fulfill({ json: { success: true, data: [schedule] } })
+    }
+    if (route.request().method() === "GET" && pathname.endsWith(`/schedules/${schedule.id}`)) {
+      return route.fulfill({ json: { success: true, data: schedule } })
+    }
+    return route.fallback()
+  })
+  await page.goto("/")
+
+  const shortcut = page.locator('[data-dashboard-widget="live-services"]').getByRole("button", {
+    name: `Abrir agendamento de ${schedule.clientName}`,
+  })
+  await expect(shortcut).toBeInViewport()
+  await shortcut.tap()
+  const attachmentsHeading = page.getByRole("heading", { name: "Anexos do atendimento", exact: true })
+  await expect(attachmentsHeading).toBeVisible()
+  await expect(page).toHaveURL("/")
+  await page.keyboard.press("Escape")
+  await expect(attachmentsHeading).toHaveCount(0)
+
+  const box = (await shortcut.boundingBox())!
+  const x = box.x + box.width / 2
+  const y = box.y + box.height / 2
+  const touch = await page.context().newCDPSession(page)
+  await touch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] })
+  await touch.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x, y: y + 24 }] })
+  await expect(page.getByTestId("mobile-pull-to-refresh")).toHaveCount(0)
+  await touch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] })
+  await touch.detach()
 })

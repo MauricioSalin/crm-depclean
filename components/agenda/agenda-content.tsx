@@ -1,5 +1,5 @@
 "use client"
-import { multiDayDateValues, multiDayTimeValues } from "@/components/agendamentos/multi-day-date-fields"
+import { multiDayDateValues, multiDayTimeValues, multiDayDurationValues } from "@/components/agendamentos/multi-day-date-fields"
 import { PartialCompletionAction } from "@/components/agendamentos/partial-completion-action"
 import { requestScheduleReschedule } from "@/lib/api/schedules"
 import { getRescheduleReasonError, RescheduleReasonFields } from "@/components/agendamentos/reschedule-reason-fields"
@@ -7,7 +7,7 @@ import { EmergencyExhaustedBadge } from "@/components/contratos/emergency-usage"
 
 import { useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { PendingScheduleUploadError, remainingScheduleUploads } from "@/lib/schedule-upload"
+import { getScheduleForUploadRecovery, PendingScheduleUploadError, remainingScheduleUploads } from "@/lib/schedule-upload"
 import { useRouter, useSearchParams } from "next/navigation"
 import { toast } from "sonner"
 import {
@@ -642,6 +642,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
           teamIds: formData.teamIds,
           additionalEmployeeIds: formData.employeeIds,
           multiDayDates: formData.durationType === "days" && formData.duration > 1 ? multiDayDateValues(formData.date, formData.duration, formData.multiDayDates) : formData.multiDayDates?.length ? [formData.date] : undefined,
+          multiDayDurations: formData.durationType === "days" && formData.duration > 1 ? multiDayDurationValues(formData.duration, formData.multiDayDurations) : undefined,
           multiDayTimes: formData.durationType === "days" && formData.duration > 1 ? multiDayTimeValues(formData.time, formData.duration, formData.multiDayTimes) : formData.multiDayDates?.length ? [formData.time] : undefined,
         scheduledDate: formData.date,
           scheduledTime: formData.time,
@@ -674,6 +675,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
         teamIds: formData.teamIds,
         additionalEmployeeIds: formData.employeeIds,
         multiDayDates: formData.durationType === "days" && formData.duration > 1 ? multiDayDateValues(formData.date, formData.duration, formData.multiDayDates) : formData.multiDayDates?.length ? [formData.date] : undefined,
+        multiDayDurations: formData.durationType === "days" && formData.duration > 1 ? multiDayDurationValues(formData.duration, formData.multiDayDurations) : undefined,
         multiDayTimes: formData.durationType === "days" && formData.duration > 1 ? multiDayTimeValues(formData.time, formData.duration, formData.multiDayTimes) : formData.multiDayDates?.length ? [formData.time] : undefined,
         scheduledDate: formData.date,
         scheduledTime: formData.time,
@@ -877,7 +879,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       })
     },
     onError: async (error, variables, context) => {
-      const refreshed = await getScheduleById(variables.schedule.id).catch(() => null)
+      const refreshed = await getScheduleForUploadRecovery(variables.schedule.id)
       const pendingFiles = error instanceof PendingScheduleUploadError
         ? refreshed?.data ? remainingScheduleUploads(error, refreshed.data) : error.files
         : variables.files
@@ -886,7 +888,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
         setCompletionTarget((current) => current?.id === refreshed.data.id ? refreshed.data as AgendaScheduledServiceRow : current)
         setSelectedSchedule((current) => current?.id === refreshed.data.id ? refreshed.data as AgendaScheduledServiceRow : current)
       }
-      await invalidateSchedules()
+      void invalidateSchedules().catch(() => undefined)
       const originalError = error instanceof PendingScheduleUploadError ? error.originalError : error
       toast.error(getApiErrorMessage(originalError, "Não foi possível salvar o anexo."), {
         id: context?.toastId,
@@ -1102,6 +1104,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
       date: formData.date,
       time: formData.time,
       multiDayDates: formData.durationType === "days" && formData.duration > 1 ? multiDayDateValues(formData.date, formData.duration, formData.multiDayDates) : undefined,
+      multiDayDurations: formData.durationType === "days" && formData.duration > 1 ? multiDayDurationValues(formData.duration, formData.multiDayDurations) : undefined,
       multiDayTimes: formData.durationType === "days" && formData.duration > 1 ? multiDayTimeValues(formData.time, formData.duration, formData.multiDayTimes) : undefined,
       durationMinutes: scheduleDurationToMinutes(formData.duration, formData.durationType),
       durationType: formData.durationType,
@@ -1114,7 +1117,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
     const availability = checkScheduleAvailability({
       schedules: editingService?.multiDayGroupId ? schedules.filter((item) => item.multiDayGroupId !== editingService.multiDayGroupId) : schedules,
       teams,
-      formData: { ...formData, multiDayDates: formData.durationType === "days" && formData.duration > 1 ? multiDayDateValues(formData.date, formData.duration, formData.multiDayDates) : undefined, multiDayTimes: formData.durationType === "days" && formData.duration > 1 ? multiDayTimeValues(formData.time, formData.duration, formData.multiDayTimes) : undefined },
+      formData: { ...formData, multiDayDates: formData.durationType === "days" && formData.duration > 1 ? multiDayDateValues(formData.date, formData.duration, formData.multiDayDates) : undefined, multiDayDurations: formData.durationType === "days" && formData.duration > 1 ? multiDayDurationValues(formData.duration, formData.multiDayDurations) : undefined, multiDayTimes: formData.durationType === "days" && formData.duration > 1 ? multiDayTimeValues(formData.time, formData.duration, formData.multiDayTimes) : undefined },
       ignoreScheduleId: scheduleId,
       mode: "manual",
     })
@@ -1562,6 +1565,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
             {completionStep === "request" ? <RescheduleReasonFields reason={requestReason} notes={requestNotes} onReasonChange={setRequestReason} onNotesChange={setRequestNotes} /> : null}
             {completionStep === "checkout" ? (
               <AttendanceCompletionFields
+                disposalSnapshot={completionTarget?.attendanceDisposal}
                 idPrefix="agenda-completion"
                 startDate={completionStartDate}
                 startTime={completionStartTime}
@@ -2032,6 +2036,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                             service.status === "in_progress" && !service.isEmergency && "border-[#edd66b] hover:border-[#ddc253]",
                             service.isEmergency && "border-red-300 hover:border-red-400",
                           )}
+                          data-pull-to-refresh="disabled"
                           onClick={() => openSchedule(service)}
                         >
                           <CardContent>
@@ -2240,6 +2245,7 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
                             service.status === "in_progress" && !service.isEmergency && "border-[#edd66b] hover:border-[#ddc253]",
                             service.isEmergency && "border-red-300 hover:border-red-400",
                           )}
+                          data-pull-to-refresh="disabled"
                           onClick={() => openSchedule(service)}
                         >
                           <CardContent>

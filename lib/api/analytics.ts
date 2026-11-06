@@ -87,7 +87,8 @@ export type ReportScheduleDetail = {
   attendanceDisposal?: {
     mtrNumber?: string
   mtrNumbers?: string[]
-    type: "fossa" | "gordura"
+    type: string
+    typeName?: string
     stationId: string
     stationName: string
     unitPrice: number
