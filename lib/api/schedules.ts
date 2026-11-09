@@ -285,6 +285,8 @@ export async function completeSchedule(
     driverEmployeeId?: string
     helperEmployeeIds?: string[]
     partialReason?: string
+    rescheduleReason?: string
+    rescheduleNotes?: string
     vehiclePlates?: string[]
     vehiclePlate?: string
     disposalType?: ScheduleDisposalType | null

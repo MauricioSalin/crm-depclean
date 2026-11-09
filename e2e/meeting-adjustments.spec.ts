@@ -28,6 +28,49 @@ async function mockSchedule(page: Page, initial: Record<string, unknown>, user =
   return () => schedule
 }
 
+for (const path of ["/agenda", "/agendamentos", "/"]) {
+  test(`alinha os botões de encerramento no desktop e empilha no celular (${path})`, async ({ page }) => {
+    const date = today()
+    await mockSchedule(page, {
+      status: "in_progress",
+      canAttachNa: true,
+      completionStartDate: date,
+      completionStartTime: "08:00",
+      naAttachments: [{ fileName: "na.pdf", documentUrl: "/files/na.pdf" }],
+    })
+    await page.goto(`${path}?date=${date}`)
+    if (path === "/agendamentos") {
+      await page.getByRole("row").filter({ hasText: scheduleFixture.clientName }).click()
+    } else if (path === "/") {
+      await page.getByRole("region", { name: "Hoje", exact: true }).getByRole("button", { name: /Condomínio E2E/ }).click()
+    } else {
+      await page.getByRole("button", { name: /Condomínio E2E/ }).click()
+    }
+    await page.getByRole("button", { name: "Encerrar atendimento", exact: true }).click()
+
+    const dialog = page.getByRole("dialog", { name: "Encerrar atendimento", exact: true })
+    const buttons = ["Concluir parcialmente", "Solicitar reagendamento", "Confirmar encerramento"]
+      .map((name) => dialog.getByRole("button", { name, exact: true }))
+    await expect.poll(async () => {
+      const [partial, reschedule, confirm, bounds] = await Promise.all([
+        ...buttons.map((button) => button.boundingBox()),
+        dialog.boundingBox(),
+      ])
+      return Boolean(partial && reschedule && confirm && bounds &&
+        Math.abs(partial.y - reschedule.y) <= 1 && Math.abs(partial.y - confirm.y) <= 1 &&
+        partial.x >= bounds.x && partial.x + partial.width < reschedule.x &&
+        reschedule.x + reschedule.width < confirm.x && confirm.x + confirm.width <= bounds.x + bounds.width)
+    }).toBe(true)
+
+    await page.setViewportSize({ width: 390, height: 844 })
+    await expect.poll(async () => {
+      const [partial, reschedule, confirm] = await Promise.all(buttons.map((button) => button.boundingBox()))
+      return Boolean(partial && reschedule && confirm &&
+        partial.y + partial.height < reschedule.y && reschedule.y + reschedule.height < confirm.y)
+    }).toBe(true)
+  })
+}
+
 test("técnico solicita reagendamento com motivo em tela própria no PDA", async ({ page }) => {
   const user = { ...E2E_USER, permissions: ["agenda_own_view"], isSystemUser: false }
   const current = await mockSchedule(page, { status: "in_progress", canAttachNa: true, completionStartDate: today(), completionStartTime: "08:00", naAttachments: [{ fileName: "na.pdf", documentUrl: "/files/na.pdf" }] }, user)

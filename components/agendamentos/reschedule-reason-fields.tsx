@@ -30,8 +30,9 @@ export function getRequestedRescheduleDetails(schedule: Pick<ScheduleRecord, "st
     : { reason: "other", notes: event.reason }
 }
 
-export function RescheduleReasonFields({ reason, notes, onReasonChange, onNotesChange, showIcon = true }: {
+export function RescheduleReasonFields({ reason, notes, onReasonChange, onNotesChange, showIcon = true, partialCompletion = false, disabled }: {
   reason: string; notes: string; onReasonChange: (value: string) => void; onNotesChange: (value: string) => void; showIcon?: boolean
+  partialCompletion?: boolean; disabled?: boolean
 }) {
   const id = useId()
   return (
@@ -39,16 +40,16 @@ export function RescheduleReasonFields({ reason, notes, onReasonChange, onNotesC
       <div className="space-y-2">
         <Label htmlFor={`${id}-reason`} className="flex items-center gap-2">
           {showIcon ? <MessageSquareText className="h-4 w-4 text-primary" aria-hidden="true" /> : null}
-          Motivo do reagendamento *
+          {partialCompletion ? "Motivo da conclusão parcial *" : "Motivo do reagendamento *"}
         </Label>
-        <Select value={reason} onValueChange={onReasonChange}>
+        <Select value={reason} onValueChange={onReasonChange} disabled={disabled}>
           <SelectTrigger id={`${id}-reason`} className="w-full" aria-required="true"><SelectValue placeholder="Selecione o motivo" /></SelectTrigger>
           <SelectContent>{RESCHEDULE_REASONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
         </Select>
       </div>
       <div className="space-y-2">
-        <Label htmlFor={`${id}-notes`}>{reason === "other" ? "Descreva o motivo / observações *" : "Observações do reagendamento"}</Label>
-        <Textarea id={`${id}-notes`} required={reason === "other"} maxLength={2000} value={notes} onChange={(event) => onNotesChange(event.target.value)} placeholder="Explique o motivo do reagendamento" />
+        <Label htmlFor={`${id}-notes`}>{reason === "other" ? "Descreva o motivo / observações *" : partialCompletion ? "Observações" : "Observações do reagendamento"}</Label>
+        <Textarea id={`${id}-notes`} required={reason === "other"} disabled={disabled} maxLength={2000} value={notes} onChange={(event) => onNotesChange(event.target.value)} placeholder={partialCompletion ? "Explique o motivo da conclusão parcial" : "Explique o motivo do reagendamento"} />
       </div>
     </div>
   )
