@@ -61,6 +61,7 @@ export type ScheduleRecord = {
   multiDayTotal?: number
   remainingRecurringVisits?: Array<{ date: string; time: string; duration: number }>
   visits?: ScheduleRecord[]
+  individualVisit?: boolean
   isManual: boolean
   isClientDelinquent: boolean
   clientId: string
@@ -214,6 +215,23 @@ export async function exportSchedules(params?: {
 export async function getScheduleById(id: string, options?: { timeout: number }) {
   const response = await api.get<{ success: true; data: ScheduleRecord }>(`/schedules/${id}`, options)
   return response.data
+}
+
+export function getScheduleVisitContext(schedule: ScheduleRecord): ScheduleRecord {
+  return {
+    ...schedule,
+    individualVisit: true,
+    visits: undefined,
+    remainingRecurringVisits: undefined,
+    multiDayGroupId: undefined,
+    multiDayIndex: undefined,
+    multiDayTotal: undefined,
+    multiDayDates: undefined,
+    multiDayTimes: undefined,
+    multiDayDurations: undefined,
+    durationType: "hours",
+    durationValue: schedule.duration / 60,
+  }
 }
 
 export async function getScheduleForEditing(schedule: ScheduleRecord) {

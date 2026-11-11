@@ -592,13 +592,13 @@ export function AgendamentosContent({
   }, [canEditCompletedExecution])
 
   const openSchedule = useCallback((schedule: ScheduleRecord) => {
-    if (!(schedule.multiDayGroupId && Number(schedule.multiDayTotal) > 1) && canAccessScheduleCompletion(schedule, currentUser)) {
+    if ((!canManageAgenda && !canManageScheduleStatus || !(schedule.multiDayGroupId && Number(schedule.multiDayTotal) > 1)) && canAccessScheduleCompletion(schedule, currentUser)) {
       openCompletionDialog(schedule)
       return
     }
 
     setSelectedSchedule(schedule)
-  }, [currentUser, openCompletionDialog])
+  }, [canManageAgenda, canManageScheduleStatus, currentUser, openCompletionDialog])
 
   useEffect(() => {
     const sync = () => setCurrentUser(getStoredUser())
@@ -1360,16 +1360,10 @@ export function AgendamentosContent({
             (canManageScheduleStatus ||
               (canManageAgenda && canEditSchedule(detailsSchedule, canManageLockedSchedules))),
         )}
-        onEdit={() => {
-          if (detailsSchedule) openEditSchedule(detailsSchedule)
-        }}
-        canEditExecution={Boolean(
-          detailsSchedule?.status === "completed" && canEditCompletedExecution,
-        )}
-        onEditExecution={() => {
-          if (detailsSchedule) openExecutionEditDialog(detailsSchedule)
-        }}
-        onOpenAttendance={detailsSchedule && canAccessScheduleCompletion(detailsSchedule, currentUser) ? () => openCompletionDialog(detailsSchedule) : undefined}
+        onEdit={(target) => openEditSchedule(target)}
+        canEditExecution={canEditCompletedExecution}
+        onEditExecution={(target) => openExecutionEditDialog(target)}
+        onOpenAttendance={(target) => openCompletionDialog(target)}
         onBack={completionInfoOpen ? () => setCompletionInfoOpen(false) : undefined}
         backLabel="Voltar para anexos do atendimento"
         onStartAttendance={async (schedule) => {

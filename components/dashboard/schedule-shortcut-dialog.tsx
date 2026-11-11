@@ -78,6 +78,7 @@ export function ScheduleShortcutDialog({
   const canManageScheduleStatus = hasAnyPermission(currentUser, ["agenda_manage_status", "settings_manage"])
   const canManageLockedSchedules = hasAnyPermission(currentUser, ["agenda_manage_locked", "settings_manage"])
   const [showInformation, setShowInformation] = useState(false)
+  const pendingVisitAction = useRef<{ id: string; execution: boolean } | null>(null)
   const [cancelAttendanceOpen, setCancelAttendanceOpen] = useState(false)
   const [editorOpen, setEditorOpen] = useState(false)
   const [editingSchedule, setEditingSchedule] = useState<ScheduleRecord | null>(null)
@@ -124,10 +125,17 @@ export function ScheduleShortcutDialog({
     setShowInformation(false)
     setEditorOpen(false)
     setEditingSchedule(null)
+    const action = pendingVisitAction.current
+    pendingVisitAction.current = null
+    if (action?.id === schedule.id) {
+      setIsEditingExecution(action.execution)
+      prepareCompletion(schedule, action.execution ? "checkout" : "attachments")
+      return
+    }
     setIsEditingExecution(false)
     if (schedule.status === "in_progress") prepareCompletion(schedule)
-    setShowInformation(Boolean(schedule.multiDayGroupId && Number(schedule.multiDayTotal) > 1))
-  }, [prepareCompletion, schedule?.id])
+    setShowInformation(Boolean((canManageAgenda || canManageScheduleStatus) && schedule.multiDayGroupId && Number(schedule.multiDayTotal) > 1))
+  }, [canManageAgenda, canManageScheduleStatus, prepareCompletion, schedule?.id])
 
   const invalidateSchedules = async () => {
     await queryClient.invalidateQueries({ queryKey: ["emergency-usage"] })
@@ -496,11 +504,10 @@ export function ScheduleShortcutDialog({
         canStartOutsideScheduledDate={canManageAgenda}
         canReschedule={false}
         canEdit={canEdit}
-        onEdit={async () => {
-          if (!schedule) return
+        onEdit={async (selected) => {
           const request = ++editRequestRef.current
           try {
-            const target = canManageAgenda ? await getScheduleForEditing(schedule) : schedule
+            const target = canManageAgenda ? await getScheduleForEditing(selected) : selected
             if (request !== editRequestRef.current) return
             if (!canManageLockedSchedules && target.visits?.every((visit) => visit.status === "completed")) {
               toast.error("Todos os dias estão concluídos. É necessária permissão para editar atendimentos bloqueados.")
@@ -512,13 +519,20 @@ export function ScheduleShortcutDialog({
             toast.error(getApiErrorMessage(error, "Não foi possível carregar o atendimento completo."))
           }
         }}
-        canEditExecution={canEditCompletedExecution}
-        onEditExecution={() => {
-          if (!schedule || !canEditCompletedExecution) return
+        canEditExecution={canManageAgenda && canManageLockedSchedules}
+        onEditExecution={(target) => {
+          if (!canManageAgenda || !canManageLockedSchedules || target.status !== "completed") return
+          pendingVisitAction.current = target.id !== schedule?.id ? { id: target.id, execution: true } : null
+          onScheduleChange(target)
           setIsEditingExecution(true)
-          prepareCompletion(schedule, "checkout")
+          prepareCompletion(target, "checkout")
         }}
-        onOpenAttendance={canOpenCompletion ? () => setShowInformation(false) : undefined}
+        onOpenAttendance={(target) => {
+          if (!canAccessScheduleCompletion(target, currentUser)) return
+          pendingVisitAction.current = target.id !== schedule?.id ? { id: target.id, execution: false } : null
+          onScheduleChange(target)
+          setShowInformation(false)
+        }}
         onBack={showInformation ? () => setShowInformation(false) : undefined}
         backLabel="Voltar para anexos do atendimento"
         onStartAttendance={async (target) => {

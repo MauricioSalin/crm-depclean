@@ -397,13 +397,13 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
   }, [canEditCompletedExecution])
 
   const openSchedule = useCallback((schedule: AgendaScheduledServiceRow) => {
-    if (!(schedule.multiDayGroupId && Number(schedule.multiDayTotal) > 1) && canAccessScheduleCompletion(schedule, currentUser)) {
+    if ((!canManageAgenda && !canManageScheduleStatus || !(schedule.multiDayGroupId && Number(schedule.multiDayTotal) > 1)) && canAccessScheduleCompletion(schedule, currentUser)) {
       openCompletionDialog(schedule)
       return
     }
 
     setSelectedSchedule(schedule)
-  }, [currentUser, openCompletionDialog])
+  }, [canManageAgenda, canManageScheduleStatus, currentUser, openCompletionDialog])
 
   const setCurrentDate = useCallback((date: Date) => {
     const dateKey = toCivilDateKey(date)
@@ -1468,16 +1468,10 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
               canManageLockedSchedules,
             ),
         )}
-        onEdit={() => {
-          if (detailsSchedule) handleEditService(detailsSchedule)
-        }}
-        canEditExecution={Boolean(
-          detailsSchedule?.status === "completed" && canEditCompletedExecution,
-        )}
-        onEditExecution={() => {
-          if (detailsSchedule) openExecutionEditDialog(detailsSchedule)
-        }}
-        onOpenAttendance={detailsSchedule && canAccessScheduleCompletion(detailsSchedule, currentUser) ? () => openCompletionDialog(detailsSchedule) : undefined}
+        onEdit={(target) => handleEditService(mapSchedule(target))}
+        canEditExecution={canEditCompletedExecution}
+        onEditExecution={(target) => openExecutionEditDialog(mapSchedule(target))}
+        onOpenAttendance={(target) => openCompletionDialog(mapSchedule(target))}
         onBack={completionInfoOpen ? () => setCompletionInfoOpen(false) : undefined}
         backLabel="Voltar para anexos do atendimento"
         onStartAttendance={async (schedule) => {

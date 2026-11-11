@@ -2,7 +2,7 @@
 import { formatExactScheduleDuration } from "@/lib/schedule-duration"
 import { EmergencyExhaustedBadge, EmergencyUsageCounter } from "@/components/contratos/emergency-usage"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { usePathname, useSearchParams } from "next/navigation"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
@@ -22,7 +22,7 @@ import { useIsMobile } from "@/hooks/use-mobile"
 import { useCurrentUser } from "@/hooks/use-permissions"
 import { canAccessPath } from "@/lib/auth/permissions"
 import { getApiErrorMessage } from "@/lib/api/errors"
-import { exportScheduleSummaryPdf, getScheduleById, getScheduleHistory, getScheduleRescheduleOptions, rescheduleSchedule, type ScheduleRecord } from "@/lib/api/schedules"
+import { exportScheduleSummaryPdf, getScheduleById, getScheduleHistory, getScheduleRescheduleOptions, getScheduleVisitContext, rescheduleSchedule, updateSchedule, type ScheduleRecord } from "@/lib/api/schedules"
 import type { ServiceRecord } from "@/lib/api/services"
 import type { TeamRecord } from "@/lib/api/teams"
 import { formatCivilDate, parseCivilDate, toCivilDateKey } from "@/lib/date-utils"
@@ -42,6 +42,7 @@ import {
 } from "@/lib/schedule-availability"
 import { formatConfiguredScheduleDuration } from "@/lib/schedule-duration"
 import { formatScheduleDisposalCurrency } from "@/lib/schedule-disposal"
+import { canAccessScheduleCompletion, canStartSchedule } from "@/lib/schedule-permissions"
 import { cn } from "@/lib/utils"
 
 interface ScheduleDetailsDialogProps {
@@ -58,10 +59,10 @@ interface ScheduleDetailsDialogProps {
   canStartOutsideScheduledDate?: boolean
   canReschedule?: boolean
   canEdit?: boolean
-  onEdit?: () => void
+  onEdit?: (schedule: ScheduleRecord) => void
   canEditExecution?: boolean
-  onEditExecution?: () => void
-  onOpenAttendance?: () => void
+  onEditExecution?: (schedule: ScheduleRecord) => void
+  onOpenAttendance?: (schedule: ScheduleRecord) => void
   onBack?: () => void
   backLabel?: string
 }
@@ -130,7 +131,11 @@ export function ScheduleDetailsDialog({
   const currentUser = useCurrentUser()
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  const hasGroup = Boolean(initialSchedule?.multiDayGroupId && Number(initialSchedule.multiDayTotal) > 1)
+  const canViewGroup = canManage || canEdit
+  const belongsToGroup = Boolean(initialSchedule?.multiDayGroupId && Number(initialSchedule.multiDayTotal) > 1)
+  const hasGroup = belongsToGroup && canViewGroup
+  const [selectedDay, setSelectedDay] = useState<{ parentId: string; visitId: string } | null>(null)
+  useEffect(() => { if (!open) setSelectedDay(null) }, [open])
   const isInitialRoutineVisit = [initialSchedule?.serviceTypeId, ...(initialSchedule?.serviceTypeIds ?? []), ...(initialSchedule?.serviceItems ?? []).map((service) => service.serviceTypeId)]
     .includes("srv-visita-de-rotina")
   const shouldLoadDetails = hasGroup || (isInitialRoutineVisit && Boolean(initialSchedule?.contractId))
@@ -139,7 +144,12 @@ export function ScheduleDetailsDialog({
     queryFn: () => getScheduleById(initialSchedule!.id),
     enabled: open && Boolean(initialSchedule?.id) && shouldLoadDetails,
   })
-  const schedule = (shouldLoadDetails ? detailsQuery.data?.data : undefined) ?? initialSchedule
+  const groupSchedule = (shouldLoadDetails ? detailsQuery.data?.data : undefined) ?? initialSchedule
+  const selectedVisit = selectedDay?.parentId === initialSchedule?.id
+    ? groupSchedule?.visits?.find((visit) => visit.id === selectedDay?.visitId) : undefined
+  const isVisitContext = Boolean(selectedVisit) || (belongsToGroup && !canViewGroup)
+  const schedule = selectedVisit ? getScheduleVisitContext(selectedVisit)
+    : isVisitContext && groupSchedule ? getScheduleVisitContext(groupSchedule) : groupSchedule
   const clientProfilePath = schedule?.clientId ? `/clientes/${encodeURIComponent(schedule.clientId)}` : null
   const clientProfileHref = clientProfilePath && canAccessPath(clientProfilePath, currentUser)
     ? withReturnTo(clientProfilePath, buildPathWithSearchParams(pathname, searchParams))
@@ -149,9 +159,11 @@ export function ScheduleDetailsDialog({
     .includes("srv-visita-de-rotina")
   const routineServiceNames = schedule?.routineContractServiceNames ?? []
   const [mode, setMode] = useState<"details" | "reschedule" | "history">("details")
+  const contentRef = useRef<HTMLDivElement>(null)
+  useEffect(() => { contentRef.current?.scrollTo({ top: 0 }) }, [schedule?.id, mode])
   const historyQuery = useQuery({
-    queryKey: ["schedule", initialSchedule?.id, "history"],
-    queryFn: () => getScheduleHistory(initialSchedule!.id),
+    queryKey: ["schedule", schedule?.id, "history"],
+    queryFn: () => getScheduleHistory(schedule!.id),
     enabled: open && mode === "history" && Boolean(initialSchedule?.id),
     staleTime: 0,
   })
@@ -164,7 +176,8 @@ export function ScheduleDetailsDialog({
     suggested?: { date: string; time: string }
     conflictingResources: string[]
   } | null>(null)
-  const canStartAction = canStart ?? (canManage && !schedule?.isClientDelinquent)
+  const canStartAction = selectedVisit && schedule ? canStartSchedule(schedule, currentUser, teams)
+    : canStart ?? (canManage && !schedule?.isClientDelinquent)
   const canRescheduleAction = canReschedule ?? canManage
 
   useEffect(() => {
@@ -181,7 +194,7 @@ export function ScheduleDetailsDialog({
   const optionsQuery = useQuery({
     queryKey: ["schedule", "reschedule-options", schedule?.id],
     queryFn: () => getScheduleRescheduleOptions(schedule!.id),
-    enabled: canRescheduleAction && open && mode === "reschedule" && Boolean(schedule?.id),
+    enabled: canRescheduleAction && !isVisitContext && open && mode === "reschedule" && Boolean(schedule?.id),
   })
 
   const customDateValue = useMemo(() => {
@@ -235,7 +248,7 @@ export function ScheduleDetailsDialog({
 
   const rescheduleMutation = useMutation({
     mutationFn: (payload: Parameters<typeof rescheduleSchedule>[1]) =>
-      rescheduleSchedule(schedule!.id, payload),
+      isVisitContext ? updateSchedule(schedule!.id, payload) : rescheduleSchedule(schedule!.id, payload),
     onMutate: () => {
       const toastId = toast.loading("Reagendando atendimento...")
       return { toastId }
@@ -304,7 +317,7 @@ export function ScheduleDetailsDialog({
   if (!schedule) return null
 
   const visits = schedule.visits ?? []
-  const isGroup = hasGroup && visits.length > 0
+  const isGroup = hasGroup && !isVisitContext && visits.length > 0
   const groupDays = Number(schedule.multiDayTotal) || visits.length
   const hasEveryVisit = visits.length === groupDays
   const totalMinutes = visits.reduce((total, visit) => total + visit.duration, 0)
@@ -316,11 +329,14 @@ export function ScheduleDetailsDialog({
     : isGroup && hasEveryVisit && visits.some((visit) => ["in_progress", "completed", "partially_completed"].includes(visit.status)) ? "in_progress"
     : isGroup && hasEveryVisit && visits.some((visit) => visit.status === "rescheduled") ? "rescheduled"
     : schedule.status
-  const loadingGroup = hasGroup && detailsQuery.isPending
-  const groupError = hasGroup && (detailsQuery.isError || (detailsQuery.isSuccess && !schedule.visits?.length))
-  const canEditGroup = !hasGroup || visits.some((visit) => !["completed", "cancelled"].includes(visit.status)) ||
+  const loadingGroup = hasGroup && !isVisitContext && detailsQuery.isPending
+  const groupError = hasGroup && !isVisitContext && (detailsQuery.isError || (detailsQuery.isSuccess && !groupSchedule?.visits?.length))
+  const canEditGroup = (!isGroup && (schedule.status !== "completed" || Boolean(currentUser?.permissions.some((permission) => ["agenda_manage_locked", "settings_manage"].includes(permission))))) || visits.some((visit) => !["completed", "cancelled"].includes(visit.status)) ||
     currentUser?.permissions.some((permission) => ["agenda_manage_locked", "settings_manage"].includes(permission))
 
+  const canOpenVisitAttendance = Boolean(onOpenAttendance && canAccessScheduleCompletion(schedule, currentUser))
+  const returnToDetails = () => setMode("details")
+  const returnToGroup = () => { setSelectedDay(null); setMode("details") }
   const isRecurringSchedule = Boolean(schedule.contractId && !schedule.isManual)
   const hasStartableStatus = ["scheduled", "rescheduled"].includes(schedule.status)
   const scheduledDate = parseCivilDate(schedule.date)
@@ -424,7 +440,7 @@ export function ScheduleDetailsDialog({
             type="button"
             aria-label="Editar execução do atendimento"
             className="ring-offset-background focus-visible:ring-ring inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-full bg-transparent text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 [&_svg]:pointer-events-none [&_svg]:size-3.5 [&_svg]:shrink-0"
-            onClick={onEditExecution}
+            onClick={() => onEditExecution?.(selectedVisit ?? schedule)}
           >
             <Pencil />
             <span className="sr-only">Editar execução do atendimento</span>
@@ -512,17 +528,17 @@ export function ScheduleDetailsDialog({
             : mode === "history" ? "sm:max-w-4xl" : "sm:max-w-xl lg:max-w-2xl",
         )}
       >
-        {(onBack && mode === "details") || mode === "history" ? (
+        {onBack || selectedVisit || mode !== "details" ? (
           <Button
             type="button"
             variant="ghost"
             size="sm"
-            aria-label={mode === "history" ? "Voltar aos detalhes" : backLabel}
+            aria-label={mode !== "details" ? "Voltar aos detalhes" : selectedVisit ? "Voltar ao atendimento completo" : backLabel}
             className={cn(
               "absolute left-3 z-20 gap-1.5 px-2 text-foreground hover:text-foreground",
               isMobile ? "top-[calc(env(safe-area-inset-top)+0.85rem)]" : "top-3",
             )}
-            onClick={() => mode === "history" ? setMode("details") : onBack?.()}
+            onClick={() => mode !== "details" ? returnToDetails() : selectedVisit ? returnToGroup() : onBack?.()}
           >
             <ArrowLeft className="h-4 w-4" />
             Voltar
@@ -548,7 +564,7 @@ export function ScheduleDetailsDialog({
             aria-label="Editar agendamento"
             className="ring-offset-background focus-visible:ring-ring absolute right-14 top-4 z-20 inline-flex size-8 cursor-pointer items-center justify-center rounded-full bg-transparent text-muted-foreground opacity-100 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
             disabled={hasGroup && (loadingGroup || groupError)}
-            onClick={onEdit}
+            onClick={() => onEdit?.(schedule)}
           >
             <Pencil />
             <span className="sr-only">Editar agendamento</span>
@@ -563,7 +579,7 @@ export function ScheduleDetailsDialog({
             </DialogHeader>
           ) : null}
 
-          <div className={cn("min-h-0 flex-1 overflow-y-auto", isMobile ? "px-5 pb-5 pt-2" : "p-6")}>
+          <div ref={contentRef} className={cn("min-h-0 flex-1 overflow-y-auto", isMobile ? "px-5 pb-5 pt-2" : "p-6")}>
             {!isMobile ? (
               <DialogHeader className="relative items-center space-y-1.5 pb-2 text-center sm:pb-3">
                 <DialogTitle className="sr-only">
@@ -606,7 +622,7 @@ export function ScheduleDetailsDialog({
                   </p>
                 ) : null}
 
-                <div>
+                {!isVisitContext ? <div>
                   <div className="mb-3 flex items-center gap-2 text-sm font-medium">
                     <CalendarDays className="h-4 w-4 text-primary" />
                     Sugestões disponíveis
@@ -635,7 +651,7 @@ export function ScheduleDetailsDialog({
                       ))}
                     </div>
                   )}
-                </div>
+                </div> : null}
 
                 <div>
                   <div className="mb-3 flex items-center gap-2 text-sm font-medium">
@@ -750,10 +766,11 @@ export function ScheduleDetailsDialog({
               ) : null}
             </div>
 
+            {selectedVisit ? <p className="mt-3 text-center text-sm font-medium">Dia {selectedVisit.multiDayIndex} · {formatScheduleDate(selectedVisit.date)}</p> : null}
             <div className="mt-3 grid gap-3 md:grid-cols-2">
               {executionCards}
-              {isGroup && onOpenAttendance ? (
-                <Button type="button" variant="outline" className="md:col-span-2" onClick={onOpenAttendance}>
+              {canOpenVisitAttendance ? (
+                <Button type="button" variant="outline" className="md:col-span-2" onClick={() => onOpenAttendance?.(selectedVisit ?? schedule)}>
                   {schedule.status === "in_progress" ? "Encerrar atendimento" : "Ver execução"} de {formatScheduleDate(schedule.date)}
                 </Button>
               ) : null}
@@ -782,7 +799,10 @@ export function ScheduleDetailsDialog({
                 {isGroup ? (
                   <ol aria-label="Dias do atendimento" className="divide-y">
                     {visits.map((visit, index) => (
-                      <li key={visit.id} className="flex flex-wrap items-start justify-between gap-2 py-3 text-sm first:pt-0 last:pb-0">
+                      <li key={visit.id} className="py-1 first:pt-0 last:pb-0">
+                        <button type="button" aria-label={`Abrir Dia ${visit.multiDayIndex || index + 1} de ${formatScheduleDate(visit.date)}`}
+                          className="flex w-full cursor-pointer flex-wrap items-start justify-between gap-2 rounded-xl px-2 py-3 text-left text-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          onClick={() => { setSelectedDay({ parentId: initialSchedule!.id, visitId: visit.id }); setMode("details") }}>
                         <div>
                           <p className="font-medium">Dia {visit.multiDayIndex || index + 1} · {formatScheduleDate(visit.date)}</p>
                           <p className="mt-1 text-muted-foreground">{visit.time || "Sem horário"} · {formatExactScheduleDuration(visit.duration)}</p>
@@ -791,6 +811,7 @@ export function ScheduleDetailsDialog({
                           ) : null}
                         </div>
                         <Badge className={STATUS_BADGE_CLASSES[visit.status]}>{getStatusLabel(visit.status)}</Badge>
+                        </button>
                       </li>
                     ))}
                   </ol>
@@ -803,7 +824,7 @@ export function ScheduleDetailsDialog({
                   {isGroup ? "Duração total do agendamento" : "Horário e duração"}
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  {isGroup ? <>{groupDays} dias{hasEveryVisit ? ` • ${formatExactScheduleDuration(totalMinutes)} previstas` : ""}</> : <>{schedule.time || "Sem horário"} • {formatConfiguredScheduleDuration(schedule)}</>}
+                  {isGroup ? <>{groupDays} dias{hasEveryVisit ? ` • ${formatExactScheduleDuration(totalMinutes)} previstas` : ""}</> : <>{schedule.time || "Sem horário"} • {isVisitContext ? formatExactScheduleDuration(schedule.duration) : formatConfiguredScheduleDuration(schedule)}</>}
                 </p>
               </div>
 

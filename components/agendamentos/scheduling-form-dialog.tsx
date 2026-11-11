@@ -109,6 +109,7 @@ export interface SchedulingFormData {
 }
 
 interface EditingSchedule {
+  individualVisit?: boolean
   multiDayGroupId?: string
   multiDayDates?: string[]
   multiDayTimes?: string[]
@@ -575,6 +576,10 @@ export function SchedulingFormDialog({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (isSubmitting) return
+    if (editingSchedule?.individualVisit && formData.durationType === "days" && formData.duration > 1) {
+      toast.error("Para alterar vários dias, volte ao atendimento completo.")
+      return
+    }
     if (!isGroupEditing && formData.status === "not_completed" && !formData.nonCompletionReason?.trim()) { toast.error("Informe o motivo da não conclusão."); return }
     if (needsRescheduleReason && !rescheduleDateChanged) {
       toast.error("Escolha uma nova data ou horário para reagendar.")
@@ -1029,7 +1034,8 @@ export function SchedulingFormDialog({
                 <Label htmlFor="schedule-duration-type" className="min-h-7 items-start sm:min-h-0">Tipo de Duração</Label>
                 <Select
                   value={formData.durationType}
-                  onValueChange={(value) => setFormData((current) => ({ ...current, durationType: value as ScheduleDurationType }))}
+                  onValueChange={(value) => setFormData((current) => ({ ...current, durationType: value as ScheduleDurationType,
+                    duration: editingSchedule?.individualVisit && value === "days" ? 1 : current.duration }))}
                 >
                   <SelectTrigger id="schedule-duration-type" className="w-full">
                     <SelectValue />
@@ -1049,6 +1055,7 @@ export function SchedulingFormDialog({
                   value={formData.duration}
                   onValueChange={(duration) => setFormData((current) => ({ ...current, duration }))}
                   min={1}
+                  max={editingSchedule?.individualVisit && formData.durationType === "days" ? 1 : undefined}
                   step={1}
                 />
               </div>
