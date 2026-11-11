@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { DatePicker } from "@/components/ui/date-picker"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useIsMobile } from "@/hooks/use-mobile"
@@ -333,6 +334,8 @@ export function ScheduleDetailsDialog({
   const groupError = hasGroup && !isVisitContext && (detailsQuery.isError || (detailsQuery.isSuccess && !groupSchedule?.visits?.length))
   const canEditGroup = (!isGroup && (schedule.status !== "completed" || Boolean(currentUser?.permissions.some((permission) => ["agenda_manage_locked", "settings_manage"].includes(permission))))) || visits.some((visit) => !["completed", "cancelled"].includes(visit.status)) ||
     currentUser?.permissions.some((permission) => ["agenda_manage_locked", "settings_manage"].includes(permission))
+  const canEditCurrentVisit = schedule.status !== "cancelled" && (schedule.status !== "completed" ||
+    Boolean(currentUser?.permissions.some((permission) => ["agenda_manage_locked", "settings_manage"].includes(permission))))
 
   const canOpenVisitAttendance = Boolean(onOpenAttendance && canAccessScheduleCompletion(schedule, currentUser))
   const returnToDetails = () => setMode("details")
@@ -558,7 +561,23 @@ export function ScheduleDetailsDialog({
             <History className="size-4" />
           </button>
         ) : null}
-        {canEdit && canEditGroup && onEdit && mode === "details" ? (
+        {canEdit && canEditGroup && onEdit && mode === "details" ? isGroup ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button type="button" aria-label="Editar agendamento" title="Escolher o que editar"
+                disabled={loadingGroup || groupError}
+                className="absolute right-14 top-4 z-20 inline-flex size-8 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none">
+                <Pencil className="size-4" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem disabled={!canEditCurrentVisit} onSelect={() => onEdit(getScheduleVisitContext(schedule))}>
+                Editar este dia · {formatScheduleDate(schedule.date)}
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onEdit(schedule)}>Editar atendimento completo</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : (
           <button
             type="button"
             aria-label="Editar agendamento"
