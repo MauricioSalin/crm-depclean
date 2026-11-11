@@ -1,5 +1,6 @@
 "use client"
-import { MultiDayDateFields, multiDayDateValues, multiDayTimeValues, multiDayDurationValues } from "@/components/agendamentos/multi-day-date-fields"
+import { MultiDayDateFields, ScheduleDayRow, multiDayDateValues, multiDayTimeValues, multiDayDurationValues, type VisitDurationType } from "@/components/agendamentos/multi-day-date-fields"
+import { expandMultiDayEntries, multiDayEntrySpan, multiDayEntrySpans } from "@/lib/schedule-multi-day"
 import { ScheduleDurationInput } from "@/components/agendamentos/schedule-duration-input"
 
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
@@ -58,7 +59,7 @@ import type { ScheduleDocumentSetting, ScheduleRecord } from "@/lib/api/schedule
 import { listEmergencyContracts } from "@/lib/api/schedules"
 import { listTemplates } from "@/lib/api/templates"
 import { toast } from "sonner"
-import { formatCivilDate, parseCivilDate, toCivilDateKey } from "@/lib/date-utils"
+import { addCivilDaysKey, formatCivilDate, parseCivilDate, toCivilDateKey } from "@/lib/date-utils"
 
 type ScheduleManualStatus = "draft" | "scheduled" | "in_progress" | "completed" | "cancelled" | "rescheduled" | "awaiting_schedule" | "not_completed" | "partially_completed"
 
@@ -114,6 +115,7 @@ interface EditingSchedule {
   multiDayDurations?: number[]
   multiDayTotal?: number
   multiDayIndex?: number
+  remainingRecurringVisits?: ScheduleRecord["remainingRecurringVisits"]
   statusHistory?: ScheduleRecord["statusHistory"]
   id: string
   contractId?: string | null
@@ -225,6 +227,8 @@ export function SchedulingFormDialog({
 }: SchedulingFormDialogProps) {
   const [formData, setFormData] = useState<SchedulingFormData>(DEFAULT_FORM_DATA)
   const totalDays = formData.durationType === "days" ? formData.duration : 1
+  const [entriesInDays, setEntriesInDays] = useState<ReadonlySet<number>>(() => new Set())
+  const entrySpans = multiDayEntrySpans(totalDays, formData.multiDayDurations, entriesInDays)
   const durationUnit = SCHEDULE_DURATION_UNITS[formData.durationType][formData.duration === 1 ? "singular" : "plural"]
   const initializedFormKeyRef = useRef("")
 
@@ -316,6 +320,29 @@ export function SchedulingFormDialog({
     (["scheduled", "rescheduled", "awaiting_schedule", "not_completed", "partially_completed"].includes(editingSchedule.status) && rescheduleDateChanged) ||
     (formData.status === "rescheduled" && editingSchedule.status !== "rescheduled")
   ))
+  const updateDayDuration = (index: number, minutes: number, type: VisitDurationType) => {
+    const durations = multiDayDurationValues(entrySpans.length, formData.multiDayDurations)
+    const inDays = type === "days"
+    if (durations[index] === minutes && entriesInDays.has(index) === inDays) return
+    durations[index] = minutes
+    const dates = multiDayDateValues(formData.date, entrySpans.length, formData.multiDayDates, entrySpans)
+    const times = multiDayTimeValues(formData.time, entrySpans.length, formData.multiDayTimes)
+    const span = inDays ? multiDayEntrySpan(minutes) : 1
+    const end = span > 1 && dates[index] ? addCivilDaysKey(dates[index], span - 1) : dates[index]
+    const retained = dates.map((_, position) => position).filter((position) => position <= index || dates[position] > end)
+    setEntriesInDays(new Set(retained.flatMap((position, next) => (position === index ? inDays : entriesInDays.has(position)) ? [next] : [])))
+    setFormData((current) => ({ ...current,
+      multiDayDates: retained.map((position) => dates[position]),
+      multiDayTimes: retained.map((position) => times[position]),
+      multiDayDurations: retained.map((position) => durations[position]),
+    }))
+  }
+  const visitDuration = (index: number, minutes: number) => ({
+    type: entriesInDays.has(index) ? "days" as const : "hours" as const,
+    minutes,
+    maxDays: totalDays,
+    onChange: (value: number, type: VisitDurationType) => updateDayDuration(index, value, type),
+  })
   const isRecurringSchedule = Boolean(editingSchedule?.contractId && !editingSchedule?.isManual)
   const scheduleTypeLabel = isRecurringSchedule ? "Atendimento recorrente" : "Atendimento avulso"
   const dialogTitle = isEditing
@@ -357,9 +384,9 @@ export function SchedulingFormDialog({
       employeeIds: selection.employeeIds,
       date: schedule.date,
       time: schedule.time ?? "",
-      multiDayDates: schedule.multiDayDates,
-      multiDayTimes: schedule.multiDayTimes,
-      multiDayDurations: schedule.multiDayDurations,
+      multiDayDates: schedule.remainingRecurringVisits?.map((visit) => visit.date) ?? schedule.multiDayDates,
+      multiDayTimes: schedule.remainingRecurringVisits?.map((visit) => visit.time) ?? schedule.multiDayTimes,
+      multiDayDurations: schedule.remainingRecurringVisits?.map((visit) => visit.duration) ?? schedule.multiDayDurations,
       durationType: Number(schedule.multiDayIndex) === 1 && Number(schedule.multiDayTotal) > 1 ? "days" : durationFields.durationType,
       duration: Number(schedule.multiDayIndex) === 1 && Number(schedule.multiDayTotal) > 1 ? Number(schedule.multiDayTotal) : durationFields.duration,
       informativeTemplateId: serviceDocumentSettings[0]?.informativeTemplateId ?? "",
@@ -390,6 +417,7 @@ export function SchedulingFormDialog({
     const formKey = editingSchedule ? `edit:${editingSchedule.id}` : "create"
     if (initializedFormKeyRef.current === formKey) return
     initializedFormKeyRef.current = formKey
+    setEntriesInDays(new Set())
 
     if (editingSchedule) {
       setFormData(getInitialFormData(editingSchedule))
@@ -577,20 +605,31 @@ export function SchedulingFormDialog({
       toast.error("Informe um horário válido entre 00:00 e 23:59.")
       return
     }
+    let dailyVisits: Pick<SchedulingFormData, "multiDayDates" | "multiDayTimes" | "multiDayDurations"> = {}
     if (formData.durationType === "days" && formData.duration > 1) {
-      const dates = multiDayDateValues(formData.date, formData.duration, formData.multiDayDates)
+      const expanded = expandMultiDayEntries(
+        multiDayDateValues(formData.date, entrySpans.length, formData.multiDayDates, entrySpans),
+        multiDayTimeValues(formData.time, entrySpans.length, formData.multiDayTimes),
+        multiDayDurationValues(entrySpans.length, formData.multiDayDurations),
+        entrySpans,
+      )
+      const { multiDayDates: dates, multiDayTimes: times, multiDayDurations: durations } = expanded
+      if (dates.length !== Math.ceil(formData.duration)) {
+        toast.error("A duração de cada visita deve caber no total de dias do agendamento.")
+        return
+      }
       if (dates.some((date, index) => !isValidDateKey(date) || index > 0 && date <= dates[index - 1]!)) {
         toast.error("Selecione as datas dos demais dias em ordem crescente, sem repetição.")
         return
       }
-      const times = multiDayTimeValues(formData.time, formData.duration, formData.multiDayTimes)
-      if (multiDayDurationValues(formData.duration, formData.multiDayDurations).some((minutes, index) => {
+      if (durations.some((minutes, index) => {
         const [hours, minute] = times[index].split(":").map(Number)
         return !Number.isInteger(minutes) || minutes <= 0 || hours * 60 + minute + minutes > 1440
       })) {
         toast.error("Revise a duração de cada dia. O atendimento deve terminar dentro da data selecionada.")
         return
       }
+      dailyVisits = expanded
     }
     if (!Number.isFinite(formData.duration) || formData.duration <= 0) {
       toast.error("Informe uma duração maior que zero para o agendamento.")
@@ -634,6 +673,7 @@ export function SchedulingFormDialog({
 
     const payload: SchedulingFormData = {
       ...formData,
+      ...dailyVisits,
       status: needsRescheduleReason ? "rescheduled" : formData.status,
       serviceTypeId: formData.serviceTypeIds[0],
       serviceDocumentSettings,
@@ -974,90 +1014,57 @@ export function SchedulingFormDialog({
             )}
           </div>
 
-          {/* Date, Time, Duration */}
-          <div className="grid min-w-0 gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-            <div className="space-y-3">
-              <Label>Data *</Label>
-              <DatePicker
-                value={parseCivilDate(formData.date)}
-                onChange={(date) => setFormData((current) => ({
-                  ...current,
-                  date: date ? toCivilDateKey(date) : "",
-                }))}
-                placeholder="Selecionar data"
-                disabledDates={isEditing ? undefined : { dayOfWeek: [0, 6] }}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Horário *</Label>
-              <Input
-                type="time"
-                value={formData.time}
-                onChange={(e) => setFormData((current) => ({ ...current, time: e.target.value }))}
-                required
-              />
-            </div>
-          </div>
-
-          <div className={cn("grid min-w-0 gap-4", totalDays > 1 ? "sm:grid-cols-3" : "sm:grid-cols-2")}>
-            <div className="space-y-2">
-              <Label htmlFor="schedule-duration-type">Tipo de Duração</Label>
-              <Select
-                value={formData.durationType}
-                onValueChange={(value) => setFormData((current) => ({ ...current, durationType: value as ScheduleDurationType }))}
-              >
-                <SelectTrigger id="schedule-duration-type" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {SCHEDULE_DURATION_TYPE_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="schedule-duration">Duração do agendamento</Label>
-              <ScheduleDurationInput
-                id="schedule-duration"
-                unit={durationUnit}
-                value={formData.duration}
-                onValueChange={(duration) => setFormData((current) => ({ ...current, duration }))}
-                min={1}
-                step={1}
-              />
-            </div>
-            {totalDays > 1 ? (
-              <div className="space-y-2">
-                <Label htmlFor="schedule-first-day-duration">Duração do Dia 1</Label>
+          <section aria-label="Duração e datas do agendamento" className="space-y-6">
+            <div className="grid min-w-0 grid-cols-2 items-end gap-3 sm:gap-4">
+              <div className="flex min-w-0 flex-col gap-2">
+                <Label htmlFor="schedule-duration-type" className="min-h-7 items-start sm:min-h-0">Tipo de Duração</Label>
+                <Select
+                  value={formData.durationType}
+                  onValueChange={(value) => setFormData((current) => ({ ...current, durationType: value as ScheduleDurationType }))}
+                >
+                  <SelectTrigger id="schedule-duration-type" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SCHEDULE_DURATION_TYPE_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex min-w-0 flex-col gap-2">
+                <Label htmlFor="schedule-duration" className="min-h-7 items-start sm:min-h-0">Duração do agendamento</Label>
                 <ScheduleDurationInput
-                  id="schedule-first-day-duration"
-                  unit="horas"
-                  allowDecimal
-                  min={1 / 60}
-                  max={24}
-                  value={multiDayDurationValues(1, formData.multiDayDurations)[0] / 60}
-                  onValueChange={(hours) => setFormData((current) => {
-                    const durations = multiDayDurationValues(current.duration, current.multiDayDurations)
-                    durations[0] = Math.max(1, Math.round(hours * 60))
-                    return { ...current, multiDayDurations: durations }
-                  })}
+                  id="schedule-duration"
+                  unit={durationUnit}
+                  value={formData.duration}
+                  onValueChange={(duration) => setFormData((current) => ({ ...current, duration }))}
+                  min={1}
+                  step={1}
                 />
               </div>
-            ) : null}
-          </div>
-
-          <MultiDayDateFields
-            firstDate={formData.date}
-            firstTime={formData.time}
-            totalDays={totalDays}
-            dates={formData.multiDayDates}
-            times={formData.multiDayTimes}
-            durations={formData.multiDayDurations}
-            onChange={(multiDayDates) => setFormData((current) => ({ ...current, multiDayDates }))}
-            onTimesChange={(multiDayTimes) => setFormData((current) => ({ ...current, multiDayTimes }))}
-            onDurationsChange={(multiDayDurations) => setFormData((current) => ({ ...current, multiDayDurations }))}
-          />
+            </div>
+            <div className="space-y-3">
+              <ScheduleDayRow day={1} date={formData.date} time={formData.time}
+                duration={totalDays > 1 ? visitDuration(0, multiDayDurationValues(1, formData.multiDayDurations)[0]) : undefined}
+                disabledDates={isEditing ? undefined : { dayOfWeek: [0, 6] }}
+                onDateChange={(date) => setFormData((current) => ({ ...current, date: date ? toCivilDateKey(date) : "" }))}
+                onTimeChange={(time) => setFormData((current) => ({ ...current, time }))} />
+              <MultiDayDateFields
+                firstDate={formData.date}
+                firstTime={formData.time}
+                totalDays={entrySpans.length}
+                spans={entrySpans}
+                dates={formData.multiDayDates}
+                times={formData.multiDayTimes}
+                durations={formData.multiDayDurations}
+                onChange={(multiDayDates) => setFormData((current) => ({ ...current, multiDayDates }))}
+                onTimesChange={(multiDayTimes) => setFormData((current) => ({ ...current, multiDayTimes }))}
+                onDurationsChange={(multiDayDurations) => setFormData((current) => ({ ...current, multiDayDurations }))}
+                visitDuration={visitDuration}
+              />
+            </div>
+          </section>
 
           {/* Notes */}
           <div className="space-y-2">

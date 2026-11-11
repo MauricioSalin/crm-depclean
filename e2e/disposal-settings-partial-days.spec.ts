@@ -71,8 +71,10 @@ test("edita duas visitas parciais do Bom Princípio e preserva as horas ao reabr
   await expect(dialog.getByLabel("Duração do agendamento", { exact: true })).toHaveAccessibleDescription("dias")
   const firstDayDuration = dialog.getByLabel("Duração do Dia 1", { exact: true })
   const secondDayDuration = dialog.getByLabel("Duração do Dia 2", { exact: true })
-  await expect(firstDayDuration).toHaveAccessibleDescription("horas")
-  await expect(secondDayDuration).toHaveAccessibleDescription("horas")
+  await expect(dialog.getByRole("combobox", { name: "Tipo de duração do Dia 1" })).toHaveText("Horas")
+  await expect(dialog.getByRole("combobox", { name: "Tipo de duração do Dia 2" })).toHaveText("Horas")
+  await expect(firstDayDuration).not.toHaveAttribute("aria-describedby")
+  await expect(secondDayDuration).not.toHaveAttribute("aria-describedby")
   await firstDayDuration.fill("4")
   await secondDayDuration.fill("3")
   await dialog.getByRole("button", { name: "Salvar", exact: true }).click()
@@ -82,6 +84,54 @@ test("edita duas visitas parciais do Bom Princípio e preserva as horas ao reabr
   await page.getByRole("menuitem", { name: "Editar", exact: true }).click()
   await expect(firstDayDuration).toHaveValue("4")
   await expect(secondDayDuration).toHaveValue("3")
+})
+
+test("divide a duração de uma visita em dois dias usando os campos existentes", async ({ page }) => {
+  await installAuthenticatedSession(page)
+  await installApiMock(page)
+  const anchor = {
+    ...scheduleFixture, id: "vivaz-10", clientName: "Vivaz Ecoville", multiDayGroupId: "vivaz",
+    multiDayIndex: 2, multiDayTotal: 3, date: "2026-11-10", time: "08:00", duration: 480, durationValue: 1,
+    durationType: "days", status: "in_progress", billable: false, teams: [], additionalEmployees: [],
+    remainingRecurringVisits: [
+      { date: "2026-11-10", time: "08:00", duration: 480 },
+      { date: "2026-11-12", time: "08:00", duration: 240 },
+    ],
+  }
+  const later = { ...anchor, id: "vivaz-12", date: "2026-11-12", multiDayIndex: 3, duration: 240, durationType: "hours", durationValue: 4, status: "scheduled" }
+  const external = { ...later, id: "external", clientName: "Outro cliente", multiDayGroupId: "", duration: 720, durationValue: 12 }
+  let saved: Record<string, unknown> | null = null
+  await page.route("**/api/v1/services**", (route) => route.fulfill({ json: { success: true, data: [{ ...serviceFixture, dailyScheduleLimitHours: 16 }] } }))
+  await page.route("**/api/v1/schedules**", async (route) => {
+    const path = new URL(route.request().url()).pathname
+    if (route.request().method() === "PATCH" && path.endsWith("/vivaz-10")) {
+      saved = route.request().postDataJSON()
+      return route.fulfill({ json: { success: true, data: anchor } })
+    }
+    if (route.request().method() === "GET" && path.endsWith("/schedules")) return route.fulfill({ json: { success: true, data: [anchor, later, external] } })
+    return route.fallback()
+  })
+  await page.goto("/agendamentos")
+  const row = page.getByRole("row").filter({ hasText: "Vivaz Ecoville" }).filter({ hasText: "10/11/2026" })
+  await row.getByRole("button", { name: "Abrir ações do agendamento de Vivaz Ecoville" }).click()
+  await page.getByRole("menuitem", { name: "Editar", exact: true }).click()
+  const dialog = page.getByRole("dialog", { name: "Editar atendimento recorrente" })
+  await dialog.getByLabel("Duração do agendamento", { exact: true }).fill("3")
+  await dialog.getByRole("combobox", { name: "Tipo de duração do Dia 1" }).click()
+  await page.getByRole("option", { name: "Dias", exact: true }).click()
+  await dialog.getByLabel("Duração do Dia 1", { exact: true }).fill("2")
+  await expect(dialog.getByRole("button", { name: "Dia 2", exact: true })).toHaveText("12/11/2026")
+  await expect(dialog.getByRole("button", { name: "Dia 3", exact: true })).toHaveCount(0)
+  await expect(dialog.getByLabel("Duração do Dia 2", { exact: true })).toHaveValue("4")
+  await dialog.getByLabel("Duração do Dia 2", { exact: true }).fill("8")
+  await dialog.getByRole("button", { name: "Salvar", exact: true }).click()
+  await expect(page.getByText(/limite de 16 horas.*12\/11\/2026/)).toBeVisible()
+  expect(saved).toBeNull()
+  await dialog.getByLabel("Duração do Dia 2", { exact: true }).fill("4")
+  await dialog.getByRole("button", { name: "Salvar", exact: true }).click()
+  await expect.poll(() => saved).toMatchObject({
+    multiDayDates: ["2026-11-10", "2026-11-11", "2026-11-12"], multiDayDurations: [480, 480, 240],
+  })
 })
 
 test("capacidade e técnico consideram somente as horas de cada visita", () => {

@@ -50,6 +50,7 @@ export type ScheduleRecord = {
   multiDayGroupId?: string
   multiDayIndex?: number
   multiDayTotal?: number
+  remainingRecurringVisits?: Array<{ date: string; time: string; duration: number }>
   isManual: boolean
   isClientDelinquent: boolean
   clientId: string
