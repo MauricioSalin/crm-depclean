@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   informative-preview:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -25,5 +25,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm run test:informative-preview
-      - run: pnpm exec playwright install --with-deps chromium
+      - run: google-chrome --version
       - run: pnpm exec playwright test e2e/template-informative-multi-date-preview.spec.ts --workers=1 --reporter=line
+        env:
+          E2E_BROWSER_CHANNEL: chrome
+          E2E_DISABLE_VIDEO: "1"

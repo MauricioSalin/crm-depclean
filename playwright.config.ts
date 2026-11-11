@@ -17,9 +17,10 @@ export default defineConfig({
   ],
   use: {
     baseURL,
+    channel: process.env.E2E_BROWSER_CHANNEL || undefined,
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
-    video: "retain-on-failure",
+    video: process.env.E2E_DISABLE_VIDEO === "1" ? "off" : "retain-on-failure",
     locale: "pt-BR",
     timezoneId: "America/Sao_Paulo",
   },
