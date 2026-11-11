@@ -1053,7 +1053,7 @@ export function SchedulingFormDialog({
                 />
               </div>
             </div>
-            <div className="space-y-3">
+            <div className="space-y-6">
               <ScheduleDayRow day={1} date={formData.date} time={formData.time}
                 duration={totalDays > 1 ? visitDuration(0, multiDayDurationValues(1, formData.multiDayDurations)[0]) : undefined}
                 disabledDates={isEditing ? undefined : { dayOfWeek: [0, 6] }}

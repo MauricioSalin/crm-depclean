@@ -35,21 +35,20 @@ export function ScheduleDayRow({ day, date, time, duration, onDateChange, onTime
 }) {
   const id = useId()
   const isDisabled = disabled || duration?.readOnly
-  const columnLabelClass = day === 1 ? undefined : "sm:sr-only"
-  return <div className={`grid grid-cols-2 items-end gap-3 ${duration ? "sm:grid-cols-[3rem_minmax(8rem,1.2fr)_minmax(6rem,1fr)_minmax(7rem,1fr)_minmax(4rem,0.7fr)]" : "sm:grid-cols-[3rem_1fr_1fr]"}`}>
-    <span className="col-span-2 self-end text-sm font-medium sm:col-span-1 sm:pb-2">Dia {day}</span>
+  return <div className={`grid grid-cols-2 items-end gap-3 ${duration ? "sm:grid-cols-[minmax(8rem,1.2fr)_minmax(6rem,1fr)_minmax(7rem,1fr)_minmax(4rem,0.7fr)]" : ""}`}>
+    <span className="col-span-full text-sm font-medium">Dia {day}</span>
     <div className="min-w-0 space-y-2">
-      <Label className={columnLabelClass}>Data</Label>
+      <Label>Data</Label>
       <DatePicker value={parseCivilDate(date)} disabled={isDisabled} ariaLabel={`Dia ${day}`} disabledDates={disabledDates} onChange={onDateChange} />
     </div>
     <div className="min-w-0 space-y-2">
-      <Label className={columnLabelClass} htmlFor={`${id}-time`}>Horário</Label>
+      <Label htmlFor={`${id}-time`}>Horário</Label>
       <Input id={`${id}-time`} type="time" aria-label={`Horário do Dia ${day}`} value={time} disabled={isDisabled} required
         onChange={(event) => onTimeChange(event.target.value)} />
     </div>
     {duration && <>
       <div className="flex min-w-0 flex-col gap-2">
-        <Label className={columnLabelClass} htmlFor={`${id}-type`}>Tipo de duração</Label>
+        <Label htmlFor={`${id}-type`}>Tipo de duração</Label>
         <Select value={duration.type} disabled={isDisabled} onValueChange={(value) => {
           const type = value as VisitDurationType
           const minutesPerDay = scheduleDurationToMinutes(1, "days")
@@ -64,7 +63,7 @@ export function ScheduleDayRow({ day, date, time, duration, onDateChange, onTime
         </Select>
       </div>
       <div className="min-w-0 space-y-2">
-        <Label className={columnLabelClass} htmlFor={`${id}-duration`}>Duração</Label>
+        <Label htmlFor={`${id}-duration`}>Duração</Label>
         <NumericInput id={`${id}-duration`} aria-label={`Duração do Dia ${day}`} disabled={isDisabled}
           value={Number((duration.minutes / scheduleDurationToMinutes(1, duration.type)).toFixed(2))}
           allowDecimal={duration.type === "hours"} min={duration.type === "hours" ? 1 / 60 : 1} max={duration.type === "hours" ? 24 : duration.maxDays}
@@ -112,7 +111,7 @@ export function MultiDayDateFields({ firstDate, firstTime, totalDays, dates, tim
   const changeTime = (time: string, index: number) => {
     if (time) onTimesChange(timeValues.map((current, position) => position === index ? time : current))
   }
-  if (visitDuration) return <div className="space-y-3">
+  if (visitDuration) return <div className="space-y-6">
     {values.slice(1).map((date, index) => <ScheduleDayRow key={index} day={index + 2} date={date} time={timeValues[index + 1]}
       duration={visitDuration(index + 1, durationValues[index + 1])} disabled={disabled}
       disabledDates={(value) => disabledDate(value, index)} onDateChange={(value) => changeDate(value, index + 1)}
