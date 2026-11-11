@@ -19,6 +19,7 @@ type VisitDuration = {
   type: VisitDurationType
   minutes: number
   maxDays: number
+  readOnly?: boolean
   onChange: (minutes: number, type: VisitDurationType) => void
 }
 
@@ -33,22 +34,23 @@ export function ScheduleDayRow({ day, date, time, duration, onDateChange, onTime
   disabled?: boolean
 }) {
   const id = useId()
+  const isDisabled = disabled || duration?.readOnly
   const columnLabelClass = day === 1 ? undefined : "sm:sr-only"
   return <div className={`grid grid-cols-2 items-end gap-3 ${duration ? "sm:grid-cols-[3rem_minmax(8rem,1.2fr)_minmax(6rem,1fr)_minmax(7rem,1fr)_minmax(4rem,0.7fr)]" : "sm:grid-cols-[3rem_1fr_1fr]"}`}>
     <span className="col-span-2 self-end text-sm font-medium sm:col-span-1 sm:pb-2">Dia {day}</span>
     <div className="min-w-0 space-y-2">
       <Label className={columnLabelClass}>Data</Label>
-      <DatePicker value={parseCivilDate(date)} disabled={disabled} ariaLabel={`Dia ${day}`} disabledDates={disabledDates} onChange={onDateChange} />
+      <DatePicker value={parseCivilDate(date)} disabled={isDisabled} ariaLabel={`Dia ${day}`} disabledDates={disabledDates} onChange={onDateChange} />
     </div>
     <div className="min-w-0 space-y-2">
       <Label className={columnLabelClass} htmlFor={`${id}-time`}>Horário</Label>
-      <Input id={`${id}-time`} type="time" aria-label={`Horário do Dia ${day}`} value={time} disabled={disabled} required
+      <Input id={`${id}-time`} type="time" aria-label={`Horário do Dia ${day}`} value={time} disabled={isDisabled} required
         onChange={(event) => onTimeChange(event.target.value)} />
     </div>
     {duration && <>
       <div className="flex min-w-0 flex-col gap-2">
         <Label className={columnLabelClass} htmlFor={`${id}-type`}>Tipo de duração</Label>
-        <Select value={duration.type} disabled={disabled} onValueChange={(value) => {
+        <Select value={duration.type} disabled={isDisabled} onValueChange={(value) => {
           const type = value as VisitDurationType
           const minutesPerDay = scheduleDurationToMinutes(1, "days")
           const minutes = type === "days" ? Math.ceil(duration.minutes / minutesPerDay) * minutesPerDay : duration.minutes
@@ -63,7 +65,7 @@ export function ScheduleDayRow({ day, date, time, duration, onDateChange, onTime
       </div>
       <div className="min-w-0 space-y-2">
         <Label className={columnLabelClass} htmlFor={`${id}-duration`}>Duração</Label>
-        <NumericInput id={`${id}-duration`} aria-label={`Duração do Dia ${day}`} disabled={disabled}
+        <NumericInput id={`${id}-duration`} aria-label={`Duração do Dia ${day}`} disabled={isDisabled}
           value={Number((duration.minutes / scheduleDurationToMinutes(1, duration.type)).toFixed(2))}
           allowDecimal={duration.type === "hours"} min={duration.type === "hours" ? 1 / 60 : 1} max={duration.type === "hours" ? 24 : duration.maxDays}
           onValueChange={(value) => duration.onChange(scheduleDurationToMinutes(value, duration.type), duration.type)} />

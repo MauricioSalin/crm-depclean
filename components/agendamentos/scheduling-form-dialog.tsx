@@ -116,6 +116,7 @@ interface EditingSchedule {
   multiDayTotal?: number
   multiDayIndex?: number
   remainingRecurringVisits?: ScheduleRecord["remainingRecurringVisits"]
+  visits?: ScheduleRecord[]
   statusHistory?: ScheduleRecord["statusHistory"]
   id: string
   contractId?: string | null
@@ -161,6 +162,7 @@ interface SchedulingFormDialogProps {
   employees?: EmployeeRecord[]
   canManageStatus?: boolean
   canEditDetails?: boolean
+  canEditLocked?: boolean
   isSubmitting?: boolean
 }
 
@@ -223,12 +225,14 @@ export function SchedulingFormDialog({
   employees = [],
   canManageStatus = false,
   canEditDetails = true,
+  canEditLocked = false,
   isSubmitting = false,
 }: SchedulingFormDialogProps) {
   const [formData, setFormData] = useState<SchedulingFormData>(DEFAULT_FORM_DATA)
   const totalDays = formData.durationType === "days" ? formData.duration : 1
   const [entriesInDays, setEntriesInDays] = useState<ReadonlySet<number>>(() => new Set())
   const entrySpans = multiDayEntrySpans(totalDays, formData.multiDayDurations, entriesInDays)
+  const entryDates = multiDayDateValues(formData.date, entrySpans.length, formData.multiDayDates, entrySpans)
   const durationUnit = SCHEDULE_DURATION_UNITS[formData.durationType][formData.duration === 1 ? "singular" : "plural"]
   const initializedFormKeyRef = useRef("")
 
@@ -325,7 +329,7 @@ export function SchedulingFormDialog({
     const inDays = type === "days"
     if (durations[index] === minutes && entriesInDays.has(index) === inDays) return
     durations[index] = minutes
-    const dates = multiDayDateValues(formData.date, entrySpans.length, formData.multiDayDates, entrySpans)
+    const dates = entryDates
     const times = multiDayTimeValues(formData.time, entrySpans.length, formData.multiDayTimes)
     const span = inDays ? multiDayEntrySpan(minutes) : 1
     const end = span > 1 && dates[index] ? addCivilDaysKey(dates[index], span - 1) : dates[index]
@@ -337,13 +341,18 @@ export function SchedulingFormDialog({
       multiDayDurations: retained.map((position) => durations[position]),
     }))
   }
-  const visitDuration = (index: number, minutes: number) => ({
-    type: entriesInDays.has(index) ? "days" as const : "hours" as const,
-    minutes,
-    maxDays: totalDays,
-    onChange: (value: number, type: VisitDurationType) => updateDayDuration(index, value, type),
-  })
+  const visitDuration = (index: number, minutes: number) => {
+    const visit = editingSchedule?.visits?.find((record) => record.date === entryDates[index])
+    return {
+      type: entriesInDays.has(index) ? "days" as const : "hours" as const,
+      minutes,
+      maxDays: totalDays,
+      readOnly: !canEditLocked && visit?.status === "completed",
+      onChange: (value: number, type: VisitDurationType) => updateDayDuration(index, value, type),
+    }
+  }
   const isRecurringSchedule = Boolean(editingSchedule?.contractId && !editingSchedule?.isManual)
+  const isGroupEditing = Boolean(editingSchedule?.visits && editingSchedule.visits.length > 1 && canEditDetails)
   const scheduleTypeLabel = isRecurringSchedule ? "Atendimento recorrente" : "Atendimento avulso"
   const dialogTitle = isEditing
     ? `Editar ${isRecurringSchedule ? "atendimento recorrente" : "atendimento avulso"}`
@@ -566,7 +575,7 @@ export function SchedulingFormDialog({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (isSubmitting) return
-    if (formData.status === "not_completed" && !formData.nonCompletionReason?.trim()) { toast.error("Informe o motivo da não conclusão."); return }
+    if (!isGroupEditing && formData.status === "not_completed" && !formData.nonCompletionReason?.trim()) { toast.error("Informe o motivo da não conclusão."); return }
     if (needsRescheduleReason && !rescheduleDateChanged) {
       toast.error("Escolha uma nova data ou horário para reagendar.")
       return
@@ -725,7 +734,7 @@ export function SchedulingFormDialog({
             ) : null}
           </div>
 
-          {isEditing && (canManageStatus || canEditDetails) ? (
+          {isEditing && !isGroupEditing && (canManageStatus || canEditDetails) ? (
             <div className="space-y-2">
               <Label>Status manual</Label>
               <Select

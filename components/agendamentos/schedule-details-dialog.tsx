@@ -21,7 +21,7 @@ import { useIsMobile } from "@/hooks/use-mobile"
 import { useCurrentUser } from "@/hooks/use-permissions"
 import { canAccessPath } from "@/lib/auth/permissions"
 import { getApiErrorMessage } from "@/lib/api/errors"
-import { exportScheduleSummaryPdf, getScheduleRescheduleOptions, rescheduleSchedule, type ScheduleRecord } from "@/lib/api/schedules"
+import { exportScheduleSummaryPdf, getScheduleById, getScheduleRescheduleOptions, rescheduleSchedule, type ScheduleRecord } from "@/lib/api/schedules"
 import type { ServiceRecord } from "@/lib/api/services"
 import type { TeamRecord } from "@/lib/api/teams"
 import { formatCivilDate, parseCivilDate, toCivilDateKey } from "@/lib/date-utils"
@@ -60,6 +60,7 @@ interface ScheduleDetailsDialogProps {
   onEdit?: () => void
   canEditExecution?: boolean
   onEditExecution?: () => void
+  onOpenAttendance?: () => void
   onBack?: () => void
   backLabel?: string
 }
@@ -106,7 +107,7 @@ function formatScheduleDate(date: string) {
 export function ScheduleDetailsDialog({
   open,
   onOpenChange,
-  schedule,
+  schedule: initialSchedule,
   schedules = [],
   teams = [],
   serviceTypes = [],
@@ -120,6 +121,7 @@ export function ScheduleDetailsDialog({
   onEdit,
   canEditExecution = false,
   onEditExecution,
+  onOpenAttendance,
   onBack,
   backLabel = "Voltar",
 }: ScheduleDetailsDialogProps) {
@@ -127,6 +129,14 @@ export function ScheduleDetailsDialog({
   const currentUser = useCurrentUser()
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  const hasGroup = Boolean(initialSchedule?.multiDayGroupId && Number(initialSchedule.multiDayTotal) > 1)
+  const shouldLoadDetails = hasGroup
+  const detailsQuery = useQuery({
+    queryKey: ["schedule", initialSchedule?.id],
+    queryFn: () => getScheduleById(initialSchedule!.id),
+    enabled: open && Boolean(initialSchedule?.id) && shouldLoadDetails,
+  })
+  const schedule = (shouldLoadDetails ? detailsQuery.data?.data : undefined) ?? initialSchedule
   const clientProfilePath = schedule?.clientId ? `/clientes/${encodeURIComponent(schedule.clientId)}` : null
   const clientProfileHref = clientProfilePath && canAccessPath(clientProfilePath, currentUser)
     ? withReturnTo(clientProfilePath, buildPathWithSearchParams(pathname, searchParams))
@@ -221,6 +231,7 @@ export function ScheduleDetailsDialog({
     onSuccess: async (_response, _variables, context) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["schedules"] }),
+        queryClient.invalidateQueries({ queryKey: ["schedule"] }),
         queryClient.invalidateQueries({ queryKey: ["analytics"] }),
       ])
       toast.success("Atendimento reagendado.", {
@@ -280,10 +291,23 @@ export function ScheduleDetailsDialog({
 
   if (!schedule) return null
 
-  const assignees = [
-    ...schedule.teams.map((team) => team.name),
-    ...schedule.additionalEmployees.map((employee) => employee.name),
-  ]
+  const visits = schedule.visits ?? []
+  const isGroup = hasGroup && visits.length > 0
+  const groupDays = Number(schedule.multiDayTotal) || visits.length
+  const hasEveryVisit = visits.length === groupDays
+  const totalMinutes = visits.reduce((total, visit) => total + visit.duration, 0)
+  const groupRecords = isGroup ? visits : [schedule]
+  const assignees = [...new Set(groupRecords.flatMap((visit) => [
+    ...visit.teams.map((team) => team.name), ...visit.additionalEmployees.map((employee) => employee.name),
+  ]))]
+  const detailStatus = isGroup && hasEveryVisit && visits.every((visit) => visit.status === "completed") ? "completed"
+    : isGroup && hasEveryVisit && visits.some((visit) => ["in_progress", "completed", "partially_completed"].includes(visit.status)) ? "in_progress"
+    : isGroup && hasEveryVisit && visits.some((visit) => visit.status === "rescheduled") ? "rescheduled"
+    : schedule.status
+  const loadingGroup = hasGroup && detailsQuery.isPending
+  const groupError = hasGroup && (detailsQuery.isError || (detailsQuery.isSuccess && !schedule.visits?.length))
+  const canEditGroup = !hasGroup || visits.some((visit) => !["completed", "cancelled"].includes(visit.status)) ||
+    currentUser?.permissions.some((permission) => ["agenda_manage_locked", "settings_manage"].includes(permission))
 
   const isRecurringSchedule = Boolean(schedule.contractId && !schedule.isManual)
   const hasStartableStatus = ["scheduled", "rescheduled"].includes(schedule.status)
@@ -378,6 +402,94 @@ export function ScheduleDetailsDialog({
     })
   }
 
+  const executionCards = groupRecords.filter((visit) => ["completed", "partially_completed"].includes(visit.status) || visit.executionDurationMinutes !== undefined).map((execution) => (
+    <div key={execution.id} data-schedule-detail-card="execution" className="rounded-2xl border border-primary/20 bg-primary/[0.03] p-4 md:col-span-2">
+      <div className="mb-3 flex items-center gap-1.5 text-sm font-medium">
+        <Clock3 className="h-4 w-4 text-primary" />
+        <span>{isGroup ? `Execução de ${formatScheduleDate(execution.date)}` : "Execução do atendimento"}</span>
+        {canEditExecution && onEditExecution && execution.id === schedule.id ? (
+          <button
+            type="button"
+            aria-label="Editar execução do atendimento"
+            className="ring-offset-background focus-visible:ring-ring inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-full bg-transparent text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 [&_svg]:pointer-events-none [&_svg]:size-3.5 [&_svg]:shrink-0"
+            onClick={onEditExecution}
+          >
+            <Pencil />
+            <span className="sr-only">Editar execução do atendimento</span>
+          </button>
+        ) : null}
+      </div>
+      <div className="grid gap-3 text-sm sm:grid-cols-2">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-wide text-foreground/75">Período executado</p>
+          <p className="mt-1 text-foreground">
+            {execution.executionPeriods?.length ? execution.executionPeriods.map((period, index) => <span key={index} className="block">{formatScheduleDate(period.startDate)} às {period.startTime} até {formatScheduleDate(period.endDate)} às {period.endTime}</span>) : <>{formatScheduleDate(execution.completionStartDate || execution.date)} às {execution.completionStartTime || "--:--"}
+            {" até "}
+            {formatScheduleDate(execution.completionEndDate || execution.completionStartDate || execution.date)} às {execution.completionEndTime || "--:--"}</>}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs font-medium uppercase tracking-wide text-foreground/75">Duração</p>
+          <p className="mt-1 text-foreground">{execution.executionDurationMinutes !== undefined ? formatExactScheduleDuration(execution.executionDurationMinutes) : "Não informada"}</p>
+        </div>
+        <div>
+          <p className="text-xs font-medium uppercase tracking-wide text-foreground/75">Motorista</p>
+          <p className="mt-1 text-foreground">{execution.attendanceDriver?.name || "Não informado"}</p>
+        </div>
+        <div>
+          <p className="text-xs font-medium uppercase tracking-wide text-foreground/75">Placa do veículo</p>
+          <p className="mt-1 text-foreground">{execution.attendanceVehiclePlate || "Não informada"}</p>
+        </div>
+        <div className="sm:col-span-2">
+          <p className="text-xs font-medium uppercase tracking-wide text-foreground/75">Ajudantes</p>
+          <p className="mt-1 text-foreground">
+            {execution.attendanceHelpers?.length
+              ? execution.attendanceHelpers.map((employee) => employee.name).join(" • ")
+              : "Nenhum ajudante informado"}
+          </p>
+        </div>
+        {execution.attendanceDisposal ? (
+          <div data-schedule-execution-disposal className="grid gap-3 sm:col-span-2 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <p className="text-xs font-medium uppercase tracking-wide text-foreground/75">MTR</p>
+              <p className="mt-1 text-foreground">{(execution.attendanceDisposal.mtrNumbers?.length ? execution.attendanceDisposal.mtrNumbers : [execution.attendanceDisposal.mtrNumber || "Não informado"]).map((number, index, numbers) => <span key={index} className="block">{numbers.length > 1 ? `MTR ${index + 1}: ` : ""}{number}</span>)}</p>
+            </div>
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-foreground/75">Descarte</p>
+              <p className="mt-1 text-foreground">
+                {execution.attendanceDisposal.typeName ?? (execution.attendanceDisposal.type === "fossa" ? "Fossa" : execution.attendanceDisposal.type === "gordura" ? "Gordura" : execution.attendanceDisposal.type)}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-foreground/75">Quantidade</p>
+              <p className="mt-1 text-foreground">
+                {execution.attendanceDisposal.quantityM3.toLocaleString("pt-BR", { maximumFractionDigits: 3 })} m³
+              </p>
+            </div>
+            <div className="sm:col-span-2">
+              <p className="text-xs font-medium uppercase tracking-wide text-foreground/75">Estação</p>
+              <p className="mt-1 text-foreground">{execution.attendanceDisposal.stationName}</p>
+            </div>
+            <div data-schedule-execution-disposal-value className="sm:col-span-2">
+              <p className="text-xs font-medium uppercase tracking-wide text-foreground/75">Valor</p>
+              <p className="mt-1 text-foreground">
+                {formatScheduleDisposalCurrency(execution.attendanceDisposal.totalValue)}
+              </p>
+            </div>
+          </div>
+        ) : null}
+        <div data-schedule-execution-notes className="pt-3 sm:col-span-2">
+          <p className="text-xs font-medium uppercase tracking-wide text-foreground/75">
+            Observações do atendimento
+          </p>
+          <p className="mt-1 whitespace-pre-wrap text-foreground">
+            {execution.serviceReport?.trim() || "Nenhuma observação registrada."}
+          </p>
+        </div>
+      </div>
+    </div>
+  ))
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
@@ -404,11 +516,12 @@ export function ScheduleDetailsDialog({
             Voltar
           </Button>
         ) : null}
-        {canEdit && onEdit && mode === "details" ? (
+        {canEdit && canEditGroup && onEdit && mode === "details" ? (
           <button
             type="button"
             aria-label="Editar agendamento"
             className="ring-offset-background focus-visible:ring-ring absolute right-14 top-4 z-20 inline-flex size-8 cursor-pointer items-center justify-center rounded-full bg-transparent text-muted-foreground opacity-100 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
+            disabled={hasGroup && (loadingGroup || groupError)}
             onClick={onEdit}
           >
             <Pencil />
@@ -591,7 +704,7 @@ export function ScheduleDetailsDialog({
               <Badge variant={isRecurringSchedule ? "secondary" : "outline"}>
                 {isRecurringSchedule ? "Atendimento recorrente" : "Atendimento avulso"}
               </Badge>
-              <Badge className={STATUS_BADGE_CLASSES[schedule.status]}>{getStatusLabel(schedule.status)}</Badge>
+              <Badge className={STATUS_BADGE_CLASSES[detailStatus]}>{getStatusLabel(detailStatus)}</Badge>
               {schedule.isEmergency && schedule.emergencyContractId ? <EmergencyExhaustedBadge contractId={schedule.emergencyContractId} /> : null}
               {schedule.isClientDelinquent ? (
                 <Badge className="bg-red-100 text-red-700 hover:bg-red-100">Inadimplente</Badge>
@@ -599,92 +712,19 @@ export function ScheduleDetailsDialog({
             </div>
 
             <div className="mt-3 grid gap-3 md:grid-cols-2">
-              {(schedule.status === "completed" || schedule.status === "partially_completed" || schedule.executionDurationMinutes !== undefined) ? (
-                <div data-schedule-detail-card="execution" className="rounded-2xl border border-primary/20 bg-primary/[0.03] p-4 md:col-span-2">
-                  <div className="mb-3 flex items-center gap-1.5 text-sm font-medium">
-                    <Clock3 className="h-4 w-4 text-primary" />
-                    <span>Execução do atendimento</span>
-                    {canEditExecution && onEditExecution ? (
-                      <button
-                        type="button"
-                        aria-label="Editar execução do atendimento"
-                        className="ring-offset-background focus-visible:ring-ring inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-full bg-transparent text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 [&_svg]:pointer-events-none [&_svg]:size-3.5 [&_svg]:shrink-0"
-                        onClick={onEditExecution}
-                      >
-                        <Pencil />
-                        <span className="sr-only">Editar execução do atendimento</span>
-                      </button>
-                    ) : null}
-                  </div>
-                  <div className="grid gap-3 text-sm sm:grid-cols-2">
-                    <div>
-                      <p className="text-xs font-medium uppercase tracking-wide text-foreground/75">Período executado</p>
-                      <p className="mt-1 text-foreground">
-                        {schedule.executionPeriods?.length ? schedule.executionPeriods.map((period, index) => <span key={index} className="block">{formatScheduleDate(period.startDate)} às {period.startTime} até {formatScheduleDate(period.endDate)} às {period.endTime}</span>) : <>{formatScheduleDate(schedule.completionStartDate || schedule.date)} às {schedule.completionStartTime || "--:--"}
-                        {" até "}
-                        {formatScheduleDate(schedule.completionEndDate || schedule.completionStartDate || schedule.date)} às {schedule.completionEndTime || "--:--"}</>}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium uppercase tracking-wide text-foreground/75">Duração</p>
-                      <p className="mt-1 text-foreground">{schedule.executionDurationMinutes !== undefined ? formatExactScheduleDuration(schedule.executionDurationMinutes) : "Não informada"}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium uppercase tracking-wide text-foreground/75">Motorista</p>
-                      <p className="mt-1 text-foreground">{schedule.attendanceDriver?.name || "Não informado"}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium uppercase tracking-wide text-foreground/75">Placa do veículo</p>
-                      <p className="mt-1 text-foreground">{schedule.attendanceVehiclePlate || "Não informada"}</p>
-                    </div>
-                    <div className="sm:col-span-2">
-                      <p className="text-xs font-medium uppercase tracking-wide text-foreground/75">Ajudantes</p>
-                      <p className="mt-1 text-foreground">
-                        {schedule.attendanceHelpers?.length
-                          ? schedule.attendanceHelpers.map((employee) => employee.name).join(" • ")
-                          : "Nenhum ajudante informado"}
-                      </p>
-                    </div>
-                    {schedule.attendanceDisposal ? (
-                      <div data-schedule-execution-disposal className="grid gap-3 sm:col-span-2 sm:grid-cols-2">
-                        <div className="sm:col-span-2">
-                          <p className="text-xs font-medium uppercase tracking-wide text-foreground/75">MTR</p>
-                          <p className="mt-1 text-foreground">{(schedule.attendanceDisposal.mtrNumbers?.length ? schedule.attendanceDisposal.mtrNumbers : [schedule.attendanceDisposal.mtrNumber || "Não informado"]).map((number, index, numbers) => <span key={index} className="block">{numbers.length > 1 ? `MTR ${index + 1}: ` : ""}{number}</span>)}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs font-medium uppercase tracking-wide text-foreground/75">Descarte</p>
-                          <p className="mt-1 text-foreground">
-                            {schedule.attendanceDisposal.typeName ?? (schedule.attendanceDisposal.type === "fossa" ? "Fossa" : schedule.attendanceDisposal.type === "gordura" ? "Gordura" : schedule.attendanceDisposal.type)}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-xs font-medium uppercase tracking-wide text-foreground/75">Quantidade</p>
-                          <p className="mt-1 text-foreground">
-                            {schedule.attendanceDisposal.quantityM3.toLocaleString("pt-BR", { maximumFractionDigits: 3 })} m³
-                          </p>
-                        </div>
-                        <div className="sm:col-span-2">
-                          <p className="text-xs font-medium uppercase tracking-wide text-foreground/75">Estação</p>
-                          <p className="mt-1 text-foreground">{schedule.attendanceDisposal.stationName}</p>
-                        </div>
-                        <div data-schedule-execution-disposal-value className="sm:col-span-2">
-                          <p className="text-xs font-medium uppercase tracking-wide text-foreground/75">Valor</p>
-                          <p className="mt-1 text-foreground">
-                            {formatScheduleDisposalCurrency(schedule.attendanceDisposal.totalValue)}
-                          </p>
-                        </div>
-                      </div>
-                    ) : null}
-                    <div data-schedule-execution-notes className="pt-3 sm:col-span-2">
-                      <p className="text-xs font-medium uppercase tracking-wide text-foreground/75">
-                        Observações do atendimento
-                      </p>
-                      <p className="mt-1 whitespace-pre-wrap text-foreground">
-                        {schedule.serviceReport?.trim() || "Nenhuma observação registrada."}
-                      </p>
-                    </div>
-                  </div>
+              {executionCards}
+              {isGroup && onOpenAttendance ? (
+                <Button type="button" variant="outline" className="md:col-span-2" onClick={onOpenAttendance}>
+                  {schedule.status === "in_progress" ? "Encerrar atendimento" : "Ver execução"} de {formatScheduleDate(schedule.date)}
+                </Button>
+              ) : null}
+              {groupError ? (
+                <div role="alert" className="rounded-2xl border p-4 text-sm md:col-span-2">
+                  <p>Não foi possível carregar todos os dias do atendimento.</p>
+                  <Button type="button" variant="outline" size="sm" className="mt-2" onClick={() => detailsQuery.refetch()}>Tentar novamente</Button>
                 </div>
+              ) : loadingGroup ? (
+                <p role="status" className="flex items-center gap-2 p-4 text-sm text-muted-foreground md:col-span-2"><Loader2 className="size-4 animate-spin" />Carregando todos os dias do atendimento...</p>
               ) : null}
 
               <div data-schedule-detail-card="service" className="rounded-2xl border p-4 md:col-span-2">
@@ -692,24 +732,39 @@ export function ScheduleDetailsDialog({
                   <Sparkles className="h-4 w-4 text-primary" />
                   Serviço
                 </div>
-                <p className="text-sm text-foreground">{schedule.serviceTypeName}</p>
+                <p className="text-sm text-foreground">{[...new Set(groupRecords.map((visit) => visit.serviceTypeName))].join(" • ")}</p>
               </div>
 
-              <div data-schedule-detail-card="scheduled-date" className="rounded-2xl border p-4">
+              <div data-schedule-detail-card="scheduled-date" className={cn("rounded-2xl border p-4", isGroup && "md:col-span-2")}>
                 <div className="mb-2 flex items-center gap-2 text-sm font-medium">
                   <CalendarDays className="h-4 w-4 text-primary" />
-                  Data
+                  {isGroup ? "Dias do atendimento" : "Data"}
                 </div>
-                <p className="text-sm text-muted-foreground">{formatScheduleDate(schedule.date)}</p>
+                {isGroup ? (
+                  <ol aria-label="Dias do atendimento" className="divide-y">
+                    {visits.map((visit, index) => (
+                      <li key={visit.id} className="flex flex-wrap items-start justify-between gap-2 py-3 text-sm first:pt-0 last:pb-0">
+                        <div>
+                          <p className="font-medium">Dia {visit.multiDayIndex || index + 1} · {formatScheduleDate(visit.date)}</p>
+                          <p className="mt-1 text-muted-foreground">{visit.time || "Sem horário"} · {formatExactScheduleDuration(visit.duration)}</p>
+                          {visit.completionStartTime && visit.completionEndTime ? (
+                            <p className="mt-1 text-muted-foreground">Executado de {visit.completionStartTime} a {visit.completionEndTime}</p>
+                          ) : null}
+                        </div>
+                        <Badge className={STATUS_BADGE_CLASSES[visit.status]}>{getStatusLabel(visit.status)}</Badge>
+                      </li>
+                    ))}
+                  </ol>
+                ) : <p className="text-sm text-muted-foreground">{formatScheduleDate(schedule.date)}</p>}
               </div>
 
-              <div data-schedule-detail-card="scheduled-time" className="rounded-2xl border p-4">
+              <div data-schedule-detail-card="scheduled-time" className={cn("rounded-2xl border p-4", isGroup && "md:col-span-2")}>
                 <div className="mb-2 flex items-center gap-2 text-sm font-medium">
                   <Clock3 className="h-4 w-4 text-primary" />
-                  Horário e duração
+                  {isGroup ? "Duração total do agendamento" : "Horário e duração"}
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  {schedule.time || "Sem horário"} • {formatConfiguredScheduleDuration(schedule)}
+                  {isGroup ? <>{groupDays} dias{hasEveryVisit ? ` • ${formatExactScheduleDuration(totalMinutes)} previstas` : ""}</> : <>{schedule.time || "Sem horário"} • {formatConfiguredScheduleDuration(schedule)}</>}
                 </p>
               </div>
 

@@ -2,7 +2,7 @@
 import { multiDayDateValues, multiDayTimeValues, multiDayDurationValues } from "@/components/agendamentos/multi-day-date-fields"
 import { PartialCompletionAction } from "@/components/agendamentos/partial-completion-action"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { getScheduleForUploadRecovery, PendingScheduleUploadError, remainingScheduleUploads } from "@/lib/schedule-upload"
 import { ArrowLeft, Pencil } from "lucide-react"
@@ -29,6 +29,7 @@ import {
   cancelScheduleAttendance,
   deleteScheduleNa,
   getScheduleById,
+  getScheduleForEditing,
   listScheduleCompletionEmployees,
   renameScheduleNa,
   startSchedule,
@@ -79,6 +80,8 @@ export function ScheduleShortcutDialog({
   const [showInformation, setShowInformation] = useState(false)
   const [cancelAttendanceOpen, setCancelAttendanceOpen] = useState(false)
   const [editorOpen, setEditorOpen] = useState(false)
+  const [editingSchedule, setEditingSchedule] = useState<ScheduleRecord | null>(null)
+  const editRequestRef = useRef(0)
   const [isEditingExecution, setIsEditingExecution] = useState(false)
   const [completionStep, setCompletionStep] = useState<CompletionStep>("attachments")
   const [completionStartDate, setCompletionStartDate] = useState("")
@@ -116,16 +119,20 @@ export function ScheduleShortcutDialog({
   }, [])
 
   useEffect(() => {
+    editRequestRef.current++
     if (!schedule) return
     setShowInformation(false)
     setEditorOpen(false)
+    setEditingSchedule(null)
     setIsEditingExecution(false)
     if (schedule.status === "in_progress") prepareCompletion(schedule)
+    setShowInformation(Boolean(schedule.multiDayGroupId && Number(schedule.multiDayTotal) > 1))
   }, [prepareCompletion, schedule?.id])
 
   const invalidateSchedules = async () => {
     await queryClient.invalidateQueries({ queryKey: ["emergency-usage"] })
     await queryClient.invalidateQueries({ queryKey: ["schedules"] })
+    await queryClient.invalidateQueries({ queryKey: ["schedule"] })
     await queryClient.invalidateQueries({ queryKey: ["analytics"] })
   }
   const canOpenCompletion = Boolean(schedule && canAccessScheduleCompletion(schedule, currentUser))
@@ -136,7 +143,7 @@ export function ScheduleShortcutDialog({
   const canEdit = Boolean(
     schedule &&
     schedule.status !== "cancelled" &&
-    (schedule.status !== "completed" || canManageLockedSchedules) &&
+    (schedule.status !== "completed" || canManageLockedSchedules || (canManageAgenda && schedule.multiDayGroupId && Number(schedule.multiDayTotal) > 1)) &&
     (canManageAgenda || canManageScheduleStatus),
   )
 
@@ -450,9 +457,10 @@ export function ScheduleShortcutDialog({
         onOpenChange={(open) => {
           if (!open) setEditorOpen(false)
         }}
-        editingSchedule={schedule}
+        editingSchedule={editingSchedule ?? schedule}
         onSubmit={(formData) => {
-          if (schedule) saveMutation.mutate({ target: schedule, formData })
+          const target = editingSchedule ?? schedule
+          if (target) saveMutation.mutate({ target, formData })
         }}
         clients={clients}
         serviceTypes={services}
@@ -460,6 +468,7 @@ export function ScheduleShortcutDialog({
         employees={employees}
         canManageStatus={canManageScheduleStatus}
         canEditDetails={canManageAgenda}
+        canEditLocked={canManageLockedSchedules}
         isSubmitting={saveMutation.isPending}
       />
 
@@ -487,13 +496,29 @@ export function ScheduleShortcutDialog({
         canStartOutsideScheduledDate={canManageAgenda}
         canReschedule={false}
         canEdit={canEdit}
-        onEdit={() => setEditorOpen(true)}
+        onEdit={async () => {
+          if (!schedule) return
+          const request = ++editRequestRef.current
+          try {
+            const target = canManageAgenda ? await getScheduleForEditing(schedule) : schedule
+            if (request !== editRequestRef.current) return
+            if (!canManageLockedSchedules && target.visits?.every((visit) => visit.status === "completed")) {
+              toast.error("Todos os dias estão concluídos. É necessária permissão para editar atendimentos bloqueados.")
+              return
+            }
+            setEditingSchedule(target)
+            setEditorOpen(true)
+          } catch (error) {
+            toast.error(getApiErrorMessage(error, "Não foi possível carregar o atendimento completo."))
+          }
+        }}
         canEditExecution={canEditCompletedExecution}
         onEditExecution={() => {
           if (!schedule || !canEditCompletedExecution) return
           setIsEditingExecution(true)
           prepareCompletion(schedule, "checkout")
         }}
+        onOpenAttendance={canOpenCompletion ? () => setShowInformation(false) : undefined}
         onBack={showInformation ? () => setShowInformation(false) : undefined}
         backLabel="Voltar para anexos do atendimento"
         onStartAttendance={async (target) => {

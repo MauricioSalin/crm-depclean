@@ -51,6 +51,7 @@ export type ScheduleRecord = {
   multiDayIndex?: number
   multiDayTotal?: number
   remainingRecurringVisits?: Array<{ date: string; time: string; duration: number }>
+  visits?: ScheduleRecord[]
   isManual: boolean
   isClientDelinquent: boolean
   clientId: string
@@ -204,6 +205,26 @@ export async function exportSchedules(params?: {
 export async function getScheduleById(id: string, options?: { timeout: number }) {
   const response = await api.get<{ success: true; data: ScheduleRecord }>(`/schedules/${id}`, options)
   return response.data
+}
+
+export async function getScheduleForEditing(schedule: ScheduleRecord) {
+  if (!schedule.multiDayGroupId || Number(schedule.multiDayTotal) <= 1) return schedule
+  const { data } = await getScheduleById(schedule.id)
+  const visits = data.visits?.filter((visit) => visit.status !== "cancelled")
+    .sort((left, right) => Number(left.multiDayIndex) - Number(right.multiDayIndex))
+  const first = visits?.[0]
+  if (!first || Number(first.multiDayIndex) !== 1 || visits.length !== Number(first.multiDayTotal)) {
+    throw new Error("Não foi possível carregar todos os dias do atendimento. Atualize a agenda e tente novamente.")
+  }
+  return {
+    ...first,
+    visits,
+    remainingRecurringVisits: undefined,
+    multiDayTotal: visits.length,
+    multiDayDates: visits.map((visit) => visit.date),
+    multiDayTimes: visits.map((visit) => visit.time || "08:00"),
+    multiDayDurations: visits.map((visit) => visit.duration),
+  }
 }
 
 export async function listScheduleCompletionEmployees() {

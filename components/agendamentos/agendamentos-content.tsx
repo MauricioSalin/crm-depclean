@@ -39,6 +39,7 @@ import {
   deleteSchedule,
   exportSchedules,
   getScheduleById,
+  getScheduleForEditing,
   listScheduleCompletionEmployees,
   listSchedules,
   reactivateSchedule,
@@ -66,6 +67,7 @@ import {
   formatDailyServiceCapacityViolation,
   getScheduleConflictResourceNames,
   getDailyServiceCapacityViolation,
+  getScheduleEditAvailabilityForm,
 } from "@/lib/schedule-availability"
 import { canAccessScheduleCompletion, canStartSchedule } from "@/lib/schedule-permissions"
 import { cacheSavedSchedule } from "@/lib/schedule-query-cache"
@@ -167,9 +169,10 @@ function canCancelSchedule(schedule: Pick<ScheduleRecord, "status">) {
   return !["in_progress", "completed", "cancelled"].includes(schedule.status)
 }
 
-function canEditSchedule(schedule: Pick<ScheduleRecord, "status">, canManageLockedSchedules: boolean) {
+function canEditSchedule(schedule: Pick<ScheduleRecord, "status" | "multiDayGroupId" | "multiDayTotal" | "visits">, canManageLockedSchedules: boolean) {
   if (schedule.status === "cancelled") return false
-  if (schedule.status === "completed") return canManageLockedSchedules
+  if (schedule.status === "completed") return canManageLockedSchedules || Boolean(schedule.multiDayGroupId && Number(schedule.multiDayTotal) > 1 &&
+    (schedule.visits?.some((visit) => !["completed", "cancelled"].includes(visit.status)) ?? true))
   return true
 }
 
@@ -508,6 +511,7 @@ export function AgendamentosContent({
   const [completionFiles, setCompletionFiles] = useState<File[]>([])
   const [pendingDelete, setPendingDelete] = useState<ScheduleRecord | null>(null)
   const scheduleDialogResetTimeoutRef = useRef<number | null>(null)
+  const scheduleEditRequestRef = useRef(0)
   const [currentUser, setCurrentUser] = useState<ReturnType<typeof getStoredUser>>(null)
   const canManageAgenda = hasAnyPermission(currentUser, ["agenda_manage"])
   const canCancelAttendance = hasAnyPermission(currentUser, ["agenda_manage", "settings_manage"])
@@ -588,7 +592,7 @@ export function AgendamentosContent({
   }, [canEditCompletedExecution])
 
   const openSchedule = useCallback((schedule: ScheduleRecord) => {
-    if (canAccessScheduleCompletion(schedule, currentUser)) {
+    if (!(schedule.multiDayGroupId && Number(schedule.multiDayTotal) > 1) && canAccessScheduleCompletion(schedule, currentUser)) {
       openCompletionDialog(schedule)
       return
     }
@@ -691,6 +695,7 @@ export function AgendamentosContent({
   }
 
   function closeScheduleDialog() {
+    scheduleEditRequestRef.current++
     setIsDialogOpen(false)
     clearScheduleDialogResetTimeout()
     scheduleDialogResetTimeoutRef.current = window.setTimeout(() => {
@@ -714,6 +719,7 @@ export function AgendamentosContent({
   const invalidateSchedules = async () => {
     await queryClient.invalidateQueries({ queryKey: ["emergency-usage"] })
     await queryClient.invalidateQueries({ queryKey: ["schedules"] })
+    await queryClient.invalidateQueries({ queryKey: ["schedule"] })
     await queryClient.invalidateQueries({ queryKey: ["notifications"] })
     await queryClient.invalidateQueries({ queryKey: ["certificates"] })
     await queryClient.invalidateQueries({ queryKey: ["analytics"] })
@@ -1217,31 +1223,33 @@ export function AgendamentosContent({
       return
     }
 
-    const capacityViolation = getDailyServiceCapacityViolation({
+    const validationForm = getScheduleEditAvailabilityForm({
+      ...formData,
+      multiDayDates: formData.durationType === "days" && formData.duration > 1 ? multiDayDateValues(formData.date, formData.duration, formData.multiDayDates) : undefined,
+      multiDayTimes: formData.durationType === "days" && formData.duration > 1 ? multiDayTimeValues(formData.time, formData.duration, formData.multiDayTimes) : undefined,
+      multiDayDurations: formData.durationType === "days" && formData.duration > 1 ? multiDayDurationValues(formData.duration, formData.multiDayDurations) : undefined,
+    }, editingSchedule)
+    const capacityViolation = validationForm ? getDailyServiceCapacityViolation({
       schedules: editingSchedule?.multiDayGroupId ? schedules.filter((item) => item.multiDayGroupId !== editingSchedule.multiDayGroupId) : schedules,
       ignoreScheduleId: scheduleId,
       serviceTypeIds: formData.serviceTypeIds,
       serviceTypes: services,
-      date: formData.date,
-      time: formData.time,
-      multiDayDates: formData.durationType === "days" && formData.duration > 1 ? multiDayDateValues(formData.date, formData.duration, formData.multiDayDates) : undefined,
-      multiDayDurations: formData.durationType === "days" && formData.duration > 1 ? multiDayDurationValues(formData.duration, formData.multiDayDurations) : undefined,
-      multiDayTimes: formData.durationType === "days" && formData.duration > 1 ? multiDayTimeValues(formData.time, formData.duration, formData.multiDayTimes) : undefined,
-      durationMinutes: scheduleDurationToMinutes(formData.duration, formData.durationType),
-      durationType: formData.durationType,
-    })
+      ...validationForm,
+      durationMinutes: scheduleDurationToMinutes(validationForm.duration, validationForm.durationType),
+    }) : null
     if (capacityViolation) {
       toast.error(formatDailyServiceCapacityViolation(capacityViolation, services))
       return
     }
 
-    const availability = checkScheduleAvailability({
+    const availability = validationForm ? checkScheduleAvailability({
       schedules: editingSchedule?.multiDayGroupId ? schedules.filter((item) => item.multiDayGroupId !== editingSchedule.multiDayGroupId) : schedules,
       teams,
-      formData: { ...formData, multiDayDates: formData.durationType === "days" && formData.duration > 1 ? multiDayDateValues(formData.date, formData.duration, formData.multiDayDates) : undefined, multiDayDurations: formData.durationType === "days" && formData.duration > 1 ? multiDayDurationValues(formData.duration, formData.multiDayDurations) : undefined, multiDayTimes: formData.durationType === "days" && formData.duration > 1 ? multiDayTimeValues(formData.time, formData.duration, formData.multiDayTimes) : undefined },
+      formData: validationForm,
       ignoreScheduleId: scheduleId,
       mode: "manual",
-    })
+      suggestAlternative: !editingSchedule?.visits?.some((visit) => visit.status === "completed"),
+    }) : { available: true as const, requested: { date: formData.date, time: formData.time } }
 
     if (!availability.available) {
       const conflictingResources = getScheduleConflictResourceNames(availability.conflict, {
@@ -1266,15 +1274,28 @@ export function AgendamentosContent({
     })
   }
 
-  const openEditSchedule = (schedule: ScheduleRecord) => {
+  const openEditSchedule = async (schedule: ScheduleRecord) => {
     if (!canOpenScheduleEditor) return
     if (canManageAgenda && !canEditSchedule(schedule, canManageLockedSchedules)) return
+    const request = ++scheduleEditRequestRef.current
+    let editing = schedule
+    try {
+      if (canManageAgenda) editing = await getScheduleForEditing(schedule)
+      if (request !== scheduleEditRequestRef.current) return
+      if (canManageAgenda && !canEditSchedule(editing, canManageLockedSchedules)) {
+        toast.error("Todos os dias estão concluídos. É necessária permissão para editar atendimentos bloqueados.")
+        return
+      }
+    } catch (error) {
+      if (request === scheduleEditRequestRef.current) toast.error(getApiErrorMessage(error, "Não foi possível carregar o atendimento completo."))
+      return
+    }
 
     clearScheduleDialogResetTimeout()
     setSelectedSchedule(null)
     setCancelTarget(null)
     resetCompletionDialog()
-    setEditingSchedule(schedule)
+    setEditingSchedule(editing)
     window.setTimeout(() => setIsDialogOpen(true), 0)
   }
 
@@ -1308,6 +1329,7 @@ export function AgendamentosContent({
         employees={employees}
         canManageStatus={canManageScheduleStatus}
         canEditDetails={canManageAgenda}
+        canEditLocked={canManageLockedSchedules}
         isSubmitting={saveMutation.isPending}
       />
 
@@ -1315,6 +1337,7 @@ export function AgendamentosContent({
         open={!!detailsSchedule}
         onOpenChange={(open) => {
           if (!open) {
+            scheduleEditRequestRef.current++
             if (completionInfoOpen) {
               closeCompletionDialog()
             } else {
@@ -1346,6 +1369,7 @@ export function AgendamentosContent({
         onEditExecution={() => {
           if (detailsSchedule) openExecutionEditDialog(detailsSchedule)
         }}
+        onOpenAttendance={detailsSchedule && canAccessScheduleCompletion(detailsSchedule, currentUser) ? () => openCompletionDialog(detailsSchedule) : undefined}
         onBack={completionInfoOpen ? () => setCompletionInfoOpen(false) : undefined}
         backLabel="Voltar para anexos do atendimento"
         onStartAttendance={async (schedule) => {

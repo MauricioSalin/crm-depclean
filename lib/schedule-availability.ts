@@ -17,6 +17,22 @@ type AvailabilityFormData = {
   isEmergency?: boolean
 }
 
+export function getScheduleEditAvailabilityForm(formData: AvailabilityFormData, schedule?: ScheduleRecord | null): AvailabilityFormData | null {
+  if (!schedule?.visits?.length || !formData.multiDayDates?.length) return formData
+  const indexes = formData.multiDayDates.map((date, index) => ({ date, index })).filter(({ date, index }) => {
+    const visit = schedule.visits!.find((item) => item.date === date)
+    return visit?.status !== "completed" ||
+      (formData.multiDayTimes?.[index] || formData.time) !== visit.time ||
+      formData.multiDayDurations?.[index] !== visit.duration
+  }).map(({ index }) => index)
+  if (!indexes.length) return null
+  const dates = indexes.map((index) => formData.multiDayDates![index])
+  const times = indexes.map((index) => formData.multiDayTimes?.[index] || formData.time)
+  const durations = indexes.map((index) => formData.multiDayDurations?.[index] ?? DAY_DURATION_MINUTES)
+  return { ...formData, date: dates[0], time: times[0], duration: indexes.length, durationType: "days",
+    multiDayDates: dates, multiDayTimes: times, multiDayDurations: durations }
+}
+
 type AvailabilityResult = {
   available: boolean
   requested: {

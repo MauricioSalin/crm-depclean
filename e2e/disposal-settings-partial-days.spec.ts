@@ -61,6 +61,9 @@ test("edita duas visitas parciais do Bom Princípio e preserva as horas ao reabr
       return route.fulfill({ json: { success: true, data: main } })
     }
     if (route.request().method() === "GET" && path.endsWith("/schedules")) return route.fulfill({ json: { success: true, data: [main, external] } })
+    if (route.request().method() === "GET" && path.endsWith("/bom")) return route.fulfill({ json: { success: true, data: { ...main, visits: [main, {
+      ...main, id: "bom-day-2", date: main.multiDayDates[1], time: main.multiDayTimes[1], duration: main.multiDayDurations[1], multiDayIndex: 2,
+    }] } } })
     return route.fallback()
   })
   await page.goto("/agendamentos")
@@ -91,14 +94,14 @@ test("divide a duração de uma visita em dois dias usando os campos existentes"
   await installApiMock(page)
   const anchor = {
     ...scheduleFixture, id: "vivaz-10", clientName: "Vivaz Ecoville", multiDayGroupId: "vivaz",
-    multiDayIndex: 2, multiDayTotal: 3, date: "2026-11-10", time: "08:00", duration: 480, durationValue: 1,
+    multiDayIndex: 1, multiDayTotal: 2, date: "2026-11-10", time: "08:00", duration: 480, durationValue: 1,
     durationType: "days", status: "in_progress", billable: false, teams: [], additionalEmployees: [],
     remainingRecurringVisits: [
       { date: "2026-11-10", time: "08:00", duration: 480 },
       { date: "2026-11-12", time: "08:00", duration: 240 },
     ],
   }
-  const later = { ...anchor, id: "vivaz-12", date: "2026-11-12", multiDayIndex: 3, duration: 240, durationType: "hours", durationValue: 4, status: "scheduled" }
+  const later = { ...anchor, id: "vivaz-12", date: "2026-11-12", multiDayIndex: 2, duration: 240, durationType: "hours", durationValue: 4, status: "scheduled" }
   const external = { ...later, id: "external", clientName: "Outro cliente", multiDayGroupId: "", duration: 720, durationValue: 12 }
   let saved: Record<string, unknown> | null = null
   await page.route("**/api/v1/services**", (route) => route.fulfill({ json: { success: true, data: [{ ...serviceFixture, dailyScheduleLimitHours: 16 }] } }))
@@ -109,6 +112,7 @@ test("divide a duração de uma visita em dois dias usando os campos existentes"
       return route.fulfill({ json: { success: true, data: anchor } })
     }
     if (route.request().method() === "GET" && path.endsWith("/schedules")) return route.fulfill({ json: { success: true, data: [anchor, later, external] } })
+    if (route.request().method() === "GET" && path.endsWith("/vivaz-10")) return route.fulfill({ json: { success: true, data: { ...anchor, visits: [anchor, later] } } })
     return route.fallback()
   })
   await page.goto("/agendamentos")
