@@ -21,6 +21,7 @@ import {
 } from "@/lib/api/templates"
 import { Skeleton } from "@/components/ui/skeleton"
 import { DOCX_EDITOR_PT_BR } from "@/lib/docx-editor-pt-br"
+import { prepareSchedulePreviewContext, renderSchedulePreviewXml } from "@/lib/template-schedule-preview"
 
 type DocxEditorHandleLike = {
   focus?: () => void
@@ -1584,25 +1585,13 @@ async function replaceDocxTemplateVariables(buffer: ArrayBuffer, variables: Reco
     fileName,
     xml: await zip.file(fileName)!.async("text"),
   })))
-  const usesDetailedDates = entries.some(({ xml }) => /\{\{\s*schedule\.datesText\s*\}\}/.test(xml.replace(/<[^>]+>/g, "")))
-  const useLegacyDates = Boolean(variables["schedule.legacyDateText"]) && !usesDetailedDates
-  const previewVariables = useLegacyDates ? {
-    ...variables,
-    "schedule.date": variables["schedule.legacyDateText"],
-    "schedule.time": variables["schedule.legacyTimeText"] || variables["schedule.time"],
-  } : variables
+  const scheduleContext = prepareSchedulePreviewContext(variables, entries.map(({ xml }) => xml))
+  const previewVariables = scheduleContext.variables
 
   await Promise.all(
     entries.map(async ({ fileName, xml: sourceXml }) => {
-      let xml = sourceXml
-      let changed = false
-      if (useLegacyDates && previewVariables["schedule.date"] !== variables["schedule.date"]) {
-        xml = xml.replace(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/g, (paragraph) =>
-          /\{\{\s*schedule\.date\s*\}\}/.test(getDocxParagraphText(paragraph))
-            ? paragraph.replace(buildDocxTokenRegex("no dia"), "nos dias")
-            : paragraph)
-        changed = xml !== sourceXml
-      }
+      let xml = renderSchedulePreviewXml(sourceXml, scheduleContext)
+      let changed = xml !== sourceXml
 
       for (const [path, rawValue] of Object.entries(previewVariables)) {
         if (rawValue === "") continue

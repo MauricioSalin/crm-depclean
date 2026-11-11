@@ -4,7 +4,8 @@
   "private": true,
   "packageManager": "pnpm@10.32.1",
   "scripts": {
-    "build": "next build",
+    "build": "pnpm run test:informative-preview && next build",
+    "test:informative-preview": "node --experimental-strip-types --test scripts/informative-preview.test.mjs",
     "dev": "next dev --hostname 0.0.0.0 -p 3100",
     "lint": "eslint .",
     "start": "next start -p 3100",

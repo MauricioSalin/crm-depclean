@@ -66,6 +66,7 @@ import { BRASILIA_TIME_ZONE, formatCivilDate, formatCivilLongDate, parseCivilDat
 import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 import { cn, formatContractNumber } from "@/lib/utils"
+import { buildTemplateSchedulePreviewOptions } from "@/lib/template-schedule-preview"
 
 export type ContractTemplate = TemplateRecord
 
@@ -735,38 +736,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
   const previewClient = clients.find((client) => client.id === previewClientId)
   const previewContracts = contracts.filter((contract) => contract.clientId === previewClientId)
   const previewSchedules = schedules.filter((schedule) => schedule.clientId === previewClientId)
-  const informativeVisits = new Map<string, ScheduleRecord[]>()
-  if (kind !== "contract") {
-    for (const schedule of previewSchedules) {
-      if (kind === "informative"
-        ? !["draft", "scheduled", "rescheduled", "in_progress"].includes(schedule.status)
-        : schedule.status === "cancelled") continue
-      const key = schedule.multiDayGroupId
-        ? `group:${schedule.unitId}:${schedule.multiDayGroupId}`
-        : `schedule:${schedule.id}`
-      const visits = informativeVisits.get(key) ?? []
-      visits.push(schedule)
-      informativeVisits.set(key, visits)
-    }
-  }
-  const informativePreviewOptions = [...informativeVisits.values()].map((visits) => {
-    visits.sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time))
-    const first = visits[0]!
-    const dates = visits.length === 1 && first.multiDayDates?.length && !first.multiDayGroupId
-      ? first.multiDayDates.map((date, index) => ({ date, time: first.multiDayTimes?.[index] || first.time }))
-      : visits.map(({ date, time }) => ({ date, time }))
-    const formatter = new Intl.ListFormat("pt-BR")
-    const timeValues = dates.map(({ time }) => (time || "08:00").replace(":00", "h"))
-    return {
-      value: first.id,
-      label: `${dates.map(({ date }) => formatDate(date)).join(" e ")} - ${first.serviceTypeName} - ${first.unitName}`,
-      dateText: formatter.format([...new Set(dates.map(({ date }) => formatDate(date)))]),
-      timeText: new Set(timeValues).size === 1 ? timeValues[0] : formatter.format(dates.map(({ date }, index) => `${timeValues[index]} em ${formatDate(date)}`)),
-      datesText: kind === "certificate"
-        ? new Intl.ListFormat("pt-BR").format(dates.map(({ date }) => formatDate(date)))
-        : dates.map(({ date, time }) => `${formatDate(date)} - ${time || "08:00"}`).join("\n"),
-    }
-  })
+  const informativePreviewOptions = buildTemplateSchedulePreviewOptions(previewSchedules, kind, formatDate)
   const activeEmployeeOptions = employees
     .filter((employee) => employee.status === "active")
     .map((employee) => ({ value: employee.id, label: employee.name }))
