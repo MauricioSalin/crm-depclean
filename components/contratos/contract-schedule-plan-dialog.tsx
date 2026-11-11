@@ -3,12 +3,14 @@ import { MultiDayDateFields, multiDayDateValues, multiDayTimeValues } from "@/co
 
 import { Fragment, useEffect, useMemo, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { CalendarClock, Clock3, Download, Loader2, Plus, RotateCcw, Save, Trash2 } from "lucide-react"
+import { ArrowLeft, CalendarClock, Clock3, Download, ListPlus, Loader2, Plus, RotateCcw, Save, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
+import { ScheduleRecordsList, ScheduleRecordStatus } from "@/components/agendamentos/schedule-records-list"
 import { Button } from "@/components/ui/button"
 import { DatePicker } from "@/components/ui/date-picker"
+import { useIsMobile } from "@/hooks/use-mobile"
 import { NumericInput } from "@/components/ui/numeric-input"
 import {
   Dialog,
@@ -31,10 +33,10 @@ import {
 } from "@/lib/api/contracts"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import type { EmployeeRecord } from "@/lib/api/employees"
-import type { ScheduleRecord } from "@/lib/api/schedules"
+import { listSchedules, type ScheduleRecord } from "@/lib/api/schedules"
 import type { ServiceRecord } from "@/lib/api/services"
 import type { TeamRecord } from "@/lib/api/teams"
-import { parseCivilDate, toCivilDateKey } from "@/lib/date-utils"
+import { formatCivilDate, parseCivilDate, toCivilDateKey } from "@/lib/date-utils"
 import {
   checkScheduleAvailability,
   formatDailyServiceCapacityViolation,
@@ -73,9 +75,9 @@ const cloneItems = (items: ScheduleRecord[]) => items.map((item) => {
 
   return {
     ...item,
-    duration: normalizedDuration.durationMinutes,
-    durationValue: normalizedDuration.durationValue,
-    durationType: normalizedDuration.durationType,
+    duration: item.existingExecutionId || item.executionEndDate ? item.duration : normalizedDuration.durationMinutes,
+    durationValue: item.existingExecutionId || item.executionEndDate ? item.durationValue : normalizedDuration.durationValue,
+    durationType: item.existingExecutionId || item.executionEndDate ? item.durationType : normalizedDuration.durationType,
     teams: [...item.teams],
     additionalEmployees: [...item.additionalEmployees],
     serviceTypeIds: [...item.serviceTypeIds],
@@ -93,14 +95,17 @@ const isWeekendDateKey = (dateKey: string) => {
 const toPayload = (items: ScheduleRecord[]) => ({
   items: items.map((item) => ({
     id: item.id,
+    executionEndDate: item.executionEndDate,
+    executionEndTime: item.executionEndTime,
+    existingExecutionId: item.existingExecutionId,
     contractServiceId: item.contractServiceId ?? "",
     contractServiceIds: item.contractServiceIds,
-    multiDayDates: item.durationType === "days" && Number(item.durationValue) > 1 ? multiDayDateValues(item.date, Number(item.durationValue), item.multiDayDates) : [],
-    multiDayTimes: item.durationType === "days" && Number(item.durationValue) > 1 ? multiDayTimeValues(item.time, Number(item.durationValue), item.multiDayTimes) : [],
+    multiDayDates: !item.existingExecutionId && item.durationType === "days" && Number(item.durationValue) > 1 ? multiDayDateValues(item.date, Number(item.durationValue), item.multiDayDates) : [],
+    multiDayTimes: !item.existingExecutionId && item.durationType === "days" && Number(item.durationValue) > 1 ? multiDayTimeValues(item.time, Number(item.durationValue), item.multiDayTimes) : [],
     date: item.date,
     time: item.time,
-    durationValue: Number(item.durationValue ?? 1),
-    durationType: item.durationType ?? "hours",
+    durationValue: item.existingExecutionId ? Math.max(1, Math.round(item.duration)) : Number(item.durationValue ?? 1),
+    durationType: item.existingExecutionId ? "minutes" as const : item.durationType ?? "hours",
     teamIds: item.teams.map((team) => team.id),
     additionalEmployeeIds: item.additionalEmployees.map((employee) => employee.id),
   })),
@@ -126,7 +131,9 @@ export function ContractSchedulePlanDialog({
   teams,
   employees,
 }: ContractSchedulePlanDialogProps) {
+  const isMobile = useIsMobile()
   const queryClient = useQueryClient()
+  const [context, setContext] = useState<"plan" | "insert">("plan")
   const [items, setItems] = useState<ScheduleRecord[]>([])
   const [generatedItems, setGeneratedItems] = useState<ScheduleRecord[]>([])
   const [editingAssigneeId, setEditingAssigneeId] = useState<string | null>(null)
@@ -139,12 +146,20 @@ export function ContractSchedulePlanDialog({
     enabled: open,
     staleTime: 0,
   })
+  const insertQuery = useQuery({
+    queryKey: ["schedules", "contract-insertion", contract.clientId],
+    queryFn: () => listSchedules({}),
+    enabled: open && context === "insert",
+    staleTime: 0,
+  })
+  const insertRecords = (insertQuery.data?.data ?? []).filter((schedule) => schedule.clientId === contract.clientId)
 
   useEffect(() => {
     if (!open) {
       initializedPlanKeyRef.current = null
       setEditingAssigneeId(null)
       setEditingServicesId(null)
+      setContext("plan")
       return
     }
     if (!planQuery.data?.data.items || initializedPlanKeyRef.current === contract.id) return
@@ -198,6 +213,7 @@ export function ContractSchedulePlanDialog({
   }
 
   const canApplyAssignment = (item: ScheduleRecord, teamIds: string[], employeeIds: string[]) => {
+    if (item.executionEndDate !== undefined) return true
     const availability = checkScheduleAvailability({
       schedules: availabilitySchedules,
       teams,
@@ -323,8 +339,7 @@ export function ContractSchedulePlanDialog({
       : undefined
   }
 
-  const updateItemServices = (contractServiceIds: string[]) => {
-    if (!editingServices) return
+  const configureItemServices = (target: ScheduleRecord, contractServiceIds: string[]) => {
     if (contractServiceIds.length === 0) {
       toast.error("O agendamento deve manter ao menos um serviço.")
       return
@@ -358,7 +373,7 @@ export function ContractSchedulePlanDialog({
     const primary = selectedOptions.find((option) => option.contractService.serviceTypeId !== ROUTINE_VISIT_SERVICE_ID)
       ?? selectedOptions[0]!
     const changedItem: ScheduleRecord = {
-      ...editingServices,
+      ...target,
       contractServiceId: primary.contractService.id,
       contractServiceIds,
       serviceTypeId: primary.contractService.serviceTypeId,
@@ -377,11 +392,17 @@ export function ContractSchedulePlanDialog({
       duration: packageDuration.durationMinutes,
       durationValue: packageDuration.durationValue,
       durationType: packageDuration.durationType,
-      time: packageDuration.durationMinutes >= WORKDAY_DURATION_MINUTES ? "08:00" : editingServices.time,
+      time: packageDuration.durationMinutes >= WORKDAY_DURATION_MINUTES ? "08:00" : target.time,
     }
     const times = availableTimes(changedItem, changedItem.date)
     changedItem.time = times.includes(changedItem.time) ? changedItem.time : times[0] ?? changedItem.time
-    updateItem(editingServices.id, changedItem)
+    return changedItem
+  }
+
+  const updateItemServices = (contractServiceIds: string[]) => {
+    if (!editingServices) return
+    const changed = configureItemServices(editingServices, contractServiceIds)
+    if (changed) updateItem(editingServices.id, changed)
   }
 
   const addItem = () => {
@@ -435,21 +456,98 @@ export function ContractSchedulePlanDialog({
   const isPublished = Boolean(planQuery.data?.data.isPublished)
   const editingDisabled = busy || isPublished
   const hasIncompleteItems = items.some((item) => !item.date || !item.time ||
-    (item.durationType === "days" && Number(item.durationValue) > 1 && multiDayDateValues(item.date, Number(item.durationValue), item.multiDayDates).some((date, index, dates) => !date || (index > 0 && date <= dates[index - 1]))))
+    (!item.existingExecutionId && item.executionEndDate !== undefined && (!item.executionEndDate || !item.executionEndTime)) ||
+    (!item.existingExecutionId && item.durationType === "days" && Number(item.durationValue) > 1 && multiDayDateValues(item.date, Number(item.durationValue), item.multiDayDates).some((date, index, dates) => !date || (index > 0 && date <= dates[index - 1]))))
+
+  const getLinkedContractServices = (schedule: ScheduleRecord) => {
+    const ids = new Set([schedule.serviceTypeId, ...schedule.serviceTypeIds, ...(schedule.serviceItems ?? []).map((service) => service.serviceTypeId)])
+    return contract.services.filter((service) => service.isActive !== false && ids.has(service.serviceTypeId) &&
+      (service.unitIds?.length ? service.unitIds.includes(schedule.unitId) : contract.unitIds.includes(schedule.unitId)))
+  }
+
+  const getInsertDisabledReason = (schedule: ScheduleRecord) => {
+    if (items.some((item) => item.existingExecutionId === schedule.id || (item.existingExecutionId &&
+      schedule.multiDayGroupId && item.multiDayGroupId === schedule.multiDayGroupId))) return "Já inserido neste plano."
+    if (schedule.status !== "completed") return "Disponível após a conclusão."
+    const unavailable = planQuery.data?.data.unavailableExecutionIds ?? []
+    if (unavailable.includes(schedule.id) || (schedule.multiDayGroupId && insertRecords.some((visit) =>
+      visit.multiDayGroupId === schedule.multiDayGroupId && unavailable.includes(visit.id)))) return "Inserido na projeção de outro contrato."
+    if (schedule.multiDayGroupId && Number(schedule.multiDayTotal) > 1) {
+      const visits = insertRecords.filter((visit) => visit.multiDayGroupId === schedule.multiDayGroupId && visit.status !== "cancelled")
+      if (visits.length !== Number(schedule.multiDayTotal) || visits.some((visit) => visit.status !== "completed")) return "Conclua todos os dias do atendimento."
+    }
+    if (schedule.contractId && schedule.contractId !== contract.id) return "Vinculado a outro contrato."
+    if (getLinkedContractServices(schedule).length === 0) return "Serviço ou unidade fora deste contrato."
+    return undefined
+  }
+
+  const insertSchedule = (schedule: ScheduleRecord) => {
+    const reason = getInsertDisabledReason(schedule)
+    if (reason) return toast.error(reason)
+    const services = getLinkedContractServices(schedule)
+    const serviceIds = services.map((service) => service.id)
+    const remaining = new Set(serviceIds)
+    const nextItems: ScheduleRecord[] = []
+    for (const item of items) {
+      const consumed = item.existingExecutionId || item.executionEndDate || item.unitId !== schedule.unitId
+        ? [] : item.contractServiceIds.filter((id) => remaining.has(id))
+      if (!consumed.length) {
+        nextItems.push(item)
+        continue
+      }
+      consumed.forEach((id) => remaining.delete(id))
+      const retained = item.contractServiceIds.filter((id) => !consumed.includes(id))
+      if (retained.length) {
+        const changed = configureItemServices(item, retained)
+        if (!changed) return
+        nextItems.push(changed)
+      }
+    }
+    nextItems.push({
+      ...schedule,
+      id: `${ADDED_PLAN_ITEM_PREFIX}${crypto.randomUUID()}`,
+      existingExecutionId: schedule.id,
+      contractId: contract.id,
+      contractServiceId: serviceIds[0],
+      contractServiceIds: serviceIds,
+    })
+    nextItems.sort((left, right) => left.date.localeCompare(right.date) || left.time.localeCompare(right.time))
+    setItems(nextItems)
+    setContext("plan")
+    toast.success("Atendimento inserido. A primeira ocorrência prevista dos serviços correspondentes foi substituída.")
+  }
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !busy && onOpenChange(nextOpen)}>
-      <DialogContent className="flex max-h-[92dvh] w-[min(96vw,1560px)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-[min(96vw,1560px)]">
+      <DialogContent className={isMobile
+        ? "left-0 top-0 flex h-[100dvh] max-h-none w-screen max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 p-0"
+        : "flex max-h-[92dvh] w-[min(96vw,1560px)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-[min(96vw,1560px)]"}>
+        {context === "insert" ? (
+          <>
+            <DialogHeader className="px-5 pb-4 pt-5">
+              <Button type="button" variant="ghost" size="icon" aria-label="Voltar aos agendamentos previstos" className="absolute left-3 top-3" onClick={() => setContext("plan")}><ArrowLeft className="size-4" /></Button>
+              <DialogTitle className="pl-10">Inserir agendamento</DialogTitle>
+              <DialogDescription className="pt-3">Selecione um atendimento concluído deste cliente para incluí-lo no contrato.</DialogDescription>
+            </DialogHeader>
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5">
+              {insertQuery.isPending ? <p className="flex items-center gap-2 py-5 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />Carregando agendamentos...</p>
+                : insertQuery.isError ? <div className="space-y-3 py-5"><p className="text-sm text-destructive">{getApiErrorMessage(insertQuery.error, "Não foi possível carregar os agendamentos.")}</p><Button variant="outline" onClick={() => insertQuery.refetch()}>Tentar novamente</Button></div>
+                  : <ScheduleRecordsList schedules={insertRecords} onInsert={insertSchedule} getDisabledReason={getInsertDisabledReason} showFilters />}
+            </div>
+            {isMobile ? <DialogFooter className="px-5 py-4 pb-[calc(env(safe-area-inset-bottom)+1rem)]"><Button type="button" variant="outline" className="h-12 w-full rounded-2xl" onClick={() => setContext("plan")}>Voltar</Button></DialogFooter> : null}
+          </>
+        ) : (
+          <>
         <DialogHeader className="px-6 pb-2 pt-5 pr-12">
           <DialogTitle className="flex items-center gap-2">
             <CalendarClock className="h-5 w-5 text-primary" />
             Agendamentos previstos
           </DialogTitle>
           <DialogDescription>
-            Revise os agendamentos gerados a partir da assinatura. A primeira data respeita no mínimo três dias úteis.
+            Revise a previsão ou use Inserir para vincular um atendimento concluído. Os atendimentos vinculados são exibidos com os dados e o status atuais.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="min-h-0 flex-1 px-6 pb-4 pt-0">
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-4 pt-0 sm:px-6">
           {planQuery.isLoading ? (
             <div className="space-y-3">
               {Array.from({ length: 5 }).map((_, index) => <Skeleton key={index} className="h-16 w-full" />)}
@@ -464,7 +562,8 @@ export function ContractSchedulePlanDialog({
             </div>
           ) : (
             <div className="space-y-3">
-              <div className="flex justify-end gap-2">
+              <div className="flex flex-wrap justify-between gap-2 sm:justify-end">
+                <Button type="button" variant="ghost" size="sm" className="gap-2" disabled={editingDisabled} onClick={() => { setContext("insert"); void planQuery.refetch() }}><ListPlus className="size-4" />Inserir</Button>
                 <Button
                   type="button"
                   variant="ghost"
@@ -488,6 +587,16 @@ export function ContractSchedulePlanDialog({
                   Resetar
                 </Button>
               </div>
+              <div className="space-y-3 sm:hidden">
+                {items.filter((item) => item.existingExecutionId || item.executionEndDate).map((item) => (
+                  <div key={item.id} data-inserted-schedule={item.existingExecutionId ?? item.id} className="space-y-3 rounded-xl border bg-primary/5 p-4">
+                    <div className="flex items-start justify-between gap-2"><p className="font-medium">{item.serviceTypeName}</p><ScheduleRecordStatus status={item.status} /></div>
+                    <p className="text-sm">{formatCivilDate(item.date)} às {item.time} · {formatConfiguredScheduleDuration(item)}</p>
+                    <p className="text-sm text-muted-foreground">{item.unitName}</p>
+                    <div className="flex justify-end"><Button type="button" variant="ghost" size="icon" disabled={editingDisabled} aria-label="Remover atendimento do plano" onClick={() => removeItem(item.id)}><Trash2 className="size-4" /></Button></div>
+                  </div>
+                ))}
+              </div>
               <div className="max-h-[min(56dvh,620px)] overflow-auto overscroll-contain">
                 <Table>
                   <TableHeader className="sticky top-0 z-10 bg-background">
@@ -497,12 +606,25 @@ export function ContractSchedulePlanDialog({
                       <TableHead className="min-w-[250px]">Duração</TableHead>
                       <TableHead className="min-w-[220px]">Serviço</TableHead>
                       <TableHead className="min-w-[260px]">Equipes / Funcionários</TableHead>
-                      <TableHead className="w-[72px] text-right">Ações</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="w-28 text-right">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                   {items.map((item) => {
-                    const times = availableTimes(item, item.date)
+                    const times = item.existingExecutionId || item.executionEndDate ? [] : availableTimes(item, item.date)
+                    if (item.existingExecutionId || item.executionEndDate) return (
+                      <TableRow key={item.id} data-inserted-schedule={item.existingExecutionId ?? item.id} className="hidden bg-primary/5 sm:table-row">
+                        <TableCell className="whitespace-nowrap">{formatCivilDate(item.date)}</TableCell>
+                        <TableCell>{item.time}</TableCell>
+                        <TableCell>{formatConfiguredScheduleDuration(item)}</TableCell>
+                        <TableCell>{item.serviceTypeName}</TableCell>
+                        <TableCell>{[...item.teams.map((team) => team.name), ...item.additionalEmployees.map((employee) => employee.name)].join(", ") || "Nenhum"}</TableCell>
+                        <TableCell><ScheduleRecordStatus status={item.status} /></TableCell>
+                        <TableCell className="text-right"><Button type="button" variant="ghost" size="icon" disabled={editingDisabled}
+                          aria-label="Remover atendimento do plano" onClick={() => removeItem(item.id)}><Trash2 className="size-4" /></Button></TableCell>
+                      </TableRow>
+                    )
                     return (
                       <Fragment key={item.id}><TableRow data-schedule-id={item.id} className={item.durationType === "days" && Number(item.durationValue) > 1 ? "border-b-0 hover:bg-transparent" : "hover:bg-transparent"}>
                         <TableCell className="align-top">
@@ -644,7 +766,7 @@ export function ContractSchedulePlanDialog({
                               variant="ghost"
                               size="icon"
                               className="h-7 w-7 shrink-0"
-                              disabled={editingDisabled}
+                              disabled={editingDisabled || Boolean(item.existingExecutionId)}
                               onClick={() => setEditingAssigneeId(item.id)}
                               aria-label={`Adicionar equipes e funcionários ao agendamento de ${item.serviceTypeName}`}
                               title="Adicionar equipes e funcionários"
@@ -653,23 +775,26 @@ export function ContractSchedulePlanDialog({
                             </Button>
                           </div>
                         </TableCell>
+                        <TableCell className="align-top"><ScheduleRecordStatus status={item.status} /></TableCell>
                         <TableCell className="align-top text-right">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            disabled={editingDisabled || items.length <= 1}
-                            aria-label={`Excluir ${item.serviceTypeName} do plano`}
-                            title={items.length <= 1
-                              ? "O plano deve manter ao menos um agendamento."
-                              : `Excluir ${item.serviceTypeName} do plano`}
-                            onClick={() => removeItem(item.id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          <div className="inline-flex items-center gap-1">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              disabled={editingDisabled || items.length <= 1}
+                              aria-label={`Excluir ${item.serviceTypeName} do plano`}
+                              title={items.length <= 1
+                                ? "O plano deve manter ao menos um agendamento."
+                                : `Excluir ${item.serviceTypeName} do plano`}
+                              onClick={() => removeItem(item.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
-                      {item.durationType === "days" && Number(item.durationValue) > 1 ? <TableRow data-schedule-extra-days={item.id} className="hover:bg-transparent"><TableCell colSpan={6} className="px-0 pb-3 pt-0">
+                      {item.durationType === "days" && Number(item.durationValue) > 1 ? <TableRow data-schedule-extra-days={item.id} className="hover:bg-transparent"><TableCell colSpan={7} className="px-0 pb-3 pt-0">
                         <MultiDayDateFields firstDate={item.date} firstTime={item.time} times={item.multiDayTimes} onTimesChange={(multiDayTimes) => updateItem(item.id, { multiDayTimes })} totalDays={Number(item.durationValue)} dates={item.multiDayDates}
                           onChange={(multiDayDates) => updateItem(item.id, { multiDayDates })} disabled={editingDisabled} maxDate={planEndDate} />
                       </TableCell></TableRow> : null}</Fragment>
@@ -708,6 +833,8 @@ export function ContractSchedulePlanDialog({
             </Button>
           </div>
         </DialogFooter>
+          </>
+        )}
       </DialogContent>
 
       <Dialog

@@ -496,7 +496,13 @@ export function ContractDetail({ contractId }: ContractDetailProps) {
   }, [clearServiceClausesCloseTimeout])
 
   useEffect(() => {
-    setHeaderScheduleActionsTarget(document.getElementById("contract-detail-schedule-actions"))
+    const updateTarget = () => {
+      const targets = document.querySelectorAll<HTMLElement>("[data-contract-detail-schedule-actions]")
+      setHeaderScheduleActionsTarget([...targets].find((target) => target.parentElement?.getClientRects().length) ?? null)
+    }
+    updateTarget()
+    window.addEventListener("resize", updateTarget)
+    return () => window.removeEventListener("resize", updateTarget)
   }, [])
 
   const handleServiceClausesOpenChange = (open: boolean) => {

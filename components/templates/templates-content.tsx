@@ -65,7 +65,6 @@ import { useHasAnyPermission } from "@/hooks/use-permissions"
 import { BRASILIA_TIME_ZONE, formatCivilDate, formatCivilLongDate, parseCivilDate } from "@/lib/date-utils"
 import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
-import { resolveScheduleDisplayPeriod } from "@/lib/schedule-display-period"
 import { cn, formatContractNumber } from "@/lib/utils"
 
 export type ContractTemplate = TemplateRecord
@@ -447,6 +446,7 @@ function buildPreviewVariables(params: {
   organizationSettings?: OrganizationSettingsRecord | null
   certificateValidityMonths?: number
   schedule?: ScheduleRecord
+  informativeDatesText?: string
   services: ServiceRecord[]
 }) {
   const { client, clientTypes, contract, employeeCpf, employeeName, employeeRole, kind, organizationSettings, certificateValidityMonths, schedule, services } = params
@@ -601,7 +601,7 @@ function buildPreviewVariables(params: {
   return {
     ...base,
     certificate: {
-      executionDatesText: scheduleDate,
+      executionDatesText: kind === "certificate" ? params.informativeDatesText || scheduleDate : scheduleDate,
       observations: unit?.reservoirProfile?.observations || schedule?.notes || "",
       reservoirRow1Capacity: reservoirRows[0]?.capacityLiters ?? "",
       reservoirRow1Label: reservoirRows[0]?.label ?? "",
@@ -616,9 +616,10 @@ function buildPreviewVariables(params: {
       validityText: formatValidityText(templateValidityMonths),
     },
     schedule: {
-      date: scheduleDate,
+      date: kind === "certificate" ? params.informativeDatesText || scheduleDate : scheduleDate,
       duration: schedule ? `${schedule.duration} min` : "",
       time: scheduleTime,
+      datesText: params.informativeDatesText ?? "",
     },
   }
 }
@@ -730,11 +731,38 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
   const previewClient = clients.find((client) => client.id === previewClientId)
   const previewContracts = contracts.filter((contract) => contract.clientId === previewClientId)
   const previewSchedules = schedules.filter((schedule) => schedule.clientId === previewClientId)
+  const informativeVisits = new Map<string, ScheduleRecord[]>()
+  if (kind !== "contract") {
+    for (const schedule of previewSchedules) {
+      if (schedule.status === "cancelled") continue
+      const key = schedule.multiDayGroupId
+        ? `group:${schedule.unitId}:${schedule.multiDayGroupId}`
+        : `schedule:${schedule.id}`
+      const visits = informativeVisits.get(key) ?? []
+      visits.push(schedule)
+      informativeVisits.set(key, visits)
+    }
+  }
+  const informativePreviewOptions = [...informativeVisits.values()].map((visits) => {
+    visits.sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time))
+    const first = visits[0]!
+    const dates = visits.length === 1 && first.multiDayDates?.length && !first.multiDayGroupId
+      ? first.multiDayDates.map((date, index) => ({ date, time: first.multiDayTimes?.[index] || first.time }))
+      : visits.map(({ date, time }) => ({ date, time }))
+    return {
+      value: first.id,
+      label: `${dates.map(({ date }) => formatDate(date)).join(" e ")} - ${first.serviceTypeName} - ${first.unitName}`,
+      datesText: kind === "certificate"
+        ? new Intl.ListFormat("pt-BR").format(dates.map(({ date }) => formatDate(date)))
+        : dates.map(({ date, time }) => `${formatDate(date)} - ${time || "08:00"}`).join("\n"),
+    }
+  })
   const activeEmployeeOptions = employees
     .filter((employee) => employee.status === "active")
     .map((employee) => ({ value: employee.id, label: employee.name }))
   const selectedPreviewContract = contracts.find((contract) => contract.id === previewDocumentId)
   const selectedPreviewSchedule = schedules.find((schedule) => schedule.id === previewDocumentId)
+  const informativeDatesText = informativePreviewOptions.find((option) => option.value === previewDocumentId)?.datesText
   const templateSigner = employees.find((employee) => employee.id === formData.signerId)
   const previewVariables = useMemo(
     () =>
@@ -749,9 +777,10 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
         organizationSettings,
         certificateValidityMonths: formData.certificateValidityMonths,
         schedule: kind === "contract" ? undefined : selectedPreviewSchedule,
+        informativeDatesText,
         services,
       }),
-    [clientTypes, formData.certificateValidityMonths, kind, organizationSettings, previewClient, selectedPreviewContract, selectedPreviewSchedule, services, templateSigner],
+    [clientTypes, formData.certificateValidityMonths, informativeDatesText, kind, organizationSettings, previewClient, selectedPreviewContract, selectedPreviewSchedule, services, templateSigner],
   )
   const previewDataKey = [
     kind,
@@ -1461,10 +1490,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
                               value: contract.id,
                               label: `${formatContractNumber(contract.contractNumber)} - ${contract.templateName || contract.status}`,
                             }))
-                          : previewSchedules.map((schedule) => ({
-                              value: schedule.id,
-                              label: `${formatDate(resolveScheduleDisplayPeriod(schedule).date)} - ${schedule.serviceTypeName} - ${schedule.unitName}`,
-                            }))
+                          : informativePreviewOptions
                       }
                       placeholder={
                         kind === "contract"
@@ -1474,10 +1500,10 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
                       searchPlaceholder={kind === "contract" ? "Buscar contrato..." : "Buscar agendamento..."}
                       emptyMessage={`Nenhum ${kind === "contract" ? "contrato" : "agendamento"} encontrado.`}
                       includeAll={false}
-                      disabled={kind === "contract" ? previewContracts.length === 0 : previewSchedules.length === 0}
+                      disabled={(kind === "contract" ? previewContracts : informativePreviewOptions).length === 0}
                       className={FORM_SELECT_TRIGGER_CLASS_NAME}
                     />
-                    {(kind === "contract" ? previewContracts.length === 0 : previewSchedules.length === 0) ? (
+                    {(kind === "contract" ? previewContracts : informativePreviewOptions).length === 0 ? (
                       <p className="text-xs text-muted-foreground">
                         Nenhum {kind === "contract" ? "contrato" : "agendamento"} encontrado para este cliente.
                       </p>

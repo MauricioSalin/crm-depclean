@@ -31,6 +31,7 @@ export type CertificateContextRecord = {
     id: string
     serviceTypeId: string
     date: string
+    datesText?: string
     time: string
     startTime: string
     endTime: string

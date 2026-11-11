@@ -6,10 +6,11 @@ import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { usePathname, useSearchParams } from "next/navigation"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { AlertTriangle, ArrowLeft, CalendarDays, Clock3, FileDown, Loader2, MapPin, OctagonX, Pencil, Sparkles, Users } from "lucide-react"
+import { AlertTriangle, ArrowLeft, CalendarDays, Clock3, FileDown, History, Loader2, MapPin, OctagonX, Pencil, Sparkles, Users } from "lucide-react"
 import { toast } from "sonner"
 
 import { AttendanceStartSlider } from "@/components/agendamentos/attendance-start-slider"
+import { ScheduleRecordsList } from "@/components/agendamentos/schedule-records-list"
 import { getRequestedRescheduleDetails, getRescheduleReasonError, RescheduleReasonFields } from "@/components/agendamentos/reschedule-reason-fields"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -21,7 +22,7 @@ import { useIsMobile } from "@/hooks/use-mobile"
 import { useCurrentUser } from "@/hooks/use-permissions"
 import { canAccessPath } from "@/lib/auth/permissions"
 import { getApiErrorMessage } from "@/lib/api/errors"
-import { exportScheduleSummaryPdf, getScheduleById, getScheduleRescheduleOptions, rescheduleSchedule, type ScheduleRecord } from "@/lib/api/schedules"
+import { exportScheduleSummaryPdf, getScheduleById, getScheduleHistory, getScheduleRescheduleOptions, rescheduleSchedule, type ScheduleRecord } from "@/lib/api/schedules"
 import type { ServiceRecord } from "@/lib/api/services"
 import type { TeamRecord } from "@/lib/api/teams"
 import { formatCivilDate, parseCivilDate, toCivilDateKey } from "@/lib/date-utils"
@@ -130,7 +131,9 @@ export function ScheduleDetailsDialog({
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const hasGroup = Boolean(initialSchedule?.multiDayGroupId && Number(initialSchedule.multiDayTotal) > 1)
-  const shouldLoadDetails = hasGroup
+  const isInitialRoutineVisit = [initialSchedule?.serviceTypeId, ...(initialSchedule?.serviceTypeIds ?? []), ...(initialSchedule?.serviceItems ?? []).map((service) => service.serviceTypeId)]
+    .includes("srv-visita-de-rotina")
+  const shouldLoadDetails = hasGroup || (isInitialRoutineVisit && Boolean(initialSchedule?.contractId))
   const detailsQuery = useQuery({
     queryKey: ["schedule", initialSchedule?.id],
     queryFn: () => getScheduleById(initialSchedule!.id),
@@ -142,7 +145,16 @@ export function ScheduleDetailsDialog({
     ? withReturnTo(clientProfilePath, buildPathWithSearchParams(pathname, searchParams))
     : null
   const queryClient = useQueryClient()
-  const [mode, setMode] = useState<"details" | "reschedule">("details")
+  const isRoutineVisit = [schedule?.serviceTypeId, ...(schedule?.serviceTypeIds ?? []), ...(schedule?.serviceItems ?? []).map((service) => service.serviceTypeId)]
+    .includes("srv-visita-de-rotina")
+  const routineServiceNames = schedule?.routineContractServiceNames ?? []
+  const [mode, setMode] = useState<"details" | "reschedule" | "history">("details")
+  const historyQuery = useQuery({
+    queryKey: ["schedule", initialSchedule?.id, "history"],
+    queryFn: () => getScheduleHistory(initialSchedule!.id),
+    enabled: open && mode === "history" && Boolean(initialSchedule?.id),
+    staleTime: 0,
+  })
   const [customDate, setCustomDate] = useState("")
   const [customTime, setCustomTime] = useState("")
   const [rescheduleReason, setRescheduleReason] = useState("")
@@ -497,24 +509,38 @@ export function ScheduleDetailsDialog({
           "gap-0 p-0",
           isMobile
             ? "left-0 top-0 h-[100dvh] max-h-none w-screen max-w-none translate-x-0 translate-y-0 rounded-none border-0"
-            : "sm:max-w-xl lg:max-w-2xl",
+            : mode === "history" ? "sm:max-w-4xl" : "sm:max-w-xl lg:max-w-2xl",
         )}
       >
-        {onBack && mode === "details" ? (
+        {(onBack && mode === "details") || mode === "history" ? (
           <Button
             type="button"
             variant="ghost"
             size="sm"
-            aria-label={backLabel}
+            aria-label={mode === "history" ? "Voltar aos detalhes" : backLabel}
             className={cn(
               "absolute left-3 z-20 gap-1.5 px-2 text-foreground hover:text-foreground",
               isMobile ? "top-[calc(env(safe-area-inset-top)+0.85rem)]" : "top-3",
             )}
-            onClick={onBack}
+            onClick={() => mode === "history" ? setMode("details") : onBack?.()}
           >
             <ArrowLeft className="h-4 w-4" />
             Voltar
           </Button>
+        ) : null}
+        {mode === "details" ? (
+          <button
+            type="button"
+            aria-label="Histórico de agendamentos"
+            title="Histórico de agendamentos"
+            className={cn(
+              "ring-offset-background focus-visible:ring-ring absolute top-4 z-20 inline-flex size-8 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2",
+              canEdit && canEditGroup && onEdit ? "right-24" : "right-14",
+            )}
+            onClick={() => setMode("history")}
+          >
+            <History className="size-4" />
+          </button>
         ) : null}
         {canEdit && canEditGroup && onEdit && mode === "details" ? (
           <button
@@ -528,7 +554,7 @@ export function ScheduleDetailsDialog({
             <span className="sr-only">Editar agendamento</span>
           </button>
         ) : null}
-        <div className={cn("flex flex-col", isMobile ? "h-full" : "")}>
+        <div className={cn("flex min-h-0 flex-col", isMobile ? "h-full" : "")}>
           {isMobile ? (
             <DialogHeader className="shrink-0 bg-background px-5 pb-2 pt-[calc(env(safe-area-inset-top)+1.75rem)] text-left">
               <DialogTitle className="sr-only">
@@ -537,7 +563,7 @@ export function ScheduleDetailsDialog({
             </DialogHeader>
           ) : null}
 
-          <div className={cn("flex-1 overflow-y-auto", isMobile ? "px-5 pb-5 pt-2" : "p-6")}>
+          <div className={cn("min-h-0 flex-1 overflow-y-auto", isMobile ? "px-5 pb-5 pt-2" : "p-6")}>
             {!isMobile ? (
               <DialogHeader className="relative items-center space-y-1.5 pb-2 text-center sm:pb-3">
                 <DialogTitle className="sr-only">
@@ -546,7 +572,20 @@ export function ScheduleDetailsDialog({
               </DialogHeader>
             ) : null}
 
-            {mode === "reschedule" ? (
+            {mode === "history" ? (
+              <div className="space-y-4 pt-7">
+                <div>
+                  <p className="text-lg font-semibold">Histórico de agendamentos</p>
+                  <p className="mt-1 text-sm text-muted-foreground">{schedule.clientName} · {[...new Set([schedule, ...(schedule.visits ?? [])].map((visit) => visit.serviceTypeName))].join(" · ")}</p>
+                </div>
+                {historyQuery.isPending ? <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />Carregando agendamentos...</p>
+                  : historyQuery.isError ? <div className="space-y-3 text-sm text-destructive">
+                    <p>{getApiErrorMessage(historyQuery.error, "Não foi possível carregar o histórico.")}</p>
+                    <Button type="button" variant="outline" onClick={() => historyQuery.refetch()}>Tentar novamente</Button>
+                  </div>
+                  : <ScheduleRecordsList schedules={historyQuery.data.data} currentScheduleId={schedule.id} />}
+              </div>
+            ) : mode === "reschedule" ? (
               <div className="mt-2 space-y-5">
                 <div>
                   <p className="text-lg font-semibold text-foreground">Reagendar atendimento</p>
@@ -785,6 +824,21 @@ export function ScheduleDetailsDialog({
                 <p className="text-sm text-muted-foreground">{schedule.address || "Endereço não informado"}</p>
               </div>
 
+              {isRoutineVisit ? (
+                <div className="rounded-2xl border p-4 md:col-span-2">
+                  <p className="mb-2 text-sm font-medium">Serviços contratados para esta unidade</p>
+                  {routineServiceNames.length > 0 ? (
+                    <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+                      {routineServiceNames.map((name) => <li key={name}>{name}</li>)}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      {!schedule.contractId ? "Contrato não vinculado." : detailsQuery.isPending ? "Carregando serviços..." : detailsQuery.isError ? "Não foi possível carregar os serviços." : "Nenhum serviço de vistoria encontrado para esta unidade."}
+                    </p>
+                  )}
+                </div>
+              ) : null}
+
               {schedule.isEmergency ? (
                 <div className="rounded-2xl border p-4 md:col-span-2">
                   <p className="mb-2 text-sm font-medium">Contrato vinculado</p>
@@ -920,6 +974,12 @@ export function ScheduleDetailsDialog({
               </>
             )}
           </div>
+
+          {isMobile && mode === "history" ? (
+            <DialogFooter className="px-5 py-4 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
+              <Button type="button" variant="outline" className="h-12 w-full rounded-2xl" onClick={() => setMode("details")}>Voltar</Button>
+            </DialogFooter>
+          ) : null}
 
           {mode === "reschedule" ? (
             <DialogFooter className="px-6 pb-6 pt-0 max-sm:px-5 max-sm:pb-[calc(env(safe-area-inset-bottom)+1.25rem)]">

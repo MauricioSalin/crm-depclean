@@ -301,7 +301,7 @@ export function CertificateEditorContent({
               <div className="grid gap-3 text-sm text-muted-foreground">
                 <p className="flex items-center gap-2">
                   <Calendar className="h-4 w-4" />
-                  {formatDate(context.schedule.date)} às {context.schedule.time || "--:--"}
+                  {context.schedule.datesText || `${formatDate(context.schedule.date)} às ${context.schedule.time || "--:--"}`}
                 </p>
                 <p>{context.unit.address}</p>
                 {context.schedule.serviceReport ? <p>{context.schedule.serviceReport}</p> : null}

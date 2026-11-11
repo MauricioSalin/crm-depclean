@@ -188,6 +188,7 @@ export type ContractPreviewRecord = {
 }
 
 export type ContractSchedulePlanRecord = {
+  unavailableExecutionIds?: string[]
   items: ScheduleRecord[]
   generatedItems: ScheduleRecord[]
   anchorDate: string
@@ -206,6 +207,9 @@ export type PublishedContractSchedulePlanRecord = {
 
 export type ContractSchedulePlanPayload = {
   items: Array<{
+    executionEndTime?: string
+    executionEndDate?: string
+    existingExecutionId?: string
     multiDayDates?: string[]
     multiDayTimes?: string[]
     id: string

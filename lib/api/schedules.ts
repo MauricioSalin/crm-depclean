@@ -7,6 +7,11 @@ export async function getDisposalCatalog() {
   return response.data
 }
 
+export async function getScheduleHistory(id: string) {
+  const response = await api.get<{ success: true; data: ScheduleRecord[] }>(`/schedules/${encodeURIComponent(id)}/history`)
+  return response.data
+}
+
 export type ScheduleNaAttachmentRecord = {
   type?: string
   title?: string
@@ -40,6 +45,10 @@ export type ScheduleCompletionEmployee = {
 }
 
 export type ScheduleRecord = {
+  routineContractServiceNames?: string[]
+  executionEndTime?: string
+  executionEndDate?: string
+  existingExecutionId?: string
   id: string
   contractId: string | null
   contractNumber?: string
