@@ -447,6 +447,8 @@ function buildPreviewVariables(params: {
   certificateValidityMonths?: number
   schedule?: ScheduleRecord
   informativeDatesText?: string
+  informativeDateText?: string
+  informativeTimeText?: string
   services: ServiceRecord[]
 }) {
   const { client, clientTypes, contract, employeeCpf, employeeName, employeeRole, kind, organizationSettings, certificateValidityMonths, schedule, services } = params
@@ -620,6 +622,8 @@ function buildPreviewVariables(params: {
       duration: schedule ? `${schedule.duration} min` : "",
       time: scheduleTime,
       datesText: params.informativeDatesText ?? "",
+      legacyDateText: kind === "informative" ? params.informativeDateText ?? "" : "",
+      legacyTimeText: kind === "informative" ? params.informativeTimeText ?? "" : "",
     },
   }
 }
@@ -734,7 +738,9 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
   const informativeVisits = new Map<string, ScheduleRecord[]>()
   if (kind !== "contract") {
     for (const schedule of previewSchedules) {
-      if (schedule.status === "cancelled") continue
+      if (kind === "informative"
+        ? !["draft", "scheduled", "rescheduled", "in_progress"].includes(schedule.status)
+        : schedule.status === "cancelled") continue
       const key = schedule.multiDayGroupId
         ? `group:${schedule.unitId}:${schedule.multiDayGroupId}`
         : `schedule:${schedule.id}`
@@ -749,9 +755,13 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
     const dates = visits.length === 1 && first.multiDayDates?.length && !first.multiDayGroupId
       ? first.multiDayDates.map((date, index) => ({ date, time: first.multiDayTimes?.[index] || first.time }))
       : visits.map(({ date, time }) => ({ date, time }))
+    const formatter = new Intl.ListFormat("pt-BR")
+    const timeValues = dates.map(({ time }) => (time || "08:00").replace(":00", "h"))
     return {
       value: first.id,
       label: `${dates.map(({ date }) => formatDate(date)).join(" e ")} - ${first.serviceTypeName} - ${first.unitName}`,
+      dateText: formatter.format([...new Set(dates.map(({ date }) => formatDate(date)))]),
+      timeText: new Set(timeValues).size === 1 ? timeValues[0] : formatter.format(dates.map(({ date }, index) => `${timeValues[index]} em ${formatDate(date)}`)),
       datesText: kind === "certificate"
         ? new Intl.ListFormat("pt-BR").format(dates.map(({ date }) => formatDate(date)))
         : dates.map(({ date, time }) => `${formatDate(date)} - ${time || "08:00"}`).join("\n"),
@@ -763,6 +773,8 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
   const selectedPreviewContract = contracts.find((contract) => contract.id === previewDocumentId)
   const selectedPreviewSchedule = schedules.find((schedule) => schedule.id === previewDocumentId)
   const informativeDatesText = informativePreviewOptions.find((option) => option.value === previewDocumentId)?.datesText
+  const informativeDateText = informativePreviewOptions.find((option) => option.value === previewDocumentId)?.dateText
+  const informativeTimeText = informativePreviewOptions.find((option) => option.value === previewDocumentId)?.timeText
   const templateSigner = employees.find((employee) => employee.id === formData.signerId)
   const previewVariables = useMemo(
     () =>
@@ -778,9 +790,11 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
         certificateValidityMonths: formData.certificateValidityMonths,
         schedule: kind === "contract" ? undefined : selectedPreviewSchedule,
         informativeDatesText,
+        informativeDateText,
+        informativeTimeText,
         services,
       }),
-    [clientTypes, formData.certificateValidityMonths, informativeDatesText, kind, organizationSettings, previewClient, selectedPreviewContract, selectedPreviewSchedule, services, templateSigner],
+    [clientTypes, formData.certificateValidityMonths, informativeDatesText, informativeDateText, informativeTimeText, kind, organizationSettings, previewClient, selectedPreviewContract, selectedPreviewSchedule, services, templateSigner],
   )
   const previewDataKey = [
     kind,

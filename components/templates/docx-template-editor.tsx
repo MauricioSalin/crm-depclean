@@ -1580,16 +1580,31 @@ async function replaceDocxTemplateVariables(buffer: ArrayBuffer, variables: Reco
   const JSZip = (await import("jszip")).default
   const zip = await JSZip.loadAsync(buffer)
   const xmlFiles = Object.keys(zip.files).filter((fileName) => /^word\/.*\.xml$/i.test(fileName))
+  const entries = await Promise.all(xmlFiles.map(async (fileName) => ({
+    fileName,
+    xml: await zip.file(fileName)!.async("text"),
+  })))
+  const usesDetailedDates = entries.some(({ xml }) => /\{\{\s*schedule\.datesText\s*\}\}/.test(xml.replace(/<[^>]+>/g, "")))
+  const useLegacyDates = Boolean(variables["schedule.legacyDateText"]) && !usesDetailedDates
+  const previewVariables = useLegacyDates ? {
+    ...variables,
+    "schedule.date": variables["schedule.legacyDateText"],
+    "schedule.time": variables["schedule.legacyTimeText"] || variables["schedule.time"],
+  } : variables
 
   await Promise.all(
-    xmlFiles.map(async (fileName) => {
-      const file = zip.file(fileName)
-      if (!file) return
-
-      let xml = await file.async("text")
+    entries.map(async ({ fileName, xml: sourceXml }) => {
+      let xml = sourceXml
       let changed = false
+      if (useLegacyDates && previewVariables["schedule.date"] !== variables["schedule.date"]) {
+        xml = xml.replace(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/g, (paragraph) =>
+          /\{\{\s*schedule\.date\s*\}\}/.test(getDocxParagraphText(paragraph))
+            ? paragraph.replace(buildDocxTokenRegex("no dia"), "nos dias")
+            : paragraph)
+        changed = xml !== sourceXml
+      }
 
-      for (const [path, rawValue] of Object.entries(variables)) {
+      for (const [path, rawValue] of Object.entries(previewVariables)) {
         if (rawValue === "") continue
 
         const isRecurrenceTable = path === "contract.recurrenceTable" && /<table\b/i.test(rawValue)
