@@ -39,6 +39,7 @@ import { buildApiFileUrl } from "@/lib/api/client"
 import { listEmployees } from "@/lib/api/employees"
 import { listAuditLogs, type AuditLogRecord } from "@/lib/api/logs"
 import { getApiErrorMessage } from "@/lib/api/errors"
+import { whatsAppLogPresentation } from "@/lib/whatsapp-log-presentation"
 import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
 import { cn } from "@/lib/utils"
@@ -377,6 +378,7 @@ function getWhatsAppLogDetails(log: AuditLogRecord) {
   const recipientName = firstText(metadata.recipientName, log.entityName)
 
   return {
+    ...whatsAppLogPresentation(log),
     message: recordedMessage,
     preview: getWhatsAppMessagePreview(
       metadata,
@@ -391,7 +393,6 @@ function getWhatsAppLogDetails(log: AuditLogRecord) {
     deliveryError: firstText(metadata.deliveryError, messageMetadata.deliveryError, log.failureReason),
     deliveryAttempts: firstText(metadata.deliveryAttempts),
     messageId: firstText(metadata.whatsappMessageId, metadata.messageId),
-    providerStatusCode: firstText(metadata.providerStatusCode),
     providerResponse,
     whatsappMessages,
     attachments: collectWhatsAppAttachments(metadata),
@@ -452,6 +453,7 @@ function getAttachmentStatusLabel(attachment: WhatsAppAttachment) {
 
 function getAttachmentStatusClass(attachment: WhatsAppAttachment) {
   const status = attachment.status.toLowerCase()
+  if (status.startsWith("skipped_")) return "bg-slate-100 text-slate-700"
   if (status.includes("failed") || status.includes("error") || status.includes("skipped") || attachment.error) {
     return "bg-red-100 text-red-700"
   }
@@ -471,9 +473,10 @@ function formatWhatsAppTime(value: string) {
 
 function renderWhatsAppDeliveryTicks(statusValue: string) {
   const status = statusValue.toLowerCase()
-  if (status.startsWith("read")) return <CheckCheck className="h-3.5 w-3.5 text-[#53bdeb]" />
-  if (status.startsWith("delivered")) return <CheckCheck className="h-3.5 w-3.5 text-[#667781]" />
-  return <Check className="h-3.5 w-3.5 text-[#667781]" />
+  if (status.startsWith("read")) return <CheckCheck aria-label="Mensagem lida" className="h-3.5 w-3.5 text-[#53bdeb]" />
+  if (status.startsWith("delivered")) return <CheckCheck aria-label="Mensagem entregue" className="h-3.5 w-3.5 text-[#667781]" />
+  if (status.startsWith("sent")) return <Check aria-label="Mensagem enviada" className="h-3.5 w-3.5 text-[#667781]" />
+  return null
 }
 
 function toApiDateTime(value: string) {
@@ -496,6 +499,9 @@ function formatDateTime(value: string) {
 }
 
 function getLogStatusBadge(log: AuditLogRecord) {
+  if (log.status === "skipped" || log.module === "whatsapp" && whatsAppLogPresentation(log).wasSkipped) {
+    return <Badge className="bg-slate-100 text-slate-700 hover:bg-slate-100">Não enviado</Badge>
+  }
   if (log.status === "pending") {
     return (
       <Badge className="gap-1 bg-amber-100 text-amber-700 hover:bg-amber-100">
@@ -532,6 +538,10 @@ function getTypeBadge(log: AuditLogRecord) {
 
 function getFailureReason(log: AuditLogRecord) {
   if (log.failureReason) return log.failureReason
+  if (log.module === "whatsapp") {
+    const reason = firstText(log.metadata?.deliveryError, asRecord(log.metadata?.messageMetadata).deliveryError)
+    if (reason) return reason
+  }
 
   const error = log.metadata?.error
   if (typeof error === "string") return error
@@ -565,8 +575,8 @@ export function LogsContent() {
   const [type, setType] = useUrlQueryState("type", "all", { debounceMs: 0 })
   const [module, setModule] = useUrlQueryState("module", "all", { debounceMs: 0 })
   const [statusParam, setStatus] = useUrlQueryState("status", "all", { debounceMs: 0 })
-  const status = ["success", "error", "pending"].includes(statusParam)
-    ? statusParam as "success" | "error" | "pending"
+  const status = ["success", "error", "pending", "skipped"].includes(statusParam)
+    ? statusParam as "success" | "error" | "pending" | "skipped"
     : "all"
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
@@ -765,7 +775,7 @@ export function LogsContent() {
           </div>
           <div className="w-[124px] shrink-0 space-y-1">
             <Label>Status</Label>
-            <Select value={status} onValueChange={(value) => { setStatus(value as "all" | "success" | "error" | "pending"); resetPage() }}>
+            <Select value={status} onValueChange={(value) => { setStatus(value as "all" | "success" | "error" | "pending" | "skipped"); resetPage() }}>
               <SelectTrigger className="w-full">
                 <SelectValue />
               </SelectTrigger>
@@ -774,6 +784,7 @@ export function LogsContent() {
                 <SelectItem value="success">Sucesso</SelectItem>
                 <SelectItem value="error">Falha</SelectItem>
                 <SelectItem value="pending">Pendente</SelectItem>
+                <SelectItem value="skipped">Não enviado</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -953,7 +964,12 @@ export function LogsContent() {
 
           {selectedLog ? (
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 pb-6 max-sm:px-5 max-sm:pb-[calc(env(safe-area-inset-bottom)+1.25rem)]">
-              {selectedLog.status === "error" ? (
+              {selectedWhatsAppDetails?.wasSkipped ? (
+                <div className="rounded-md border bg-muted/40 p-3 text-sm">
+                  <p className="font-semibold">Mensagem não enviada</p>
+                  <p className="mt-1">{selectedWhatsAppDetails.nonDeliveryReason}</p>
+                </div>
+              ) : selectedLog.status === "error" ? (
                 <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
                   <p className="font-semibold">Motivo da falha</p>
                   <p className="mt-1">{getFailureReason(selectedLog) || "Motivo não registrado para este log."}</p>
@@ -1092,21 +1108,21 @@ export function LogsContent() {
                     </div>
                     <div>
                       <p className="text-xs font-medium text-muted-foreground">Status da entrega</p>
-                      <p>{selectedWhatsAppDetails.deliveryStatus || "-"}</p>
+                      <p>{selectedWhatsAppDetails.wasSkipped ? "Não enviado" : selectedWhatsAppDetails.deliveryStatus || "-"}</p>
                     </div>
                     <div>
-                      <p className="text-xs font-medium text-muted-foreground">Tentativas</p>
+                      <p className="text-xs font-medium text-muted-foreground">{selectedWhatsAppDetails.queueAttemptLabel}</p>
                       <p>{selectedWhatsAppDetails.deliveryAttempts || "-"}</p>
                     </div>
                     <div>
                       <p className="text-xs font-medium text-muted-foreground">Retorno HTTP do Meta</p>
-                      <p>{selectedWhatsAppDetails.providerStatusCode || selectedLog.statusCode || "-"}</p>
+                      <p>{selectedWhatsAppDetails.providerStatusLabel}</p>
                     </div>
                   </div>
 
                   <div className="space-y-2 text-sm">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-xs font-medium text-muted-foreground">Simulação da mensagem enviada</p>
+                      <p className="text-xs font-medium text-muted-foreground">Prévia da mensagem</p>
                       {selectedWhatsAppDetails.preview.templateName ? (
                         <Badge variant="outline" className="max-w-full truncate font-mono text-[10px] font-normal">
                           {selectedWhatsAppDetails.preview.templateName}
@@ -1114,7 +1130,7 @@ export function LogsContent() {
                       ) : null}
                     </div>
                     <div className="rounded-lg border bg-[#efeae2] p-3 sm:p-4">
-                      <div className="ml-auto max-w-[94%] overflow-hidden rounded-lg rounded-tr-sm bg-[#d9fdd3] shadow-sm sm:max-w-[82%]">
+                      <div className={cn("ml-auto max-w-[94%] overflow-hidden rounded-lg rounded-tr-sm shadow-sm sm:max-w-[82%]", selectedWhatsAppDetails.wasSkipped ? "bg-slate-100" : "bg-[#d9fdd3]")}>
                         {selectedWhatsAppDetails.preview.headerText ? (
                           <div className="border-b border-black/5 px-3 py-2 font-semibold">
                             {selectedWhatsAppDetails.preview.headerText}
@@ -1274,7 +1290,7 @@ export function LogsContent() {
                 </div>
                 <div>
                   <p className="text-xs font-medium text-muted-foreground">HTTP</p>
-                  <p>{selectedLog.statusCode || "-"} · {selectedLog.durationMs} ms</p>
+                  <p>{selectedWhatsAppDetails?.wasSkipped ? "-" : selectedLog.statusCode || "-"} · {selectedLog.durationMs} ms</p>
                 </div>
               </div>
 

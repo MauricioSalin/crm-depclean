@@ -1,0 +1,41 @@
+name: WhatsApp log display regression
+
+on:
+  push:
+    paths:
+      - 'components/logs/**'
+      - 'lib/api/logs.ts'
+      - 'lib/whatsapp-log-presentation.ts'
+      - 'e2e/logs*'
+      - 'scripts/logs-delivery.test.mjs'
+      - '.github/workflows/logs-delivery-regression.yml'
+  pull_request:
+    paths:
+      - 'components/logs/**'
+      - 'lib/api/logs.ts'
+      - 'lib/whatsapp-log-presentation.ts'
+      - 'e2e/logs*'
+      - 'scripts/logs-delivery.test.mjs'
+      - '.github/workflows/logs-delivery-regression.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  logs-display:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: node --experimental-strip-types --test scripts/logs-delivery.test.mjs
+      - run: pnpm exec playwright test e2e/logs-skipped-delivery.spec.ts e2e/logs-integrations.spec.ts --workers=1 --reporter=line --timeout=60000
+        env:
+          E2E_BROWSER_CHANNEL: chrome
+          E2E_DISABLE_VIDEO: "1"
