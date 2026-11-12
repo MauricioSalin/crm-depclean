@@ -265,6 +265,46 @@ test.beforeEach(async ({ page }) => {
   await installApiMock(page)
 })
 
+for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+  test(`insere atendimento do cliente sem contrato e permite remover - ${viewport.width}`, async ({ page }) => {
+    await page.setViewportSize(viewport)
+    await installSchedulePlanMock(page)
+    const historical = {
+      ...scheduleFixture, id: "historical-without-contract", contractId: "", contractServiceId: "", contractServiceIds: [],
+      status: "completed", date: "2026-07-22", time: "08:00", serviceTypeName: "Limpeza de rede",
+      startedAt: undefined, completedAt: undefined,
+    }
+    let insertionRequest: URL | undefined
+    await page.route("**/api/v1/schedules**", async (route) => {
+      const url = new URL(route.request().url())
+      if (route.request().method() !== "GET" || !url.pathname.endsWith("/schedules")) return route.fallback()
+      if (!url.searchParams.has("clientId")) return fulfill(route, []) // contrato ainda sem agendamentos
+      insertionRequest = url
+      await fulfill(route, [historical, { ...historical, id: "other-client", clientId: "other-client" }])
+    })
+    await page.goto(`/contratos/${contractFixture.id}`)
+    await page.getByRole("button", { name: "Agendamentos", exact: true }).click()
+    await page.getByRole("dialog", { name: "Agendamentos previstos" }).getByRole("button", { name: "Inserir", exact: true }).click()
+    const insertDialog = page.getByRole("dialog", { name: "Inserir agendamento" })
+    const source = insertDialog.locator('[data-schedule-record="historical-without-contract"]:visible')
+    await expect(source.getByRole("button", { name: "Inserir", exact: true })).toBeEnabled()
+    expect(insertionRequest?.searchParams.get("clientId")).toBe(contractFixture.clientId)
+    expect(insertionRequest?.searchParams.has("contractId")).toBe(false)
+    await expect(insertDialog.locator('[data-schedule-record="other-client"]')).toHaveCount(0)
+    await page.screenshot({ path: `${process.env.RETRO_EVIDENCE_DIR ?? "test-results/retroativos"}/inserir-${viewport.width}.png` })
+    await source.getByRole("button", { name: "Inserir", exact: true }).click()
+    const planDialog = page.getByRole("dialog", { name: "Agendamentos previstos" })
+    const inserted = planDialog.locator('[data-inserted-schedule="historical-without-contract"]:visible')
+    await expect(inserted.getByText("Concluído", { exact: true })).toBeVisible()
+    await expect(inserted.getByText(/22\/07\/2026/)).toBeVisible()
+    await expect(inserted.getByRole("textbox")).toHaveCount(0)
+    await expect(page.locator("[data-sonner-toast]")).toHaveCount(0)
+    await page.screenshot({ path: `${process.env.RETRO_EVIDENCE_DIR ?? "test-results/retroativos"}/inserido-${viewport.width}.png` })
+    await inserted.getByRole("button", { name: "Remover atendimento do plano" }).click()
+    await expect(planDialog.locator('[data-inserted-schedule="historical-without-contract"]')).toHaveCount(0)
+  })
+}
+
 test("resume listas extensas de validação sem despejar detalhes técnicos no toast", () => {
   const fallback = "Não foi possível salvar o plano de agendamentos."
   const message = getApiErrorMessage({

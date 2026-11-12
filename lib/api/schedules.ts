@@ -188,6 +188,7 @@ export type ScheduleRescheduleOption = {
 }
 
 export async function listSchedules(params?: {
+  clientId?: string
   search?: string
   status?: string
   dateFrom?: string

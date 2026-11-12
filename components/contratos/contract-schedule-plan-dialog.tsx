@@ -148,7 +148,7 @@ export function ContractSchedulePlanDialog({
   })
   const insertQuery = useQuery({
     queryKey: ["schedules", "contract-insertion", contract.clientId],
-    queryFn: () => listSchedules({}),
+    queryFn: () => listSchedules({ clientId: contract.clientId }),
     enabled: open && context === "insert",
     staleTime: 0,
   })
