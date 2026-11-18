@@ -45,6 +45,8 @@ export type ScheduleCompletionEmployee = {
 }
 
 export type ScheduleRecord = {
+  sourceScheduleId?: string
+  isHistoricalExecution?: boolean
   routineContractServiceNames?: string[]
   executionEndTime?: string
   executionEndDate?: string

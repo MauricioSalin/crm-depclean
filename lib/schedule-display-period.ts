@@ -55,7 +55,7 @@ export function resolveScheduleDisplayPeriod(schedule: ScheduleDisplaySource): S
   const plannedDuration = Math.max(0, Math.round(Number(schedule.duration) || 0))
   const plannedTime = TIME_PATTERN.test(schedule.time || "") ? schedule.time : "08:00"
 
-  if (schedule.status === "completed") {
+  if (["completed", "partially_completed"].includes(schedule.status)) {
     const startDate = schedule.completionStartDate || ""
     const startTime = schedule.completionStartTime || ""
     const endDate = schedule.completionEndDate || ""
@@ -114,7 +114,7 @@ export function getScheduleDisplaySegments(schedule: ScheduleDisplaySource): Sch
 }
 
 export function formatScheduleDisplayDuration(schedule: ScheduleDisplaySource, preserveConfiguredType = true) {
-  if (schedule.status === "completed" && schedule.executionDurationMinutes !== undefined) return formatExactScheduleDuration(schedule.executionDurationMinutes)
+  if (["completed", "partially_completed"].includes(schedule.status) && schedule.executionDurationMinutes !== undefined) return formatExactScheduleDuration(schedule.executionDurationMinutes)
   const period = resolveScheduleDisplayPeriod(schedule)
   if (period.usesExecutionPeriod) return formatExactScheduleDuration(period.durationMinutes)
   return formatConfiguredScheduleDuration(schedule, preserveConfiguredType)

@@ -1941,13 +1941,16 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                     <TableHead>Data</TableHead>
                     <TableHead>Horário</TableHead>
                     <TableHead>Duração</TableHead>
-                    {canViewFinancial ? <TableHead>Financeiro</TableHead> : null}
+                    {canViewFinancial ? <TableHead>Valor</TableHead> : null}
+                    {canViewFinancial ? <TableHead>Vencimento</TableHead> : null}
+                    {canViewFinancial ? <TableHead>Status da cobrança</TableHead> : null}
                     <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody page={scheduledServices.length > 0 ? agendaPage : undefined} pageSize={scheduledServices.length > 0 ? agendaPageSize : undefined}>
                   {scheduledServices.map((service) => {
                       const displayPeriod = resolveScheduleDisplayPeriod(service)
+                      const hasCharge = service.isManual && service.billable && service.value > 0
                       return (
                         <TableRow key={service.id} className={canViewAgenda ? "cursor-pointer" : undefined} tabIndex={canViewAgenda ? 0 : undefined} onClick={() => { if (canViewAgenda) void openProfileSchedule(service.id) }} onKeyDown={(event) => { if (canViewAgenda && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); void openProfileSchedule(service.id) } }}>
                           <TableCell>
@@ -1966,18 +1969,18 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                           <TableCell className="text-sm">{displayPeriod.time}</TableCell>
                           <TableCell className="text-sm">{formatScheduleDisplayDuration(service)}</TableCell>
                           {canViewFinancial ? (
+                            <TableCell className="whitespace-nowrap font-medium">
+                              {hasCharge ? formatCurrency(service.value) : <span className="text-muted-foreground">-</span>}
+                            </TableCell>
+                          ) : null}
+                          {canViewFinancial ? (
+                            <TableCell className="whitespace-nowrap text-sm">
+                              {hasCharge ? formatDate(service.billingDueDate ?? service.date) : <span className="text-muted-foreground">-</span>}
+                            </TableCell>
+                          ) : null}
+                          {canViewFinancial ? (
                             <TableCell>
-                              {service.isManual && service.billable && service.value > 0 ? (
-                                <div className="flex min-w-max flex-col items-start gap-1">
-                                  <span className="font-medium">{formatCurrency(service.value)}</span>
-                                  <span className="text-xs text-muted-foreground">
-                                    Venc. {formatDate(service.billingDueDate ?? service.date)}
-                                  </span>
-                                  {getInstallmentStatusBadge(service.status === "cancelled" ? "cancelled" : service.effectiveBillingStatus)}
-                                </div>
-                              ) : (
-                                <span className="text-muted-foreground">-</span>
-                              )}
+                              {hasCharge ? getInstallmentStatusBadge(service.status === "cancelled" ? "cancelled" : service.effectiveBillingStatus) : <span className="text-muted-foreground">-</span>}
                             </TableCell>
                           ) : null}
                           <TableCell>{getScheduleStatusBadge(service.status)}</TableCell>
@@ -1986,7 +1989,7 @@ export function ClientProfile({ clientId }: ClientProfileProps) {
                     })}
 
                   {scheduledServices.length === 0 ? (
-                    <TableEmptyState colSpan={canViewFinancial ? 8 : 7} icon={Calendar} title="Nenhum serviço agendado." />
+                    <TableEmptyState colSpan={canViewFinancial ? 10 : 7} icon={Calendar} title="Nenhum serviço agendado." />
                   ) : null}
                 </TableBody>
               </Table>

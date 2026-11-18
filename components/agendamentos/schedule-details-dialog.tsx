@@ -179,7 +179,7 @@ export function ScheduleDetailsDialog({
   } | null>(null)
   const canStartAction = selectedVisit && schedule ? canStartSchedule(schedule, currentUser, teams)
     : canStart ?? (canManage && !schedule?.isClientDelinquent)
-  const canRescheduleAction = canReschedule ?? canManage
+  const canRescheduleAction = !schedule?.isHistoricalExecution && (canReschedule ?? canManage)
 
   useEffect(() => {
     if (!open || !schedule) return
@@ -332,8 +332,8 @@ export function ScheduleDetailsDialog({
     : schedule.status
   const loadingGroup = hasGroup && !isVisitContext && detailsQuery.isPending
   const groupError = hasGroup && !isVisitContext && (detailsQuery.isError || (detailsQuery.isSuccess && !groupSchedule?.visits?.length))
-  const canEditGroup = (!isGroup && (schedule.status !== "completed" || Boolean(currentUser?.permissions.some((permission) => ["agenda_manage_locked", "settings_manage"].includes(permission))))) || visits.some((visit) => !["completed", "cancelled"].includes(visit.status)) ||
-    currentUser?.permissions.some((permission) => ["agenda_manage_locked", "settings_manage"].includes(permission))
+  const canEditGroup = !schedule.isHistoricalExecution && ((!isGroup && (schedule.status !== "completed" || Boolean(currentUser?.permissions.some((permission) => ["agenda_manage_locked", "settings_manage"].includes(permission))))) || visits.some((visit) => !["completed", "cancelled"].includes(visit.status)) ||
+    currentUser?.permissions.some((permission) => ["agenda_manage_locked", "settings_manage"].includes(permission)))
   const canEditCurrentVisit = schedule.status !== "cancelled" && (schedule.status !== "completed" ||
     Boolean(currentUser?.permissions.some((permission) => ["agenda_manage_locked", "settings_manage"].includes(permission))))
 
@@ -438,7 +438,7 @@ export function ScheduleDetailsDialog({
       <div className="mb-3 flex items-center gap-1.5 text-sm font-medium">
         <Clock3 className="h-4 w-4 text-primary" />
         <span>{isGroup ? `Execução de ${formatScheduleDate(execution.date)}` : "Execução do atendimento"}</span>
-        {canEditExecution && onEditExecution && execution.id === schedule.id ? (
+        {canEditExecution && !execution.isHistoricalExecution && onEditExecution && execution.id === schedule.id ? (
           <button
             type="button"
             aria-label="Editar execução do atendimento"

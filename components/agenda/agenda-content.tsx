@@ -223,11 +223,12 @@ function getScheduleIconTone(schedule: Pick<ScheduleRecord, "isEmergency">) {
     : { wrapper: "bg-primary/10", icon: "text-primary" }
 }
 
-function canCancelSchedule(schedule: Pick<ScheduleRecord, "status">) {
-  return !["in_progress", "completed", "cancelled"].includes(schedule.status)
+function canCancelSchedule(schedule: Pick<ScheduleRecord, "status" | "isHistoricalExecution">) {
+  return !schedule.isHistoricalExecution && !["in_progress", "completed", "cancelled"].includes(schedule.status)
 }
 
-function canEditSchedule(schedule: Pick<ScheduleRecord, "status" | "multiDayGroupId" | "multiDayTotal" | "visits">, canManageLockedSchedules: boolean) {
+function canEditSchedule(schedule: Pick<ScheduleRecord, "status" | "multiDayGroupId" | "multiDayTotal" | "visits" | "isHistoricalExecution">, canManageLockedSchedules: boolean) {
+  if (schedule.isHistoricalExecution) return false
   if (schedule.status === "cancelled") return false
   if (schedule.status === "completed") return canManageLockedSchedules || Boolean(schedule.multiDayGroupId && Number(schedule.multiDayTotal) > 1 &&
     (schedule.visits?.some((visit) => !["completed", "cancelled"].includes(visit.status)) ?? true))
@@ -235,12 +236,12 @@ function canEditSchedule(schedule: Pick<ScheduleRecord, "status" | "multiDayGrou
 }
 
 function canShowScheduleEditAction(
-  schedule: Pick<ScheduleRecord, "status" | "multiDayGroupId" | "multiDayTotal" | "visits">,
+  schedule: Pick<ScheduleRecord, "status" | "multiDayGroupId" | "multiDayTotal" | "visits" | "isHistoricalExecution">,
   canManageAgenda: boolean,
   canManageScheduleStatus: boolean,
   canManageLockedSchedules: boolean,
 ) {
-  if (schedule.status === "cancelled") return false
+  if (schedule.isHistoricalExecution || schedule.status === "cancelled") return false
   return canManageScheduleStatus || (canManageAgenda && canEditSchedule(schedule, canManageLockedSchedules))
 }
 

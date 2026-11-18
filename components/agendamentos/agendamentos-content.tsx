@@ -165,11 +165,12 @@ function getScheduleIconTone(schedule: Pick<ScheduleRecord, "isEmergency">) {
     : { wrapper: "bg-primary/10", icon: "text-primary" }
 }
 
-function canCancelSchedule(schedule: Pick<ScheduleRecord, "status">) {
-  return !["in_progress", "completed", "cancelled"].includes(schedule.status)
+function canCancelSchedule(schedule: Pick<ScheduleRecord, "status" | "isHistoricalExecution">) {
+  return !schedule.isHistoricalExecution && !["in_progress", "completed", "cancelled"].includes(schedule.status)
 }
 
-function canEditSchedule(schedule: Pick<ScheduleRecord, "status" | "multiDayGroupId" | "multiDayTotal" | "visits">, canManageLockedSchedules: boolean) {
+function canEditSchedule(schedule: Pick<ScheduleRecord, "status" | "multiDayGroupId" | "multiDayTotal" | "visits" | "isHistoricalExecution">, canManageLockedSchedules: boolean) {
+  if (schedule.isHistoricalExecution) return false
   if (schedule.status === "cancelled") return false
   if (schedule.status === "completed") return canManageLockedSchedules || Boolean(schedule.multiDayGroupId && Number(schedule.multiDayTotal) > 1 &&
     (schedule.visits?.some((visit) => !["completed", "cancelled"].includes(visit.status)) ?? true))
@@ -1275,6 +1276,7 @@ export function AgendamentosContent({
   }
 
   const openEditSchedule = async (schedule: ScheduleRecord) => {
+    if (schedule.isHistoricalExecution) return
     if (!canOpenScheduleEditor) return
     if (canManageAgenda && !canEditSchedule(schedule, canManageLockedSchedules)) return
     const request = ++scheduleEditRequestRef.current
@@ -1300,7 +1302,7 @@ export function AgendamentosContent({
   }
 
   const canDeleteSchedule = (schedule: ScheduleRecord) => {
-    return canManageAgenda &&
+    return !schedule.isHistoricalExecution && canManageAgenda &&
       !isRecurringSchedule(schedule)
   }
 
@@ -1826,7 +1828,7 @@ export function AgendamentosContent({
                               <Eye className="mr-2 h-4 w-4" />
                               Visualizar
                             </DropdownMenuItem>
-                            {(canManageScheduleStatus || (canManageAgenda && canEditSchedule(schedule, canManageLockedSchedules))) && (
+                            {(!schedule.isHistoricalExecution && (canManageScheduleStatus || (canManageAgenda && canEditSchedule(schedule, canManageLockedSchedules)))) && (
                               <DropdownMenuItem
                                 className="cursor-pointer"
                                 onClick={(event) => {
@@ -1961,7 +1963,7 @@ export function AgendamentosContent({
                     ) : null}
                     {canOpenScheduleEditor ? (
                     <div className="mt-auto grid grid-cols-2 gap-2 pt-3 [&>*:only-child]:col-span-2" onClick={(event) => event.stopPropagation()}>
-                      {(canManageScheduleStatus || (canManageAgenda && canEditSchedule(schedule, canManageLockedSchedules))) && (
+                      {(!schedule.isHistoricalExecution && (canManageScheduleStatus || (canManageAgenda && canEditSchedule(schedule, canManageLockedSchedules)))) && (
                         <Button type="button" variant="outline" size="sm" className="h-8 rounded-full" onClick={() => openEditSchedule(schedule)}>
                           <Edit className="mr-2 h-4 w-4" />
                           Editar
