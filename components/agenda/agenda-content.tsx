@@ -1266,6 +1266,7 @@ export function AgendaContent({ openDialog, onDialogChange, availabilityOpen = f
         resourceIds: resourceIdsForSchedule(service),
         isEmergency: service.isEmergency,
         status: service.status,
+        isExecutionResolved: service.isExecutionResolved,
         statusReason: service.status === "not_completed"
           ? service.statusHistory?.findLast((entry) => entry.status === "not_completed")?.reason
           : undefined,

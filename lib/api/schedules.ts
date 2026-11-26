@@ -12,6 +12,11 @@ export async function getScheduleHistory(id: string) {
   return response.data
 }
 
+export async function correctScheduleExecutionServices(id: string, serviceTypeIds: string[]) {
+  const response = await api.patch<{ success: true; data: ScheduleRecord }>(`/schedules/${encodeURIComponent(id)}/execution-services`, { serviceTypeIds })
+  return response.data
+}
+
 export type ScheduleNaAttachmentRecord = {
   type?: string
   title?: string
@@ -47,6 +52,8 @@ export type ScheduleCompletionEmployee = {
 export type ScheduleRecord = {
   sourceScheduleId?: string
   isHistoricalExecution?: boolean
+  isExecutionResolved?: boolean
+  executionServiceOptions?: Array<{ id: string; name: string }>
   routineContractServiceNames?: string[]
   executionEndTime?: string
   executionEndDate?: string

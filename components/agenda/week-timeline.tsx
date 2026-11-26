@@ -33,6 +33,7 @@ interface TimelineEvent {
   resourceIds?: string[]
   isEmergency?: boolean
   status: string
+  isExecutionResolved?: boolean
   statusReason?: string
 }
 
@@ -703,11 +704,11 @@ export function WeekTimeline({
                     )
                   })}
                   {dayEvents.map((ev) => {
-                    const baseColor = ["in_progress", "partially_completed"].includes(ev.status) && !ev.isEmergency
+                    const baseColor = ["in_progress", "partially_completed"].includes(ev.status) && !ev.isEmergency && !ev.isExecutionResolved
                       ? "#edd66b"
                       : ev.teamColor || "#9CA3AF" // gray for no team
                     const isOverlapping = ev.columnCount > 1
-                    const isInactive = ["completed", "cancelled", "not_completed"].includes(ev.status)
+                    const isInactive = ["completed", "cancelled", "not_completed"].includes(ev.status) || Boolean(ev.isExecutionResolved)
                     const color = isInactive
                       ? `color-mix(in srgb, ${baseColor} 45%, white)`
                       : baseColor
@@ -727,6 +728,7 @@ export function WeekTimeline({
                         type="button"
                         data-schedule-id={ev.scheduleId ?? ev.id}
                         data-schedule-status={ev.status}
+                        data-execution-resolved={ev.isExecutionResolved ? "true" : undefined}
                         onClick={(event) => {
                           event.stopPropagation()
                           setActiveEventGroupId(hoverGroupId)
