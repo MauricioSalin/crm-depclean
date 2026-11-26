@@ -18,11 +18,16 @@ const historical: ScheduleRecord = {
   executionDurationMinutes: 240, serviceReport: "Sucção realizada na primeira visita.",
   attendanceDisposal: { mtrNumber: "001234, 009876", mtrNumbers: ["001234", "009876"], type: "fossa", stationId: "station", stationName: "Estação", unitPrice: 19, quantityM3: 2, totalValue: 38 },
   billable: false, value: 0, canStartAttendance: false, canAttachNa: false,
+  naAttachments: [{ fileName: "na-outubro.pdf", documentUrl: "/api/v1/files/atlanta/na-outubro.pdf" }],
 }
 const returnVisit: ScheduleRecord = {
   ...historical, id: "atlanta~execution~2", date: "2026-11-16", completionStartDate: "2026-11-16", completionEndDate: "2026-11-16",
   duration: 120, durationValue: 120, completionEndTime: "10:00", executionDurationMinutes: 120,
   serviceReport: "Retorno sem sucção.", attendanceDisposal: null,
+  naAttachments: [
+    { fileName: "na-novembro.pdf", documentUrl: "/api/v1/files/atlanta/na-novembro.pdf" },
+    { fileName: "foto-novembro.jpg", documentUrl: "/api/v1/files/atlanta/foto-novembro.jpg" },
+  ],
 }
 const pending: ScheduleRecord = {
   ...base, id: "atlanta", clientName: "Atlanta", serviceTypeName: "Limpeza de rede",
@@ -65,6 +70,8 @@ test("agenda preserva as três datas e abre a visita parcial com várias MTRs", 
   await expect(dialog).toContainText("MTR 1: 001234")
   await expect(dialog).toContainText("MTR 2: 009876")
   await expect(dialog).toContainText("Sucção realizada na primeira visita.")
+  await expect(dialog.getByRole("link", { name: "Visualizar na-outubro.pdf", exact: true })).toHaveAttribute("href", /\/api\/v1\/files\/atlanta\/na-outubro\.pdf$/)
+  await expect(dialog.getByRole("link", { name: /novembro/ })).toHaveCount(0)
   await expect(dialog.getByRole("button", { name: /Reagendar|Editar/ })).toHaveCount(0)
   await capturePreview(dialog, "03-detalhes-visita-mtrs")
   await page.setViewportSize({ width: 390, height: 844 })
@@ -95,6 +102,18 @@ test("calendário mantém cada visita no dia executado após os reagendamentos",
   await expect(page.getByRole("dialog").getByRole("button", { name: /Reagendar|Editar/ })).toHaveCount(0)
   await page.goto("/agenda?date=2026-11-16&view=week")
   await expect(page.locator('[data-schedule-id="atlanta~execution~2"][data-schedule-status="partially_completed"]')).toBeVisible()
+  await page.locator('[data-schedule-id="atlanta~execution~2"]').click()
+  const dialog = page.getByRole("dialog")
+  await expect(dialog).toContainText("Retorno sem sucção.")
+  await expect(dialog).not.toContainText("001234")
+  await expect(dialog.getByRole("link", { name: "Visualizar na-novembro.pdf", exact: true })).toHaveAttribute("href", /\/api\/v1\/files\/atlanta\/na-novembro\.pdf$/)
+  await expect(dialog.getByRole("link", { name: "Visualizar foto-novembro.jpg", exact: true })).toHaveAttribute("target", "_blank")
+  await expect(dialog.getByRole("link", { name: /outubro/ })).toHaveCount(0)
+  await expect(dialog.getByRole("button", { name: /Remover|Editar nome|Reagendar/ })).toHaveCount(0)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(dialog.getByRole("link", { name: "Visualizar na-novembro.pdf", exact: true })).toBeVisible()
+  await expect(dialog.getByRole("link", { name: "Visualizar foto-novembro.jpg", exact: true })).toBeVisible()
+  await expect.poll(() => dialog.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1)
   await expect(page.locator('[data-schedule-id="atlanta~execution~1"]')).toHaveCount(0)
   await page.goto("/agenda?date=2026-11-23&view=week")
   await expect(page.locator('[data-schedule-id="atlanta"][data-schedule-status="rescheduled"]')).toBeVisible()

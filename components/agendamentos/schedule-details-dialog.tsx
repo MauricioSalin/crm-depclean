@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { usePathname, useSearchParams } from "next/navigation"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { AlertTriangle, ArrowLeft, CalendarDays, Clock3, FileDown, History, Loader2, MapPin, OctagonX, Pencil, Sparkles, Users } from "lucide-react"
+import { AlertTriangle, ArrowLeft, CalendarDays, Clock3, Eye, FileDown, History, Loader2, MapPin, OctagonX, Pencil, Sparkles, Users } from "lucide-react"
 import { toast } from "sonner"
 
 import { AttendanceStartSlider } from "@/components/agendamentos/attendance-start-slider"
@@ -19,10 +19,12 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { SavedAttachmentRow } from "@/components/ui/saved-attachment-row"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { useCurrentUser } from "@/hooks/use-permissions"
 import { canAccessPath } from "@/lib/auth/permissions"
 import { getApiErrorMessage } from "@/lib/api/errors"
+import { buildApiFileUrl } from "@/lib/api/client"
 import { exportScheduleSummaryPdf, getScheduleById, getScheduleHistory, getScheduleRescheduleOptions, getScheduleVisitContext, rescheduleSchedule, updateSchedule, type ScheduleRecord } from "@/lib/api/schedules"
 import type { ServiceRecord } from "@/lib/api/services"
 import type { TeamRecord } from "@/lib/api/teams"
@@ -786,8 +788,28 @@ export function ScheduleDetailsDialog({
             </div>
 
             {selectedVisit ? <p className="mt-3 text-center text-sm font-medium">Dia {selectedVisit.multiDayIndex} · {formatScheduleDate(selectedVisit.date)}</p> : null}
-            <div className="mt-3 grid gap-3 md:grid-cols-2">
+            <div className="mt-3 grid min-w-0 grid-cols-1 gap-3 md:grid-cols-2">
               {executionCards}
+              {groupRecords.map((visit) => {
+                const attachments = visit.naAttachments?.length ? visit.naAttachments
+                  : visit.naDocumentUrl ? [{ documentUrl: visit.naDocumentUrl, fileName: visit.naFileName || "NA da visita" }] : []
+                return attachments.length > 0 ? (
+                  <div key={`attachments-${visit.id}`} data-schedule-detail-card="attachments" className="min-w-0 space-y-2 rounded-2xl border p-4 md:col-span-2">
+                    <p className="mb-3 text-sm font-medium">NAs e evidências · {formatScheduleDate(visit.date)}</p>
+                    {attachments.map((attachment, index) => (
+                      <SavedAttachmentRow key={`${attachment.documentUrl}-${index}`} fileName={attachment.fileName || `Anexo ${index + 1}`}
+                        description={`Anexo da visita de ${formatScheduleDate(visit.date)}`}
+                        actions={
+                          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-full" asChild>
+                            <a href={buildApiFileUrl(attachment.documentUrl)} target="_blank" rel="noreferrer" aria-label={`Visualizar ${attachment.fileName || `anexo ${index + 1}`}`}>
+                              <Eye className="h-4 w-4" />
+                            </a>
+                          </Button>
+                        } />
+                    ))}
+                  </div>
+                ) : null
+              })}
               {canOpenVisitAttendance ? (
                 <Button type="button" variant="outline" className="md:col-span-2" onClick={() => onOpenAttendance?.(selectedVisit ?? schedule)}>
                   {schedule.status === "in_progress" ? "Encerrar atendimento" : "Ver execução"} de {formatScheduleDate(schedule.date)}

@@ -39,6 +39,7 @@ import { listContracts, type ContractRecord } from "@/lib/api/contracts"
 import { listEmployees } from "@/lib/api/employees"
 import { listSchedules, type ScheduleRecord } from "@/lib/api/schedules"
 import { listServices, type ServiceRecord } from "@/lib/api/services"
+import { getContractTemplateServices } from "@/lib/contract-template-services"
 import {
   buildDownPaymentsText,
   buildInstallmentDueDatesText,
@@ -61,7 +62,8 @@ import {
 } from "@/lib/api/templates"
 import { buildApiFileUrl } from "@/lib/api/client"
 import { getApiErrorMessage } from "@/lib/api/errors"
-import { useHasAnyPermission } from "@/hooks/use-permissions"
+import { useCurrentUser } from "@/hooks/use-permissions"
+import { hasAnyPermission } from "@/lib/auth/permissions"
 import { BRASILIA_TIME_ZONE, formatCivilDate, formatCivilLongDate, parseCivilDate } from "@/lib/date-utils"
 import { useMobileFiltersOpen } from "@/lib/hooks/use-mobile-filters"
 import { useUrlQueryState } from "@/lib/hooks/use-url-query-state"
@@ -404,29 +406,24 @@ function buildRecurrenceTableHtml(clientTypeName: string, rules: ContractRecord[
 }
 
 function buildServiceSectionsText(contract: ContractRecord, services: ServiceRecord[]) {
-  return contract.services
+  return getContractTemplateServices(contract, services)
     .map((item, index) => {
-      const service = services.find((candidate) => candidate.id === item.serviceTypeId)
-      const serviceName = service?.name ?? "Serviço"
-      const clauses = item.clauses?.length
-        ? item.clauses.map((clause, clauseIndex) => `${index + 1}.${clauseIndex + 1}. ${clause}`).join("\n")
-        : `${index + 1}.1. Cláusulas específicas não informadas para este serviço.`
+      const clauses = item.clauses.map((clause, clauseIndex) => `${index + 1}.${clauseIndex + 1}. ${clause}`).join("\n")
 
-      return `${index + 1}. ${serviceName}\n${clauses}`
+      return `${index + 1}. ${item.name}\n${clauses}`
     })
     .join("\n\n")
 }
 
 function buildServiceSectionsHtml(contract: ContractRecord, services: ServiceRecord[]) {
-  return contract.services
+  return getContractTemplateServices(contract, services)
     .map((item, index) => {
-      const service = services.find((candidate) => candidate.id === item.serviceTypeId)
-      const serviceName = service?.name ?? "Serviço"
-      const clauses = item.clauses?.length
-        ? item.clauses.map((clause, clauseIndex) => `<p><strong>${index + 1}.${clauseIndex + 1}.</strong> ${escapeHtml(clause)}</p>`).join("")
-        : `<p><strong>${index + 1}.1.</strong> Cláusulas específicas não informadas para este serviço.</p>`
+      const clauses = item.clauses.map((clause, clauseIndex) => {
+        const [first, ...continuation] = clause.replace(/\r\n?/g, "\n").split(/\n+/).map((paragraph) => paragraph.trim()).filter(Boolean)
+        return `<p><strong>${index + 1}.${clauseIndex + 1}.</strong> ${escapeHtml(first)}</p>${continuation.map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join("")}`
+      }).join("")
 
-      return `<p><strong>${index + 1}. ${escapeHtml(serviceName)}</strong></p>${clauses}`
+      return `<p><strong>${index + 1}. ${escapeHtml(item.name)}</strong></p>${clauses}`
     })
     .join("")
 }
@@ -490,9 +487,8 @@ function buildPreviewVariables(params: {
     : 0
   const firstInstallmentValue = downPayments[0]?.value ?? installmentValue
   const contractServiceNames =
-    contract?.services
-      .map((item) => services.find((serviceItem) => serviceItem.id === item.serviceTypeId)?.name)
-      .filter(Boolean)
+    (contract ? getContractTemplateServices(contract, services) : [])
+      .map((item) => item.name)
       .join(", ") || ""
   const serviceSectionsText = contract ? buildServiceSectionsText(contract, services) : ""
   const serviceSectionsHtml = contract ? buildServiceSectionsHtml(contract, services) : ""
@@ -596,7 +592,7 @@ function buildPreviewVariables(params: {
         names: contractServiceNames,
         sectionsHtml: serviceSectionsHtml,
         sectionsText: serviceSectionsText,
-        summary: contractServiceNames.toLowerCase(),
+        summary: contractServiceNames.toLowerCase() || "servicos especializados",
       },
     }
   }
@@ -636,7 +632,8 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
   const queryClient = useQueryClient()
   const mobileFiltersOpen = useMobileFiltersOpen()
   const config = TEMPLATE_CONFIG[kind]
-  const canManageTemplates = useHasAnyPermission(["templates_manage"])
+  const currentUser = useCurrentUser()
+  const canManageTemplates = hasAnyPermission(currentUser, ["templates_manage"])
   const docxEditorRef = useRef<DocxTemplateEditorRef | null>(null)
   const closingEditorRef = useRef(false)
   const initialFormSnapshotRef = useRef(serializeTemplateFormState(createEmptyTemplateFormState()))
@@ -831,6 +828,8 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
   }, [totalPages])
 
   useEffect(() => {
+    if (!currentUser) return
+
     if (closingEditorRef.current) {
       if (!routeTemplateId && routeTemplateMode !== "new") {
         closingEditorRef.current = false
@@ -869,7 +868,7 @@ export function TemplatesContent({ kind, openImport, onImportChange, onEditorSta
 
       openNewTemplateEditor(routeEditorTab)
     }
-  }, [canManageTemplates, editingTemplate, isEditorOpen, kind, replaceRouteParams, routeEditorTab, routeTemplate, routeTemplateId, routeTemplateMode])
+  }, [canManageTemplates, currentUser, editingTemplate, isEditorOpen, kind, replaceRouteParams, routeEditorTab, routeTemplate, routeTemplateId, routeTemplateMode])
 
   useEffect(() => {
     setPreviewDocumentId("")

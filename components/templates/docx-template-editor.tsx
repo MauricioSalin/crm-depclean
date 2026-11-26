@@ -1104,73 +1104,10 @@ function addPreviewPdfWatermark(page: HTMLElement, enabled: boolean) {
   }
 }
 
-type PdfCaptureStyleSnapshot = {
-  element: HTMLElement
-  cssText: string
-}
-
-function applyPdfCaptureStyles(
-  snapshots: PdfCaptureStyleSnapshot[],
-  element: HTMLElement,
-  styles: Partial<CSSStyleDeclaration>,
-) {
-  snapshots.push({ element, cssText: element.style.cssText })
-  Object.assign(element.style, styles)
-}
-
 function prepareDocxPageForPdfCapture(page: HTMLElement) {
-  const snapshots: PdfCaptureStyleSnapshot[] = []
-
-  applyPdfCaptureStyles(snapshots, page, {
-    overflow: "visible",
-  })
-
-  page.querySelectorAll<HTMLElement>(".layout-table, table").forEach((table) => {
-    applyPdfCaptureStyles(snapshots, table, {
-      borderCollapse: "collapse",
-      overflow: "visible",
-    })
-  })
-
-  page.querySelectorAll<HTMLElement>(".layout-table tr, table tr").forEach((row) => {
-    applyPdfCaptureStyles(snapshots, row, {
-      height: "auto",
-      minHeight: "18px",
-    })
-  })
-
-  page.querySelectorAll<HTMLElement>(".layout-table td, .layout-table th, table td, table th").forEach((cell) => {
-    applyPdfCaptureStyles(snapshots, cell, {
-      boxSizing: "border-box",
-      height: "auto",
-      lineHeight: "1.3",
-      minHeight: "18px",
-      overflow: "visible",
-      paddingBottom: "3px",
-      paddingTop: "3px",
-      verticalAlign: "middle",
-    })
-  })
-
-  page
-    .querySelectorAll<HTMLElement>(
-      ".layout-table p, .layout-table span, .layout-table .layout-paragraph, table p, table span, table .layout-paragraph",
-    )
-    .forEach((element) => {
-      applyPdfCaptureStyles(snapshots, element, {
-        lineHeight: "1.3",
-        minHeight: "1.3em",
-        overflow: "visible",
-        paddingBottom: "1px",
-        paddingTop: "1px",
-      })
-    })
-
-  return () => {
-    snapshots.reverse().forEach(({ element, cssText }) => {
-      element.style.cssText = cssText
-    })
-  }
+  const previousOverflow = page.style.overflow
+  page.style.overflow = "visible"
+  return () => { page.style.overflow = previousOverflow }
 }
 
 function escapeRegExp(value: string) {
@@ -2786,34 +2723,65 @@ export const DocxTemplateEditor = forwardRef<DocxTemplateEditorRef, DocxTemplate
       }
 
       const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import("html2canvas"), import("jspdf")])
-      const pdf = new jsPDF({ format: "a4", orientation: "portrait", unit: "pt" })
+      const pdf = new jsPDF({ compress: true, format: [pages[0].offsetWidth * 0.75, pages[0].offsetHeight * 0.75], orientation: "portrait", unit: "pt" })
       const pdfWidth = pdf.internal.pageSize.getWidth()
       const pdfHeight = pdf.internal.pageSize.getHeight()
+      const scrollPositions: Array<{ element: HTMLElement; top: number; left: number }> = []
+      for (let ancestor = pages[0].parentElement; ancestor; ancestor = ancestor.parentElement) {
+        scrollPositions.push({ element: ancestor, top: ancestor.scrollTop, left: ancestor.scrollLeft })
+      }
 
-      for (const [index, page] of pages.entries()) {
-        const removePreviewWatermark = addPreviewPdfWatermark(page, Boolean(options?.previewWatermark))
-        const restorePdfCaptureLayout = prepareDocxPageForPdfCapture(page)
-        let canvas: HTMLCanvasElement
+      try {
+        for (const [index, page] of pages.entries()) {
+          // Long documents render pages on demand. Reveal each page before cloning its content.
+          page.scrollIntoView({ block: "center", inline: "nearest" })
+          const renderStartedAt = Date.now()
+          while (!page.querySelector(".layout-page-content") && Date.now() - renderStartedAt < 3000) {
+            await new Promise((resolve) => window.setTimeout(resolve, 80))
+          }
+          if (!page.querySelector(".layout-page-content")) {
+            throw new Error(`Não foi possível renderizar a página ${index + 1} da prévia.`)
+          }
+          const removePreviewWatermark = addPreviewPdfWatermark(page, Boolean(options?.previewWatermark))
+          const restorePdfCaptureLayout = prepareDocxPageForPdfCapture(page)
+          let canvas: HTMLCanvasElement
 
-        try {
-          canvas = await html2canvas(page, {
-            backgroundColor: "#ffffff",
-            logging: false,
-            scale: 2,
-            useCORS: true,
-          })
-        } finally {
-          restorePdfCaptureLayout()
-          removePreviewWatermark()
+          try {
+            canvas = await html2canvas(page, {
+              backgroundColor: "#ffffff",
+              logging: false,
+              onclone: (_document, clonedPage) => {
+                // Canvas text measurements must use document scale, independent of the editor's fit zoom.
+                for (let ancestor = clonedPage.parentElement; ancestor; ancestor = ancestor.parentElement) {
+                  ancestor.style.transform = "none"
+                  ancestor.style.zoom = "1"
+                }
+                // Align canvas text with the baseline of the editor's tightly sized table rows.
+                clonedPage.querySelectorAll<HTMLElement>(".layout-table-cell-content").forEach((content) => {
+                  content.style.transform = "translateY(-8px)"
+                })
+              },
+              scale: 2,
+              useCORS: true,
+            })
+          } finally {
+            restorePdfCaptureLayout()
+            removePreviewWatermark()
+          }
+
+          const imageData = canvas.toDataURL("image/png")
+
+          if (index > 0) {
+            pdf.addPage()
+          }
+
+          pdf.addImage(imageData, "PNG", 0, 0, pdfWidth, pdfHeight, undefined, "FAST")
         }
-
-        const imageData = canvas.toDataURL("image/png")
-
-        if (index > 0) {
-          pdf.addPage()
+      } finally {
+        for (const { element, top, left } of scrollPositions) {
+          element.scrollTop = top
+          element.scrollLeft = left
         }
-
-        pdf.addImage(imageData, "PNG", 0, 0, pdfWidth, pdfHeight)
       }
 
       const safeDocxName = sanitizeDocxFileName(fileName || templateName, `${kind}-template.docx`)
