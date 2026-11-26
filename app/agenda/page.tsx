@@ -8,10 +8,11 @@ import { Button } from "@/components/ui/button"
 import { ContentLoadingSkeleton } from "@/components/ui/content-loading-skeleton"
 import { hasAnyPermission } from "@/lib/auth/permissions"
 import { getStoredUser } from "@/lib/auth/session"
-import { Plus } from "lucide-react"
+import { CalendarCheck2, Plus } from "lucide-react"
 
 export default function AgendaPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [availabilityOpen, setAvailabilityOpen] = useState(false)
   const [currentUser, setCurrentUser] = useState<ReturnType<typeof getStoredUser>>(null)
   const canManageAgenda = hasAnyPermission(currentUser, ["agenda_manage"])
 
@@ -38,18 +39,24 @@ export default function AgendaPage() {
           description="Gerencie os agendamentos e compromissos da equipe."
           hasFilters
           actions={canManageAgenda ? (
+            <>
+            <Button variant="outline" className="h-9 shrink-0 rounded-full" onClick={() => setAvailabilityOpen(true)}>
+              <CalendarCheck2 className="h-4 w-4" />
+              Disponibilidade
+            </Button>
             <Button
               onClick={() => setDialogOpen(true)}
-              className="w-full sm:w-auto h-9 text-sm bg-primary text-primary-foreground hover:bg-primary/90"
+              className="h-9 text-sm bg-primary text-primary-foreground hover:bg-primary/90"
             >
               <Plus className="w-4 h-4 mr-2" />
               Novo Agendamento
             </Button>
+            </>
           ) : undefined}
         />
 
         <Suspense fallback={<ContentLoadingSkeleton className="mt-4" />}>
-          <AgendaContent openDialog={canManageAgenda && dialogOpen} onDialogChange={setDialogOpen} />
+          <AgendaContent openDialog={canManageAgenda && dialogOpen} onDialogChange={setDialogOpen} availabilityOpen={canManageAgenda && availabilityOpen} onAvailabilityChange={setAvailabilityOpen} />
         </Suspense>
       </main>
     </div>

@@ -3,6 +3,7 @@ import type { TeamRecord } from "@/lib/api/teams"
 import { addCivilDaysKey, minutesFromBrasiliaDate, toCivilDateKey } from "@/lib/date-utils"
 import { scheduleDurationToMinutes, type ScheduleDurationType } from "@/lib/schedule-duration"
 import { resolveDailyScheduleLimitHours } from "@/lib/service-daily-capacity"
+import { normalizeTeamEmployeeSelection } from "@/lib/team-member-selection"
 
 type AvailabilityFormData = {
   multiDayDates?: string[]
@@ -69,6 +70,98 @@ export function isScheduleConflictErrorMessage(message: string) {
     .toLowerCase()
 
   return normalized.includes("possui atendimento neste horario")
+}
+
+export type AgendaAvailabilityResource = {
+  id: string
+  name: string
+  teamIds: string[]
+  employeeIds: string[]
+  kind?: "employee" | "team" | "combined" | "client"
+  clientId?: string
+}
+
+export function combineAgendaAvailabilityResources(resources: AgendaAvailabilityResource[], teams: TeamRecord[]): AgendaAvailabilityResource | null {
+  if (resources.length < 2) return null
+  const assignment = normalizeTeamEmployeeSelection({
+    teamIds: resources.flatMap((resource) => resource.teamIds),
+    employeeIds: resources.flatMap((resource) => resource.employeeIds),
+    teams,
+  })
+  return {
+    id: "combined:selection",
+    name: resources.map((resource) => resource.name).join(", "),
+    kind: "combined",
+    ...assignment,
+  }
+}
+
+/** Uses the same workday and resource-conflict rules as the scheduling form. */
+export function getAgendaMonthAvailability(params: {
+  schedules: ScheduleRecord[]
+  teams: TeamRecord[]
+  resources: AgendaAvailabilityResource[]
+  dates: string[]
+  durationMinutes: number
+  includeWeekends?: boolean
+  now: Date
+}) {
+  const today = toCivilDateKey(params.now)
+  const currentMinutes = minutesFromBrasiliaDate(params.now)
+  const schedulesByDate = new Map<string, ScheduleRecord[]>()
+  const clientBlocksByDate = new Map<string, Array<{ clientId: string; startMinutes: number; endMinutes: number }>>()
+  for (const schedule of params.schedules) {
+    if (["cancelled", "completed", "awaiting_schedule", "not_completed", "partially_completed"].includes(schedule.status)) continue
+    const blocks = buildScheduleBlocks({
+      date: schedule.date,
+      time: schedule.time || "08:00",
+      durationMinutes: getScheduleDurationMinutes(schedule),
+      durationType: schedule.durationType,
+      multiDayDates: !schedule.multiDayGroupId ? schedule.multiDayDates : undefined,
+      multiDayTimes: !schedule.multiDayGroupId ? schedule.multiDayTimes : undefined,
+      multiDayDurations: !schedule.multiDayGroupId ? schedule.multiDayDurations : undefined,
+      mode: "manual",
+    })
+    for (const block of blocks) {
+      const items = clientBlocksByDate.get(block.date) ?? []
+      items.push({ clientId: schedule.clientId, startMinutes: block.startMinutes, endMinutes: block.endMinutes })
+      clientBlocksByDate.set(block.date, items)
+    }
+    for (const date of new Set(blocks.map((block) => block.date))) {
+      const items = schedulesByDate.get(date) ?? []
+      items.push(schedule)
+      schedulesByDate.set(date, items)
+    }
+  }
+  return params.dates.map((date) => {
+    const closed = date < today || (!params.includeWeekends && isWeekendDateKey(date))
+    const candidates: string[] = []
+    if (!closed && params.durationMinutes > 0 && params.durationMinutes <= DAY_DURATION_MINUTES) {
+      for (let start = WORKDAY_START_MINUTES; start < WORKDAY_END_MINUTES; start += SLOT_STEP_MINUTES) {
+        const time = timeFromMinutes(start)
+        if (checkScheduleAvailability({ schedules: [], teams: params.teams, suggestAlternative: false,
+          formData: { date, time, teamIds: [], employeeIds: [], duration: params.durationMinutes, durationType: "minutes" },
+        }).available) candidates.push(time)
+      }
+    }
+    const resources = params.resources.map((resource) => ({
+      ...resource,
+      pastTimes: candidates.filter((time) => date === today && minutesFromTime(time) < currentMinutes),
+      times: candidates.filter((time) => resource.kind === "client"
+        ? !(clientBlocksByDate.get(date) ?? []).some((block) => block.clientId === resource.clientId &&
+          minutesFromTime(time) < block.endMinutes && minutesFromTime(time) + params.durationMinutes > block.startMinutes)
+        : checkScheduleAvailability({
+        schedules: schedulesByDate.get(date) ?? [], teams: params.teams, suggestAlternative: false,
+        formData: { date, time, teamIds: resource.teamIds, employeeIds: resource.employeeIds,
+          duration: params.durationMinutes, durationType: "minutes" },
+      }).available),
+    }))
+    const availableCount = resources.filter((resource) => resource.times.length > 0).length
+    const status = closed || !resources.length || !candidates.length ? "closed"
+      : availableCount === 0 ? "full"
+      : resources.every((resource) => resource.times.length === candidates.length) ? "free" : "partial"
+    return { date, resources, availableCount, status }
+  })
 }
 
 export function checkScheduleAvailability(params: {

@@ -77,6 +77,7 @@ import { EmptyState } from "@/components/ui/empty-state"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { AgendaPeriodSelector } from "./agenda-period-selector"
+import { AgendaAvailability } from "./agenda-availability"
 import { WeekTimeline, type TimelineResource } from "./week-timeline"
 import { TimelineItemSkeleton } from "./timeline-item-skeleton"
 import { CompletionNaAttachments } from "@/components/agendamentos/completion-na-attachments"
@@ -202,6 +203,8 @@ function scheduleOccupiesDate(schedule: AgendaScheduledServiceRow, dateKey: stri
 interface AgendaContentProps {
   openDialog?: boolean
   onDialogChange?: (open: boolean) => void
+  availabilityOpen?: boolean
+  onAvailabilityChange?: (open: boolean) => void
 }
 
 const currentCompletionDateTime = () => {
@@ -245,7 +248,7 @@ function canShowScheduleEditAction(
   return canManageScheduleStatus || (canManageAgenda && canEditSchedule(schedule, canManageLockedSchedules))
 }
 
-export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps) {
+export function AgendaContent({ openDialog, onDialogChange, availabilityOpen = false, onAvailabilityChange }: AgendaContentProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const isMobile = useIsMobile()
@@ -1814,6 +1817,26 @@ export function AgendaContent({ openDialog, onDialogChange }: AgendaContentProps
           setAvailabilitySuggestion(null)
         }}
       />
+
+      {canManageAgenda ? <AgendaAvailability
+          open={availabilityOpen}
+          onOpenChange={(open) => onAvailabilityChange?.(open)}
+          initialDate={currentDateKey}
+          schedules={schedules}
+          teams={teams}
+          employees={employees}
+          clients={clients}
+          loading={schedulesQuery.isPending || teamsQuery.isPending || employeesQuery.isPending || clientsQuery.isPending}
+          error={schedulesQuery.isError || teamsQuery.isError || employeesQuery.isError || clientsQuery.isError}
+          onRetry={() => { void schedulesQuery.refetch(); void teamsQuery.refetch(); void employeesQuery.refetch(); void clientsQuery.refetch() }}
+          onSchedule={(selection) => {
+            clearScheduleDialogResetTimeout()
+            setEditingService(null)
+            setInitialFormData({ ...selection, durationType: "minutes" })
+            handleDialogChange(true)
+          }}
+        />
+      : null}
 
       <div className={`${mobileFiltersOpen ? "grid" : "hidden"} -m-1 grid-cols-2 gap-2 overflow-visible p-1 sm:flex sm:w-full sm:items-center sm:justify-between`}>
         <div className="contents sm:flex sm:min-w-0 sm:items-center sm:gap-2">
