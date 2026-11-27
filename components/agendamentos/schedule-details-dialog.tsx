@@ -14,7 +14,6 @@ import { ScheduleRecordsList } from "@/components/agendamentos/schedule-records-
 import { getRequestedRescheduleDetails, getRescheduleReasonError, RescheduleReasonFields } from "@/components/agendamentos/reschedule-reason-fields"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
 import { DatePicker } from "@/components/ui/date-picker"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -26,7 +25,7 @@ import { useCurrentUser } from "@/hooks/use-permissions"
 import { canAccessPath } from "@/lib/auth/permissions"
 import { getApiErrorMessage } from "@/lib/api/errors"
 import { buildApiFileUrl } from "@/lib/api/client"
-import { correctScheduleExecutionServices, exportScheduleSummaryPdf, getScheduleById, getScheduleHistory, getScheduleRescheduleOptions, getScheduleVisitContext, rescheduleSchedule, updateSchedule, type ScheduleRecord } from "@/lib/api/schedules"
+import { exportScheduleSummaryPdf, getScheduleById, getScheduleHistory, getScheduleRescheduleOptions, getScheduleVisitContext, rescheduleSchedule, updateSchedule, type ScheduleRecord } from "@/lib/api/schedules"
 import type { ServiceRecord } from "@/lib/api/services"
 import type { TeamRecord } from "@/lib/api/teams"
 import { formatCivilDate, parseCivilDate, toCivilDateKey } from "@/lib/date-utils"
@@ -162,11 +161,7 @@ export function ScheduleDetailsDialog({
   const isRoutineVisit = [schedule?.serviceTypeId, ...(schedule?.serviceTypeIds ?? []), ...(schedule?.serviceItems ?? []).map((service) => service.serviceTypeId)]
     .includes("srv-visita-de-rotina")
   const routineServiceNames = schedule?.routineContractServiceNames ?? []
-  const [mode, setMode] = useState<"details" | "reschedule" | "history" | "execution-services">("details")
-  const [serviceCorrectionTarget, setServiceCorrectionTarget] = useState<ScheduleRecord | null>(null)
-  const [correctedServiceIds, setCorrectedServiceIds] = useState<string[]>([])
-  const canCorrectExecutionServices = Boolean(currentUser?.permissions.includes("settings_manage") ||
-    (currentUser?.permissions.includes("agenda_manage") && currentUser.permissions.includes("agenda_manage_locked")))
+  const [mode, setMode] = useState<"details" | "reschedule" | "history">("details")
   const contentRef = useRef<HTMLDivElement>(null)
   useEffect(() => { contentRef.current?.scrollTo({ top: 0 }) }, [schedule?.id, mode])
   const historyQuery = useQuery({
@@ -293,22 +288,6 @@ export function ScheduleDetailsDialog({
         id: context?.toastId,
       })
     },
-  })
-
-  const correctServicesMutation = useMutation({
-    mutationFn: () => correctScheduleExecutionServices(serviceCorrectionTarget!.id, correctedServiceIds),
-    onSuccess: async (response) => {
-      queryClient.setQueryData(["schedule", response.data.id], response)
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["schedules"] }),
-        queryClient.invalidateQueries({ queryKey: ["schedule"] }),
-        queryClient.invalidateQueries({ queryKey: ["analytics"] }),
-      ])
-      setMode("details")
-      setServiceCorrectionTarget(null)
-      toast.success("Serviços desta visita corrigidos.")
-    },
-    onError: (error) => toast.error(getApiErrorMessage(error, "Não foi possível corrigir os serviços desta visita.")),
   })
 
   const exportSummaryMutation = useMutation({
@@ -461,17 +440,7 @@ export function ScheduleDetailsDialog({
       <div className="mb-3 flex items-center gap-1.5 text-sm font-medium">
         <Clock3 className="h-4 w-4 text-primary" />
         <span>{isGroup ? `Execução de ${formatScheduleDate(execution.date)}` : "Execução do atendimento"}</span>
-        {canCorrectExecutionServices && ["completed", "partially_completed"].includes(execution.status) ? (
-          <Button type="button" variant="outline" size="sm" className="ml-auto h-auto shrink-0 whitespace-normal text-xs"
-            aria-label={`Corrigir serviços da visita de ${formatScheduleDate(execution.date)}`}
-            disabled={shouldLoadDetails && detailsQuery.isPending}
-            onClick={() => {
-              setServiceCorrectionTarget(execution)
-              setCorrectedServiceIds(execution.serviceTypeIds?.length ? execution.serviceTypeIds : [execution.serviceTypeId])
-              setMode("execution-services")
-            }}>Corrigir serviços</Button>
-        ) : null}
-        {canEditExecution && !execution.isHistoricalExecution && onEditExecution && execution.id === schedule.id ? (
+        {canEditExecution && onEditExecution ? (
           <button
             type="button"
             aria-label="Editar execução do atendimento"
@@ -640,25 +609,7 @@ export function ScheduleDetailsDialog({
               </DialogHeader>
             ) : null}
 
-            {mode === "execution-services" && serviceCorrectionTarget ? (
-              <div className="space-y-5 pt-7">
-                <div>
-                  <p className="text-lg font-semibold">Corrigir serviços da visita</p>
-                  <p className="mt-1 text-sm text-muted-foreground">Marque os serviços realizados em {formatScheduleDate(serviceCorrectionTarget.date)}. A correção vale somente para esta visita; os serviços do retorno agendado são preservados.</p>
-                </div>
-                <div className="space-y-3">
-                  {(serviceCorrectionTarget.executionServiceOptions ?? (serviceCorrectionTarget.serviceTypeIds?.length ? serviceCorrectionTarget.serviceTypeIds : [serviceCorrectionTarget.serviceTypeId]).map((id) => ({ id, name: serviceTypes.find((service) => service.id === id)?.name ?? id }))).map((service) => (
-                    <label key={service.id} className="flex cursor-pointer items-center gap-3 rounded-xl border p-3 text-sm">
-                      <Checkbox aria-label={service.name} checked={correctedServiceIds.includes(service.id)} disabled={correctServicesMutation.isPending}
-                        onCheckedChange={(checked) => setCorrectedServiceIds((current) => checked === true ? [...current, service.id] : current.filter((id) => id !== service.id))} />
-                      {service.name}
-                    </label>
-                  ))}
-                </div>
-                <Button type="button" className="w-full sm:w-auto" disabled={!correctedServiceIds.length || correctServicesMutation.isPending}
-                  onClick={() => correctServicesMutation.mutate()}>{correctServicesMutation.isPending ? "Salvando..." : "Salvar correção"}</Button>
-              </div>
-            ) : mode === "history" ? (
+            {mode === "history" ? (
               <div className="space-y-4 pt-7">
                 <div>
                   <p className="text-lg font-semibold">Histórico de agendamentos</p>

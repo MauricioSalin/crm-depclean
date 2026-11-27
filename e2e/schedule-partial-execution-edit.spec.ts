@@ -52,3 +52,29 @@ test("a execução até 21h ocupa somente o dia 24 na agenda", async ({ page }) 
   await expect(event).toHaveCount(1)
   await expect(event).toContainText("19:48 - 21:00")
 })
+
+for (const entry of ["agenda", "agendamentos"]) {
+  test(`o lápis edita o dia executado ao abrir o grupo por outro dia em ${entry}`, async ({ page }) => {
+    await installAuthenticatedSession(page)
+    await installApiMock(page)
+    const first = { ...scheduleFixture, id: "gravatai", clientName: "Porto Gravataí", date: "2026-11-23", status: "cancelled", multiDayGroupId: "gravatai", multiDayIndex: 1, multiDayTotal: 2 }
+    const second = { ...first, id: "gravatai-day-2", date: "2026-11-24", status: "partially_completed", multiDayIndex: 2, completionStartDate: "2026-11-24", completionStartTime: "09:35", completionEndDate: "2026-11-24", completionEndTime: "16:10", executionDurationMinutes: 395, naAttachments: [], attendanceDisposal: null, attendanceVehiclePlate: "" }
+    const writes: string[] = []
+    await page.route("**/api/v1/schedules**", async route => {
+      const request = route.request(), pathname = new URL(request.url()).pathname
+      const send = (data: unknown) => route.fulfill({ json: { success: true, data } })
+      if (request.method() === "PATCH") { writes.push(pathname); return send(second) }
+      if (pathname.endsWith("/schedules")) return send([first, second])
+      if (pathname.endsWith("/" + first.id)) return send({ ...first, visits: [first, second] })
+      if (pathname.endsWith("/" + second.id)) return send({ ...second, visits: [first, second] })
+      return route.fallback()
+    })
+    await page.goto(entry === "agenda" ? "/agenda?date=2026-11-24&view=week&scheduleId=gravatai" : "/agendamentos/gravatai")
+    const dialog = page.getByRole("dialog")
+    await expect(dialog.getByRole("button", { name: /Corrigir serviços/ })).toHaveCount(0)
+    await dialog.locator('[data-schedule-detail-card="execution"]').getByRole("button", { name: "Editar execução do atendimento", exact: true }).click()
+    await expect(dialog.getByText("Editar execução do atendimento", { exact: true })).toBeVisible()
+    await dialog.getByRole("button", { name: "Salvar", exact: true }).click()
+    await expect.poll(() => writes).toEqual(["/api/v1/schedules/gravatai-day-2/complete"])
+  })
+}
