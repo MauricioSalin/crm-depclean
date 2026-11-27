@@ -476,7 +476,7 @@ export function ScheduleDetailsDialog({
             type="button"
             aria-label="Editar execução do atendimento"
             className="ring-offset-background focus-visible:ring-ring inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-full bg-transparent text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 [&_svg]:pointer-events-none [&_svg]:size-3.5 [&_svg]:shrink-0"
-            onClick={() => onEditExecution?.(selectedVisit ?? schedule)}
+            onClick={() => onEditExecution?.(execution)}
           >
             <Pencil />
             <span className="sr-only">Editar execução do atendimento</span>

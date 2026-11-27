@@ -569,7 +569,7 @@ export function AgendamentosContent({
   }, [currentUser])
 
   const openExecutionEditDialog = useCallback((schedule: ScheduleRecord) => {
-    if (schedule.status !== "completed" || !canEditCompletedExecution) return
+    if (!["completed", "partially_completed"].includes(schedule.status) || !canEditCompletedExecution) return
 
     const now = currentCompletionDateTime()
     const defaultDate = schedule.completionStartDate || now.date || schedule.date
@@ -1026,7 +1026,7 @@ export function AgendamentosContent({
       disposalStationId: string
       disposalQuantityM3: number | null
     }) => {
-      const isEditingExecution = schedule.status === "completed"
+      const isEditingExecution = ["completed", "partially_completed"].includes(schedule.status)
       const hasExistingNa = Boolean(schedule.naAttachments?.length || schedule.naDocumentUrl)
       if (!isEditingExecution && !hasExistingNa) {
         throw new Error("Anexe ao menos uma NA ou evidência antes de concluir o atendimento.")
@@ -1049,12 +1049,12 @@ export function AgendamentosContent({
     },
     onMutate: ({ schedule }) => {
       const toastId = toast.loading(
-        schedule.status === "completed" ? "Salvando execução..." : "Concluindo atendimento...",
+        ["completed", "partially_completed"].includes(schedule.status) ? "Salvando execução..." : "Concluindo atendimento...",
       )
       return { toastId }
     },
     onSuccess: (_response, variables, context) => {
-      const isEditingExecution = variables.schedule.status === "completed"
+      const isEditingExecution = ["completed", "partially_completed"].includes(variables.schedule.status)
       closeCompletionDialog()
       toast.success(isEditingExecution ? "Execução atualizada." : "Atendimento concluído.", {
         id: context?.toastId,
@@ -1065,7 +1065,7 @@ export function AgendamentosContent({
       void invalidateSchedules().catch(() => undefined)
     },
     onError: (error: any, variables, context) => {
-      const fallback = variables.schedule.status === "completed"
+      const fallback = ["completed", "partially_completed"].includes(variables.schedule.status)
         ? "Não foi possível atualizar a execução."
         : "Não foi possível concluir o atendimento."
       toast.error(getApiErrorMessage(error, fallback), {
@@ -1307,7 +1307,7 @@ export function AgendamentosContent({
   }
 
   const detailsSchedule = completionInfoOpen ? completionTarget : selectedSchedule
-  const isEditingExecution = completionTarget?.status === "completed"
+  const isEditingExecution = Boolean(completionTarget && ["completed", "partially_completed"].includes(completionTarget.status))
 
   return (
     <>
