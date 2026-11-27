@@ -60,11 +60,16 @@ for (const entry of ["agenda", "agendamentos"]) {
     const first = { ...scheduleFixture, id: "gravatai", clientName: "Porto Gravataí", date: "2026-11-23", status: "cancelled", multiDayGroupId: "gravatai", multiDayIndex: 1, multiDayTotal: 2 }
     const second = { ...first, id: "gravatai-day-2", date: "2026-11-24", status: "partially_completed", multiDayIndex: 2, completionStartDate: "2026-11-24", completionStartTime: "09:35", completionEndDate: "2026-11-24", completionEndTime: "16:10", executionDurationMinutes: 395, naAttachments: [], attendanceDisposal: null, attendanceVehiclePlate: "" }
     const writes: string[] = []
+    let releaseList: () => void = () => undefined
+    const pendingList = new Promise<void>(resolve => { releaseList = resolve })
     await page.route("**/api/v1/schedules**", async route => {
       const request = route.request(), pathname = new URL(request.url()).pathname
       const send = (data: unknown) => route.fulfill({ json: { success: true, data } })
       if (request.method() === "PATCH") { writes.push(pathname); return send(second) }
-      if (pathname.endsWith("/schedules")) return send([first, second])
+      if (pathname.endsWith("/schedules")) {
+        if (entry === "agendamentos") await pendingList
+        return send([first, second])
+      }
       if (pathname.endsWith("/" + first.id)) return send({ ...first, visits: [first, second] })
       if (pathname.endsWith("/" + second.id)) return send({ ...second, visits: [first, second] })
       return route.fallback()
@@ -73,6 +78,19 @@ for (const entry of ["agenda", "agendamentos"]) {
     const dialog = page.getByRole("dialog")
     await expect(dialog.getByRole("button", { name: /Corrigir serviços/ })).toHaveCount(0)
     await dialog.locator('[data-schedule-detail-card="execution"]').getByRole("button", { name: "Editar execução do atendimento", exact: true }).click()
+    await expect(dialog.getByText("Editar execução do atendimento", { exact: true })).toBeVisible()
+    if (entry === "agendamentos") {
+      const response = page.waitForResponse(response => new URL(response.url()).pathname.endsWith("/api/v1/schedules"))
+      releaseList()
+      await response
+      await expect(page.locator("tbody")).toContainText("Porto Gravataí")
+    }
+    await page.evaluate(() => {
+      const user = JSON.parse(localStorage.getItem("depclean.user") || "{}")
+      localStorage.setItem("depclean.user", JSON.stringify({ ...user, name: "Sessão atualizada" }))
+      window.dispatchEvent(new Event("depclean:session"))
+    })
+    await expect(page.getByText("Sessão atualizada", { exact: true }).first()).toBeVisible()
     await expect(dialog.getByText("Editar execução do atendimento", { exact: true })).toBeVisible()
     await dialog.getByRole("button", { name: "Salvar", exact: true }).click()
     await expect.poll(() => writes).toEqual(["/api/v1/schedules/gravatai-day-2/complete"])

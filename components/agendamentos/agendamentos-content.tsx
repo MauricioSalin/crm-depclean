@@ -513,6 +513,7 @@ export function AgendamentosContent({
   const [pendingDelete, setPendingDelete] = useState<ScheduleRecord | null>(null)
   const scheduleDialogResetTimeoutRef = useRef<number | null>(null)
   const scheduleEditRequestRef = useRef(0)
+  const openedRouteScheduleRef = useRef<string | null>(null)
   const [currentUser, setCurrentUser] = useState<ReturnType<typeof getStoredUser>>(null)
   const canManageAgenda = hasAnyPermission(currentUser, ["agenda_manage"])
   const canCancelAttendance = hasAnyPermission(currentUser, ["agenda_manage", "settings_manage"])
@@ -660,7 +661,10 @@ export function AgendamentosContent({
   }, [initialScheduleId, routeScheduleQuery.data?.data, schedules])
 
   useEffect(() => {
+    if (!initialScheduleId) { openedRouteScheduleRef.current = null; return }
+    if (openedRouteScheduleRef.current === initialScheduleId) return
     if (!initialScheduleId || !routeSchedule || !currentUser) return
+    openedRouteScheduleRef.current = initialScheduleId
     openSchedule(routeSchedule)
   }, [currentUser, initialScheduleId, openSchedule, routeSchedule])
 

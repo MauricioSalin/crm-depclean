@@ -311,6 +311,7 @@ export function AgendaContent({ openDialog, onDialogChange, availabilityOpen = f
   const [completionFiles, setCompletionFiles] = useState<File[]>([])
   const scheduleDialogResetTimeoutRef = useRef<number | null>(null)
   const scheduleEditRequestRef = useRef(0)
+  const openedRouteScheduleRef = useRef<string | null>(null)
   const dayPanelTransitionTimeoutRef = useRef<number | null>(null)
   const [currentUser, setCurrentUser] = useState<ReturnType<typeof getStoredUser>>(null)
   const canManageAgenda = hasAnyPermission(currentUser, ["agenda_manage"])
@@ -1406,11 +1407,14 @@ export function AgendaContent({ openDialog, onDialogChange, availabilityOpen = f
 
   useEffect(() => {
     const scheduleId = searchParams.get("scheduleId")
+    if (!scheduleId) { openedRouteScheduleRef.current = null; return }
+    if (openedRouteScheduleRef.current === scheduleId) return
     if (!scheduleId || schedules.length === 0 || !currentUser) return
 
     const schedule = schedules.find((item) => item.id === scheduleId)
     if (!schedule) return
 
+    openedRouteScheduleRef.current = scheduleId
     const selectedScheduleDate = parseCivilDate(resolveScheduleDisplayPeriod(schedule).date) ?? new Date()
     setSelectedDate(selectedScheduleDate)
     openSchedule(schedule)
